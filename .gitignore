@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+!.deploy.env.example
+.deploy.env
+.env.prod
+*.pem
+*.key
+
+# IDE & Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test & Coverage
+coverage/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Docker
+postgres_data/
+
+# Uploads
+uploads/
+
+# Database
+*.db
+*.sqlite
+database/backups/
+
+# Backups
+backups/
+
+# Claude config
+.claude/config
+
+# Cache
+.cache/
+
+# Vite
+*.local

@@ -1,0 +1,254 @@
+/* ==========================================================================
+   Theme - Terminal
+   Single style: monospace, sharp corners, cyan accent
+   Supports dark (default) and light modes via data-theme
+   ========================================================================== */
+
+:root {
+  /* ---- Typography: monospace everywhere ---- */
+  --font-family-system: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+  --font-family-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+
+  --font-size-xs: 0.6875rem;   /* 11px */
+  --font-size-sm: 0.75rem;     /* 12px */
+  --font-size-base: 0.8125rem; /* 13px */
+  --font-size-md: 0.875rem;    /* 14px */
+  --font-size-lg: 1rem;        /* 16px */
+  --font-size-xl: 1.125rem;    /* 18px */
+  --font-size-2xl: 1.25rem;    /* 20px */
+  --font-size-3xl: 1.5rem;     /* 24px */
+
+  --font-size-1: var(--font-size-xs);
+  --font-size-2: var(--font-size-sm);
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.6;
+
+  --letter-spacing-tight: -0.01em;
+  --letter-spacing-normal: -0.02em;
+  --letter-spacing-wide: 0;
+
+  /* ---- Spacing ---- */
+  --spacing-2xs: 0.125rem;  /* 2px */
+  --spacing-xs: 0.25rem;    /* 4px */
+  --spacing-1: 0.25rem;     /* 4px */
+  --spacing-sm: 0.5rem;     /* 8px */
+  --spacing-2: 0.375rem;    /* 6px */
+  --spacing-3: 0.5rem;      /* 8px */
+  --spacing-md: 0.75rem;    /* 12px */
+  --spacing-4: 0.75rem;     /* 12px */
+  --spacing-lg: 1rem;       /* 16px */
+  --spacing-5: 1rem;        /* 16px */
+  --spacing-xl: 1.5rem;     /* 24px */
+  --spacing-2xl: 2rem;      /* 32px */
+  --spacing-3xl: 3rem;      /* 48px */
+
+  /* ---- Border radius: sharp ---- */
+  --radius-xs: 1px;
+  --radius-1: 1px;
+  --radius-sm: 2px;
+  --radius-2: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-full: 4px;
+
+  /* ---- Z-index ---- */
+  --z-dropdown: 100;
+  --z-sticky: 500;
+  --z-overlay: 1000;
+  --z-modal: 2000;
+  --z-toast: 3000;
+  --z-tooltip: 4000;
+
+  /* ---- Transitions: snappy ---- */
+  --transition-fast: 0.08s ease;
+  --transition-normal: 0.12s ease;
+  --transition-slow: 0.15s ease;
+
+  /* ============================================
+     Dark mode (default)
+     ============================================ */
+
+  /* ---- Backgrounds: pure black ---- */
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #050505;
+  --bg-card: #0d0d0d;
+  --bg-input: #0a0a0a;
+  --bg-hover: #1a1a1a;
+
+  /* ---- Text: high contrast ---- */
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --text-muted: #666666;
+  --text-light: #444444;
+  --text-inverse: #ffffff;
+
+  /* ---- Borders ---- */
+  --border-color: #1e1e1e;
+  --border-light: rgba(255, 255, 255, 0.04);
+
+  /* ---- Accent: cyan ---- */
+  --accent-primary: #00bcd4;
+  --accent-primary-hover: #00acc1;
+  --accent-secondary: #26c6da;
+  --accent-light: rgba(0, 188, 212, 0.12);
+  --accent-gradient: linear-gradient(135deg, #00bcd4 0%, #26c6da 100%);
+
+  /* ---- Status: ANSI palette ---- */
+  --success: #4caf50;
+  --success-hover: #43a047;
+  --success-light: #66bb6a;
+  --success-bg: rgba(76, 175, 80, 0.1);
+  --success-bg-light: rgba(76, 175, 80, 0.06);
+  --success-gradient: linear-gradient(135deg, #4caf50 0%, #43a047 100%);
+
+  --warning: #ff9800;
+  --warning-hover: #f57c00;
+  --warning-bg: rgba(255, 152, 0, 0.1);
+  --warning-border: rgba(255, 152, 0, 0.4);
+  --warning-gradient: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+
+  --error: #f44336;
+  --error-hover: #e53935;
+  --error-bg: rgba(244, 67, 54, 0.1);
+  --error-bg-light: rgba(244, 67, 54, 0.06);
+
+  --info: #2196f3;
+  --info-light: #42a5f5;
+  --info-bg: rgba(33, 150, 243, 0.1);
+  --info-bg-light: rgba(33, 150, 243, 0.06);
+
+  /* ---- Shadows: border-based, no blur ---- */
+  --shadow-xs: 0 0 0 1px #1e1e1e;
+  --shadow-sm: 0 0 0 1px #1e1e1e;
+  --shadow-md: 0 0 0 1px #1e1e1e;
+  --shadow-lg: 0 0 0 1px #1e1e1e;
+  --shadow-xl: 0 0 0 1px #1e1e1e;
+  --shadow-inset: none;
+  --shadow-focus: 0 0 0 1px #00bcd4;
+  --shadow-accent-md: 0 0 0 1px #00bcd4;
+  --shadow-success-md: 0 0 0 1px #4caf50;
+
+  /* ---- Overlays ---- */
+  --overlay-dark: rgba(0, 0, 0, 0.85);
+  --overlay-light: rgba(0, 0, 0, 0.6);
+}
+
+/* ============================================
+   Light mode
+   ============================================ */
+[data-theme="light"] {
+  --bg-primary: #f0f0f0;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f5f5f5;
+  --bg-card: #ffffff;
+  --bg-input: #f5f5f5;
+  --bg-hover: #e8e8e8;
+
+  --text-primary: #1a1a1a;
+  --text-secondary: #333333;
+  --text-muted: #777777;
+  --text-light: #999999;
+  --text-inverse: #ffffff;
+
+  --border-color: #d0d0d0;
+  --border-light: rgba(0, 0, 0, 0.06);
+
+  --accent-primary: #00838f;
+  --accent-primary-hover: #006064;
+  --accent-secondary: #0097a7;
+  --accent-light: rgba(0, 131, 143, 0.1);
+  --accent-gradient: linear-gradient(135deg, #00838f 0%, #0097a7 100%);
+
+  --success-bg: rgba(76, 175, 80, 0.08);
+  --success-bg-light: rgba(76, 175, 80, 0.04);
+  --warning-bg: rgba(255, 152, 0, 0.08);
+  --error-bg: rgba(244, 67, 54, 0.08);
+  --error-bg-light: rgba(244, 67, 54, 0.04);
+  --info-bg: rgba(33, 150, 243, 0.08);
+  --info-bg-light: rgba(33, 150, 243, 0.04);
+
+  --shadow-xs: 0 0 0 1px #d0d0d0;
+  --shadow-sm: 0 0 0 1px #d0d0d0;
+  --shadow-md: 0 0 0 1px #d0d0d0;
+  --shadow-lg: 0 0 0 1px #d0d0d0;
+  --shadow-xl: 0 0 0 1px #d0d0d0;
+  --shadow-focus: 0 0 0 1px #00838f;
+  --shadow-accent-md: 0 0 0 1px #00838f;
+  --shadow-success-md: 0 0 0 1px #4caf50;
+
+  --overlay-dark: rgba(0, 0, 0, 0.5);
+  --overlay-light: rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================
+   Global UI enhancements
+   ============================================ */
+
+::selection {
+  background: rgba(0, 188, 212, 0.3);
+  color: inherit;
+}
+
+::-moz-selection {
+  background: rgba(0, 188, 212, 0.3);
+  color: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333333;
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555555;
+}
+
+input, select, textarea {
+  font-family: var(--font-family-mono);
+  letter-spacing: var(--letter-spacing-normal);
+}
+
+button {
+  font-family: var(--font-family-mono);
+  letter-spacing: var(--letter-spacing-normal);
+  text-transform: none;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th, td {
+  font-family: var(--font-family-mono);
+}
+
+body {
+  font-family: var(--font-family-system);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code, pre, kbd, samp {
+  font-family: var(--font-family-mono);
+}

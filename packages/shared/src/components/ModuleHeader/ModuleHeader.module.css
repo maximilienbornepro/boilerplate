@@ -1,0 +1,178 @@
+/* ==========================================================================
+   ModuleHeader - Standardized header for all modules
+   ========================================================================== */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  margin: 0;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  min-height: 60px;
+  position: sticky;
+  top: 50px; /* Below SharedNav */
+  z-index: var(--z-sticky, 500);
+  transition: background var(--transition-slow), border-color var(--transition-slow);
+  box-sizing: border-box;
+}
+
+/* ---- Left side: Back button + Title ---- */
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex: 1;
+  min-width: 0;
+}
+
+.backBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  flex-shrink: 0;
+}
+
+.backBtn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.backBtn svg {
+  flex-shrink: 0;
+}
+
+.backLabel {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .backLabel {
+    display: inline;
+  }
+}
+
+/* ---- Title group ---- */
+
+.titleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2xs);
+  min-width: 0;
+}
+
+.title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Right side: Actions ---- */
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+/* ---- Standard action button styles ---- */
+
+.actions :global(.module-header-btn) {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-family: inherit;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  white-space: nowrap;
+}
+
+.actions :global(.module-header-btn:hover) {
+  background: var(--bg-tertiary);
+  border-color: var(--text-muted);
+}
+
+.actions :global(.module-header-btn-primary) {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.actions :global(.module-header-btn-primary:hover) {
+  background: var(--accent-secondary);
+  border-color: var(--accent-secondary);
+}
+
+.actions :global(.module-header-btn-danger) {
+  color: var(--error);
+  border: none;
+  background: transparent;
+}
+
+.actions :global(.module-header-btn-danger:hover) {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.actions :global(.module-header-btn:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 480px) {
+  .header {
+    padding: var(--spacing-sm) var(--spacing-md);
+    gap: var(--spacing-sm);
+  }
+
+  .left {
+    gap: var(--spacing-sm);
+  }
+
+  .backBtn {
+    padding: var(--spacing-sm);
+  }
+
+  .title {
+    font-size: var(--font-size-base);
+  }
+
+  .actions {
+    gap: var(--spacing-xs);
+  }
+}

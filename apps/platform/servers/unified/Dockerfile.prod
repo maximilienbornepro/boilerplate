@@ -1,0 +1,22 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Build shared package
+COPY packages/shared/package.json ./packages/shared/
+RUN cd packages/shared && npm install
+COPY packages/shared/ ./packages/shared/
+RUN cd packages/shared && npm run build
+
+# Install unified server deps
+COPY apps/platform/servers/unified/package*.json ./
+RUN sed -i '/@boilerplate\/shared/d' package.json && \
+    npm install --omit=dev && npm install tsx && \
+    npm install ./packages/shared
+
+# Copy server source
+COPY apps/platform/servers/unified/ ./apps/platform/servers/unified/
+
+EXPOSE 3010
+
+CMD ["npx", "tsx", "apps/platform/servers/unified/src/index.ts"]

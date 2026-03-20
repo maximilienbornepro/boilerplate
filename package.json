@@ -1,0 +1,47 @@
+{
+  "name": "boilerplate-platform",
+  "version": "1.0.0",
+  "description": "Boilerplate platform with JWT authentication and design system",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/platform",
+    "apps/platform/servers/unified"
+  ],
+  "scripts": {
+    "dev": "concurrently -n unified,platform -c green,cyan \"npm run dev:unified:server\" \"npm run dev:platform:client\"",
+    "dev:unified:server": "npm run dev -w apps/platform/servers/unified",
+    "dev:platform:client": "npm run dev -w platform-client",
+    "build": "npm run build -w platform-client",
+    "db:start": "docker-compose up -d",
+    "db:stop": "docker-compose down",
+    "db:reset": "docker-compose down -v && docker-compose up -d",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:server": "vitest run --project 'server-*'",
+    "test:server:gateway": "vitest run --project server-gateway",
+    "test:server:products": "vitest run --project server-products",
+    "test:server:middleware": "vitest run --project server-middleware",
+    "test:client": "vitest run --project 'client-*'",
+    "test:client:gateway": "vitest run --project client-gateway",
+    "test:client:products": "vitest run --project client-products",
+    "test:shared": "vitest run --project shared",
+    "predeploy": "npm test"
+  },
+  "keywords": [
+    "boilerplate",
+    "react",
+    "express",
+    "jwt"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.0"
+  }
+}
