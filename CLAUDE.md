@@ -4,34 +4,75 @@
 
 > **Par défaut : ACTIVÉ.** Pour désactiver, mettre `OPENSPEC_MODE=off` dans `.claude/config`.
 
+Ce projet utilise **[@fission-ai/openspec](https://github.com/Fission-AI/OpenSpec)** pour le développement spec-first.
+
+### Installation (faite automatiquement par `./init.sh`)
+
+```bash
+npm install -g @fission-ai/openspec@latest
+openspec init
+```
+
+### Workflow OpenSpec
+
 Quand le mode OpenSpec est activé, toute modification fonctionnelle **DOIT** :
 
-1. **Être définie dans un fichier OpenAPI/spec** avant l'implémentation
-   - Créer un fichier `specs/<feature>.yaml` ou `specs/<feature>.md` décrivant la fonctionnalité
-   - Le fichier doit contenir : objectif, endpoints concernés, comportement attendu
+1. **Proposer une spec avant l'implémentation**
+   ```
+   /opsx:propose "description de la fonctionnalité"
+   ```
+   Cela crée un dossier `.openspec/changes/<feature>/` avec proposal.md, specs/, design.md, tasks.md
+
 2. **Être développée sur une branche dédiée**
    - Nommage : `feat/<feature>`, `fix/<feature>`, `refactor/<feature>`
    - **JAMAIS de commit direct sur `main`** en mode OpenSpec
    - Créer la branche : `git checkout -b feat/<feature>`
-3. **Inclure les tests unitaires** correspondants (voir section Tests)
+
+3. **Implémenter via OpenSpec**
+   ```
+   /opsx:apply
+   ```
+
+4. **Vérifier l'implémentation**
+   ```
+   /opsx:verify
+   ```
+
+5. **Inclure les tests unitaires** correspondants (voir section Tests)
+
+6. **Archiver une fois terminé**
+   ```
+   /opsx:archive
+   ```
+
+### Commandes OpenSpec
+
+| Commande | Description |
+|----------|-------------|
+| `/opsx:propose "desc"` | Créer une spec avant implémentation |
+| `/opsx:apply` | Implémenter les tâches définies |
+| `/opsx:verify` | Vérifier la conformité |
+| `/opsx:archive` | Archiver le travail terminé |
+| `/opsx:continue` | Reprendre le travail en cours |
+| `/opsx:sync` | Synchroniser specs et code |
+
+### Mode désactivé
 
 Quand le mode OpenSpec est **DÉSACTIVÉ** :
 - Modifications directes sur `main` autorisées
 - Pas besoin de fichier spec
 - Les tests restent obligatoires pour tout nouveau module
 
-Pour vérifier le mode actuel :
+### Configuration du mode
+
 ```bash
+# Vérifier le mode actuel
 cat .claude/config 2>/dev/null | grep OPENSPEC_MODE || echo "OPENSPEC_MODE=on (défaut)"
-```
 
-Pour désactiver temporairement :
-```bash
+# Désactiver temporairement
 mkdir -p .claude && echo "OPENSPEC_MODE=off" > .claude/config
-```
 
-Pour réactiver :
-```bash
+# Réactiver
 mkdir -p .claude && echo "OPENSPEC_MODE=on" > .claude/config
 ```
 

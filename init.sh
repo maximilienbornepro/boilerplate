@@ -262,6 +262,33 @@ if ! grep -q "^\.initialized$" .gitignore 2>/dev/null; then
 fi
 
 # =============================================================================
+# Installation de OpenSpec (spec-driven development)
+# =============================================================================
+log "Installation de OpenSpec..."
+
+# Vérifier si OpenSpec est déjà installé
+if command -v openspec &> /dev/null; then
+  ok "OpenSpec déjà installé ($(openspec --version 2>/dev/null || echo 'version inconnue'))"
+else
+  log "Installation de @fission-ai/openspec..."
+  if npm install -g @fission-ai/openspec@latest; then
+    ok "OpenSpec installé avec succès"
+  else
+    warn "Échec de l'installation globale d'OpenSpec. Vous pouvez l'installer manuellement :"
+    warn "  npm install -g @fission-ai/openspec@latest"
+  fi
+fi
+
+# Initialiser OpenSpec dans le projet
+if [ ! -d ".openspec" ]; then
+  log "Initialisation d'OpenSpec dans le projet..."
+  if command -v openspec &> /dev/null; then
+    openspec init --yes 2>/dev/null || openspec init 2>/dev/null || warn "Initialisation OpenSpec manuelle requise: openspec init"
+    ok "OpenSpec initialisé"
+  fi
+fi
+
+# =============================================================================
 # Instructions suivantes
 # =============================================================================
 echo ""
@@ -280,6 +307,14 @@ echo -e "     ${CYAN}npm run dev${NC}"
 echo ""
 echo -e "  4. Se connecter sur http://localhost:5170"
 echo -e "     Identifiant : ${CYAN}admin${NC} / Mot de passe : ${CYAN}admin${NC}"
+echo ""
+echo -e "${BOLD}Workflow OpenSpec (spec-driven development) :${NC}"
+echo ""
+echo -e "  Utiliser les commandes Claude Code :"
+echo -e "     ${CYAN}/opsx:propose \"description de la feature\"${NC}  - Créer une spec"
+echo -e "     ${CYAN}/opsx:apply${NC}                                  - Implémenter les tâches"
+echo -e "     ${CYAN}/opsx:verify${NC}                                 - Vérifier l'implémentation"
+echo -e "     ${CYAN}/opsx:archive${NC}                                - Archiver le travail terminé"
 echo ""
 echo -e "  Pour le déploiement distant :"
 echo -e "     ${CYAN}cp .deploy.env.example .deploy.env${NC}"
