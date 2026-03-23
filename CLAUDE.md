@@ -2,6 +2,45 @@
 
 ## Règles OBLIGATOIRES
 
+### ⛔ INTERDICTION ABSOLUE : Pas de code sans spec validée
+
+**RÈGLE #1 - BLOQUANTE : JAMAIS d'écriture de code sans workflow OpenSpec complet.**
+
+Avant d'utiliser les outils `Write` ou `Edit` sur du code applicatif :
+
+1. **VÉRIFIER** qu'un dossier `.openspec/changes/<feature>/` existe avec :
+   - `proposal.md` - Spec de la fonctionnalité
+   - `design.md` - Architecture technique
+   - `tasks.md` - Liste des tâches
+   - `progress.md` - État de la progression
+
+2. **VÉRIFIER** qu'on est sur une branche `feat/<feature>` (pas sur `main`)
+
+3. **VÉRIFIER** que la phase dans `progress.md` est `implementation` ou plus
+
+**Si ces conditions ne sont pas remplies → STOP IMMÉDIAT.**
+
+```
+❌ INTERDIT:
+   User: "Ajoute une page de détail produit"
+   Claude: [Commence à écrire du code]
+
+✅ CORRECT:
+   User: "Ajoute une page de détail produit"
+   Claude: "Le mode OpenSpec est activé. Je dois d'abord créer une spec.
+            Utilise /opsx:propose 'Page detail produit' pour commencer."
+```
+
+**Exceptions (pas besoin de spec)** :
+- Corrections de typos
+- Mise à jour de documentation (CLAUDE.md, README)
+- Fichiers de configuration (.env, package.json versions)
+- Corrections de bugs critiques en production (avec justification)
+
+**En cas de doute → Demander à l'utilisateur si OpenSpec est requis.**
+
+---
+
 ### Tests avant commit/push
 
 **OBLIGATOIRE : Toujours exécuter `npm test` AVANT tout commit ou push.**
@@ -149,6 +188,19 @@ Cette règle garantit que les projets dérivés restent synchronisés avec les a
 > **Par défaut : ACTIVÉ.** Pour désactiver, mettre `OPENSPEC_MODE=off` dans `.claude/config`.
 
 Ce projet utilise **[@fission-ai/openspec](https://github.com/Fission-AI/OpenSpec)** pour le développement spec-first.
+
+### ⚠️ RÈGLE DE BLOCAGE
+
+**Quand OpenSpec est activé, Claude DOIT :**
+
+1. **AVANT toute demande de modification fonctionnelle** : Vérifier s'il existe un dossier `.openspec/changes/` en cours
+2. **Si NON** : Refuser d'écrire du code et demander à l'utilisateur d'utiliser `/opsx:propose`
+3. **Si OUI** : Vérifier que la phase est `implementation` avant d'écrire du code
+
+```bash
+# Vérification automatique à faire par Claude
+ls .openspec/changes/*/progress.md 2>/dev/null || echo "Aucune spec en cours"
+```
 
 ### Installation (faite automatiquement par `./init.sh`)
 

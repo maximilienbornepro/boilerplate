@@ -8,6 +8,81 @@ invocation: user
 
 Ce skill utilise l'outil **@fission-ai/openspec** pour un developpement specification-first.
 
+## ⛔ REGLE DE BLOCAGE ABSOLUE
+
+### AVANT D'ECRIRE DU CODE - VERIFICATIONS OBLIGATOIRES
+
+**Claude DOIT executer ces verifications AVANT tout appel a Write ou Edit sur du code applicatif :**
+
+```bash
+# 1. Verifier le mode OpenSpec
+MODE=$(cat .claude/config 2>/dev/null | grep OPENSPEC_MODE | cut -d= -f2)
+if [ "$MODE" != "off" ]; then
+  echo "OpenSpec ACTIF - Verification requise"
+fi
+
+# 2. Verifier qu'on n'est PAS sur main
+BRANCH=$(git branch --show-current)
+if [ "$BRANCH" = "main" ]; then
+  echo "⛔ ERREUR: Sur main - Creer une branche feat/ d'abord"
+  exit 1
+fi
+
+# 3. Verifier qu'une spec existe
+SPEC_DIR=$(ls -d .openspec/changes/*/ 2>/dev/null | head -1)
+if [ -z "$SPEC_DIR" ]; then
+  echo "⛔ ERREUR: Aucune spec - Utiliser /opsx:propose d'abord"
+  exit 1
+fi
+
+# 4. Verifier que progress.md existe et phase = implementation
+if [ ! -f "${SPEC_DIR}progress.md" ]; then
+  echo "⛔ ERREUR: progress.md manquant"
+  exit 1
+fi
+
+PHASE=$(grep "Current Phase:" ${SPEC_DIR}progress.md | cut -d: -f2 | tr -d ' ')
+if [ "$PHASE" != "implementation" ] && [ "$PHASE" != "verification" ]; then
+  echo "⛔ ERREUR: Phase '$PHASE' - Pas en implementation"
+  exit 1
+fi
+
+echo "✅ Verification OK - Code autorise"
+```
+
+### COMPORTEMENT EN CAS D'ECHEC
+
+Si les verifications echouent, Claude DOIT :
+
+1. **REFUSER** d'ecrire du code
+2. **EXPLIQUER** ce qui manque
+3. **PROPOSER** la commande OpenSpec appropriee
+
+**Exemple de reponse :**
+
+```
+Je ne peux pas ecrire de code car :
+- Nous sommes sur la branche 'main' (interdit)
+- Aucune spec OpenSpec n'existe
+
+Pour commencer, utilise :
+/opsx:propose "description de ta fonctionnalite"
+
+Cela va :
+1. Creer une branche feat/<feature>
+2. Generer les fichiers de spec
+3. Permettre ensuite l'implementation
+```
+
+### EXCEPTIONS (code autorise sans spec)
+
+- Fichiers de configuration (.env, package.json versions)
+- Documentation (CLAUDE.md, README.md)
+- Corrections de typos dans le code existant
+- Hotfix critique en production (avec justification explicite)
+
+---
+
 ## REGLES OBLIGATOIRES
 
 ### 0. Detection automatique des anomalies

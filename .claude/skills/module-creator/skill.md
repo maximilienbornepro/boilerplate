@@ -6,6 +6,28 @@ invocation: user
 
 # Module Creator
 
+## ⛔ PRE-REQUIS OBLIGATOIRE : OpenSpec
+
+**AVANT d'utiliser ce skill, verifier que le workflow OpenSpec a ete suivi :**
+
+```bash
+# 1. Verifier le mode OpenSpec
+cat .claude/config 2>/dev/null | grep OPENSPEC_MODE || echo "OPENSPEC_MODE=on (defaut)"
+
+# 2. Si OpenSpec est actif, une spec DOIT exister
+ls .openspec/changes/*/progress.md
+```
+
+**Si aucune spec n'existe :**
+
+1. **REFUSER** d'utiliser ce skill
+2. **DIRE** a l'utilisateur : "Utilise d'abord `/opsx:propose 'Nouveau module <nom>'` pour creer la spec"
+3. **ATTENDRE** que la spec soit validee (phase = implementation)
+
+**Ce skill ne doit PAS etre utilise directement sans spec validee.**
+
+---
+
 Ce skill guide la creation d'un nouveau module parfaitement integre au boilerplate, avec :
 - Design system (composants, tokens CSS, Layout)
 - Systeme de permissions (activable par utilisateur dans l'admin)
