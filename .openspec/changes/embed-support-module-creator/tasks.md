@@ -9,4 +9,4 @@
 - [x] 5. Ajouter templates EmbedView, route publique, CSS embed
 - [x] 6. Mettre a jour CLAUDE.md avec documentation embed
 - [x] 7. Tester et valider
-- [ ] 8. Commit, merge vers main, push
+- [x] 8. Commit, merge vers main, push
