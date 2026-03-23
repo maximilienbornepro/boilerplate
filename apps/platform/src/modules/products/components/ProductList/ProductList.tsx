@@ -3,11 +3,12 @@ import styles from './ProductList.module.css';
 
 interface ProductListProps {
   products: Product[];
+  onView: (product: Product) => void;
   onEdit: (product: Product) => void;
   onDelete: (product: Product) => void;
 }
 
-export function ProductList({ products, onEdit, onDelete }: ProductListProps) {
+export function ProductList({ products, onView, onEdit, onDelete }: ProductListProps) {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
@@ -32,7 +33,13 @@ export function ProductList({ products, onEdit, onDelete }: ProductListProps) {
           {products.map((product) => (
             <tr key={product.id}>
               <td className={styles.nameCell}>
-                <span className={styles.name}>{product.name}</span>
+                <button
+                  className={styles.nameLink}
+                  onClick={() => onView(product)}
+                  title="Voir le detail"
+                >
+                  {product.name}
+                </button>
               </td>
               <td className={styles.descriptionCell}>
                 <span className={styles.description}>

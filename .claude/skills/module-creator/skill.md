@@ -28,6 +28,70 @@ ls .openspec/changes/*/progress.md
 
 ---
 
+## REGLES UI OBLIGATOIRES
+
+### 1. Boutons TOUJOURS dans ModuleHeader
+
+**JAMAIS** de header custom avec boutons. Utiliser UNIQUEMENT `ModuleHeader` du design system.
+
+```tsx
+// ✅ CORRECT
+<ModuleHeader title="Titre" onBack={handleBack}>
+  <button className="module-header-btn">Action</button>
+  <button className="module-header-btn module-header-btn-primary">Primary</button>
+</ModuleHeader>
+
+// ❌ INTERDIT
+<div className={styles.header}>
+  <button onClick={onBack}>Retour</button>
+  <button onClick={onEdit}>Modifier</button>
+</div>
+```
+
+**Classes disponibles pour les boutons :**
+- `module-header-btn` - Style de base
+- `module-header-btn-primary` - Action principale (bleu)
+- `module-header-btn-success` - Succes (vert)
+- `module-header-btn-danger` - Danger (rouge)
+
+### 2. Bouton Embed OBLIGATOIRE si mode embed actif
+
+**Si ENABLE_EMBED = oui**, chaque vue de detail DOIT inclure :
+
+```tsx
+const [copied, setCopied] = useState(false);
+
+const copyEmbedLink = useCallback(() => {
+  const url = `${window.location.origin}/<module>?embed=${item.id}`;
+  navigator.clipboard.writeText(url);
+  setCopied(true);
+  setTimeout(() => setCopied(false), 2000);
+}, [item]);
+
+// Dans le ModuleHeader
+<ModuleHeader title={item.name} onBack={onBack}>
+  <button
+    className={`module-header-btn ${copied ? 'module-header-btn-success' : ''}`}
+    onClick={copyEmbedLink}
+  >
+    {copied ? 'Copie !' : 'Embed'}
+  </button>
+  <button className="module-header-btn module-header-btn-primary" onClick={() => onEdit(item)}>
+    Modifier
+  </button>
+</ModuleHeader>
+```
+
+### 3. Pages detail avec ModuleHeader
+
+Toute page de detail (vue d'un element unique) DOIT :
+1. Avoir un `ModuleHeader` avec le nom de l'element en titre
+2. Avoir un bouton "Retour" via `onBack`
+3. Avoir un bouton "Modifier" si l'edition est possible
+4. Avoir un bouton "Embed" si le mode embed est actif
+
+---
+
 Ce skill guide la creation d'un nouveau module parfaitement integre au boilerplate, avec :
 - Design system (composants, tokens CSS, Layout)
 - Systeme de permissions (activable par utilisateur dans l'admin)
