@@ -83,6 +83,36 @@ git push
 - Synchroniser régulièrement (1x/semaine) pour éviter les gros écarts
 - Toujours lancer `npm test` après un sync
 
+### PROJETS DERIVES : Sync obligatoire avant commit
+
+**REGLE OBLIGATOIRE** pour les projets utilisant ce boilerplate :
+
+Avant **chaque commit**, vérifier et appliquer les mises à jour du boilerplate :
+
+```bash
+# 1. Vérifier les updates disponibles
+./sync-boilerplate.sh --dry-run
+
+# 2. Si updates disponibles, les appliquer
+./sync-boilerplate.sh
+
+# 3. Résoudre les conflits si nécessaire
+
+# 4. Puis commit normalement
+git add <fichiers>
+git commit -m "message"
+```
+
+**Workflow Claude (automatique)** :
+
+Quand tu demandes un commit, Claude doit :
+1. Vérifier si le remote `boilerplate` existe
+2. Si oui, `git fetch boilerplate` et vérifier les updates
+3. Si updates disponibles, proposer de sync d'abord
+4. Puis commit
+
+Cette règle garantit que les projets dérivés restent synchronisés avec les améliorations du boilerplate.
+
 ---
 
 ## Mode OpenSpec (désactivable)
