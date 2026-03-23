@@ -397,9 +397,14 @@ sequenceDiagram
 
 3. **Mettre a jour progress.md** : phase = "Archive", status = "completed"
 
-4. **Optionnel** : supprimer la branche mergee
-   ```bash
-   git branch -d $CURRENT
+4. **DEMANDER CONFIRMATION** avant de supprimer la branche
+
+   **NE JAMAIS supprimer une branche sans demander a l'utilisateur.**
+
+   ```
+   Claude: "La branche feat/xxx a ete mergee. Tu veux que je la supprime ?"
+   User: "oui" → git branch -d $CURRENT
+   User: "non" → garder la branche
    ```
 
 5. **Optionnel** : deplacer vers `.openspec/archive/`
@@ -767,3 +772,4 @@ main
 - [ ] `npm test` passe
 - [ ] Documentation a jour
 - [ ] PR cree ou merge effectue
+- [ ] **Demander confirmation** avant suppression de branche (JAMAIS supprimer sans demander)
