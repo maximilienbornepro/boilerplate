@@ -423,6 +423,84 @@ sequenceDiagram
         └── progress.md
 ```
 
+## Format de proposal.md
+
+**IMPORTANT** : Bien distinguer ce qui EXISTE de ce qui est A FAIRE et de ce qui est EXCLU.
+
+```markdown
+# Proposal: <feature-name>
+
+## Description
+
+<Description claire de la fonctionnalite en 2-3 phrases>
+
+## Objectifs
+
+1. <Objectif 1>
+2. <Objectif 2>
+3. <Objectif 3>
+
+## Existant (a reutiliser, ne pas modifier)
+
+Elements deja presents dans le codebase qui seront reutilises :
+
+| Element | Fichier/Endpoint | Usage dans cette feature |
+|---------|------------------|--------------------------|
+| API X | `services/api.ts:fetchX` | Charger les donnees |
+| Composant Y | `components/Y/` | Affichage existant |
+| Backend Z | `GET /api/z` | Endpoint existant |
+
+> Si rien n'existe, ecrire "Aucun element existant a reutiliser."
+
+## Scope (a implementer)
+
+### Fichiers a creer
+
+| Fichier | Description |
+|---------|-------------|
+| `components/X/X.tsx` | Composant principal |
+| `components/X/X.module.css` | Styles |
+
+### Fichiers a modifier
+
+| Fichier | Modification |
+|---------|--------------|
+| `App.tsx` | Ajouter routing |
+| `Y.tsx` | Ajouter callback |
+
+### Fonctionnalites incluses
+
+- <Fonctionnalite 1>
+- <Fonctionnalite 2>
+- <Fonctionnalite 3>
+
+## Out of Scope (exclus volontairement)
+
+| Element | Raison de l'exclusion |
+|---------|----------------------|
+| Feature X | Sera une spec separee |
+| Modification Y | Le composant existant suffit |
+
+## Regles UI (checklist obligatoire)
+
+Si la feature inclut une page de detail ou une vue d'element :
+
+- [ ] `ModuleHeader` utilise pour le header (JAMAIS de header custom)
+- [ ] Bouton "Retour" dans ModuleHeader via `onBack`
+- [ ] Bouton "Modifier" dans ModuleHeader si edition possible
+- [ ] Bouton "Embed" dans ModuleHeader si mode embed actif dans le module
+
+> **Rappel** : Tous les boutons d'action DOIVENT etre dans `ModuleHeader`, jamais dans un header custom.
+
+## Criteres d'acceptation
+
+1. <Critere testable 1>
+2. <Critere testable 2>
+3. Tests unitaires presents
+4. `npm test` passe
+5. Boutons dans ModuleHeader (pas de header custom)
+```
+
 ## Format de design.md
 
 ```markdown
