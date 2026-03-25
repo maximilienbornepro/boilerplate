@@ -99,6 +99,28 @@ Verifier les erreurs dans les logs du container concerne.
 ssh <user>@<host> "cd /path/to/app && git init && git remote add origin <repo-url> && git fetch origin main && git reset --hard origin/main"
 ```
 
+### API retourne 200 ou 404 une fois sur deux (round-robin fantome)
+**Cause** : `nginx -s reload` ne suffit pas quand les routes ou upstreams changent (ex: renommage de module). Les anciens worker processes gardent la resolution DNS en cache et servent l'ancienne config en alternance avec les nouveaux workers.
+
+**Symptome** : les requetes API retournent alternativement 200 et 404.
+
+**Fix** : toujours faire un `docker restart` complet du shared-proxy apres un changement de routes, jamais un simple `nginx -s reload`.
+```bash
+ssh <user>@<host> "docker restart shared-proxy"
+```
+
+**REGLE** : apres tout renommage de module ou changement de config nginx, toujours :
+```bash
+# 1. Mettre a jour la config
+sed -i 's/old-name/new-name/g' /opt/apps/proxy/nginx/nginx.conf
+
+# 2. Tester la syntaxe
+docker exec shared-proxy nginx -t
+
+# 3. RESTART complet (pas reload)
+docker restart shared-proxy
+```
+
 ### Scripts sans permission d'execution apres deploy
 Le `git reset --hard` peut retirer les permissions d'execution. Fix :
 ```bash
