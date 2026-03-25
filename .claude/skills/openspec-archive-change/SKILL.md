@@ -13,6 +13,36 @@ Archive a completed change in the experimental workflow.
 
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
+## Project Rules (MANDATORY)
+
+### 0. Langue : Français
+
+TOUS les artifacts OpenSpec DOIVENT être rédigés en **français**. Seuls les éléments techniques restent en anglais (code, fichiers, endpoints, types).
+
+### A. Tests before merge
+
+ALWAYS run `npm test` before archiving. If tests fail, DO NOT proceed with the archive. Fix the issues first.
+
+### B. Git merge strategy
+
+Merge to the parent branch (read from progress.md if available):
+
+| Type | Branch | Merge to |
+|------|--------|----------|
+| Feature | feat/xxx | main |
+| Fix on main | fix/xxx | main |
+| Fix on feature | fix/feat--xxx | feat/xxx |
+
+### C. Branch deletion requires EXPLICIT user confirmation
+
+NEVER delete a branch without asking. Always ask: "La branche X a ete mergee. Tu veux que je la supprime ?"
+
+### D. Update progress.md
+
+Before archiving, update progress.md: set phase to "Archive", status to "completed", and add a history entry with timestamp.
+
+---
+
 **Steps**
 
 1. **If no change name provided, prompt for selection**

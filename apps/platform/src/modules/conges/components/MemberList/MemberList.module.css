@@ -1,0 +1,144 @@
+.content {
+  padding: 16px 20px 20px;
+  font-family: var(--font-family-mono);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.item {
+  border-bottom: 1px solid var(--border-light);
+  padding: 8px 0;
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.viewRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.name {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.itemActions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.item:hover .itemActions {
+  opacity: 1;
+}
+
+.editBtn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  cursor: pointer;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  transition: background var(--transition-fast);
+}
+
+.editBtn:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-primary);
+}
+
+.editRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.colorPicker {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.colorDot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.colorDotActive {
+  border-color: #fff;
+  transform: scale(1.1);
+}
+
+.editActions {
+  display: flex;
+  gap: 8px;
+}
+
+.saveBtn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary);
+  color: #fff;
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cancelEditBtn {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.hint {
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-align: center;
+}

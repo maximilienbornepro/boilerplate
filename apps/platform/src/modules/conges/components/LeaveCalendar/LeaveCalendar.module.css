@@ -1,0 +1,218 @@
+/* Container */
+.container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-primary);
+  font-family: var(--font-family-mono);
+}
+
+/* ==================== Header ==================== */
+.headerArea {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.nameColHeader {
+  width: 200px;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-right: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.headerScroll {
+  flex: 1;
+  overflow: hidden;
+}
+
+.headerInner {
+  position: relative;
+}
+
+/* Month row */
+.monthRow {
+  position: relative;
+  height: 28px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.monthLabel {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-right: 1px solid var(--border-light);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Day row */
+.dayRow {
+  position: relative;
+  height: 22px;
+}
+
+.dayLabel {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border-light);
+}
+
+.dayWeekend {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.dayToday {
+  background: rgba(0, 188, 212, 0.15);
+  color: var(--accent-primary);
+  font-weight: 700;
+  opacity: 1;
+}
+
+/* ==================== Body ==================== */
+.bodyArea {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Fixed name column */
+.nameColumn {
+  width: 200px;
+  min-width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.nameColumn::-webkit-scrollbar {
+  display: none;
+}
+
+.nameCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-light);
+  overflow: hidden;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.memberName {
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.currentUser .memberName {
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+/* Scrollable grid */
+.gridScroll {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.gridInner {
+  position: relative;
+  min-height: 100%;
+}
+
+/* Background columns */
+.gridBackground {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.gridCol {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-right: 1px solid var(--border-light);
+}
+
+.weekend {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Today marker */
+.todayMarker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.todayLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent-primary);
+  transform: translateX(-1px);
+  opacity: 0.7;
+}
+
+/* Grid rows */
+.gridRow {
+  position: relative;
+  border-bottom: 1px solid var(--border-light);
+}
+
+/* ==================== Light theme ==================== */
+:global(:root:not([data-theme="dark"])) .weekend {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+:global(:root:not([data-theme="dark"])) .dayWeekend {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+:global(:root:not([data-theme="dark"])) .dayToday {
+  background: rgba(0, 188, 212, 0.12);
+}

@@ -23,10 +23,12 @@
     "test:server": "vitest run --project 'server-*'",
     "test:server:gateway": "vitest run --project server-gateway",
     "test:server:products": "vitest run --project server-products",
+    "test:server:conges": "vitest run --project server-conges",
     "test:server:middleware": "vitest run --project server-middleware",
     "test:client": "vitest run --project 'client-*'",
     "test:client:gateway": "vitest run --project client-gateway",
     "test:client:products": "vitest run --project client-products",
+    "test:client:conges": "vitest run --project client-conges",
     "test:shared": "vitest run --project shared",
     "predeploy": "npm test"
   },

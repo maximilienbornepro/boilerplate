@@ -1,0 +1,29 @@
+.bar {
+  position: absolute;
+  top: 8px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  transition: opacity var(--transition-fast), filter var(--transition-fast);
+  z-index: 2;
+  overflow: hidden;
+}
+
+.bar:hover {
+  filter: brightness(1.15);
+  z-index: 3;
+}
+
+.label {
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}

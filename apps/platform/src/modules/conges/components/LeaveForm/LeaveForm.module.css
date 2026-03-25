@@ -1,0 +1,123 @@
+.form {
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-family: var(--font-family-mono);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+}
+
+.label {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.input,
+.select {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.input:focus,
+.select:focus {
+  border-color: var(--accent-primary);
+}
+
+.select {
+  cursor: pointer;
+}
+
+.readonlyField {
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
+}
+
+.rightActions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.cancelBtn {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.cancelBtn:hover {
+  border-color: var(--text-secondary);
+}
+
+.submitBtn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary);
+  color: #fff;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.submitBtn:hover {
+  opacity: 0.9;
+}
+
+.deleteBtn {
+  padding: 8px 16px;
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--error);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.deleteBtn:hover {
+  background: rgba(220, 38, 38, 0.1);
+}

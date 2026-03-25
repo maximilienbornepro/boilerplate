@@ -8,7 +8,7 @@
 
 Avant d'utiliser les outils `Write` ou `Edit` sur du code applicatif :
 
-1. **VÉRIFIER** qu'un dossier `.openspec/changes/<feature>/` existe avec :
+1. **VÉRIFIER** qu'un dossier `openspec/changes/<feature>/` existe avec :
    - `proposal.md` - Spec de la fonctionnalité
    - `design.md` - Architecture technique
    - `tasks.md` - Liste des tâches
@@ -193,13 +193,13 @@ Ce projet utilise **[@fission-ai/openspec](https://github.com/Fission-AI/OpenSpe
 
 **Quand OpenSpec est activé, Claude DOIT :**
 
-1. **AVANT toute demande de modification fonctionnelle** : Vérifier s'il existe un dossier `.openspec/changes/` en cours
+1. **AVANT toute demande de modification fonctionnelle** : Vérifier s'il existe un dossier `openspec/changes/` en cours
 2. **Si NON** : Refuser d'écrire du code et demander à l'utilisateur d'utiliser `/opsx:propose`
 3. **Si OUI** : Vérifier que la phase est `implementation` avant d'écrire du code
 
 ```bash
 # Vérification automatique à faire par Claude
-ls .openspec/changes/*/progress.md 2>/dev/null || echo "Aucune spec en cours"
+ls openspec/changes/*/progress.md 2>/dev/null || echo "Aucune spec en cours"
 ```
 
 ### Installation (faite automatiquement par `./init.sh`)
@@ -219,7 +219,7 @@ Quand le mode OpenSpec est activé, toute modification fonctionnelle **DOIT** :
    ```
    Cela :
    - Crée automatiquement une branche `feat/<feature-slug>`
-   - Crée un dossier `.openspec/changes/<feature>/` avec proposal.md, specs/, design.md, tasks.md
+   - Crée un dossier `openspec/changes/<feature>/` avec proposal.md, specs/, design.md, tasks.md
    - Initialise `progress.md` pour persister l'état
 
 2. **Implémenter via OpenSpec**
@@ -241,7 +241,7 @@ Quand le mode OpenSpec est activé, toute modification fonctionnelle **DOIT** :
 
 ### Persistance de l'état (progress.md)
 
-Le fichier `.openspec/changes/<feature>/progress.md` stocke :
+Le fichier `openspec/changes/<feature>/progress.md` stocke :
 - La branche associée
 - La phase courante (proposal, design, implementation, verification, archive)
 - Les tâches complétées/restantes

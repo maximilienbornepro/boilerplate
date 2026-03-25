@@ -41,6 +41,15 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      // Server: conges
+      {
+        test: {
+          name: 'server-conges',
+          root: '.',
+          include: ['apps/platform/servers/unified/src/modules/__tests__/conges/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
       // Client modules
       {
         test: {
@@ -55,6 +64,14 @@ export default defineConfig({
           name: 'client-gateway',
           root: '.',
           include: ['apps/platform/src/modules/gateway/__tests__/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
+      {
+        test: {
+          name: 'client-conges',
+          root: '.',
+          include: ['apps/platform/src/modules/conges/__tests__/**/*.test.ts'],
           environment: 'node',
         },
       },

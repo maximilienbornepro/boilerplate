@@ -6,6 +6,7 @@ import { AdminPage } from './modules/gateway/components/AdminPage';
 
 // Lazy load modules
 const ProductsApp = lazy(() => import('./modules/products/App'));
+const CongesApp = lazy(() => import('./modules/conges/App'));
 
 interface User {
   id: number;
@@ -105,6 +106,14 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <ProductsApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/conges/*"
+        element={
+          <SuspenseWrapper>
+            <CongesApp onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />

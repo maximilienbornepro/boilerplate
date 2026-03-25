@@ -7,6 +7,7 @@ import { errorMiddleware } from '@boilerplate/shared/server';
 // Import modules
 import { initGateway, createGatewayRouter } from './modules/gateway.js';
 import { initProducts, createProductsRouter } from './modules/products/index.js';
+import { initConges, createCongesRouter } from './modules/conges/index.js';
 
 const app = express();
 
@@ -34,6 +35,10 @@ async function init() {
   // Products
   await initProducts();
   app.use('/products/api', createProductsRouter());
+
+  // Conges
+  await initConges();
+  app.use('/conges/api', createCongesRouter());
 
   // Error handling
   app.use(errorMiddleware);

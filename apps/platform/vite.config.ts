@@ -19,6 +19,11 @@ export default defineConfig({
         target: UNIFIED_SERVER,
         rewrite: (path) => path.replace(/^\/products-api/, '/products/api'),
       },
+      // Conges API: /conges-api/* → /conges/api/*
+      '/conges-api': {
+        target: UNIFIED_SERVER,
+        rewrite: (path) => path.replace(/^\/conges-api/, '/conges/api'),
+      },
       // Gateway APIs (auth, admin)
       '/api/auth': {
         target: UNIFIED_SERVER,

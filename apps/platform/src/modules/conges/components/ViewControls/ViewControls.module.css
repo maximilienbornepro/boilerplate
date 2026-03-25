@@ -1,0 +1,107 @@
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--font-family-mono);
+}
+
+/* Year navigation */
+.yearNav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.navBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.navBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.yearLabel {
+  min-width: 48px;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+/* View selector — pill design */
+.selector {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--bg-secondary);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.button {
+  padding: 6px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  letter-spacing: 0.02em;
+}
+
+.button:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.button.active {
+  background: var(--accent-primary);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+}
+
+.button.active:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+/* Light theme */
+:global(:root:not([data-theme="dark"])) .selector {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+:global(:root:not([data-theme="dark"])) .button {
+  color: var(--text-muted);
+}
+
+:global(:root:not([data-theme="dark"])) .button:hover {
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+:global(:root:not([data-theme="dark"])) .button.active {
+  box-shadow: var(--shadow-md);
+}
+
+:global(:root:not([data-theme="dark"])) .navBtn:hover {
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.06);
+}

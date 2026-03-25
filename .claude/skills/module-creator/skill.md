@@ -1144,22 +1144,69 @@ npm run dev
 # 5. Verifier l'acces au module
 ```
 
-## Tokens CSS disponibles
+## Regles CSS OBLIGATOIRES
+
+### 1. Toujours utiliser les design tokens
+
+**JAMAIS** de valeurs hardcodees pour les couleurs, tailles, espacements, borders, shadows, transitions ou fonts.
+Toujours utiliser `var(--token-name)` depuis `packages/shared/src/styles/theme.css`.
+
+```css
+/* ❌ INTERDIT */
+color: #e0e0e0;
+border: 1px solid #1e1e1e;
+font-family: monospace;
+border-radius: 4px;
+
+/* ✅ CORRECT */
+color: var(--text-primary);
+border: 1px solid var(--border-color);
+font-family: var(--font-family-mono);
+border-radius: var(--radius-md);
+```
+
+### 2. CSS modules pour les composants
+
+Les composants utilisent des CSS modules (`.module.css`). Les styles globaux du module vont dans `index.css` avec des classes prefixees (`<module>-page`, `<module>-content`, etc.).
+
+## Tokens CSS disponibles (reference theme.css)
+
+### Fonts
+`--font-family-system`, `--font-family-mono`
+
+### Font sizes
+`--font-size-xs` (11px), `--font-size-sm` (12px), `--font-size-base` (13px), `--font-size-md` (14px), `--font-size-lg` (16px), `--font-size-xl` (18px), `--font-size-2xl` (20px)
+
+### Font weights
+`--font-weight-normal` (400), `--font-weight-medium` (500), `--font-weight-semibold` (600), `--font-weight-bold` (700)
 
 ### Spacing
-`--spacing-xs`, `--spacing-sm`, `--spacing-md`, `--spacing-lg`, `--spacing-xl`, `--spacing-2xl`, `--spacing-3xl`
+`--spacing-2xs` (2px), `--spacing-xs` (4px), `--spacing-sm` (8px), `--spacing-md` (12px), `--spacing-lg` (16px), `--spacing-xl` (24px), `--spacing-2xl` (32px), `--spacing-3xl` (48px)
 
-### Typography
-`--font-size-sm`, `--font-size-base`, `--font-size-md`, `--font-size-lg`, `--font-size-xl`
-`--font-weight-normal`, `--font-weight-medium`, `--font-weight-semibold`, `--font-weight-bold`
+### Border radius (sharp — terminal style)
+`--radius-xs` (1px), `--radius-sm` (2px), `--radius-md` (3px), `--radius-lg` (4px), `--radius-xl` (4px)
 
-### Colors
-`--text-primary`, `--text-secondary`, `--text-muted`, `--text-inverse`
-`--bg-primary`, `--bg-secondary`, `--bg-elevated`
-`--accent-primary`, `--accent-primary-hover`
-`--border-color`, `--border-color-light`
-`--success`, `--warning`, `--error`
+### Transitions (snappy)
+`--transition-fast` (0.08s), `--transition-normal` (0.12s), `--transition-slow` (0.15s)
 
-### Effects
-`--radius-sm`, `--radius-md`, `--radius-lg`
-`--transition-fast`, `--transition-normal`
+### Backgrounds
+`--bg-primary` (#000), `--bg-secondary` (#0a0a0a), `--bg-tertiary` (#050505), `--bg-card` (#0d0d0d), `--bg-input` (#0a0a0a), `--bg-hover` (#1a1a1a)
+
+### Text
+`--text-primary` (#e0e0e0), `--text-secondary` (#a0a0a0), `--text-muted` (#666), `--text-light` (#444), `--text-inverse` (#fff)
+
+### Borders
+`--border-color` (#1e1e1e), `--border-light` (rgba(255,255,255,0.04))
+
+### Accent (cyan)
+`--accent-primary` (#00bcd4), `--accent-primary-hover` (#00acc1), `--accent-secondary` (#26c6da), `--accent-light` (rgba(0,188,212,0.12)), `--accent-gradient`
+
+### Status
+`--success` (#4caf50), `--warning` (#ff9800), `--error` (#f44336), `--info` (#2196f3)
++ variantes `-hover`, `-bg`, `-bg-light`
+
+### Shadows (border-based, no blur)
+`--shadow-xs` a `--shadow-xl` (tous = `0 0 0 1px #1e1e1e`), `--shadow-focus` (1px accent)
+
+### Z-index
+`--z-dropdown` (100), `--z-sticky` (500), `--z-overlay` (1000), `--z-modal` (2000), `--z-toast` (3000)

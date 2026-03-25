@@ -34,6 +34,15 @@ export const APPS: AppInfo[] = [
     path: '/products',
     category: 'main',
   },
+  {
+    id: 'conges',
+    name: 'Conges',
+    description: 'Gestion des conges et absences',
+    color: '#00bcd4',
+    gradientEnd: '#0097a7',
+    path: '/conges',
+    category: 'main',
+  },
 ];
 
 export function getAppUrl(appId: string): string {

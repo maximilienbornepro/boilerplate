@@ -13,6 +13,36 @@ Implement tasks from an OpenSpec change.
 
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
 
+## Project Rules (MANDATORY)
+
+### 0. Langue : Français
+
+TOUS les artifacts OpenSpec DOIVENT être rédigés en **français**. Cela inclut progress.md et les mises à jour de tâches. Seuls les éléments techniques restent en anglais (code, fichiers, endpoints, types).
+
+### A. Blocking rule -- verify before writing code
+
+BEFORE writing any code, VERIFY:
+
+1. Not on `main` branch (`git branch --show-current` must NOT return "main")
+2. An openspec change exists with tasks (change directory and tasks.md present)
+3. Current phase allows implementation (check progress.md if it exists)
+
+If any of these checks fail, STOP and inform the user.
+
+### B. Update progress.md at each step
+
+After completing each task, update `progress.md` in the change directory:
+
+- Update "Tasks: X/Y completed"
+- Update "Current: <task description>"
+- Add a history entry with timestamp
+
+### C. Tests required
+
+Every new module MUST include unit tests. Run `npm test` before considering implementation complete. If tests fail, fix the issues before proceeding.
+
+---
+
 **Steps**
 
 1. **Select the change**
