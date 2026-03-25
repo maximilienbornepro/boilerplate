@@ -8,6 +8,7 @@ import { errorMiddleware } from '@boilerplate/shared/server';
 import { initGateway, createGatewayRouter } from './modules/gateway.js';
 import { initProducts, createProductsRouter } from './modules/products/index.js';
 import { initConges, createCongesRouter } from './modules/conges/index.js';
+import { initRoadmap, createRoadmapRouter } from './modules/roadmap/index.js';
 
 const app = express();
 
@@ -39,6 +40,10 @@ async function init() {
   // Conges
   await initConges();
   app.use('/conges/api', createCongesRouter());
+
+  // Roadmap
+  await initRoadmap();
+  app.use('/roadmap/api', createRoadmapRouter());
 
   // Error handling
   app.use(errorMiddleware);

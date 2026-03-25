@@ -43,6 +43,15 @@ export const APPS: AppInfo[] = [
     path: '/conges',
     category: 'main',
   },
+  {
+    id: 'roadmap',
+    name: 'Roadmap',
+    description: 'Planification et suivi de projets',
+    color: '#8b5cf6',
+    gradientEnd: '#6366f1',
+    path: '/roadmap',
+    category: 'main',
+  },
 ];
 
 export function getAppUrl(appId: string): string {

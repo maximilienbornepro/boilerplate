@@ -24,6 +24,11 @@ export default defineConfig({
         target: UNIFIED_SERVER,
         rewrite: (path) => path.replace(/^\/conges-api/, '/conges/api'),
       },
+      // Roadmap API: /roadmap-api/* → /roadmap/api/*
+      '/roadmap-api': {
+        target: UNIFIED_SERVER,
+        rewrite: (path) => path.replace(/^\/roadmap-api/, '/roadmap/api'),
+      },
       // Gateway APIs (auth, admin)
       '/api/auth': {
         target: UNIFIED_SERVER,

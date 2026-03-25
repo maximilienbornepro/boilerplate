@@ -1,0 +1,212 @@
+.taskRow {
+  display: flex;
+  align-items: center;
+  position: relative;
+  border-bottom: 1px solid var(--bg-secondary);
+  font-family: var(--font-family-mono);
+}
+
+.taskRow:hover { background: var(--accent-light); }
+.taskRow.dragging { z-index: 10; }
+.taskRow.isDragging { opacity: 0.5; }
+.taskRow.focused { background: rgba(251, 191, 36, 0.15); animation: focusPulse 2s ease-in-out; }
+.taskRow.focused .taskBar { box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.6), var(--shadow-md); }
+
+@keyframes focusPulse {
+  0% { background: rgba(251, 191, 36, 0.3); }
+  100% { background: rgba(251, 191, 36, 0.15); }
+}
+
+.taskName {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 250px;
+  min-width: 250px;
+  padding: 0 var(--spacing-md);
+  background: linear-gradient(90deg, var(--bg-primary) 0%, var(--bg-tertiary) 100%);
+  z-index: 200;
+  height: 100%;
+  border-right: 2px solid var(--accent-primary);
+  position: sticky;
+  left: 0;
+  box-shadow: var(--shadow-md);
+  cursor: grab;
+}
+
+.taskName:active { cursor: grabbing; }
+
+.indentGuides { display: flex; align-items: center; height: 100%; position: relative; flex-shrink: 0; }
+.indentLine { width: 24px; height: 100%; position: relative; }
+.indentLine::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 1px; background: var(--text-muted); }
+.indentLineHidden, .indentLineHalf, .indentLineCurrent { /* export */ }
+.indentLine.indentLineHidden::before { display: none; }
+.indentLine.indentLineHalf::before { bottom: 50%; }
+.indentLine.indentLineCurrent::after { content: ''; position: absolute; left: 11px; top: 50%; right: 0; height: 1px; background: var(--text-muted); }
+
+.taskDot { width: var(--spacing-sm); height: var(--spacing-sm); border-radius: 4px; flex-shrink: 0; box-shadow: var(--shadow-sm); }
+
+.dragOver { background: var(--accent-light) !important; }
+.dropAbove, .dropBelow { /* export */ }
+.dropAbove::before { content: ''; position: absolute; top: 0; left: var(--spacing-md); right: var(--spacing-md); height: var(--spacing-xs); background: var(--success); border-radius: var(--radius-sm); z-index: 100; }
+.dropBelow::after { content: ''; position: absolute; bottom: 0; left: var(--spacing-md); right: var(--spacing-md); height: var(--spacing-xs); background: var(--success); border-radius: var(--radius-sm); z-index: 100; }
+.dropChild { background: rgba(0, 188, 212, 0.15) !important; outline: 2px solid var(--accent-primary); outline-offset: -2px; }
+.dropChildLabel { position: absolute; right: var(--spacing-md); top: 50%; transform: translateY(-50%); font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); color: var(--accent-primary); background: rgba(0, 188, 212, 0.2); padding: var(--spacing-2xs) var(--spacing-sm); border-radius: var(--radius-sm); }
+
+.actionButtons {
+  position: absolute;
+  right: var(--spacing-sm);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2xs);
+  padding: var(--spacing-2xs);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  z-index: 5;
+}
+
+.taskName:hover .actionButtons { opacity: 1; }
+
+.addChildButton, .deleteButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-light);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.addChildButton:hover { background: rgba(0, 188, 212, 0.2); color: var(--accent-secondary); }
+.deleteButton:hover { background: rgba(220, 38, 38, 0.2); color: var(--error); }
+
+.collapseButton {
+  padding: var(--spacing-xs);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.collapseButton:hover { color: var(--accent-primary); background: rgba(0, 188, 212, 0.15); }
+.collapseButton svg { transition: transform var(--transition-normal); }
+
+.nameText {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  line-height: 1.3;
+  word-break: break-word;
+  cursor: text;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  flex: 1;
+  min-width: 0;
+}
+
+.nameText:hover { color: var(--text-primary); background: rgba(0, 188, 212, 0.15); }
+.nameText.parentName { font-weight: var(--font-weight-semibold); color: var(--text-primary); }
+
+.nameInput {
+  flex: 1;
+  min-width: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.taskBar {
+  position: absolute;
+  height: 48px;
+  border-radius: var(--radius-md);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  overflow: visible;
+  z-index: 1;
+  will-change: transform;
+}
+
+.taskBar:hover { box-shadow: var(--shadow-sm); }
+.taskRow.dragging .taskBar { cursor: grabbing; z-index: 100; box-shadow: var(--shadow-md); pointer-events: none; }
+.taskBar.drawingTarget { cursor: crosshair; outline: 2px dashed var(--accent-primary); outline-offset: 2px; }
+
+.progressBar { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(0, 0, 0, 0.2); pointer-events: none; }
+
+.barContent { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: center; position: relative; height: 100%; border-radius: var(--radius-md); padding: var(--spacing-2xs) 0; }
+
+.barLabel { padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-xs); font-weight: var(--font-weight-medium); color: var(--text-inverse); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; position: relative; z-index: 1; }
+.barParentName { opacity: 0.7; font-weight: var(--font-weight-normal); }
+
+.resizeHandle { position: absolute; top: 0; bottom: 0; width: var(--spacing-sm); cursor: ew-resize; z-index: 2; }
+.resizeHandle.left { left: 0; }
+.resizeHandle.right { right: 0; }
+.resizeHandle:hover { background: rgba(255, 255, 255, 0.2); }
+
+.dependencyHandle {
+  position: absolute;
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--spacing-md);
+  height: var(--spacing-md);
+  background: var(--accent-primary);
+  border: 1.5px solid var(--text-inverse);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: crosshair;
+  opacity: 0;
+  transition: all var(--transition-normal);
+  z-index: 3;
+  box-shadow: var(--shadow-xs);
+}
+
+.taskBar:hover .dependencyHandle { opacity: 1; }
+.dependencyHandle:hover { transform: translateY(-50%) scale(1.2); background: var(--accent-secondary); }
+.dependencyHandle svg { color: var(--text-inverse); }
+
+.taskBar.parentBar {
+  background: transparent !important;
+  border: 2px dashed currentColor;
+  opacity: 0.6;
+  cursor: default;
+  height: 36px;
+}
+
+.taskBar.parentBar .barLabel { color: currentColor; font-weight: var(--font-weight-semibold); }
+.taskBar.parentBar .resizeHandle { display: none; }
+.taskBar.parentBar .dependencyHandle { display: none; }
+.taskBar.parentBar:hover { box-shadow: none; }
+
+:global(:root:not([data-theme="dark"])) .taskRow { border-bottom-color: var(--border-color); }
+:global(:root:not([data-theme="dark"])) .taskName { background: linear-gradient(90deg, var(--bg-primary) 0%, var(--bg-secondary) 100%); }
+:global(:root:not([data-theme="dark"])) .indentLine::before, :global(:root:not([data-theme="dark"])) .indentLine.indentLineCurrent::after { background: var(--text-light); }
+:global(:root:not([data-theme="dark"])) .actionButtons { background: var(--bg-card); }

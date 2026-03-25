@@ -75,6 +75,24 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      // Server: roadmap
+      {
+        test: {
+          name: 'server-roadmap',
+          root: '.',
+          include: ['apps/platform/servers/unified/src/modules/__tests__/roadmap/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
+      // Client: roadmap
+      {
+        test: {
+          name: 'client-roadmap',
+          root: '.',
+          include: ['apps/platform/src/modules/roadmap/__tests__/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
     ],
   },
 });

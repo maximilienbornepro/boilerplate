@@ -1,0 +1,219 @@
+.content {
+  padding: 16px 20px 20px;
+  font-family: var(--font-family-mono);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.item:hover {
+  border-color: var(--border-color);
+  background: var(--bg-hover);
+}
+
+.itemActive {
+  border-color: var(--accent-primary);
+  background: rgba(0, 188, 212, 0.05);
+}
+
+.itemInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemName {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemDates {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.itemDesc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemActions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.item:hover .itemActions {
+  opacity: 1;
+}
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.iconBtn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.iconBtnDanger:hover {
+  color: var(--error);
+}
+
+/* Form inside modal */
+.form {
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-family: var(--font-family-mono);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+}
+
+.label {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.input,
+.textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
+}
+
+.cancelBtn {
+  padding: 8px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.cancelBtn:hover {
+  border-color: var(--text-secondary);
+}
+
+.submitBtn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary);
+  color: #fff;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.submitBtn:hover {
+  opacity: 0.9;
+}
+
+.addBtn {
+  padding: 8px 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.addBtn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}

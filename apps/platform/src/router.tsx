@@ -7,6 +7,7 @@ import { AdminPage } from './modules/gateway/components/AdminPage';
 // Lazy load modules
 const ProductsApp = lazy(() => import('./modules/products/App'));
 const CongesApp = lazy(() => import('./modules/conges/App'));
+const RoadmapApp = lazy(() => import('./modules/roadmap/App'));
 
 interface User {
   id: number;
@@ -83,6 +84,14 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
           }
         />
         <Route
+          path="/roadmap/*"
+          element={
+            <SuspenseWrapper>
+              <RoadmapApp onNavigate={onNavigate} embedMode embedId={embedId} />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
           path="*"
           element={
             <div className="embed-error">
@@ -114,6 +123,14 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <CongesApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/roadmap/*"
+        element={
+          <SuspenseWrapper>
+            <RoadmapApp onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />

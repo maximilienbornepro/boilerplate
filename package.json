@@ -29,6 +29,8 @@
     "test:client:gateway": "vitest run --project client-gateway",
     "test:client:products": "vitest run --project client-products",
     "test:client:conges": "vitest run --project client-conges",
+    "test:server:roadmap": "vitest run --project server-roadmap",
+    "test:client:roadmap": "vitest run --project client-roadmap",
     "test:shared": "vitest run --project shared",
     "predeploy": "npm test"
   },

@@ -1,0 +1,47 @@
+.container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.arrowFill {
+  fill: var(--accent-primary);
+}
+
+.dependencyGroup {
+  pointer-events: auto;
+}
+
+.dependencyLine {
+  fill: none;
+  stroke: var(--accent-primary);
+  stroke-width: 2;
+  stroke-opacity: 0.6;
+  transition: stroke-opacity var(--transition-normal);
+}
+
+.dependencyGroup:hover .dependencyLine {
+  stroke-opacity: 1;
+  stroke-width: 3;
+}
+
+/* Large invisible hit area for easy clicking */
+.dependencyHitArea {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16px;
+  cursor: pointer;
+}
+
+.drawingLine {
+  fill: none;
+  stroke: var(--accent-primary);
+  stroke-width: 2;
+  stroke-dasharray: 8 4;
+  stroke-opacity: 0.8;
+  pointer-events: none;
+}
