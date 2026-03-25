@@ -1,0 +1,37 @@
+/* SuiVitess module scoped styles */
+
+/* Global spin animation for inline styles */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.suivitess-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: var(--spacing-md) var(--spacing-lg);
+  gap: var(--spacing-md);
+}
+
+.suivitess-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+}
+
+.suivitess-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
+  flex: 1;
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+}

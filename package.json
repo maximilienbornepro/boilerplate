@@ -31,6 +31,8 @@
     "test:client:conges": "vitest run --project client-conges",
     "test:server:roadmap": "vitest run --project server-roadmap",
     "test:client:roadmap": "vitest run --project client-roadmap",
+    "test:server:suivitess": "vitest run --project server-suivitess",
+    "test:client:suivitess": "vitest run --project client-suivitess",
     "test:shared": "vitest run --project shared",
     "predeploy": "npm test"
   },

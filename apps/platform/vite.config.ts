@@ -29,6 +29,11 @@ export default defineConfig({
         target: UNIFIED_SERVER,
         rewrite: (path) => path.replace(/^\/roadmap-api/, '/roadmap/api'),
       },
+      // SuiViTess API: /suivitess-api/* → /suivitess/api/*
+      '/suivitess-api': {
+        target: UNIFIED_SERVER,
+        rewrite: (path) => path.replace(/^\/suivitess-api/, '/suivitess/api'),
+      },
       // Gateway APIs (auth, admin)
       '/api/auth': {
         target: UNIFIED_SERVER,

@@ -93,6 +93,24 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      // Server: suivitess
+      {
+        test: {
+          name: 'server-suivitess',
+          root: '.',
+          include: ['apps/platform/servers/unified/src/modules/__tests__/suivitess/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
+      // Client: suivitess
+      {
+        test: {
+          name: 'client-suivitess',
+          root: '.',
+          include: ['apps/platform/src/modules/suivitess/__tests__/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
     ],
   },
 });

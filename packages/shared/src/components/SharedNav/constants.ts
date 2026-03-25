@@ -52,6 +52,15 @@ export const APPS: AppInfo[] = [
     path: '/roadmap',
     category: 'main',
   },
+  {
+    id: 'suivitess',
+    name: 'SuiviTess',
+    description: 'Suivi et revue de documents',
+    color: '#059669',
+    gradientEnd: '#10b981',
+    path: '/suivitess',
+    category: 'main',
+  },
 ];
 
 export function getAppUrl(appId: string): string {

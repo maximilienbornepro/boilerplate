@@ -8,6 +8,7 @@ import { AdminPage } from './modules/gateway/components/AdminPage';
 const ProductsApp = lazy(() => import('./modules/products/App'));
 const CongesApp = lazy(() => import('./modules/conges/App'));
 const RoadmapApp = lazy(() => import('./modules/roadmap/App'));
+const SuivitessApp = lazy(() => import('./modules/suivitess/App'));
 
 interface User {
   id: number;
@@ -131,6 +132,14 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <RoadmapApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/suivitess/*"
+        element={
+          <SuspenseWrapper>
+            <SuivitessApp onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />
