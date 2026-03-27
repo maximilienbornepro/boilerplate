@@ -34,9 +34,13 @@ export async function startRecording(documentId: string, meetingUrl: string): Pr
     transcript: [],
   };
 
-  const agentPath = join(__dirname, 'recorderAgent.js');
+  // In dev (tsx), __filename ends in .ts — run agent with tsx
+  // In production (compiled), __filename ends in .js — run with node
+  const isTs = __filename.endsWith('.ts');
+  const agentPath = join(__dirname, isTs ? 'recorderAgent.ts' : 'recorderAgent.js');
+  const runtime = isTs ? 'tsx' : 'node';
 
-  const child = spawn('node', [agentPath, meetingUrl], {
+  const child = spawn(runtime, [agentPath, meetingUrl], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env },
   });

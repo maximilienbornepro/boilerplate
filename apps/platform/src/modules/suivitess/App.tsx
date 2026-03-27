@@ -14,6 +14,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const [saveFn, setSaveFn] = useState<(() => Promise<void>) | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showRecorder, setShowRecorder] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -57,6 +58,13 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
         >
           Historique
         </button>
+        <button
+          className={`module-header-btn${showRecorder ? ' module-header-btn-active' : ''}`}
+          onClick={() => setShowRecorder(v => !v)}
+          title="Connecter un call Teams"
+        >
+          Teams
+        </button>
         {saveFn && (
           <button
             className="module-header-btn"
@@ -91,10 +99,10 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           Modifications non sauvegardées — Cliquez sur « Sauvegarder » pour enregistrer vos changements.
         </div>
       )}
-      {docId && (
+      {docId && showRecorder && (
         <RecorderBar
           documentId={docId}
-          onDone={() => setShowSuggestions(true)}
+          onDone={() => { setShowSuggestions(true); }}
         />
       )}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
