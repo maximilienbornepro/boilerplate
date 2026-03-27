@@ -141,6 +141,32 @@ CREATE INDEX IF NOT EXISTS idx_<module>_created ON <module_name_plural>(created_
 
 > **Note** : Chaque module a son propre fichier SQL. Ne jamais modifier `02_platform_schema.sql`.
 
+### 1.5 Appliquer le schema SQL en base de développement
+
+**OBLIGATOIRE** : Après avoir créé le fichier SQL, l'appliquer immédiatement au container Docker en cours d'exécution.
+
+```bash
+# Trouver le container PostgreSQL
+CONTAINER=$(docker ps --filter "name=studio-db" --format "{{.Names}}" 2>/dev/null | head -1)
+
+if [ -n "$CONTAINER" ]; then
+  # Appliquer le fichier SQL directement
+  docker exec -i "$CONTAINER" psql -U postgres < database/init/XX_<module>_schema.sql
+  echo "✓ Schema appliqué à la base de développement ($CONTAINER)"
+else
+  echo "⚠️  Container Docker non trouvé. Appliquer manuellement :"
+  echo "docker exec -i <container> psql -U postgres < database/init/XX_<module>_schema.sql"
+fi
+```
+
+**Si le container n'est pas `studio-db`**, lancer `docker ps` pour trouver le nom exact.
+
+**En cas d'erreur `\c app` non supportée** (psql non interactif), utiliser :
+```bash
+docker exec -i "$CONTAINER" psql -U postgres -d app < database/init/XX_<module>_schema.sql
+```
+En retirant la ligne `\c app;` du fichier (elle est inutile si `-d app` est passé).
+
 ### 2. Backend
 
 #### 2.1 `apps/platform/servers/unified/src/modules/<module>/dbService.ts`

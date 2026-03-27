@@ -41,6 +41,24 @@ After completing each task, update `progress.md` in the change directory:
 
 Every new module MUST include unit tests. Run `npm test` before considering implementation complete. If tests fail, fix the issues before proceeding.
 
+### D. Appliquer les migrations SQL automatiquement
+
+**Si un fichier `database/init/XX_*.sql` est créé ou modifié pendant l'implémentation, l'appliquer immédiatement au container Docker.**
+
+```bash
+# Trouver le container PostgreSQL
+CONTAINER=$(docker ps --filter "name=studio-db" --format "{{.Names}}" 2>/dev/null | head -1)
+
+if [ -n "$CONTAINER" ]; then
+  docker exec -i "$CONTAINER" psql -U postgres < database/init/XX_fichier.sql
+  echo "✓ Migration appliquée ($CONTAINER)"
+else
+  echo "⚠️  Container introuvable — lancer docker ps pour trouver le nom"
+fi
+```
+
+**Règle** : Ne pas attendre que l'utilisateur signale une erreur 500 ou une colonne manquante. Appliquer la migration dès que le fichier SQL est écrit.
+
 ---
 
 **Steps**

@@ -302,7 +302,7 @@ export function createGatewayRouter(): Router {
     const params = new URLSearchParams({
       audience:      'api.atlassian.com',
       client_id:     clientId,
-      scope:         'read:jira-user read:jira-work write:jira-work offline_access',
+      scope:         'read:jira-user read:jira-work write:jira-work read:board-scope:jira-software read:sprint:jira-software offline_access',
       redirect_uri:  redirectUri,
       state,
       response_type: 'code',

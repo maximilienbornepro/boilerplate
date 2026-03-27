@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../../middleware/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
+import { getJiraContext } from '../jiraAuth.js';
 
 export function createDeliveryRoutes(): Router {
   const router = Router();
@@ -154,6 +155,164 @@ export function createDeliveryRoutes(): Router {
   router.post('/snapshots/:incrementId/ensure', asyncHandler(async (req, res) => {
     const created = await db.ensureDailySnapshot(req.params.incrementId);
     res.json({ created, date: new Date().toISOString().split('T')[0] });
+  }));
+
+  // ============ Jira Proxy ============
+
+  // Check if Jira is connected for current user (OAuth or Basic)
+  router.get('/jira/check', asyncHandler(async (req, res) => {
+    const ctx = await getJiraContext(req.user!.id);
+    res.json({ connected: ctx !== null });
+  }));
+
+  // List Jira projects
+  router.get('/jira/projects', asyncHandler(async (req, res) => {
+    const ctx = await getJiraContext(req.user!.id);
+    if (!ctx) {
+      res.status(401).json({ error: 'No Jira auth available' });
+      return;
+    }
+
+    const url = `${ctx.baseUrl}/rest/api/3/project/search?maxResults=50&orderBy=name`;
+    const response = await fetch(url, { headers: ctx.headers });
+    if (!response.ok) {
+      const text = await response.text();
+      res.status(response.status).json({ error: `Jira API error: ${text}` });
+      return;
+    }
+
+    const data = await response.json() as { values: Array<{ id: string; key: string; name: string; avatarUrls?: Record<string, string> }> };
+    const projects = (data.values || []).map(p => ({
+      id: p.id,
+      key: p.key,
+      name: p.name,
+      avatarUrl: p.avatarUrls?.['24x24'],
+    }));
+    res.json(projects);
+  }));
+
+  // List sprints for a project (via JQL — no Agile API scope needed)
+  router.get('/jira/sprints', asyncHandler(async (req, res) => {
+    const { projectKey } = req.query as { projectKey?: string };
+    if (!projectKey) {
+      res.status(400).json({ error: 'projectKey is required' });
+      return;
+    }
+
+    const ctx = await getJiraContext(req.user!.id);
+    if (!ctx) {
+      res.status(401).json({ error: 'No Jira auth available' });
+      return;
+    }
+
+    // Extract sprints from issues via JQL — works with read:jira-work scope
+    const jql = `project = "${projectKey}" AND sprint is not EMPTY ORDER BY updated DESC`;
+    const params = new URLSearchParams({
+      jql,
+      maxResults: '100',
+      fields: 'customfield_10020',
+    });
+    const searchUrl = `${ctx.baseUrl}/rest/api/3/search/jql?${params}`;
+    const searchResp = await fetch(searchUrl, { headers: ctx.headers });
+
+    if (!searchResp.ok) {
+      const text = await searchResp.text();
+      res.status(searchResp.status).json({ error: `Jira API error: ${text}` });
+      return;
+    }
+
+    type SprintField = { id: number; name: string; state: string; startDate?: string; endDate?: string };
+    const searchData = await searchResp.json() as {
+      issues: Array<{ fields: { customfield_10020?: SprintField[] } }>;
+    };
+
+    // Deduplicate sprints across all issues
+    const sprintMap = new Map<number, SprintField>();
+    for (const issue of (searchData.issues || [])) {
+      for (const sprint of (issue.fields.customfield_10020 || [])) {
+        if (!sprintMap.has(sprint.id)) {
+          sprintMap.set(sprint.id, sprint);
+        }
+      }
+    }
+
+    const sprints = Array.from(sprintMap.values()).map(s => ({
+      id: s.id,
+      name: s.name,
+      state: s.state as 'active' | 'closed' | 'future',
+      startDate: s.startDate,
+      endDate: s.endDate,
+    }));
+
+    // Active sprints first, then by id descending (most recent)
+    sprints.sort((a, b) => {
+      if (a.state === 'active' && b.state !== 'active') return -1;
+      if (b.state === 'active' && a.state !== 'active') return 1;
+      return b.id - a.id;
+    });
+
+    res.json(sprints);
+  }));
+
+  // List issues for selected sprints
+  router.get('/jira/issues', asyncHandler(async (req, res) => {
+    const { sprintIds } = req.query as { sprintIds?: string };
+    if (!sprintIds) {
+      res.status(400).json({ error: 'sprintIds is required' });
+      return;
+    }
+
+    const ctx = await getJiraContext(req.user!.id);
+    if (!ctx) {
+      res.status(401).json({ error: 'No Jira auth available' });
+      return;
+    }
+
+    const ids = sprintIds.split(',').map(id => id.trim()).join(', ');
+    const jql = `sprint in (${ids}) ORDER BY created DESC`;
+    const params = new URLSearchParams({
+      jql,
+      maxResults: '100',
+      fields: 'summary,status,assignee,customfield_10016,issuetype,customfield_10020',
+    });
+    const searchUrl = `${ctx.baseUrl}/rest/api/3/search/jql?${params}`;
+    const searchResp = await fetch(searchUrl, { headers: ctx.headers });
+
+    if (!searchResp.ok) {
+      const text = await searchResp.text();
+      res.status(searchResp.status).json({ error: `Jira API error: ${text}` });
+      return;
+    }
+
+    const searchData = await searchResp.json() as {
+      issues: Array<{
+        id: string;
+        key: string;
+        fields: {
+          summary: string;
+          status: { name: string };
+          assignee?: { displayName: string };
+          customfield_10016?: number;
+          issuetype: { name: string };
+          customfield_10020?: Array<{ id: number; name: string; state: string }>;
+        };
+      }>;
+    };
+
+    const issues = (searchData.issues || []).map(issue => {
+      const sprint = issue.fields.customfield_10020?.find(s => s.state === 'active') || issue.fields.customfield_10020?.[0];
+      return {
+        id: issue.id,
+        key: issue.key,
+        summary: issue.fields.summary,
+        status: issue.fields.status?.name || 'Unknown',
+        assignee: issue.fields.assignee?.displayName,
+        storyPoints: issue.fields.customfield_10016 ?? undefined,
+        issueType: issue.fields.issuetype?.name || 'Task',
+        sprintName: sprint?.name,
+      };
+    });
+    res.json(issues);
   }));
 
   return router;

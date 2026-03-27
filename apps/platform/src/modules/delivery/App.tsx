@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BoardDelivery } from './components/BoardDelivery';
 import { RestoreModal } from './components/RestoreModal';
 import { SnapshotModal } from './components/SnapshotModal';
+import { JiraImportModal } from './components/JiraImportModal';
 import { generateIncrements2026 } from './components/BurgerMenu';
 import { Layout, ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import {
@@ -16,6 +17,7 @@ import {
   hideTask,
   restoreTasks,
   ensureDailySnapshot,
+  checkJiraConnected,
 } from './services/api';
 import type { Task, IncrementState, HiddenTask } from './types';
 import { transformTask } from './utils/taskTransform';
@@ -31,6 +33,8 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
   const [incrementState, setIncrementState] = useState<IncrementState | null>(null);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
+  const [showJiraImport, setShowJiraImport] = useState(false);
+  const [jiraConnected, setJiraConnected] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
 
@@ -45,6 +49,11 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
     const inc = incrementList.find((i) => i.id === selectedIncrement);
     return inc?.sprints || [];
   }, [incrementList, selectedIncrement]);
+
+  // Check Jira connection on mount
+  useEffect(() => {
+    checkJiraConnected().then(setJiraConnected);
+  }, []);
 
   // Load increment state
   const loadIncrementState = useCallback(async () => {
@@ -317,6 +326,15 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
               {incrementState?.isFrozen ? 'Defiger' : 'Figer'}
             </button>
 
+            {jiraConnected && (
+              <button
+                className="module-header-btn"
+                onClick={() => setShowJiraImport(true)}
+              >
+                Importer depuis Jira
+              </button>
+            )}
+
             <button
               className="module-header-btn"
               onClick={() => setShowAddTask(!showAddTask)}
@@ -405,6 +423,14 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
                 await loadIncrementState();
               }}
               onClose={() => setShowSnapshotModal(false)}
+            />
+          )}
+
+          {showJiraImport && (
+            <JiraImportModal
+              incrementId={selectedIncrement}
+              onImported={loadTasks}
+              onClose={() => setShowJiraImport(false)}
             />
           )}
         </div>

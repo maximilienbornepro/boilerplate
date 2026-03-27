@@ -1,5 +1,59 @@
 const API_BASE = '/delivery-api';
 
+// ============ Jira Integration ============
+
+export interface JiraProject {
+  id: string;
+  key: string;
+  name: string;
+  avatarUrl?: string;
+}
+
+export interface JiraSprint {
+  id: number;
+  name: string;
+  state: 'active' | 'closed' | 'future';
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface JiraIssue {
+  id: string;
+  key: string;
+  summary: string;
+  status: string;
+  assignee?: string;
+  storyPoints?: number;
+  issueType: string;
+  sprintName?: string;
+}
+
+export async function checkJiraConnected(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE}/jira/check`, { credentials: 'include' });
+    if (!response.ok) return false;
+    const data = await response.json() as { connected: boolean };
+    return data.connected;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchJiraProjects(): Promise<JiraProject[]> {
+  const response = await fetch(`${API_BASE}/jira/projects`, { credentials: 'include' });
+  return handleResponse<JiraProject[]>(response);
+}
+
+export async function fetchJiraSprints(projectKey: string): Promise<JiraSprint[]> {
+  const response = await fetch(`${API_BASE}/jira/sprints?projectKey=${encodeURIComponent(projectKey)}`, { credentials: 'include' });
+  return handleResponse<JiraSprint[]>(response);
+}
+
+export async function fetchJiraIssues(sprintIds: number[]): Promise<JiraIssue[]> {
+  const response = await fetch(`${API_BASE}/jira/issues?sprintIds=${sprintIds.join(',')}`, { credentials: 'include' });
+  return handleResponse<JiraIssue[]>(response);
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   const data = await response.json();
   if (!response.ok) {
