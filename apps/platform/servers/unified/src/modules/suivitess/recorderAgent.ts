@@ -11,6 +11,28 @@
  */
 
 import puppeteer from 'puppeteer';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+
+const DEBUG_DIR = join(tmpdir(), 'teams-agent-debug');
+try { mkdirSync(DEBUG_DIR, { recursive: true }); } catch {}
+
+async function screenshot(page: any, name: string) {
+  try {
+    const file = join(DEBUG_DIR, `${Date.now()}-${name}.png`);
+    await page.screenshot({ path: file, fullPage: false });
+    send({ type: 'debug', message: `Screenshot: ${file}` });
+  } catch {}
+}
+
+async function logUrl(page: any, label: string) {
+  try {
+    const url = page.url();
+    const title = await page.title();
+    send({ type: 'debug', message: `[${label}] url=${url} title="${title}"` });
+  } catch {}
+}
 
 interface CaptionEntry {
   speaker: string;
@@ -88,37 +110,83 @@ async function main() {
     // Resolve launcher URLs (teams.microsoft.com/dl/launcher/...) to direct web URLs
     // to avoid the "Ouvrir Microsoft Teams ?" Chrome dialog
     const targetUrl = resolveTeamsUrl(MEETING_URL);
+    send({ type: 'debug', message: `Navigating to: ${targetUrl}` });
 
     // Navigate to the Teams meeting link
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await new Promise(r => setTimeout(r, 3000)); // let JS render
+    await logUrl(page, 'after-goto');
+    await screenshot(page, '01-after-goto');
 
-    // Teams may redirect to teams.microsoft.com/v2 or show a "continue in browser" button
-    // Wait for and click "Continue in this browser" if present
-    const continueSelector = '[data-tid="joinOnWeb"], [data-id="prejoin-join-button"], button[class*="continue"]';
-    try {
-      await page.waitForSelector(continueSelector, { timeout: 8000 });
-      await page.click(continueSelector);
-    } catch {
-      // Might already be on the prejoin page
+    // Step 1: "Continue in browser" button (Teams app redirect page)
+    const continueSelectors = [
+      '[data-tid="joinOnWeb"]',
+      'a[href*="useWeb=true"]',
+      'button[data-cid="prejoin-join-button"]',
+    ];
+    for (const sel of continueSelectors) {
+      try {
+        const el = await page.$(sel);
+        if (el) {
+          await el.click();
+          send({ type: 'debug', message: `Clicked continue-in-browser: ${sel}` });
+          await new Promise(r => setTimeout(r, 2000));
+          await logUrl(page, 'after-continue');
+          await screenshot(page, '02-after-continue');
+          break;
+        }
+      } catch {}
     }
 
-    // Fill guest name if prompted
-    const nameInputSelector = '[data-tid="prejoin-display-name-input"], input[placeholder*="name"], input[placeholder*="nom"]';
-    try {
-      await page.waitForSelector(nameInputSelector, { timeout: 10000 });
-      await page.type(nameInputSelector, 'Agent Suivitess');
-
-      // Click Join button
-      const joinSelector = '[data-tid="prejoin-join-button"], button[class*="join"]';
-      await page.waitForSelector(joinSelector, { timeout: 5000 });
-      await page.click(joinSelector);
-    } catch {
-      // May already be in the meeting
+    // Step 2: Guest name input — try multiple known selectors
+    await screenshot(page, '03-before-name');
+    const nameSelectors = [
+      '[data-tid="prejoin-display-name-input"]',
+      'input[name="displayName"]',
+      'input[placeholder*="name" i]',
+      'input[placeholder*="nom" i]',
+      'input[type="text"]',
+    ];
+    let filledName = false;
+    for (const sel of nameSelectors) {
+      try {
+        await page.waitForSelector(sel, { timeout: 5000 });
+        await page.click(sel, { clickCount: 3 }); // select all first
+        await page.type(sel, 'Agent Suivitess');
+        send({ type: 'debug', message: `Typed name in: ${sel}` });
+        filledName = true;
+        break;
+      } catch {}
     }
+    if (!filledName) {
+      send({ type: 'debug', message: 'WARNING: could not find name input' });
+    }
+    await screenshot(page, '04-after-name');
+
+    // Step 3: Join button
+    const joinSelectors = [
+      '[data-tid="prejoin-join-button"]',
+      'button[data-cid="prejoin-join-button"]',
+      'button[class*="joinButton"]',
+      'button[class*="join-button"]',
+    ];
+    for (const sel of joinSelectors) {
+      try {
+        const el = await page.$(sel);
+        if (el) {
+          await el.click();
+          send({ type: 'debug', message: `Clicked join: ${sel}` });
+          await new Promise(r => setTimeout(r, 2000));
+          break;
+        }
+      } catch {}
+    }
+    await screenshot(page, '05-after-join-click');
+    await logUrl(page, 'after-join-click');
 
     // Wait to be admitted (or join directly) — up to JOIN_TIMEOUT_MS
-    const joinedSelector = '[data-tid="call-duration-timer"], [data-tid="meeting-composite"]';
-    const lobbySelector = '[data-tid="lobby-title"], [class*="lobby"]';
+    const joinedSelector = '[data-tid="call-duration-timer"], [data-tid="meeting-composite"], [data-tid="roster"]';
+    const lobbySelector = '[data-tid="lobby-title"], [class*="lobby"], [data-tid="waitingForHost"]';
 
     const joinStart = Date.now();
     let joined = false;

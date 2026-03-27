@@ -103,6 +103,10 @@ async function handleAgentMessage(documentId: string, msg: any) {
       // Trigger AI suggestions generation asynchronously
       generateSuggestionsAsync(documentId, state.recordingId, state.transcript).catch(console.error);
       break;
+
+    case 'debug':
+      console.log(`[Recorder ${documentId}] ${msg.message}`);
+      break;
   }
 }
 
