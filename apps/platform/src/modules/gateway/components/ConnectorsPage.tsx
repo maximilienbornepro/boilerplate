@@ -29,6 +29,15 @@ interface ServiceDefinition {
   enabled: boolean;
 }
 
+interface OAuthStatus {
+  connected: boolean;
+  siteUrl?: string;
+  cloudId?: string;
+  expiresAt?: string;
+  isExpired?: boolean;
+  connectedAt?: string;
+}
+
 // ==================== SVG Icons ====================
 
 const JiraIcon = () => (
@@ -126,7 +135,167 @@ async function deleteConnector(service: string): Promise<void> {
   }
 }
 
-// ==================== Jira Form Component ====================
+async function checkOAuthAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/jira/oauth-available`);
+    const data = await res.json();
+    return data.available === true;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchOAuthStatus(): Promise<OAuthStatus> {
+  const res = await fetch('/api/auth/jira/status', { credentials: 'include' });
+  if (!res.ok) return { connected: false };
+  return res.json();
+}
+
+async function disconnectOAuth(): Promise<void> {
+  const res = await fetch('/api/auth/jira', {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.error || 'Erreur lors de la deconnexion');
+  }
+}
+
+// ==================== Jira OAuth Tab Component ====================
+
+function JiraOAuthTab({ onChanged }: { onChanged: () => void }) {
+  const [status, setStatus] = useState<OAuthStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const s = await fetchOAuthStatus();
+      setStatus(s);
+    } catch {
+      setError('Impossible de verifier le statut OAuth');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStatus();
+  }, [loadStatus]);
+
+  // Detect ?jira_connected=1 in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('jira_connected') === '1') {
+      setSuccessMessage('Connexion Jira OAuth reussie !');
+      // Clean URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('jira_connected');
+      window.history.replaceState({}, '', url.toString());
+      loadStatus();
+      onChanged();
+    }
+    if (params.get('jira_error')) {
+      setError(`Erreur OAuth : ${params.get('jira_error')}`);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('jira_error');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [loadStatus, onChanged]);
+
+  const handleConnect = () => {
+    // Redirect to backend OAuth initiation
+    window.location.href = '/api/auth/jira';
+  };
+
+  const handleDisconnect = async () => {
+    setDisconnecting(true);
+    setError('');
+    try {
+      await disconnectOAuth();
+      setStatus({ connected: false });
+      setSuccessMessage('');
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="connector-card-body">
+        <div className="connector-loading">
+          <span className="connector-spinner" />
+          <span>Chargement...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="connector-card-body">
+      {successMessage && (
+        <div className="connector-test-result success">{successMessage}</div>
+      )}
+
+      {error && <div className="connectors-error">{error}</div>}
+
+      {status?.connected ? (
+        <div className="connector-oauth-status">
+          <div className="connector-oauth-info">
+            <div className="connector-oauth-connected">
+              <span className="connector-status-dot active" />
+              Connecte via OAuth
+            </div>
+            {status.siteUrl && (
+              <div className="connector-oauth-detail">
+                Site : {status.siteUrl}
+              </div>
+            )}
+            {status.connectedAt && (
+              <div className="connector-oauth-detail">
+                Connecte le : {new Date(status.connectedAt).toLocaleDateString('fr-FR')}
+              </div>
+            )}
+            {status.isExpired && (
+              <div className="connector-oauth-detail warning">
+                Token expire — sera renouvele automatiquement
+              </div>
+            )}
+          </div>
+
+          <div className="connector-actions">
+            <button
+              className="connector-btn danger"
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+            >
+              {disconnecting ? 'Deconnexion...' : 'Deconnecter Jira'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="connector-oauth-connect">
+          <p className="connector-oauth-desc">
+            Connectez votre compte Jira via OAuth 2.0. Vous serez redirige vers Atlassian pour autoriser l'acces.
+          </p>
+          <div className="connector-actions">
+            <button className="connector-btn primary" onClick={handleConnect}>
+              Se connecter avec Jira
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== Jira Form Component (Basic Auth) ====================
 
 function JiraForm({
   connector,
@@ -192,13 +361,13 @@ function JiraForm({
         message: `Connexion reussie ! Connecte en tant que ${result.user?.displayName}`,
         userName: result.user?.displayName,
       });
-      onSaved(); // Refresh to get updated isActive status
+      onSaved();
     } catch (err) {
       setTestResult({
         success: false,
         message: err instanceof Error ? err.message : 'Erreur lors du test',
       });
-      onSaved(); // Refresh to get updated isActive status
+      onSaved();
     } finally {
       setTesting(false);
     }
@@ -323,28 +492,30 @@ function JiraForm({
   );
 }
 
-// ==================== Connector Card Component ====================
+// ==================== Jira Card with Tabs ====================
 
-function ConnectorCard({
-  service,
+function JiraCard({
   connector,
+  oauthAvailable,
   onSaved,
   onDeleted,
 }: {
-  service: ServiceDefinition;
   connector: ConnectorData | null;
+  oauthAvailable: boolean;
   onSaved: () => void;
   onDeleted: () => void;
 }) {
+  const service = SERVICES[0]; // jira
   const [expanded, setExpanded] = useState(false);
+  const [activeTab, setActiveTab] = useState<'token' | 'oauth'>(oauthAvailable ? 'oauth' : 'token');
 
   const isActive = connector?.isActive ?? false;
 
   return (
-    <div className={`connector-card${!service.enabled ? ' disabled' : ''}`}>
+    <div className="connector-card">
       <div
         className="connector-card-header"
-        onClick={() => service.enabled && setExpanded(!expanded)}
+        onClick={() => setExpanded(!expanded)}
       >
         <div className="connector-card-left">
           <div
@@ -360,25 +531,73 @@ function ConnectorCard({
         </div>
 
         <div className="connector-card-right">
-          {!service.enabled ? (
-            <span className="connector-coming-soon">Bientot disponible</span>
-          ) : (
-            <>
-              <div className={`connector-status ${isActive ? 'active' : 'inactive'}`}>
-                <span className="connector-status-dot" />
-                {isActive ? 'Connecte' : connector ? 'Configure' : 'Non configure'}
-              </div>
-              <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>
-                &#x25BC;
-              </span>
-            </>
-          )}
+          <div className={`connector-status ${isActive ? 'active' : 'inactive'}`}>
+            <span className="connector-status-dot" />
+            {isActive ? 'Connecte' : connector ? 'Configure' : 'Non configure'}
+          </div>
+          <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>
+            &#x25BC;
+          </span>
         </div>
       </div>
 
-      {service.enabled && expanded && service.id === 'jira' && (
-        <JiraForm connector={connector} onSaved={onSaved} onDeleted={onDeleted} />
+      {expanded && (
+        <>
+          {oauthAvailable && (
+            <div className="connector-tabs">
+              <button
+                className={`connector-tab${activeTab === 'oauth' ? ' active' : ''}`}
+                onClick={() => setActiveTab('oauth')}
+              >
+                OAuth
+              </button>
+              <button
+                className={`connector-tab${activeTab === 'token' ? ' active' : ''}`}
+                onClick={() => setActiveTab('token')}
+              >
+                Token API
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'oauth' && oauthAvailable ? (
+            <JiraOAuthTab onChanged={onSaved} />
+          ) : (
+            <JiraForm connector={connector} onSaved={onSaved} onDeleted={onDeleted} />
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+// ==================== Connector Card Component (non-Jira) ====================
+
+function ConnectorCard({
+  service,
+}: {
+  service: ServiceDefinition;
+}) {
+  return (
+    <div className="connector-card disabled">
+      <div className="connector-card-header">
+        <div className="connector-card-left">
+          <div
+            className="connector-card-icon"
+            style={{ background: service.color, color: '#fff' }}
+          >
+            {service.icon}
+          </div>
+          <div className="connector-card-info">
+            <div className="connector-card-name">{service.name}</div>
+            <div className="connector-card-desc">{service.description}</div>
+          </div>
+        </div>
+
+        <div className="connector-card-right">
+          <span className="connector-coming-soon">Bientot disponible</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -393,6 +612,7 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
   const [connectors, setConnectors] = useState<ConnectorData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [oauthAvailable, setOauthAvailable] = useState(false);
 
   const loadConnectors = useCallback(async () => {
     try {
@@ -408,6 +628,7 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
 
   useEffect(() => {
     loadConnectors();
+    checkOAuthAvailable().then(setOauthAvailable);
   }, [loadConnectors]);
 
   const getConnectorForService = (serviceId: string): ConnectorData | null => {
@@ -441,14 +662,14 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
       {error && <div className="connectors-error">{error}</div>}
 
       <div className="connectors-list">
-        {SERVICES.map(service => (
-          <ConnectorCard
-            key={service.id}
-            service={service}
-            connector={getConnectorForService(service.id)}
-            onSaved={loadConnectors}
-            onDeleted={loadConnectors}
-          />
+        <JiraCard
+          connector={getConnectorForService('jira')}
+          oauthAvailable={oauthAvailable}
+          onSaved={loadConnectors}
+          onDeleted={loadConnectors}
+        />
+        {SERVICES.filter(s => s.id !== 'jira').map(service => (
+          <ConnectorCard key={service.id} service={service} />
         ))}
       </div>
     </div>

@@ -24,6 +24,18 @@ export const config = {
 
   // Database
   appDatabaseUrl: process.env.APP_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/app',
+
+  // Jira (optional - for OAuth connector)
+  jira: {
+    baseUrl: process.env.JIRA_BASE_URL || '',
+    email: process.env.JIRA_EMAIL || '',
+    apiToken: process.env.JIRA_API_TOKEN || '',
+    oauth: {
+      clientId: process.env.JIRA_OAUTH_CLIENT_ID || '',
+      clientSecret: process.env.JIRA_OAUTH_CLIENT_SECRET || '',
+      redirectUri: process.env.JIRA_OAUTH_CALLBACK_URL || 'http://localhost:3010/api/auth/jira/callback',
+    },
+  },
 };
 
 // Validate required config in production

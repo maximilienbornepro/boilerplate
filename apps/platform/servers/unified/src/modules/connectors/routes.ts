@@ -1,10 +1,17 @@
 import { Router } from 'express';
+import { config } from '../../config.js';
 import { authMiddleware } from '../../middleware/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
 
 export function createConnectorsRoutes(): Router {
   const router = Router();
+
+  // GET /jira/oauth-available — Public check if OAuth is configured
+  router.get('/jira/oauth-available', (_req, res) => {
+    const available = !!(config.jira.oauth.clientId && config.jira.oauth.clientSecret);
+    res.json({ available });
+  });
 
   router.use(authMiddleware);
 
