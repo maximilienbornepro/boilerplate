@@ -5,11 +5,11 @@ import { LandingPage } from './modules/gateway/components/LandingPage';
 import { AdminPage } from './modules/gateway/components/AdminPage';
 
 // Lazy load modules
-const ProductsApp = lazy(() => import('./modules/products/App'));
 const CongesApp = lazy(() => import('./modules/conges/App'));
 const RoadmapApp = lazy(() => import('./modules/roadmap/App'));
 const SuivitessApp = lazy(() => import('./modules/suivitess/App'));
 const DeliveryApp = lazy(() => import('./modules/delivery/App'));
+const MonCvApp = lazy(() => import('./modules/mon-cv/App'));
 
 interface User {
   id: number;
@@ -78,18 +78,18 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
     return (
       <Routes>
         <Route
-          path="/products/*"
-          element={
-            <SuspenseWrapper>
-              <ProductsApp onNavigate={onNavigate} embedMode embedId={embedId} />
-            </SuspenseWrapper>
-          }
-        />
-        <Route
           path="/roadmap/*"
           element={
             <SuspenseWrapper>
               <RoadmapApp onNavigate={onNavigate} embedMode embedId={embedId} />
+            </SuspenseWrapper>
+          }
+        />
+        <Route
+          path="/mon-cv/*"
+          element={
+            <SuspenseWrapper>
+              <MonCvApp onNavigate={onNavigate} embedMode embedId={embedId} />
             </SuspenseWrapper>
           }
         />
@@ -111,14 +111,6 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
       <Route
         path="/"
         element={<HomePage onNavigate={onNavigate} user={user} />}
-      />
-      <Route
-        path="/products/*"
-        element={
-          <SuspenseWrapper>
-            <ProductsApp onNavigate={onNavigate} />
-          </SuspenseWrapper>
-        }
       />
       <Route
         path="/conges/*"
@@ -149,6 +141,14 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <DeliveryApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/mon-cv/*"
+        element={
+          <SuspenseWrapper>
+            <MonCvApp onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />

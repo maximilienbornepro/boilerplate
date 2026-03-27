@@ -1,0 +1,28 @@
+/* Mon CV Module Styles */
+
+/* Import component styles */
+@import './components/ExpandableSection/ExpandableSection.css';
+@import './components/TagEditor/TagEditor.css';
+@import './components/ListEditor/ListEditor.css';
+@import './components/ImageUploader/ImageUploader.css';
+@import './components/MyProfilePage/MyProfilePage.css';
+@import './components/ImportCVModal/ImportCVModal.css';
+@import './components/AdaptCVPage/AdaptCVPage.css';
+@import './components/ExportSection/ExportSection.css';
+
+/* Module-specific global styles */
+.mon-cv-page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+/* Primary header button */
+.module-header-btn-primary {
+  background: var(--accent-color) !important;
+  color: var(--bg-primary) !important;
+  border-color: var(--accent-color) !important;
+}
+
+.module-header-btn-primary:hover {
+  background: var(--accent-hover) !important;
+}

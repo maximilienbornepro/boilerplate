@@ -6,11 +6,11 @@ import { errorMiddleware } from '@boilerplate/shared/server';
 
 // Import modules
 import { initGateway, createGatewayRouter } from './modules/gateway.js';
-import { initProducts, createProductsRouter } from './modules/products/index.js';
 import { initConges, createCongesRouter } from './modules/conges/index.js';
 import { initRoadmap, createRoadmapRouter } from './modules/roadmap/index.js';
 import { initSuivitess, createSuivitessRouter } from './modules/suivitess/index.js';
 import { initDelivery, createDeliveryRouter } from './modules/delivery/index.js';
+import { initMonCv, createMonCvRouter } from './modules/mon-cv/index.js';
 
 const app = express();
 
@@ -35,10 +35,6 @@ async function init() {
   await initGateway();
   app.use('/api', createGatewayRouter());
 
-  // Products
-  await initProducts();
-  app.use('/products/api', createProductsRouter());
-
   // Conges
   await initConges();
   app.use('/conges/api', createCongesRouter());
@@ -54,6 +50,10 @@ async function init() {
   // Delivery
   await initDelivery();
   app.use('/delivery/api', createDeliveryRouter());
+
+  // Mon CV
+  await initMonCv();
+  app.use('/mon-cv/api', createMonCvRouter());
 
   // Error handling
   app.use(errorMiddleware);

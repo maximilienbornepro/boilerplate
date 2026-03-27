@@ -36,7 +36,7 @@
 
 .button.active {
   background: var(--accent-primary);
-  color: #fff;
+  color: var(--text-inverse);
   font-weight: 600;
   box-shadow: var(--shadow-md);
 }

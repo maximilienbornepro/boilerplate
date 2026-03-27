@@ -1,0 +1,55 @@
+.expandable-section {
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  margin-bottom: var(--spacing-md);
+  background: var(--bg-secondary);
+}
+
+.expandable-section-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.expandable-section-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.expandable-section-icon {
+  font-size: 0.7em;
+  color: var(--text-muted);
+  width: 1em;
+}
+
+.expandable-section-title {
+  flex: 1;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.expandable-section-badge {
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+  padding: 0.1em 0.5em;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.expandable-section-content {
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+}
+
+.expandable-section.expanded .expandable-section-header {
+  border-bottom-color: var(--border-color);
+}

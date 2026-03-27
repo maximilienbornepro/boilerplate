@@ -23,15 +23,6 @@ export default defineConfig({
           environment: 'node',
         },
       },
-      // Server: products
-      {
-        test: {
-          name: 'server-products',
-          root: '.',
-          include: ['apps/platform/servers/unified/src/modules/__tests__/products/**/*.test.ts'],
-          environment: 'node',
-        },
-      },
       // Server: middleware
       {
         test: {
@@ -51,14 +42,6 @@ export default defineConfig({
         },
       },
       // Client modules
-      {
-        test: {
-          name: 'client-products',
-          root: '.',
-          include: ['apps/platform/src/modules/products/__tests__/**/*.test.ts'],
-          environment: 'node',
-        },
-      },
       {
         test: {
           name: 'client-gateway',
@@ -126,6 +109,24 @@ export default defineConfig({
           name: 'client-delivery',
           root: '.',
           include: ['apps/platform/src/modules/delivery/__tests__/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
+      // Server: mon-cv
+      {
+        test: {
+          name: 'server-mon-cv',
+          root: '.',
+          include: ['apps/platform/servers/unified/src/modules/__tests__/mon-cv/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
+      // Client: mon-cv
+      {
+        test: {
+          name: 'client-mon-cv',
+          root: '.',
+          include: ['apps/platform/src/modules/mon-cv/__tests__/**/*.test.ts'],
           environment: 'node',
         },
       },

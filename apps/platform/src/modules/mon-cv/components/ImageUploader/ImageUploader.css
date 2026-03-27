@@ -1,0 +1,124 @@
+.image-uploader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.image-uploader-label {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.image-uploader-dropzone {
+  border: 2px dashed var(--border-color);
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.image-uploader-dropzone:hover {
+  border-color: var(--accent-primary);
+}
+
+.image-uploader-dropzone.dragging {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+.image-uploader-dropzone.has-image {
+  cursor: default;
+  border-style: solid;
+}
+
+/* Sizes */
+.image-uploader-small .image-uploader-dropzone {
+  width: 60px;
+  height: 60px;
+}
+
+.image-uploader-medium .image-uploader-dropzone {
+  width: 120px;
+  height: 120px;
+}
+
+.image-uploader-large .image-uploader-dropzone {
+  width: 200px;
+  height: 150px;
+}
+
+.image-uploader-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  text-align: center;
+}
+
+.image-uploader-icon {
+  font-size: 1.5em;
+}
+
+.image-uploader-text {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.image-uploader-small .image-uploader-text {
+  display: none;
+}
+
+.image-uploader-loading {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.image-uploader-preview {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.image-uploader-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.image-uploader-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  background: var(--error);
+  border: none;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.image-uploader-preview:hover .image-uploader-remove {
+  opacity: 1;
+}
+
+.image-uploader-error {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  color: var(--error);
+}

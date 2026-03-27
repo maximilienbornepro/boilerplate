@@ -1,0 +1,187 @@
+.cv-profile-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-family: var(--font-family-mono);
+  color: var(--text-muted);
+}
+
+.cv-profile-page {
+  padding: var(--spacing-lg);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.cv-profile-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.cv-save-status {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-right: var(--spacing-md);
+}
+
+.cv-save-status.saving {
+  color: var(--accent-primary);
+}
+
+/* Grid layouts */
+.cv-profile-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-md);
+}
+
+.cv-profile-photo-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.cv-profile-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.cv-profile-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.cv-skills-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+}
+
+/* Form fields */
+.cv-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.cv-field-full {
+  grid-column: 1 / -1;
+}
+
+.cv-field label {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cv-field input,
+.cv-field textarea {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  outline: none;
+  resize: vertical;
+}
+
+.cv-field input:focus,
+.cv-field textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+.cv-field input::placeholder,
+.cv-field textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Experiences, Formations, Awards */
+.cv-experiences,
+.cv-formations,
+.cv-awards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.cv-experience-item,
+.cv-formation-item,
+.cv-award-item {
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-md);
+  background: var(--bg-primary);
+}
+
+.cv-experience-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.cv-experience-number {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.cv-experience-delete {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.cv-experience-delete:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+/* Add buttons */
+.cv-add-btn {
+  background: transparent;
+  border: 2px dashed var(--border-color);
+  padding: var(--spacing-md);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.cv-add-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .cv-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cv-profile-photo-section {
+    align-items: center;
+  }
+
+  .cv-profile-form-grid,
+  .cv-skills-grid {
+    grid-template-columns: 1fr;
+  }
+}
