@@ -26,6 +26,25 @@ function send(msg: object) {
   process.stdout.write(JSON.stringify(msg) + '\n');
 }
 
+/**
+ * Resolve a Teams meeting URL to the direct web client URL.
+ * Teams launcher URLs (dl/launcher/launcher.html?url=...) trigger a Chrome
+ * dialog asking to open the Teams app. We decode the inner URL and navigate
+ * directly to bypass that dialog.
+ */
+function resolveTeamsUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname.includes('/dl/launcher/launcher.html')) {
+      const inner = parsed.searchParams.get('url');
+      if (inner) {
+        return 'https://teams.microsoft.com' + decodeURIComponent(inner);
+      }
+    }
+  } catch { /* invalid URL — let the caller handle */ }
+  return url;
+}
+
 async function main() {
   if (!MEETING_URL) {
     send({ type: 'status', status: 'error', error: 'No meeting URL provided' });
@@ -66,8 +85,12 @@ async function main() {
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
 
+    // Resolve launcher URLs (teams.microsoft.com/dl/launcher/...) to direct web URLs
+    // to avoid the "Ouvrir Microsoft Teams ?" Chrome dialog
+    const targetUrl = resolveTeamsUrl(MEETING_URL);
+
     // Navigate to the Teams meeting link
-    await page.goto(MEETING_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     // Teams may redirect to teams.microsoft.com/v2 or show a "continue in browser" button
     // Wait for and click "Continue in this browser" if present
