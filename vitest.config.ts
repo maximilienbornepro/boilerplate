@@ -139,6 +139,15 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      // Server: jira-oauth
+      {
+        test: {
+          name: 'server-jira-oauth',
+          root: '.',
+          include: ['apps/platform/servers/unified/src/modules/__tests__/jira-oauth/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
     ],
   },
 });
