@@ -1,0 +1,164 @@
+.scope-delivery {
+  /* Select elements in ModuleHeader */
+  select.module-header-btn {
+    height: 36px;
+    padding: 0 28px 0 10px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--spacing-sm) center;
+  }
+
+  select.module-header-btn:focus {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+  }
+
+  select.increment-select {
+    background-color: var(--accent-primary);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--spacing-sm) center;
+    color: var(--text-inverse);
+    border-color: transparent;
+    font-weight: var(--font-weight-semibold);
+  }
+
+  select.increment-select:hover {
+    background-color: var(--accent-primary-hover);
+    border-color: transparent;
+  }
+
+  select.increment-select option {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+  }
+
+  .app {
+    min-height: 100vh;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    transition: var(--transition-slow);
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+
+  .error-msg {
+    color: var(--error);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+  }
+
+  .main-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    padding: 0 var(--spacing-lg) var(--spacing-lg);
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+
+  .board-section {
+    min-width: 0;
+  }
+
+  /* Freeze button */
+  .freeze-btn {
+    border: 1px solid var(--border-color);
+  }
+
+  .freeze-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
+  }
+
+  .freeze-btn.frozen {
+    background: var(--info) !important;
+    border-color: transparent !important;
+    color: var(--text-inverse);
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+  }
+
+  .freeze-btn.frozen:hover {
+    background: var(--blue-600) !important;
+  }
+
+  /* Add task form */
+  .add-task-input {
+    flex: 1;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-base);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    outline: none;
+  }
+
+  .add-task-input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-focus);
+  }
+
+  .add-task-btn {
+    background: var(--success);
+    color: var(--text-inverse);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .add-task-btn:hover {
+    background: var(--success-hover);
+  }
+
+  .add-task-cancel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+  }
+
+  .add-task-cancel:hover {
+    background: var(--bg-tertiary);
+  }
+}
+
+/* Dark theme overrides */
+[data-theme="dark"] .scope-delivery select.module-header-btn {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-sm) center;
+}
+
+[data-theme="dark"] .scope-delivery select.increment-select {
+  background-color: var(--accent-primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-sm) center;
+  color: var(--text-inverse);
+  border-color: transparent;
+}
+
+[data-theme="dark"] .scope-delivery select.increment-select option {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .scope-delivery .freeze-btn {
+  border-color: var(--border-color);
+}
+
+[data-theme="dark"] .scope-delivery .freeze-btn:hover {
+  background: var(--bg-hover);
+}
+
+[data-theme="dark"] .scope-delivery .freeze-btn.frozen {
+  background: var(--info);
+  border-color: transparent;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+}

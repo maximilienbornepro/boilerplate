@@ -1,0 +1,48 @@
+.releaseMarker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background: linear-gradient(180deg, var(--error) 0%, var(--error) 50%, transparent 50%, transparent 100%);
+  background-size: 2px 8px;
+  transform: translateX(-50%);
+}
+
+.badge {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--error);
+  color: var(--text-inverse);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  box-shadow: var(--shadow-sm);
+  pointer-events: auto;
+}
+
+.version {
+  font-weight: var(--font-weight-bold);
+}
+
+.date {
+  font-size: 9px;
+  opacity: 0.9;
+}

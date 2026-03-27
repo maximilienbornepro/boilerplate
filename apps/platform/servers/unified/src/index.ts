@@ -10,6 +10,7 @@ import { initProducts, createProductsRouter } from './modules/products/index.js'
 import { initConges, createCongesRouter } from './modules/conges/index.js';
 import { initRoadmap, createRoadmapRouter } from './modules/roadmap/index.js';
 import { initSuivitess, createSuivitessRouter } from './modules/suivitess/index.js';
+import { initDelivery, createDeliveryRouter } from './modules/delivery/index.js';
 
 const app = express();
 
@@ -49,6 +50,10 @@ async function init() {
   // SuiViTess
   await initSuivitess();
   app.use('/suivitess/api', createSuivitessRouter());
+
+  // Delivery
+  await initDelivery();
+  app.use('/delivery/api', createDeliveryRouter());
 
   // Error handling
   app.use(errorMiddleware);

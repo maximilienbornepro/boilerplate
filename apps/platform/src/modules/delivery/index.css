@@ -1,0 +1,18 @@
+.scope-delivery {
+  button:where(:not(.shared-nav *)) {
+    border-radius: var(--radius-sm);
+    border: none;
+    padding: 0.5em 1em;
+    font-size: 1em;
+    font-weight: var(--font-weight-medium);
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition-normal);
+  }
+
+  button:where(:not(.shared-nav *)):focus,
+  button:where(:not(.shared-nav *)):focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+  }
+}

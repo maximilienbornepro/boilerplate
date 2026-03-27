@@ -9,6 +9,7 @@ const ProductsApp = lazy(() => import('./modules/products/App'));
 const CongesApp = lazy(() => import('./modules/conges/App'));
 const RoadmapApp = lazy(() => import('./modules/roadmap/App'));
 const SuivitessApp = lazy(() => import('./modules/suivitess/App'));
+const DeliveryApp = lazy(() => import('./modules/delivery/App'));
 
 interface User {
   id: number;
@@ -140,6 +141,14 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <SuivitessApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/delivery/*"
+        element={
+          <SuspenseWrapper>
+            <DeliveryApp onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />

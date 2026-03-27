@@ -1,0 +1,41 @@
+.board {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  transition: var(--transition-slow);
+}
+
+.sprintHeader {
+  display: flex;
+  border-bottom: 2px solid var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.platformLabel {
+  width: 100px;
+  min-width: 100px;
+  padding: var(--spacing-md);
+  font-weight: var(--font-weight-bold);
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sprint-header-bg);
+  border-right: 1px solid var(--border-color);
+}
+
+.boardContent {
+  position: relative;
+}
+
+.markerLayer {
+  position: absolute;
+  top: 0;
+  left: 100px; /* Same as platformLabel width */
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 15;
+}

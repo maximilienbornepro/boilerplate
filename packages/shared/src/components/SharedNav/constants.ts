@@ -61,6 +61,15 @@ export const APPS: AppInfo[] = [
     path: '/suivitess',
     category: 'main',
   },
+  {
+    id: 'delivery',
+    name: 'Delivery',
+    description: 'Planification de sprint et suivi de livraison',
+    color: '#e11d48',
+    gradientEnd: '#f43f5e',
+    path: '/delivery',
+    category: 'main',
+  },
 ];
 
 export function getAppUrl(appId: string): string {

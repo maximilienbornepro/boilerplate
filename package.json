@@ -33,6 +33,8 @@
     "test:client:roadmap": "vitest run --project client-roadmap",
     "test:server:suivitess": "vitest run --project server-suivitess",
     "test:client:suivitess": "vitest run --project client-suivitess",
+    "test:server:delivery": "vitest run --project server-delivery",
+    "test:client:delivery": "vitest run --project client-delivery",
     "test:shared": "vitest run --project shared",
     "predeploy": "npm test"
   },

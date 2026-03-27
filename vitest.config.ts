@@ -111,6 +111,24 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      // Server: delivery
+      {
+        test: {
+          name: 'server-delivery',
+          root: '.',
+          include: ['apps/platform/servers/unified/src/modules/__tests__/delivery/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
+      // Client: delivery
+      {
+        test: {
+          name: 'client-delivery',
+          root: '.',
+          include: ['apps/platform/src/modules/delivery/__tests__/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
     ],
   },
 });

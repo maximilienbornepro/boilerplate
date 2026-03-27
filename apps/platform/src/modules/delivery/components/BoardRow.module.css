@@ -1,0 +1,39 @@
+.boardRow {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.boardRow:last-child {
+  border-bottom: none;
+}
+
+.rowLabel {
+  width: 100px;
+  min-width: 100px;
+  padding: var(--spacing-md);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sprint-header-bg);
+  color: var(--text-secondary);
+  border-right: 1px solid var(--border-color);
+}
+
+.timeline {
+  flex: 1;
+  position: relative;
+  min-height: 200px;
+  padding: 10px;
+  background: var(--timeline-bg);
+}
+
+.sprintDivider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--text-light);
+  border-left: 1px dashed var(--text-light);
+}

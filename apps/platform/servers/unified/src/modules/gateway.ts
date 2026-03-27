@@ -7,7 +7,7 @@ import { authMiddleware, adminMiddleware } from '../middleware/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 
 // Available apps for permissions
-const AVAILABLE_APPS = ['products', 'conges', 'roadmap', 'suivitess', 'admin'];
+const AVAILABLE_APPS = ['products', 'conges', 'roadmap', 'suivitess', 'delivery', 'admin'];
 
 let pool: Pool;
 

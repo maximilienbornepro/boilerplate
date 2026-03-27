@@ -1,0 +1,32 @@
+.sprintColumn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-sm);
+  border-right: 1px dashed var(--text-light);
+}
+
+.sprintColumn:last-child {
+  border-right: none;
+}
+
+.dates {
+  display: flex;
+  flex-direction: column;
+  margin-right: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.name {
+  background: linear-gradient(135deg, var(--amber-400) 0%, var(--warning) 100%);
+  color: var(--gray-950);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-base);
+}
