@@ -14,11 +14,6 @@ export default defineConfig({
     port: 5170,
     host: true,
     proxy: {
-      // Products API: /products-api/* → /products/api/*
-      '/products-api': {
-        target: UNIFIED_SERVER,
-        rewrite: (path) => path.replace(/^\/products-api/, '/products/api'),
-      },
       // Conges API: /conges-api/* → /conges/api/*
       '/conges-api': {
         target: UNIFIED_SERVER,
@@ -38,6 +33,11 @@ export default defineConfig({
       '/delivery-api': {
         target: UNIFIED_SERVER,
         rewrite: (path) => path.replace(/^\/delivery-api/, '/delivery/api'),
+      },
+      // Mon CV API: /mon-cv-api/* → /mon-cv/api/*
+      '/mon-cv-api': {
+        target: UNIFIED_SERVER,
+        rewrite: (path) => path.replace(/^\/mon-cv-api/, '/mon-cv/api'),
       },
       // Gateway APIs (auth, admin)
       '/api/auth': {

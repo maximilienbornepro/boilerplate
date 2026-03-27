@@ -1,0 +1,128 @@
+.list-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.list-editor-label {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.list-editor-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.list-editor-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.list-editor-item-text {
+  flex: 1;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  cursor: text;
+}
+
+.list-editor-item-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.list-editor-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
+}
+
+.list-editor-btn:hover:not(:disabled) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.list-editor-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.list-editor-btn-danger:hover:not(:disabled) {
+  color: var(--error);
+}
+
+.list-editor-edit-input {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-primary);
+  padding: var(--spacing-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.list-editor-add {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.list-editor-input {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.list-editor-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.list-editor-input::placeholder {
+  color: var(--text-muted);
+}
+
+.list-editor-add-btn {
+  background: var(--accent-primary);
+  border: none;
+  color: var(--bg-primary);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.list-editor-add-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.list-editor-add-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}

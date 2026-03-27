@@ -26,15 +26,6 @@ export const CATEGORIES: CategoryInfo[] = [
 
 export const APPS: AppInfo[] = [
   {
-    id: 'products',
-    name: 'Products',
-    description: 'Gestion des produits',
-    color: '#6366f1',
-    gradientEnd: '#8b5cf6',
-    path: '/products',
-    category: 'main',
-  },
-  {
     id: 'conges',
     name: 'Conges',
     description: 'Gestion des conges et absences',
@@ -68,6 +59,15 @@ export const APPS: AppInfo[] = [
     color: '#e11d48',
     gradientEnd: '#f43f5e',
     path: '/delivery',
+    category: 'main',
+  },
+  {
+    id: 'mon-cv',
+    name: 'Mon CV',
+    description: 'Gestion et adaptation de CV avec IA',
+    color: '#0ea5e9',
+    gradientEnd: '#06b6d4',
+    path: '/mon-cv',
     category: 'main',
   },
 ];

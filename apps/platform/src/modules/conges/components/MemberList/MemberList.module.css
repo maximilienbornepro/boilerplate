@@ -97,7 +97,7 @@
 }
 
 .colorDotActive {
-  border-color: #fff;
+  border-color: var(--text-inverse);
   transform: scale(1.1);
 }
 
@@ -111,7 +111,7 @@
   border: none;
   border-radius: var(--radius-sm);
   background: var(--accent-primary);
-  color: #fff;
+  color: var(--text-inverse);
   font-family: var(--font-family-mono);
   font-size: 12px;
   cursor: pointer;
