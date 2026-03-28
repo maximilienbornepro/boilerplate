@@ -2,19 +2,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import mammoth from 'mammoth';
 import type { CVData } from './types.js';
 
-// Dynamic import for pdf-parse (CommonJS module)
-// CJS modules may export the function as .default or as the module itself
-let pdfParse: any;
-async function getPdfParse() {
-  if (!pdfParse) {
-    const mod = await import('pdf-parse');
-    pdfParse = mod.default ?? mod;
-    if (typeof pdfParse !== 'function') {
-      // Some bundlers wrap it one level deeper
-      pdfParse = (pdfParse as any).default ?? pdfParse;
-    }
-  }
-  return pdfParse;
+// pdf-parse@2.x exports a PDFParse class (not a function like v1.x)
+import { PDFParse } from 'pdf-parse';
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const parser = new PDFParse({ data: buffer });
+  const result = await parser.getText();
+  await parser.destroy();
+  return result.text ?? '';
 }
 
 // Check API key at module load
@@ -102,9 +97,7 @@ export async function parseCV(buffer: Buffer, type: 'pdf' | 'docx'): Promise<CVD
   let text: string;
 
   if (type === 'pdf') {
-    const pdf = await getPdfParse();
-    const data = await pdf(buffer);
-    text = data.text;
+    text = await extractPdfText(buffer);
 
     // If very little text extracted, it might be a scanned PDF - use vision parsing
     if (text.trim().length < 100) {
@@ -164,7 +157,7 @@ export async function parseCVWithText(text: string): Promise<CVData> {
 }
 
 // Vision-based PDF parsing for scanned PDFs using Claude's document type
-async function parseCVWithVision(buffer: Buffer): Promise<CVData> {
+export async function parseCVWithVision(buffer: Buffer): Promise<CVData> {
   const base64 = buffer.toString('base64');
 
   const response = await anthropic.messages.create({
