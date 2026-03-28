@@ -28,10 +28,10 @@ export async function initPgvector(dimension = 1536): Promise<boolean> {
 
     if (dimResult.rows.length === 0) {
       // Add embedding column
-      await pool.query(`ALTER TABLE rag_chunks ADD COLUMN IF NOT EXISTS embedding vector(${dimension})`);
+      await pool.query(`ALTER TABLE rag_chunks ADD COLUMN IF NOT EXISTS embedding halfvec(${dimension})`);
       // Use HNSW index — no dimension limit (IVFFlat is capped at 2000 dims)
       await pool.query(
-        `CREATE INDEX IF NOT EXISTS rag_chunks_embedding_idx ON rag_chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`
+        `CREATE INDEX IF NOT EXISTS rag_chunks_embedding_idx ON rag_chunks USING hnsw (embedding halfvec_cosine_ops) WITH (m = 16, ef_construction = 64)`
       );
       console.log(`[RAG] pgvector enabled, dimension=${dimension}, index=hnsw`);
     } else {
@@ -41,9 +41,9 @@ export async function initPgvector(dimension = 1536): Promise<boolean> {
         console.log(`[RAG] Embedding dimension changed (${currentDim} → ${dimension}), recreating column`);
         await pool.query('DROP INDEX IF EXISTS rag_chunks_embedding_idx');
         await pool.query('ALTER TABLE rag_chunks DROP COLUMN IF EXISTS embedding');
-        await pool.query(`ALTER TABLE rag_chunks ADD COLUMN embedding vector(${dimension})`);
+        await pool.query(`ALTER TABLE rag_chunks ADD COLUMN embedding halfvec(${dimension})`);
         await pool.query(
-          `CREATE INDEX rag_chunks_embedding_idx ON rag_chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`
+          `CREATE INDEX rag_chunks_embedding_idx ON rag_chunks USING hnsw (embedding halfvec_cosine_ops) WITH (m = 16, ef_construction = 64)`
         );
         console.log('[RAG] Re-indexing needed after dimension change');
       }
@@ -301,7 +301,7 @@ export async function searchSimilarChunks(embedding: number[], limit = 10, ragId
     `SELECT id, source_id, document_id, source_type, heading, content, token_count
      FROM rag_chunks
      ${whereClause}
-     ORDER BY embedding <=> $1::vector
+     ORDER BY embedding <=> $1::halfvec
      LIMIT $2`,
     params
   );
