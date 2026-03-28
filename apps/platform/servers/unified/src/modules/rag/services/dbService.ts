@@ -29,10 +29,11 @@ export async function initPgvector(dimension = 1536): Promise<boolean> {
     if (dimResult.rows.length === 0) {
       // Add embedding column
       await pool.query(`ALTER TABLE rag_chunks ADD COLUMN IF NOT EXISTS embedding vector(${dimension})`);
+      // Use HNSW index — no dimension limit (IVFFlat is capped at 2000 dims)
       await pool.query(
-        `CREATE INDEX IF NOT EXISTS rag_chunks_embedding_idx ON rag_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`
+        `CREATE INDEX IF NOT EXISTS rag_chunks_embedding_idx ON rag_chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`
       );
-      console.log(`[RAG] pgvector enabled, dimension=${dimension}`);
+      console.log(`[RAG] pgvector enabled, dimension=${dimension}, index=hnsw`);
     } else {
       const currentDim = dimResult.rows[0].atttypmod - 4;
       if (currentDim !== dimension) {
@@ -42,7 +43,7 @@ export async function initPgvector(dimension = 1536): Promise<boolean> {
         await pool.query('ALTER TABLE rag_chunks DROP COLUMN IF EXISTS embedding');
         await pool.query(`ALTER TABLE rag_chunks ADD COLUMN embedding vector(${dimension})`);
         await pool.query(
-          `CREATE INDEX rag_chunks_embedding_idx ON rag_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`
+          `CREATE INDEX rag_chunks_embedding_idx ON rag_chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)`
         );
         console.log('[RAG] Re-indexing needed after dimension change');
       }

@@ -1,7 +1,7 @@
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: boilerplate-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
