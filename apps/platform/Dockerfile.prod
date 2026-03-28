@@ -16,8 +16,8 @@ RUN sed -i '/@boilerplate\/shared/d' apps/platform/package.json && \
 # Copy platform source
 COPY apps/platform/ ./apps/platform/
 
-# Build
-RUN cd apps/platform && npm run build
+# Build (vite only, tsc type-check runs in CI/local not in Docker)
+RUN cd apps/platform && npx vite build
 
 # Production image
 FROM nginx:alpine
