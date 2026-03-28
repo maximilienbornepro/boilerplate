@@ -11,7 +11,7 @@ RUN cd packages/shared && npm run build
 # Install platform deps (remove workspace ref, install shared locally)
 COPY apps/platform/package.json ./apps/platform/
 RUN sed -i '/@boilerplate\/shared/d' apps/platform/package.json && \
-    cd apps/platform && npm install && npm install ../packages/shared
+    cd apps/platform && npm install && npm install ../../packages/shared
 
 # Copy platform source
 COPY apps/platform/ ./apps/platform/
