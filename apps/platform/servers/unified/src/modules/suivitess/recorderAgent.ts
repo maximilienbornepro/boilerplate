@@ -135,26 +135,50 @@ async function main() {
       }, texts);
     }
 
-    // --- Helper: type into a visible input using real keyboard simulation ---
-    // React ignores input.value = "..." — we must simulate actual keystrokes.
+    // --- Helper: type into the name input using page-level keyboard ---
+    // React ignores input.value. handle.type() can fail if the OS window lacks focus.
+    // Strategy: bring window to front, click input by placeholder, use page.keyboard.type().
     async function typeIntoInput(value: string): Promise<boolean> {
-      // Use a CSS selector to find the first visible text input, then type via Puppeteer
-      const selectors = ['input[type="text"]', 'input:not([type])', 'input'];
-      for (const sel of selectors) {
-        try {
-          const handles = await page.$$(sel);
-          for (const handle of handles) {
-            const visible = await page.evaluate((el: Element) => {
-              const r = el.getBoundingClientRect();
-              return r.width > 0 && r.height > 0;
-            }, handle);
-            if (!visible) continue;
-            await handle.click({ clickCount: 3 }); // select all
-            await handle.press('Backspace');        // clear
-            await handle.type(value, { delay: 60 }); // real keystrokes
+      try {
+        await page.bringToFront(); // ensure OS window focus
+        // Try targeting by placeholder first (most specific)
+        const placeholderSelectors = [
+          'input[placeholder*="nom" i]',
+          'input[placeholder*="name" i]',
+          'input[placeholder*="votre" i]',
+        ];
+        for (const sel of placeholderSelectors) {
+          const el = await page.$(sel);
+          if (el) {
+            await page.click(sel, { clickCount: 3 }); // focus + select all
+            await page.keyboard.press('Backspace');
+            await new Promise(r => setTimeout(r, 100));
+            await page.keyboard.type(value, { delay: 80 });
+            send({ type: 'debug', message: `Typed via page.keyboard into: ${sel}` });
             return true;
           }
-        } catch {}
+        }
+        // Fallback: click first visible input by coordinates
+        const coords = await page.evaluate((): { x: number; y: number } | null => {
+          const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input'));
+          for (const input of inputs) {
+            const r = input.getBoundingClientRect();
+            if (r.width > 50 && r.height > 10) {
+              return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            }
+          }
+          return null;
+        });
+        if (coords) {
+          await page.mouse.click(coords.x, coords.y, { clickCount: 3 });
+          await page.keyboard.press('Backspace');
+          await new Promise(r => setTimeout(r, 100));
+          await page.keyboard.type(value, { delay: 80 });
+          send({ type: 'debug', message: `Typed via mouse coords (${coords.x},${coords.y})` });
+          return true;
+        }
+      } catch (e) {
+        send({ type: 'debug', message: `typeIntoInput error: ${e}` });
       }
       return false;
     }
