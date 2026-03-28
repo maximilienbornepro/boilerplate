@@ -118,90 +118,123 @@ async function main() {
     await logUrl(page, 'after-goto');
     await screenshot(page, '01-after-goto');
 
-    // Step 1: "Continue in browser" button (Teams app redirect page)
-    const continueSelectors = [
-      '[data-tid="joinOnWeb"]',
-      'a[href*="useWeb=true"]',
-      'button[data-cid="prejoin-join-button"]',
-    ];
-    for (const sel of continueSelectors) {
-      try {
-        const el = await page.$(sel);
-        if (el) {
-          await el.click();
-          send({ type: 'debug', message: `Clicked continue-in-browser: ${sel}` });
-          await new Promise(r => setTimeout(r, 2000));
-          await logUrl(page, 'after-continue');
-          await screenshot(page, '02-after-continue');
-          break;
+    // --- Helper: click a button/link by visible text content ---
+    async function clickByText(texts: string[]): Promise<string | null> {
+      return page.evaluate((texts: string[]) => {
+        const all = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+        for (const el of all) {
+          const t = (el as HTMLElement).innerText?.trim() || el.textContent?.trim() || '';
+          for (const needle of texts) {
+            if (t.toLowerCase().includes(needle.toLowerCase())) {
+              (el as HTMLElement).click();
+              return t;
+            }
+          }
         }
-      } catch {}
+        return null;
+      }, texts);
     }
 
-    // Step 2: Guest name input — try multiple known selectors
-    await screenshot(page, '03-before-name');
-    const nameSelectors = [
-      '[data-tid="prejoin-display-name-input"]',
-      'input[name="displayName"]',
-      'input[placeholder*="name" i]',
-      'input[placeholder*="nom" i]',
-      'input[type="text"]',
-    ];
+    // --- Helper: find a visible input and fill it ---
+    async function fillInput(value: string): Promise<boolean> {
+      return page.evaluate((value: string) => {
+        const inputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
+        const visible = inputs.filter(el => {
+          const r = (el as HTMLElement).getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        }) as HTMLInputElement[];
+        if (visible.length === 0) return false;
+        const input = visible[0];
+        input.focus();
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }, value);
+    }
+
+    // ── Step 1: "Continue in browser" (Teams launcher page) ──────────────────
+    // The button text is "Continuer sur ce navigateur" (FR) or "Continue in this browser" (EN).
+    // We match on visible text because Teams changes data-tid attributes frequently.
+    let clickedText = await clickByText([
+      'Continuer sur ce navigateur',
+      'Continue in this browser',
+      'Continue on this browser',
+      'Rejoindre depuis le navigateur',
+      'Join on the web instead',
+    ]);
+    if (clickedText) {
+      send({ type: 'debug', message: `Clicked continue: "${clickedText}"` });
+      await new Promise(r => setTimeout(r, 4000)); // wait for prejoin page to load
+    } else {
+      send({ type: 'debug', message: 'No continue button found (may already be on prejoin page)' });
+    }
+    await logUrl(page, 'after-continue');
+    await screenshot(page, '02-after-continue');
+
+    // ── Step 2: Guest name input ──────────────────────────────────────────────
+    // Wait up to 10s for an input to appear (prejoin page loads asynchronously)
     let filledName = false;
-    for (const sel of nameSelectors) {
-      try {
-        await page.waitForSelector(sel, { timeout: 5000 });
-        await page.click(sel, { clickCount: 3 }); // select all first
-        await page.type(sel, 'Agent Suivitess');
-        send({ type: 'debug', message: `Typed name in: ${sel}` });
-        filledName = true;
-        break;
-      } catch {}
+    const nameWaitStart = Date.now();
+    while (Date.now() - nameWaitStart < 10_000) {
+      filledName = await fillInput('Agent Suivitess');
+      if (filledName) break;
+      await new Promise(r => setTimeout(r, 500));
     }
-    if (!filledName) {
-      send({ type: 'debug', message: 'WARNING: could not find name input' });
-    }
-    await screenshot(page, '04-after-name');
+    send({ type: 'debug', message: filledName ? 'Filled name input' : 'WARNING: no name input found' });
+    await screenshot(page, '03-after-name');
 
-    // Step 3: Join button
-    const joinSelectors = [
-      '[data-tid="prejoin-join-button"]',
-      'button[data-cid="prejoin-join-button"]',
-      'button[class*="joinButton"]',
-      'button[class*="join-button"]',
-    ];
-    for (const sel of joinSelectors) {
-      try {
-        const el = await page.$(sel);
-        if (el) {
-          await el.click();
-          send({ type: 'debug', message: `Clicked join: ${sel}` });
-          await new Promise(r => setTimeout(r, 2000));
-          break;
-        }
-      } catch {}
+    // ── Step 3: Join / Rejoindre button ──────────────────────────────────────
+    await new Promise(r => setTimeout(r, 500)); // let React update after input
+    clickedText = await clickByText([
+      'Rejoindre maintenant',
+      'Participer maintenant',
+      'Join now',
+      'Rejoindre',
+      'Join',
+    ]);
+    if (clickedText) {
+      send({ type: 'debug', message: `Clicked join: "${clickedText}"` });
+    } else {
+      send({ type: 'debug', message: 'WARNING: no join button found' });
     }
-    await screenshot(page, '05-after-join-click');
+    await new Promise(r => setTimeout(r, 2000));
+    await screenshot(page, '04-after-join-click');
     await logUrl(page, 'after-join-click');
 
-    // Wait to be admitted (or join directly) — up to JOIN_TIMEOUT_MS
-    const joinedSelector = '[data-tid="call-duration-timer"], [data-tid="meeting-composite"], [data-tid="roster"]';
-    const lobbySelector = '[data-tid="lobby-title"], [class*="lobby"], [data-tid="waitingForHost"]';
-
+    // ── Step 4: Wait to be admitted ──────────────────────────────────────────
+    // Poll the page: detect "in call" vs "in lobby" using both data-tid and text heuristics.
     const joinStart = Date.now();
     let joined = false;
+    let lastStatus = '';
 
     while (Date.now() - joinStart < JOIN_TIMEOUT_MS) {
       try {
-        const inCall = await page.$(joinedSelector);
-        if (inCall) { joined = true; break; }
+        const status: string = await page.evaluate(() => {
+          // Joined indicators: call timer, mute button, roster, call controls
+          const joinedTids = ['call-duration-timer', 'meeting-composite', 'roster', 'microphone-button', 'hangup-button'];
+          for (const tid of joinedTids) {
+            if (document.querySelector(`[data-tid="${tid}"]`)) return 'joined';
+          }
+          // Lobby / waiting room indicators
+          const lobbyTids = ['lobby-title', 'waitingForHost', 'waiting-for-host'];
+          for (const tid of lobbyTids) {
+            if (document.querySelector(`[data-tid="${tid}"]`)) return 'lobby';
+          }
+          // Text-based lobby detection (FR + EN)
+          const body = document.body.innerText || '';
+          if (body.includes("salle d'attente") || body.includes("waiting room") ||
+              body.includes("waiting for") || body.includes("en attente")) return 'lobby';
+          return 'unknown';
+        });
 
-        const inLobby = await page.$(lobbySelector);
-        if (inLobby) {
-          // Still in lobby, wait
-          await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-          continue;
+        if (status !== lastStatus) {
+          send({ type: 'debug', message: `Join status: ${status}` });
+          if (status !== 'unknown') await screenshot(page, `join-status-${status}`);
+          lastStatus = status;
         }
+
+        if (status === 'joined') { joined = true; break; }
       } catch {
         // Page may be navigating
       }
