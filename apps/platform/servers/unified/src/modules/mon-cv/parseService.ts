@@ -3,10 +3,16 @@ import mammoth from 'mammoth';
 import type { CVData } from './types.js';
 
 // Dynamic import for pdf-parse (CommonJS module)
+// CJS modules may export the function as .default or as the module itself
 let pdfParse: any;
 async function getPdfParse() {
   if (!pdfParse) {
-    pdfParse = (await import('pdf-parse')).default;
+    const mod = await import('pdf-parse');
+    pdfParse = mod.default ?? mod;
+    if (typeof pdfParse !== 'function') {
+      // Some bundlers wrap it one level deeper
+      pdfParse = (pdfParse as any).default ?? pdfParse;
+    }
   }
   return pdfParse;
 }
