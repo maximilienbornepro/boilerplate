@@ -135,22 +135,28 @@ async function main() {
       }, texts);
     }
 
-    // --- Helper: find a visible input and fill it ---
-    async function fillInput(value: string): Promise<boolean> {
-      return page.evaluate((value: string) => {
-        const inputs = Array.from(document.querySelectorAll('input[type="text"], input:not([type])'));
-        const visible = inputs.filter(el => {
-          const r = (el as HTMLElement).getBoundingClientRect();
-          return r.width > 0 && r.height > 0;
-        }) as HTMLInputElement[];
-        if (visible.length === 0) return false;
-        const input = visible[0];
-        input.focus();
-        input.value = value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
-      }, value);
+    // --- Helper: type into a visible input using real keyboard simulation ---
+    // React ignores input.value = "..." — we must simulate actual keystrokes.
+    async function typeIntoInput(value: string): Promise<boolean> {
+      // Use a CSS selector to find the first visible text input, then type via Puppeteer
+      const selectors = ['input[type="text"]', 'input:not([type])', 'input'];
+      for (const sel of selectors) {
+        try {
+          const handles = await page.$$(sel);
+          for (const handle of handles) {
+            const visible = await page.evaluate((el: Element) => {
+              const r = el.getBoundingClientRect();
+              return r.width > 0 && r.height > 0;
+            }, handle);
+            if (!visible) continue;
+            await handle.click({ clickCount: 3 }); // select all
+            await handle.press('Backspace');        // clear
+            await handle.type(value, { delay: 60 }); // real keystrokes
+            return true;
+          }
+        } catch {}
+      }
+      return false;
     }
 
     // ── Step 1: "Continue in browser" (Teams launcher page) ──────────────────
@@ -173,15 +179,16 @@ async function main() {
     await screenshot(page, '02-after-continue');
 
     // ── Step 2: Guest name input ──────────────────────────────────────────────
-    // Wait up to 10s for an input to appear (prejoin page loads asynchronously)
+    // Wait up to 10s for an input to appear, then use real keystroke simulation.
     let filledName = false;
     const nameWaitStart = Date.now();
     while (Date.now() - nameWaitStart < 10_000) {
-      filledName = await fillInput('Agent Suivitess');
+      filledName = await typeIntoInput('Agent Suivitess');
       if (filledName) break;
       await new Promise(r => setTimeout(r, 500));
     }
-    send({ type: 'debug', message: filledName ? 'Filled name input' : 'WARNING: no name input found' });
+    send({ type: 'debug', message: filledName ? 'Typed name via keystrokes' : 'WARNING: no name input found' });
+    await new Promise(r => setTimeout(r, 500)); // let React process the input events
     await screenshot(page, '03-after-name');
 
     // ── Step 3: Join / Rejoindre button ──────────────────────────────────────
