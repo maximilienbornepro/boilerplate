@@ -27,6 +27,7 @@ export function IndexModal({ onClose, status }: Props) {
   const [selectedSpaces, setSelectedSpaces] = useState<Set<string>>(new Set());
   const [documents, setDocuments] = useState<IndexedDocument[]>([]);
   const [isLoadingSpaces, setIsLoadingSpaces] = useState(false);
+  const [spacesError, setSpacesError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -45,6 +46,7 @@ export function IndexModal({ onClose, status }: Props) {
 
   async function loadSpaces() {
     setIsLoadingSpaces(true);
+    setSpacesError(null);
     try {
       const [available, selected] = await Promise.all([
         fetchAvailableSpaces(),
@@ -53,7 +55,7 @@ export function IndexModal({ onClose, status }: Props) {
       setAvailableSpaces(available);
       setSelectedSpaces(new Set(selected.map((s) => s.spaceKey)));
     } catch (err) {
-      console.error(err);
+      setSpacesError((err as Error).message || 'Erreur lors du chargement des espaces');
     } finally {
       setIsLoadingSpaces(false);
     }
@@ -180,6 +182,8 @@ export function IndexModal({ onClose, status }: Props) {
           <div className={styles.panel}>
             {isLoadingSpaces ? (
               <p className={styles.hint}>Chargement des espaces…</p>
+            ) : spacesError ? (
+              <p className={styles.error}>{spacesError}</p>
             ) : (
               <>
                 <p className={styles.hint}>

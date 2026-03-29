@@ -19,11 +19,13 @@ export interface ConfluencePage {
 }
 
 function getConfluenceBaseUrl(ctx: JiraContext): string {
-  // Jira baseUrl is like https://company.atlassian.net/rest/api/3
-  // Confluence is at https://company.atlassian.net/wiki/...
-  const jiraBase = ctx.baseUrl;
-  const origin = jiraBase.replace(/\/rest\/.*$/, '');
-  return origin;
+  if (ctx.isOAuth) {
+    // OAuth baseUrl: https://api.atlassian.com/ex/jira/<cloud_id>
+    // Confluence OAuth base: https://api.atlassian.com/ex/confluence/<cloud_id>
+    return ctx.baseUrl.replace('/ex/jira/', '/ex/confluence/');
+  }
+  // Basic auth baseUrl: https://company.atlassian.net (strip /rest/... if present)
+  return ctx.baseUrl.replace(/\/rest\/.*$/, '');
 }
 
 export async function isConfluenceConfigured(userId: number): Promise<boolean> {

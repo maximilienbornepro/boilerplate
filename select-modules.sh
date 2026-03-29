@@ -24,30 +24,34 @@ warn() { echo -e "${YELLOW}  !${NC} $1"; }
 err()  { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
 # =============================================================================
-# Registry des modules disponibles
+# Registry des modules disponibles (bash 3 compatible — pas de declare -A)
 # =============================================================================
 
-# Chaque module est défini par :
-#   ID | Nom affiché | Description | Couleur SharedNav | Dépendances npm supplémentaires
+MODULES_ORDER=(conges roadmap suivitess delivery mon-cv rag)
 
-declare -A MODULE_NAMES=(
-  [conges]="Congés"
-  [roadmap]="Roadmap"
-  [suivitess]="SuiViTess"
-  [delivery]="Delivery Board"
-  [mon-cv]="Mon CV"
-)
+module_name() {
+  case "$1" in
+    conges)   echo "Congés" ;;
+    roadmap)  echo "Roadmap" ;;
+    suivitess) echo "SuiViTess" ;;
+    delivery) echo "Delivery Board" ;;
+    mon-cv)   echo "Mon CV" ;;
+    rag)      echo "RAG / Base de connaissances" ;;
+    *)        echo "$1" ;;
+  esac
+}
 
-declare -A MODULE_DESCRIPTIONS=(
-  [conges]="Gestion des congés et absences (calendrier annuel)"
-  [roadmap]="Planification Gantt interactif (drag, dépendances, marqueurs)"
-  [suivitess]="Suivi de sujets structurés (documents, snapshots, diff)"
-  [delivery]="Board de sprint planning avec grille drag & drop"
-  [mon-cv]="Gestion de CV avec import IA (Claude) et export PDF"
-)
-
-# Ordre d'affichage
-MODULES_ORDER=(conges roadmap suivitess delivery mon-cv)
+module_description() {
+  case "$1" in
+    conges)   echo "Gestion des congés et absences (calendrier annuel)" ;;
+    roadmap)  echo "Planification Gantt interactif (drag, dépendances, marqueurs)" ;;
+    suivitess) echo "Suivi de sujets structurés (documents, snapshots, diff)" ;;
+    delivery) echo "Board de sprint planning avec grille drag & drop" ;;
+    mon-cv)   echo "Gestion de CV avec import IA (Claude) et export PDF" ;;
+    rag)      echo "Base de connaissances vectorielle avec chat IA (Confluence, PDF)" ;;
+    *)        echo "" ;;
+  esac
+}
 
 # =============================================================================
 # Détection des modules actuellement présents
@@ -86,8 +90,8 @@ echo ""
 for i in "${!PRESENT_MODULES[@]}"; do
   mod="${PRESENT_MODULES[$i]}"
   num=$((i + 1))
-  echo -e "  ${BOLD}${num}.${NC} ${GREEN}${MODULE_NAMES[$mod]}${NC} ${DIM}($mod)${NC}"
-  echo -e "     ${MODULE_DESCRIPTIONS[$mod]}"
+  echo -e "  ${BOLD}${num}.${NC} ${GREEN}$(module_name "$mod")${NC} ${DIM}($mod)${NC}"
+  echo -e "     $(module_description "$mod")"
   echo ""
 done
 
@@ -140,10 +144,10 @@ echo ""
 echo -e "${BOLD}Récapitulatif :${NC}"
 echo ""
 for mod in "${SELECTED_MODULES[@]}"; do
-  echo -e "  ${GREEN}✓ ${MODULE_NAMES[$mod]}${NC} ($mod)"
+  echo -e "  ${GREEN}✓ $(module_name "$mod")${NC} ($mod)"
 done
 for mod in "${MODULES_TO_REMOVE[@]}"; do
-  echo -e "  ${RED}✗ ${MODULE_NAMES[$mod]}${NC} ($mod) — sera supprimé"
+  echo -e "  ${RED}✗ $(module_name "$mod")${NC} ($mod) — sera supprimé"
 done
 echo ""
 
@@ -167,7 +171,7 @@ log "Suppression des modules non sélectionnés..."
 # =============================================================================
 
 for mod in "${MODULES_TO_REMOVE[@]}"; do
-  log "Suppression de ${BOLD}${MODULE_NAMES[$mod]}${NC}..."
+  log "Suppression de ${BOLD}$(module_name "$mod")${NC}..."
 
   # Frontend
   rm -rf "apps/platform/src/modules/$mod"
@@ -189,7 +193,7 @@ for mod in "${MODULES_TO_REMOVE[@]}"; do
   # OpenSpec changes
   rm -rf "openspec/changes/module-$mod"
 
-  ok "${MODULE_NAMES[$mod]} supprimé"
+  ok "$(module_name "$mod") supprimé"
   echo ""
 done
 
@@ -203,23 +207,18 @@ log "Nettoyage des fichiers d'intégration..."
 ROUTER="apps/platform/src/router.tsx"
 if [ -f "$ROUTER" ]; then
   for mod in "${MODULES_TO_REMOVE[@]}"; do
-    # Déterminer le nom du composant
     case "$mod" in
-      conges) COMP="CongesApp" ;;
-      roadmap) COMP="RoadmapApp" ;;
+      conges)    COMP="CongesApp" ;;
+      roadmap)   COMP="RoadmapApp" ;;
       suivitess) COMP="SuivitessApp" ;;
-      delivery) COMP="DeliveryApp" ;;
-      mon-cv) COMP="MonCvApp" ;;
+      delivery)  COMP="DeliveryApp" ;;
+      mon-cv)    COMP="MonCvApp" ;;
+      rag)       COMP="RagApp" ;;
       *) continue ;;
     esac
 
-    # Supprimer le lazy import
     sed -i '' "/const ${COMP} = lazy/d" "$ROUTER" 2>/dev/null || true
-
-    # Supprimer les Route blocks (multi-line) — utiliser perl pour multi-line
     perl -i -0pe "s|        <Route\n          path=\"/${mod}/\*\"\n          element=\{\n            <SuspenseWrapper>\n              <${COMP}[^/]*/>\n            </SuspenseWrapper>\n          \}\n        />\n||gs" "$ROUTER" 2>/dev/null || true
-
-    # Fallback: supprimer lignes contenant le path du module
     sed -i '' "/${mod}\/\*/d" "$ROUTER" 2>/dev/null || true
     sed -i '' "/<${COMP}/d" "$ROUTER" 2>/dev/null || true
   done
@@ -230,9 +229,7 @@ fi
 VITE="apps/platform/vite.config.ts"
 if [ -f "$VITE" ]; then
   for mod in "${MODULES_TO_REMOVE[@]}"; do
-    # Supprimer le bloc proxy (4 lignes : commentaire, clé, target, rewrite + },)
     sed -i '' "/\/${mod}-api/,/},/d" "$VITE" 2>/dev/null || true
-    # Supprimer commentaire orphelin
     sed -i '' "/\/\/ .*${mod}/Id" "$VITE" 2>/dev/null || true
   done
   ok "vite.config.ts nettoyé"
@@ -242,22 +239,19 @@ fi
 INDEX="apps/platform/servers/unified/src/index.ts"
 if [ -f "$INDEX" ]; then
   for mod in "${MODULES_TO_REMOVE[@]}"; do
-    # Déterminer les noms de fonctions
     case "$mod" in
-      conges) INIT="initConges"; ROUTER_FN="createCongesRouter"; MOUNT="conges" ;;
-      roadmap) INIT="initRoadmap"; ROUTER_FN="createRoadmapRouter"; MOUNT="roadmap" ;;
+      conges)    INIT="initConges";    ROUTER_FN="createCongesRouter";    MOUNT="conges" ;;
+      roadmap)   INIT="initRoadmap";   ROUTER_FN="createRoadmapRouter";   MOUNT="roadmap" ;;
       suivitess) INIT="initSuivitess"; ROUTER_FN="createSuivitessRouter"; MOUNT="suivitess" ;;
-      delivery) INIT="initDelivery"; ROUTER_FN="createDeliveryRouter"; MOUNT="delivery" ;;
-      mon-cv) INIT="initMonCv"; ROUTER_FN="createMonCvRouter"; MOUNT="mon-cv" ;;
+      delivery)  INIT="initDelivery";  ROUTER_FN="createDeliveryRouter";  MOUNT="delivery" ;;
+      mon-cv)    INIT="initMonCv";     ROUTER_FN="createMonCvRouter";     MOUNT="mon-cv" ;;
+      rag)       INIT="initRag";       ROUTER_FN="createRagRouter";       MOUNT="rag" ;;
       *) continue ;;
     esac
 
-    # Supprimer import
     sed -i '' "/${INIT}/d" "$INDEX" 2>/dev/null || true
-    # Supprimer init + mount
     sed -i '' "/await ${INIT}/d" "$INDEX" 2>/dev/null || true
     sed -i '' "/${ROUTER_FN}/d" "$INDEX" 2>/dev/null || true
-    # Supprimer commentaire
     sed -i '' "/\/\/ .*$(echo $mod | sed 's/-/./g')/Id" "$INDEX" 2>/dev/null || true
   done
   ok "index.ts (serveur) nettoyé"
@@ -267,7 +261,6 @@ fi
 GATEWAY="apps/platform/servers/unified/src/modules/gateway.ts"
 if [ -f "$GATEWAY" ]; then
   for mod in "${MODULES_TO_REMOVE[@]}"; do
-    # Supprimer le module de AVAILABLE_APPS
     sed -i '' "s/, '$mod'//" "$GATEWAY" 2>/dev/null || true
     sed -i '' "s/'$mod', //" "$GATEWAY" 2>/dev/null || true
     sed -i '' "s/'$mod'//" "$GATEWAY" 2>/dev/null || true
@@ -279,7 +272,6 @@ fi
 CONSTANTS="packages/shared/src/components/SharedNav/constants.ts"
 if [ -f "$CONSTANTS" ]; then
   for mod in "${MODULES_TO_REMOVE[@]}"; do
-    # Supprimer le bloc de l'app (entre { id: 'mod' et },)
     perl -i -0pe "s|  \{\n    id: '${mod}',\n.*?\n  \},\n||gs" "$CONSTANTS" 2>/dev/null || true
   done
   ok "SharedNav/constants.ts nettoyé"
@@ -289,10 +281,8 @@ fi
 VITEST="vitest.config.ts"
 if [ -f "$VITEST" ]; then
   for mod in "${MODULES_TO_REMOVE[@]}"; do
-    # Supprimer les blocs server-mod et client-mod
     perl -i -0pe "s|      // Server: ${mod}\n      \{\n        test: \{\n.*?name: 'server-${mod}',\n.*?\n        \},\n      \},\n||gs" "$VITEST" 2>/dev/null || true
     perl -i -0pe "s|      // Client: ${mod}\n      \{\n        test: \{\n.*?name: 'client-${mod}',\n.*?\n        \},\n      \},\n||gs" "$VITEST" 2>/dev/null || true
-    # Fallback: supprimer par nom de projet
     perl -i -0pe "s|      \{\n        test: \{\n          name: 'server-${mod}',\n.*?\n        \},\n      \},\n||gs" "$VITEST" 2>/dev/null || true
     perl -i -0pe "s|      \{\n        test: \{\n          name: 'client-${mod}',\n.*?\n        \},\n      \},\n||gs" "$VITEST" 2>/dev/null || true
   done
@@ -316,7 +306,6 @@ fi
 echo ""
 log "Vérification..."
 
-# Lancer les tests
 if npm test 2>&1 | tail -3 | grep -q "passed"; then
   ok "Tous les tests passent"
 else
@@ -332,7 +321,7 @@ echo -e "${BOLD}${GREEN}✓ Modules configurés avec succès${NC}"
 echo ""
 echo -e "${BOLD}Modules actifs :${NC}"
 for mod in "${SELECTED_MODULES[@]}"; do
-  echo -e "  ${GREEN}●${NC} ${MODULE_NAMES[$mod]} ${DIM}(/$mod)${NC}"
+  echo -e "  ${GREEN}●${NC} $(module_name "$mod") ${DIM}(/$mod)${NC}"
 done
 echo ""
 
