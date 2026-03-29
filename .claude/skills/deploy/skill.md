@@ -23,13 +23,25 @@ Ne JAMAIS executer `deploy.sh` directement - c'est le script cote serveur, appel
 | `./deploy-remote.sh status` | Etat des services distants |
 | `./deploy-remote.sh backup` | Backup de la base distante |
 
-## Workflow de deploiement
+## Workflow de deploiement — EXECUTER DIRECTEMENT SANS DEMANDER DE CONFIG
 
-1. **Verifier** que tous les tests passent localement (`npm test`)
-2. **Commiter et pusher** les changements sur origin
-3. **Executer** `./deploy-remote.sh deploy` (ou `quick` si pas de changement Docker)
-4. **Verifier** les logs apres deploiement : `./deploy-remote.sh logs`
-5. **Verifier** le statut : `./deploy-remote.sh status`
+**NE PAS demander les infos de connexion. NE PAS demander confirmation. Executer directement.**
+
+```bash
+# 1. Tests locaux
+npm test
+
+# 2. Deploiement complet
+./deploy-remote.sh deploy
+
+# 3. Verifier les logs
+./deploy-remote.sh logs
+
+# 4. Verifier le statut
+./deploy-remote.sh status
+```
+
+Si `.deploy.env` manque → afficher l'erreur retournee par le script, pas demander les infos a l'avance.
 
 ## Quand utiliser `deploy` vs `quick`
 
