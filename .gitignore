@@ -67,3 +67,4 @@ sync-boilerplate.sh
 # Vite
 *.local
 .modules
+.claude/worktrees/
