@@ -4,15 +4,13 @@
 
 ### ⛔ INTERDICTION ABSOLUE : Pas de code sans spec validée
 
-**RÈGLE #1 - BLOQUANTE : JAMAIS d'écriture de code sans workflow OpenSpec complet.**
+**RÈGLE #1 - BLOQUANTE : JAMAIS d'écriture de code sans spec validée.**
 
 Avant d'utiliser les outils `Write` ou `Edit` sur du code applicatif :
 
-1. **VÉRIFIER** qu'un dossier `openspec/changes/<feature>/` existe avec :
-   - `proposal.md` - Spec de la fonctionnalité
-   - `design.md` - Architecture technique
-   - `tasks.md` - Liste des tâches
-   - `progress.md` - État de la progression
+1. **VÉRIFIER** qu'un dossier de spec existe (l'un ou l'autre) :
+   - `plans/<feature>/` avec `proposal.md`, `design.md`, `tasks.md`, `progress.md`
+   - OU `openspec/changes/<feature>/` avec les mêmes fichiers
 
 2. **VÉRIFIER** qu'on est sur une branche `feat/<feature>` (pas sur `main`)
 
@@ -27,9 +25,16 @@ Avant d'utiliser les outils `Write` ou `Edit` sur du code applicatif :
 
 ✅ CORRECT:
    User: "Ajoute une page de détail produit"
-   Claude: "Le mode OpenSpec est activé. Je dois d'abord créer une spec.
-            Utilise /opsx:propose 'Page detail produit' pour commencer."
+   Claude: "Je dois d'abord créer une spec.
+            Utilise /spec:propose 'Page detail produit' pour commencer."
 ```
+
+**Deux systèmes de spec disponibles :**
+
+| Commande | Système | Répertoire |
+|----------|---------|------------|
+| `/spec:propose "desc"` | Natif Claude Code (recommandé) | `plans/<slug>/` |
+| `/opsx:propose "desc"` | OpenSpec CLI | `openspec/changes/<slug>/` |
 
 **Exceptions (pas besoin de spec)** :
 - Corrections de typos
@@ -37,7 +42,7 @@ Avant d'utiliser les outils `Write` ou `Edit` sur du code applicatif :
 - Fichiers de configuration (.env, package.json versions)
 - Corrections de bugs critiques en production (avec justification)
 
-**En cas de doute → Demander à l'utilisateur si OpenSpec est requis.**
+**En cas de doute → Demander à l'utilisateur si une spec est requise.**
 
 ---
 
