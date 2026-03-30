@@ -140,6 +140,31 @@ export interface ProcessedImage {
 
 // ============ Adaptation Types ============
 
+// Job offer analysis (extracted by AI, cached for client-side scoring)
+export interface JobAnalysis {
+  requiredKeywords: string[];
+  preferredKeywords: string[];
+  exactJobTitle: string;
+  technologies: string[];
+  keyResponsibilities: string[];
+  domain: string;
+  atsHint: 'workday' | 'taleo' | 'sap' | 'unknown';
+}
+
+// ATS score breakdown (de-facto Jobscan model)
+export interface AtsScore {
+  overall: number;          // 0-100, weighted final score
+  keywordMatch: number;     // % required keywords found anywhere in CV
+  sectionCoverage: number;  // % required keywords found in 2+ distinct sections
+  titleMatch: boolean;      // CV title matches exact job title (token-exact)
+  breakdown: {
+    requiredFound: string[];
+    requiredMissing: string[];
+    multiSectionKeywords: string[];  // present in experience AND skills
+    singleSectionKeywords: string[]; // present in only one section
+  };
+}
+
 // Request to adapt CV to job offer
 export interface AdaptRequest {
   cvData: CVData;
@@ -155,6 +180,65 @@ export interface AdaptResponse {
     newProject?: Project;
     addedSkills: Record<string, string[]>;
   };
+  atsScore: {
+    before: AtsScore;
+    after: AtsScore;
+  };
+  jobAnalysis: JobAnalysis;
+}
+
+// Improvement result (second-pass targeted generation)
+export interface ImprovementResult {
+  additionalMissions: string[];
+  additionalSkills: Record<string, string[]>;
+  scoreAfter: AtsScore;
+}
+
+// ATS recommendation item
+export interface AtsRecommendationItem {
+  priority: 'critique' | 'important' | 'bonus';
+  action: string;      // ex: "Ajouter 'gestion de projet' dans les compétences"
+  example: string;     // ex: "Compétences → Gestion de projet Agile"
+  keywords: string[];  // mots-clés couverts par cette recommandation
+}
+
+// ATS recommendations response
+export interface AtsRecommendations {
+  recommendations: AtsRecommendationItem[];
+  currentScore: AtsScore;  // score computed at time of analysis (reflects current CV state)
+}
+
+// ============ Adaptation History Types ============
+
+// Full adaptation record (for detail view)
+export interface CVAdaptation {
+  id: number;
+  cvId: number;
+  userId: number;
+  jobOffer: string;
+  adaptedCv: CVData;
+  changes: {
+    newMissions: string[];
+    newProject?: Project;
+    addedSkills: Record<string, string[]>;
+  };
+  atsBefore: AtsScore;
+  atsAfter: AtsScore;
+  jobAnalysis: JobAnalysis;
+  name: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Lightweight adaptation record (for list view)
+export interface CVAdaptationListItem {
+  id: number;
+  cvId: number;
+  name: string | null;
+  jobOfferPreview: string;
+  atsAfterOverall: number;
+  missionsAdded: number;
+  createdAt: string;
 }
 
 // Request to modify adapted CV

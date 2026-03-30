@@ -1,0 +1,246 @@
+.adapt-detail-page {
+  padding: var(--spacing-lg);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.adapt-detail-loading,
+.adapt-detail-error {
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.adapt-detail-error-banner {
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--error);
+  border: 1px solid var(--error);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  font-size: 0.85rem;
+}
+
+.adapt-detail-header-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.adapt-detail-section {
+  margin-bottom: var(--spacing-lg);
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-md);
+  background: var(--bg-secondary);
+}
+
+.adapt-detail-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  margin-bottom: var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.adapt-detail-name-input,
+.adapt-detail-input {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  margin-bottom: var(--spacing-xs);
+}
+
+.adapt-detail-name-input:focus,
+.adapt-detail-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+/* ATS Score */
+.adapt-detail-score-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.adapt-detail-score-header {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.adapt-detail-score-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.adapt-detail-score-side {
+  text-align: center;
+}
+
+.adapt-detail-score-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  margin-bottom: 4px;
+}
+
+.adapt-detail-score-value {
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.detail-score-good { color: var(--success); }
+.detail-score-medium { color: var(--warning); }
+.detail-score-bad { color: var(--error); }
+
+.adapt-detail-score-arrow {
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+}
+
+.adapt-detail-score-delta {
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.adapt-detail-score-delta.positive { color: var(--success); }
+.adapt-detail-score-delta.negative { color: var(--error); }
+
+.adapt-detail-missing {
+  font-size: 0.8rem;
+  color: var(--error);
+  font-family: var(--font-mono);
+  margin-top: var(--spacing-xs);
+}
+
+/* Offer text */
+.adapt-detail-offer-text {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: var(--spacing-sm);
+  background: var(--bg-tertiary, var(--bg-primary));
+  border: 1px solid var(--border-color);
+}
+
+/* Editable missions */
+.adapt-detail-mission-row {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+  align-items: flex-start;
+}
+
+.adapt-detail-textarea {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.5;
+}
+
+.adapt-detail-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.adapt-detail-btn-remove {
+  background: transparent;
+  border: 1px solid var(--error);
+  color: var(--error);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px 8px;
+  line-height: 1;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.adapt-detail-btn-remove:hover {
+  opacity: 1;
+  background: var(--error);
+  color: var(--bg-primary);
+}
+
+.adapt-detail-btn-remove-inline {
+  font-size: 0.78rem;
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  color: var(--error);
+  cursor: pointer;
+  opacity: 0.7;
+  font-family: var(--font-mono);
+}
+
+.adapt-detail-btn-remove-inline:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* Skills */
+.adapt-detail-skills-group {
+  margin-bottom: var(--spacing-sm);
+}
+
+.adapt-detail-skills-cat {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  margin-bottom: var(--spacing-xs);
+  text-transform: capitalize;
+}
+
+.adapt-detail-skills-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.adapt-detail-skill-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-light, rgba(0, 217, 255, 0.1));
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+}
+
+.adapt-detail-skill-tag button {
+  background: transparent;
+  border: none;
+  color: var(--accent-primary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.adapt-detail-skill-tag button:hover {
+  opacity: 1;
+}

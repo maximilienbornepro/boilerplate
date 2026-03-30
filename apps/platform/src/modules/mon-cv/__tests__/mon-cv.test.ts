@@ -258,7 +258,20 @@ describe('Mon CV Frontend - Adaptation Types', () => {
     expect(request.customInstructions).toBe('Focus on leadership');
   });
 
-  it('should define AdaptResponse structure', () => {
+  it('should define AdaptResponse structure with atsScore', () => {
+    const mockAtsScore = {
+      overall: 75,
+      keywordMatch: 80,
+      sectionCoverage: 60,
+      titleMatch: true,
+      breakdown: {
+        requiredFound: ['Agile', 'gestion de projet'],
+        requiredMissing: ['reporting'],
+        multiSectionKeywords: ['Agile'],
+        singleSectionKeywords: ['gestion de projet'],
+      },
+    };
+
     const response = {
       adaptedCV: createEmptyCV(),
       changes: {
@@ -266,12 +279,21 @@ describe('Mon CV Frontend - Adaptation Types', () => {
         newProject: { title: 'New Project', description: 'Generated' },
         addedSkills: { competences: ['Leadership'] },
       },
+      atsScore: {
+        before: { ...mockAtsScore, overall: 42 },
+        after: mockAtsScore,
+      },
     };
 
     expect(response.adaptedCV).toBeDefined();
     expect(response.changes.newMissions).toHaveLength(2);
     expect(response.changes.newProject?.title).toBe('New Project');
     expect(response.changes.addedSkills.competences).toContain('Leadership');
+    expect(response.atsScore.before.overall).toBe(42);
+    expect(response.atsScore.after.overall).toBe(75);
+    expect(response.atsScore.after.titleMatch).toBe(true);
+    expect(response.atsScore.after.breakdown.requiredFound).toContain('Agile');
+    expect(response.atsScore.after.breakdown.requiredMissing).toContain('reporting');
   });
 
   it('should allow optional fields in AdaptRequest', () => {
@@ -296,6 +318,32 @@ describe('Mon CV Frontend - Adaptation Types', () => {
 
     expect(response.changes.newProject).toBeUndefined();
     expect(response.changes.newMissions).toHaveLength(0);
+  });
+
+  it('should compute ATS score delta correctly', () => {
+    const before = { overall: 42, keywordMatch: 40, sectionCoverage: 30, titleMatch: false };
+    const after = { overall: 78, keywordMatch: 85, sectionCoverage: 70, titleMatch: true };
+
+    const delta = after.overall - before.overall;
+    const deltaSign = delta > 0 ? '+' : '';
+
+    expect(delta).toBe(36);
+    expect(`${deltaSign}${delta} pts`).toBe('+36 pts');
+  });
+
+  it('should classify ATS score by color threshold', () => {
+    const getScoreClass = (score: number): string => {
+      if (score >= 75) return 'ats-good';
+      if (score >= 50) return 'ats-medium';
+      return 'ats-bad';
+    };
+
+    expect(getScoreClass(100)).toBe('ats-good');
+    expect(getScoreClass(75)).toBe('ats-good');
+    expect(getScoreClass(74)).toBe('ats-medium');
+    expect(getScoreClass(50)).toBe('ats-medium');
+    expect(getScoreClass(49)).toBe('ats-bad');
+    expect(getScoreClass(0)).toBe('ats-bad');
   });
 });
 

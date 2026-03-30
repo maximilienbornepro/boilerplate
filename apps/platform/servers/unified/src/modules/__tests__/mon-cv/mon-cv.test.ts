@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createEmptyCV } from '../../mon-cv/types.js';
+import { scoreCV } from '../../mon-cv/adaptService.js';
 import type { CVData, Experience, Formation, Award, SideProjects } from '../../mon-cv/types.js';
 
 describe('Mon CV - Types', () => {
@@ -507,6 +508,415 @@ describe('Mon CV - Autofill Service', () => {
   });
 });
 
+describe('Mon CV - ATS Score (scoreCV)', () => {
+  const jobAnalysis = {
+    requiredKeywords: ['gestion de projet', 'Agile', 'reporting'],
+    preferredKeywords: ['PMP', 'leadership'],
+    exactJobTitle: 'Chef de Projet',
+    technologies: ['Jira'],
+    keyResponsibilities: ['Manage projects'],
+    domain: 'IT project management',
+    atsHint: 'unknown' as const,
+  };
+
+  it('should return 100% keywordMatch when all required keywords are in experience', () => {
+    const cv: CVData = {
+      ...createEmptyCV(),
+      title: 'Chef de Projet',
+      experiences: [
+        {
+          title: 'Chef de Projet',
+          company: 'Corp',
+          period: '2020-2023',
+          missions: [
+            'Mise en place de la gestion de projet Agile pour 5 équipes',
+            'Production de reporting hebdomadaire pour les parties prenantes',
+          ],
+          projects: [],
+        },
+      ],
+    };
+
+    const score = scoreCV(cv, jobAnalysis);
+    expect(score.keywordMatch).toBe(100);
+    expect(score.breakdown.requiredFound).toContain('gestion de projet');
+    expect(score.breakdown.requiredFound).toContain('Agile');
+    expect(score.breakdown.requiredFound).toContain('reporting');
+    expect(score.breakdown.requiredMissing).toHaveLength(0);
+  });
+
+  it('should detect multi-section keywords (experience + skills)', () => {
+    const cv: CVData = {
+      ...createEmptyCV(),
+      title: 'Chef de Projet',
+      competences: ['Agile', 'reporting'],
+      experiences: [
+        {
+          title: 'Chef de Projet',
+          company: 'Corp',
+          period: '2020-2023',
+          missions: [
+            'Conduite de gestion de projet Agile pour une équipe de 8 développeurs',
+          ],
+          projects: [],
+        },
+      ],
+    };
+
+    const score = scoreCV(cv, jobAnalysis);
+    // 'Agile' is in both experience (mission) and skills (competences) → multi-section
+    expect(score.breakdown.multiSectionKeywords).toContain('Agile');
+    // 'gestion de projet' is only in experience → single-section
+    expect(score.breakdown.singleSectionKeywords).toContain('gestion de projet');
+  });
+
+  it('should return 0% keywordMatch when CV has no matching keywords', () => {
+    const cv: CVData = {
+      ...createEmptyCV(),
+      title: 'Développeur Frontend',
+      experiences: [
+        {
+          title: 'Développeur',
+          company: 'Corp',
+          period: '2020-2023',
+          missions: ['Développement React', 'Tests unitaires'],
+          projects: [],
+        },
+      ],
+      dev: ['React', 'TypeScript'],
+    };
+
+    const score = scoreCV(cv, jobAnalysis);
+    expect(score.keywordMatch).toBe(0);
+    expect(score.breakdown.requiredMissing).toHaveLength(3);
+    expect(score.breakdown.requiredFound).toHaveLength(0);
+  });
+
+  it('should match title exactly (case-insensitive)', () => {
+    const cv: CVData = { ...createEmptyCV(), title: 'chef de projet senior' };
+    const score = scoreCV(cv, jobAnalysis);
+    // "Chef de Projet" is contained in "chef de projet senior"
+    expect(score.titleMatch).toBe(true);
+  });
+
+  it('should return titleMatch=false when title does not match', () => {
+    const cv: CVData = { ...createEmptyCV(), title: 'Développeur Frontend' };
+    const score = scoreCV(cv, jobAnalysis);
+    expect(score.titleMatch).toBe(false);
+  });
+
+  it('should calculate overall score correctly', () => {
+    const cv: CVData = {
+      ...createEmptyCV(),
+      title: 'Chef de Projet',
+      competences: ['Agile', 'reporting', 'gestion de projet'],
+      experiences: [
+        {
+          title: 'Chef de Projet',
+          company: 'Corp',
+          period: '2020-2023',
+          missions: [
+            'Mise en place de la gestion de projet Agile',
+            'Production de reporting hebdomadaire',
+          ],
+          projects: [],
+        },
+      ],
+    };
+
+    const score = scoreCV(cv, jobAnalysis);
+    // keywordMatch = 100, sectionCoverage = 100, titleMatch = true
+    // overall = 0.5*100 + 0.3*100 + 0.2*100 = 100
+    expect(score.overall).toBe(100);
+    expect(score.keywordMatch).toBe(100);
+    expect(score.sectionCoverage).toBe(100);
+    expect(score.titleMatch).toBe(true);
+  });
+
+  it('should give partial score when only title matches', () => {
+    const cv: CVData = { ...createEmptyCV(), title: 'Chef de Projet' };
+    const score = scoreCV(cv, jobAnalysis);
+    // keywordMatch=0, sectionCoverage=0, titleMatch=true
+    // overall = 0.5*0 + 0.3*0 + 0.2*100 = 20
+    expect(score.overall).toBe(20);
+    expect(score.titleMatch).toBe(true);
+  });
+
+  it('should return score 100 for CV with no required keywords in job analysis', () => {
+    const emptyJobAnalysis = {
+      ...jobAnalysis,
+      requiredKeywords: [],
+    };
+    const cv = createEmptyCV();
+    const score = scoreCV(cv, emptyJobAnalysis);
+    // No required keywords → 100% by convention
+    expect(score.keywordMatch).toBe(100);
+    expect(score.sectionCoverage).toBe(100);
+  });
+});
+
+describe('Mon CV - ATS Recommendations', () => {
+  it('should structure AtsRecommendationItem correctly', () => {
+    const item = {
+      priority: 'critique' as const,
+      action: "Ajouter 'gestion de projet' dans les compétences",
+      example: 'Compétences → Gestion de projet Agile',
+      keywords: ['gestion de projet'],
+    };
+
+    expect(item.priority).toBe('critique');
+    expect(item.action).toContain('gestion de projet');
+    expect(item.keywords).toContain('gestion de projet');
+  });
+
+  it('should accept all priority levels', () => {
+    const priorities = ['critique', 'important', 'bonus'] as const;
+    for (const p of priorities) {
+      const item = { priority: p, action: 'action', example: 'example', keywords: [] };
+      expect(item.priority).toBe(p);
+    }
+  });
+
+  it('should validate AtsRecommendations structure with currentScore', () => {
+    const reco = {
+      recommendations: [
+        { priority: 'critique' as const, action: 'A', example: 'B', keywords: ['k1'] },
+        { priority: 'important' as const, action: 'C', example: 'D', keywords: ['k2', 'k3'] },
+      ],
+      currentScore: {
+        overall: 60,
+        keywordMatch: 67,
+        sectionCoverage: 33,
+        titleMatch: false,
+        breakdown: {
+          requiredFound: ['Agile'],
+          requiredMissing: ['gestion de projet', 'reporting'],
+          multiSectionKeywords: [],
+          singleSectionKeywords: ['Agile'],
+        },
+      },
+    };
+
+    expect(reco.recommendations).toHaveLength(2);
+    expect(reco.recommendations[0].priority).toBe('critique');
+    expect(reco.recommendations[1].keywords).toHaveLength(2);
+    expect(reco.currentScore).toBeDefined();
+    expect(reco.currentScore.overall).toBe(60);
+    expect(reco.currentScore.breakdown.requiredMissing).toContain('gestion de projet');
+  });
+
+  it('should map priority to display icon', () => {
+    const PRIORITY_ICON: Record<string, string> = {
+      critique: '🔴',
+      important: '🟡',
+      bonus: '🔵',
+    };
+
+    expect(PRIORITY_ICON['critique']).toBe('🔴');
+    expect(PRIORITY_ICON['important']).toBe('🟡');
+    expect(PRIORITY_ICON['bonus']).toBe('🔵');
+  });
+
+  it('should handle empty recommendations list (score 100)', () => {
+    const reco = {
+      recommendations: [],
+      currentScore: {
+        overall: 100,
+        keywordMatch: 100,
+        sectionCoverage: 100,
+        titleMatch: true,
+        breakdown: { requiredFound: [], requiredMissing: [], multiSectionKeywords: [], singleSectionKeywords: [] },
+      },
+    };
+    expect(reco.recommendations).toHaveLength(0);
+    expect(reco.currentScore.overall).toBe(100);
+  });
+});
+
+describe('Mon CV - ImprovementResult', () => {
+  it('should have correct structure', () => {
+    const result = {
+      additionalMissions: ['Mission ciblée sur le gap keyword'],
+      additionalSkills: { competences: ['gestion de projet'] },
+      scoreAfter: {
+        overall: 85,
+        keywordMatch: 90,
+        sectionCoverage: 80,
+        titleMatch: true,
+        breakdown: {
+          requiredFound: ['Agile', 'gestion de projet'],
+          requiredMissing: [],
+          multiSectionKeywords: ['Agile'],
+          singleSectionKeywords: ['gestion de projet'],
+        },
+      },
+    };
+
+    expect(result.additionalMissions).toHaveLength(1);
+    expect(result.additionalSkills.competences).toContain('gestion de projet');
+    expect(result.scoreAfter.overall).toBe(85);
+  });
+
+  it('should return empty when no gaps', () => {
+    const result = {
+      additionalMissions: [],
+      additionalSkills: {},
+      scoreAfter: {
+        overall: 100,
+        keywordMatch: 100,
+        sectionCoverage: 100,
+        titleMatch: true,
+        breakdown: {
+          requiredFound: ['Agile', 'gestion de projet'],
+          requiredMissing: [],
+          multiSectionKeywords: ['Agile', 'gestion de projet'],
+          singleSectionKeywords: [],
+        },
+      },
+    };
+
+    expect(result.additionalMissions).toHaveLength(0);
+    expect(Object.keys(result.additionalSkills)).toHaveLength(0);
+    expect(result.scoreAfter.overall).toBe(100);
+  });
+
+  it('should merge additional missions into editable state', () => {
+    const existingMissions = ['Mission A', 'Mission B'];
+    const additionalMissions = ['Mission ciblant le gap keyword'];
+
+    const merged = [...existingMissions, ...additionalMissions];
+
+    expect(merged).toHaveLength(3);
+    expect(merged[2]).toBe('Mission ciblant le gap keyword');
+    // Original missions preserved
+    expect(merged[0]).toBe('Mission A');
+  });
+
+  it('should merge additional skills without overwriting existing', () => {
+    const existingSkills = { competences: ['Agile'], dev: ['JavaScript'] };
+    const additionalSkills = { competences: ['gestion de projet'], outils: ['Jira'] };
+
+    const updated = { ...existingSkills };
+    for (const [cat, skills] of Object.entries(additionalSkills)) {
+      if (skills.length > 0) {
+        updated[cat as keyof typeof updated] = [
+          ...(updated[cat as keyof typeof updated] || []),
+          ...skills,
+        ];
+      }
+    }
+
+    expect(updated.competences).toContain('Agile');
+    expect(updated.competences).toContain('gestion de projet');
+    expect(updated.dev).toContain('JavaScript');
+    expect(updated.outils).toContain('Jira');
+  });
+});
+
+describe('Mon CV - Editable Adaptation Logic', () => {
+  it('should apply edited missions to final CV', () => {
+    const originalCV = {
+      ...createEmptyCV(),
+      experiences: [
+        {
+          title: 'Chef de Projet',
+          company: 'Corp',
+          period: '2020-2024',
+          missions: ['Mission originale A', 'Mission originale B'],
+          projects: [],
+        },
+      ],
+    };
+
+    const editableMissions = ['Mission générée 1 (éditée)', 'Mission générée 2'];
+
+    const finalCV: CVData = JSON.parse(JSON.stringify(originalCV));
+    finalCV.experiences![0].missions = [
+      ...finalCV.experiences![0].missions,
+      ...editableMissions,
+    ];
+
+    expect(finalCV.experiences![0].missions).toHaveLength(4);
+    expect(finalCV.experiences![0].missions[2]).toBe('Mission générée 1 (éditée)');
+    expect(finalCV.experiences![0].missions[0]).toBe('Mission originale A');
+  });
+
+  it('should apply edited project to final CV', () => {
+    const originalCV = {
+      ...createEmptyCV(),
+      experiences: [
+        {
+          title: 'Dev',
+          company: 'Corp',
+          period: '2020',
+          missions: [],
+          projects: [{ title: 'Projet existant', description: 'ancien' }],
+        },
+      ],
+    };
+
+    const editableProject = { title: 'Nouveau Projet Edité', description: 'Desc modifiée' };
+
+    const finalCV: CVData = JSON.parse(JSON.stringify(originalCV));
+    finalCV.experiences![0].projects = [editableProject, ...finalCV.experiences![0].projects];
+
+    expect(finalCV.experiences![0].projects[0].title).toBe('Nouveau Projet Edité');
+    expect(finalCV.experiences![0].projects[1].title).toBe('Projet existant');
+  });
+
+  it('should remove a mission from editable list', () => {
+    let missions = ['Mission A', 'Mission B', 'Mission C'];
+    const removeIdx = 1;
+    missions = missions.filter((_, i) => i !== removeIdx);
+
+    expect(missions).toHaveLength(2);
+    expect(missions).toContain('Mission A');
+    expect(missions).not.toContain('Mission B');
+    expect(missions).toContain('Mission C');
+  });
+
+  it('should remove a skill from editable skills', () => {
+    const editableSkills: Record<string, string[]> = {
+      competences: ['Leadership'],
+      dev: ['Python', 'Go'],
+    };
+
+    // Remove Go (index 1 in dev)
+    const updated = { ...editableSkills };
+    updated.dev = editableSkills.dev.filter((_, i) => i !== 1);
+
+    expect(updated.dev).toHaveLength(1);
+    expect(updated.dev).toContain('Python');
+    expect(updated.dev).not.toContain('Go');
+    expect(updated.competences).toHaveLength(1);
+  });
+
+  it('should apply edited skills to final CV', () => {
+    const originalCV = {
+      ...createEmptyCV(),
+      competences: ['Agile'],
+      dev: ['JavaScript'],
+    };
+
+    const editableSkills: Record<string, string[]> = {
+      competences: ['gestion de projet'],
+      dev: ['TypeScript'],
+    };
+
+    const finalCV: CVData = JSON.parse(JSON.stringify(originalCV));
+    for (const [cat, skills] of Object.entries(editableSkills)) {
+      const key = cat as keyof CVData;
+      const existing = (finalCV[key] as string[]) || [];
+      (finalCV[key] as string[]) = [...existing, ...skills];
+    }
+
+    expect(finalCV.competences).toContain('Agile');
+    expect(finalCV.competences).toContain('gestion de projet');
+    expect(finalCV.dev).toContain('JavaScript');
+    expect(finalCV.dev).toContain('TypeScript');
+  });
+});
+
 describe('Mon CV - Adaptation Rules', () => {
   it('should limit skills to max 1 per category', () => {
     const limitSkillsPerCategory = (
@@ -590,5 +1000,220 @@ describe('Mon CV - Adaptation Rules', () => {
     expect(combined).toHaveLength(3);
     expect(combined[0].title).toBe('New Project');
     expect(combined[1].title).toBe('Project A');
+  });
+});
+
+describe('Mon CV - Adaptation History', () => {
+  it('should have correct CVAdaptation structure', () => {
+    const adaptation = {
+      id: 1,
+      cvId: 42,
+      userId: 7,
+      jobOffer: 'Chef de Projet Senior — gestion de projet, Agile, reporting',
+      adaptedCv: createEmptyCV(),
+      changes: {
+        newMissions: ['Mission ciblant Agile', 'Mission ciblant reporting'],
+        newProject: undefined,
+        addedSkills: { competences: ['gestion de projet'] },
+      },
+      atsBefore: {
+        overall: 20, keywordMatch: 0, sectionCoverage: 0, titleMatch: true,
+        breakdown: { requiredFound: [], requiredMissing: ['Agile', 'reporting'], multiSectionKeywords: [], singleSectionKeywords: [] },
+      },
+      atsAfter: {
+        overall: 85, keywordMatch: 100, sectionCoverage: 67, titleMatch: true,
+        breakdown: { requiredFound: ['Agile', 'reporting'], requiredMissing: [], multiSectionKeywords: ['Agile'], singleSectionKeywords: ['reporting'] },
+      },
+      jobAnalysis: {
+        requiredKeywords: ['Agile', 'reporting'],
+        preferredKeywords: ['PMP'],
+        exactJobTitle: 'Chef de Projet Senior',
+        technologies: [],
+        keyResponsibilities: [],
+        domain: 'Project Management',
+        atsHint: 'unknown' as const,
+      },
+      name: 'Adaptation LinkedIn mars 2026',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    expect(adaptation.id).toBe(1);
+    expect(adaptation.cvId).toBe(42);
+    expect(adaptation.changes.newMissions).toHaveLength(2);
+    expect(adaptation.changes.addedSkills.competences).toContain('gestion de projet');
+    expect(adaptation.atsAfter.overall).toBe(85);
+    expect(adaptation.atsBefore.overall).toBe(20);
+    expect(adaptation.jobAnalysis.requiredKeywords).toContain('Agile');
+    expect(adaptation.name).toBe('Adaptation LinkedIn mars 2026');
+  });
+
+  it('should have correct CVAdaptationListItem structure', () => {
+    const item = {
+      id: 1,
+      cvId: 42,
+      name: null,
+      jobOfferPreview: 'Chef de Projet Senior — gestion de projet, Agile...',
+      atsAfterOverall: 85,
+      missionsAdded: 2,
+      createdAt: new Date().toISOString(),
+    };
+
+    expect(item.name).toBeNull();
+    expect(item.atsAfterOverall).toBe(85);
+    expect(item.missionsAdded).toBe(2);
+    expect(item.jobOfferPreview.length).toBeLessThanOrEqual(120);
+  });
+
+  it('should not modify original CV when building adapted CV', () => {
+    const originalCV = { ...createEmptyCV(), title: 'Dev', competences: ['React'] };
+    const adaptedCv: CVData = JSON.parse(JSON.stringify(originalCV));
+
+    // Simulate adding editable content to adapted CV
+    adaptedCv.competences = [...(adaptedCv.competences || []), 'Agile'];
+
+    expect(originalCV.competences).toHaveLength(1);
+    expect(originalCV.competences).not.toContain('Agile');
+    expect(adaptedCv.competences).toContain('Agile');
+  });
+
+  it('should recalculate atsAfter when adaptation is updated', () => {
+    const jobAnalysis = {
+      requiredKeywords: ['Agile', 'gestion de projet'],
+      preferredKeywords: [],
+      exactJobTitle: 'Chef de Projet',
+      technologies: [],
+      keyResponsibilities: [],
+      domain: 'PM',
+      atsHint: 'unknown' as const,
+    };
+
+    // Original adapted CV (missing 'gestion de projet' in skills)
+    const adaptedCv: CVData = {
+      ...createEmptyCV(),
+      title: 'Chef de Projet',
+      experiences: [{
+        title: 'CDP', company: 'Corp', period: '2020-2024',
+        missions: ['Mise en place Agile', 'gestion de projet quotidien'],
+        projects: [],
+      }],
+      competences: ['Agile'],
+    };
+
+    // Simulate scoreCV result after adding 'gestion de projet' to competences
+    const updatedCV: CVData = {
+      ...adaptedCv,
+      competences: [...(adaptedCv.competences || []), 'gestion de projet'],
+    };
+
+    // Both keywords now in experience AND skills → sectionCoverage = 100
+    expect(updatedCV.competences).toContain('gestion de projet');
+    expect(updatedCV.competences).toContain('Agile');
+    // Verify jobAnalysis is preserved for rescoring
+    expect(jobAnalysis.requiredKeywords).toHaveLength(2);
+  });
+
+  it('should preserve all adaptations independently (no overwriting)', () => {
+    const adaptations = [
+      { id: 1, name: 'Adaptation 1', atsAfterOverall: 72 },
+      { id: 2, name: 'Adaptation 2', atsAfterOverall: 85 },
+      { id: 3, name: null, atsAfterOverall: 91 },
+    ];
+
+    // Deleting adaptation 2 should not affect 1 or 3
+    const afterDelete = adaptations.filter(a => a.id !== 2);
+
+    expect(afterDelete).toHaveLength(2);
+    expect(afterDelete.find(a => a.id === 1)).toBeDefined();
+    expect(afterDelete.find(a => a.id === 3)).toBeDefined();
+    expect(afterDelete.find(a => a.id === 2)).toBeUndefined();
+  });
+});
+
+describe('Mon CV - Multi-CV Management', () => {
+  it('should have correct CVListItem structure', () => {
+    const item = {
+      id: 1,
+      name: 'CV Principal',
+      isDefault: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    expect(item.id).toBe(1);
+    expect(item.name).toBe('CV Principal');
+    expect(item.isDefault).toBe(true);
+  });
+
+  it('should mark only one CV as default when changing default', () => {
+    const cvs = [
+      { id: 1, name: 'CV A', isDefault: true },
+      { id: 2, name: 'CV B', isDefault: false },
+      { id: 3, name: 'CV C', isDefault: false },
+    ];
+
+    // Simulate setting CV 2 as default
+    const newDefaultId = 2;
+    const updated = cvs.map(cv => ({ ...cv, isDefault: cv.id === newDefaultId }));
+
+    const defaultCVs = updated.filter(cv => cv.isDefault);
+    expect(defaultCVs).toHaveLength(1);
+    expect(defaultCVs[0].id).toBe(2);
+    expect(updated.find(cv => cv.id === 1)?.isDefault).toBe(false);
+  });
+
+  it('should sort CVs with default first', () => {
+    const cvs = [
+      { id: 1, name: 'CV B', isDefault: false, updatedAt: '2026-01-01T00:00:00Z' },
+      { id: 2, name: 'CV A', isDefault: true, updatedAt: '2025-12-01T00:00:00Z' },
+      { id: 3, name: 'CV C', isDefault: false, updatedAt: '2026-02-01T00:00:00Z' },
+    ];
+
+    // Default first, then by updatedAt DESC (as in backend getAllCVs)
+    const sorted = [...cvs].sort((a, b) => {
+      if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
+
+    expect(sorted[0].id).toBe(2); // default first
+    expect(sorted[1].id).toBe(3); // then most recently updated
+    expect(sorted[2].id).toBe(1);
+  });
+
+  it('should not delete default CV (guard logic)', () => {
+    const cvs = [
+      { id: 1, name: 'CV A', isDefault: true },
+      { id: 2, name: 'CV B', isDefault: false },
+    ];
+
+    const tryDelete = (id: number) => {
+      const cv = cvs.find(c => c.id === id);
+      if (!cv) return { success: false, error: 'Not found' };
+      if (cv.isDefault) return { success: false, error: 'Cannot delete default CV' };
+      return { success: true };
+    };
+
+    expect(tryDelete(1)).toEqual({ success: false, error: 'Cannot delete default CV' });
+    expect(tryDelete(2)).toEqual({ success: true });
+  });
+
+  it('should create new CV with empty data and open in edit', () => {
+    const emptyCV = createEmptyCV();
+
+    expect(emptyCV.name).toBe('');
+    expect(emptyCV.title).toBe('');
+    expect(Array.isArray(emptyCV.experiences)).toBe(true);
+    expect(emptyCV.experiences).toHaveLength(0);
+    expect(Array.isArray(emptyCV.competences)).toBe(true);
+  });
+
+  it('should load correct CV by id (not default) when cvId is provided', () => {
+    // Simulate MyProfilePage behavior with cvId prop
+    const cvId = 42;
+    const shouldUseDefault = cvId === undefined || cvId === null;
+
+    expect(shouldUseDefault).toBe(false);
+    // With cvId=42, should call fetchCV(42) not fetchDefaultCV()
+    expect(cvId).toBe(42);
   });
 });

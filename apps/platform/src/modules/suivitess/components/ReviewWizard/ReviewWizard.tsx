@@ -100,11 +100,12 @@ interface ReviewWizardProps {
   docId?: string;
   onBack?: () => void;
   onCopyReady?: (copyFn: (() => void) | null) => void;
+  onExportJsonReady?: (exportFn: (() => void) | null) => void;
   onSaveAllReady?: (saveFn: (() => Promise<void>) | null) => void;
   onUnsavedChange?: (hasUnsaved: boolean) => void;
 }
 
-export function ReviewWizard({ docId, onBack, onCopyReady, onSaveAllReady, onUnsavedChange }: ReviewWizardProps) {
+export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, onSaveAllReady, onUnsavedChange }: ReviewWizardProps) {
   const [step, setStep] = useState<WizardStep>(docId ? 'review' : 'select');
   const [selectedDoc, setSelectedDoc] = useState<string>(docId || '');
   const [docTitle, setDocTitle] = useState<string>('');
@@ -683,6 +684,43 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onSaveAllReady, onUns
       if (onCopyReady) onCopyReady(null);
     };
   }, [sections.length, onCopyReady, handleCopyTable]);
+
+  const handleExportJson = useCallback(() => {
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      document: docTitle,
+      sections: sections.map(section => ({
+        name: section.name,
+        subjects: section.subjects.map(subject => ({
+          title: subject.title,
+          situation: subject.situation,
+          status: subject.status,
+          responsibility: subject.responsibility,
+        })),
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeName = (docTitle || 'suivitess').replace(/[^a-zA-Z0-9_\-]/g, '_');
+    a.href = url;
+    a.download = `${safeName}_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    addToast({ type: 'success', message: 'Export JSON téléchargé.' });
+  }, [sections, docTitle]);
+
+  useEffect(() => {
+    if (onExportJsonReady && sections.length > 0) {
+      onExportJsonReady(handleExportJson);
+    }
+    return () => {
+      if (onExportJsonReady) onExportJsonReady(null);
+    };
+  }, [sections.length, onExportJsonReady, handleExportJson]);
 
   useEffect(() => {
     if (onSaveAllReady && sections.length > 0) {
