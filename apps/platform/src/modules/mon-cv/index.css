@@ -16,13 +16,3 @@
   background: var(--bg-primary);
 }
 
-/* Primary header button */
-.module-header-btn-primary {
-  background: var(--accent-color) !important;
-  color: var(--bg-primary) !important;
-  border-color: var(--accent-color) !important;
-}
-
-.module-header-btn-primary:hover {
-  background: var(--accent-hover) !important;
-}
