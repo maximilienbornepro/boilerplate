@@ -6,7 +6,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Task } from '../../types';
-import { TASK_COLORS } from '../../utils/taskUtils';
 import * as api from '../../services/api';
 import type { LinkedSubject } from '../../services/api';
 import { searchSubjects } from '../../../suivitess/services/api';
@@ -73,8 +72,6 @@ export function SubjectsPanel({
   // ── Task editing ──────────────────────────────────────────────────────
   const [taskName, setTaskName] = useState(task.name);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const colorPickerRef = useRef<HTMLDivElement>(null);
 
   // Sync when the task prop changes (user clicks another task)
   useEffect(() => {
@@ -89,10 +86,6 @@ export function SubjectsPanel({
       setTaskName(task.name); // revert if empty
     }
   }, [task.id, task.name, taskName, onTaskUpdate]);
-
-  const saveColor = useCallback((color: string) => {
-    onTaskUpdate(task.id, { color });
-  }, [task.id, onTaskUpdate]);
 
   const handleCopyEmbed = useCallback(async () => {
     if (!planningId) return;
@@ -151,7 +144,6 @@ export function SubjectsPanel({
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowDropdown(false);
-      if (colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node)) setShowColorPicker(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -204,7 +196,10 @@ export function SubjectsPanel({
       {/* ── Header ── */}
       <div className="sp-header">
         <div className="sp-header-info">
-          <div className="sp-header-label">TÂCHE</div>
+          <div className="sp-header-label">
+            <span className="sp-task-color-dot" style={{ backgroundColor: task.color }} />
+            TÂCHE
+          </div>
           <input
             className="sp-task-name-input"
             value={taskName}
@@ -332,29 +327,6 @@ export function SubjectsPanel({
 
       {/* ── Compact footer ── */}
       <div className="sp-footer">
-        {/* Color picker trigger */}
-        <div className="sp-footer-color-wrap" ref={colorPickerRef}>
-          <button
-            className="sp-footer-color-btn"
-            style={{ backgroundColor: task.color }}
-            onClick={() => setShowColorPicker(prev => !prev)}
-            title="Couleur de la tâche"
-          />
-          {showColorPicker && (
-            <div className="sp-color-popover">
-              {TASK_COLORS.map(color => (
-                <button
-                  key={color}
-                  className={`sp-color-swatch ${task.color === color ? 'sp-color-swatch--selected' : ''}`}
-                  style={{ backgroundColor: color }}
-                  onClick={() => { saveColor(color); setShowColorPicker(false); }}
-                  title={color}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
         <div className="sp-footer-actions">
           {planningId && (
             <button

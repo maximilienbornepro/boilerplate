@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Task } from '../../types';
-import { TASK_COLORS } from '../../utils/taskUtils';
 import * as api from '../../services/api';
 import type { LinkedSubject } from '../../services/api';
 import { searchSubjects } from '../../../suivitess/services/api';
@@ -133,15 +132,6 @@ export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, int
           <div className={styles.formGroup}>
             <label htmlFor="name">Nom *</label>
             <input id="name" type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Nom de la tache" required autoFocus />
-          </div>
-
-          <div className={styles.formGroup}>
-            <label>Couleur</label>
-            <div className={styles.colorPicker}>
-              {TASK_COLORS.map((color) => (
-                <button key={color} type="button" className={`${styles.colorOption} ${formData.color === color ? styles.selected : ''}`} style={{ backgroundColor: color }} onClick={() => setFormData({ ...formData, color })} />
-              ))}
-            </div>
           </div>
 
           {/* SuiviTess subjects — shown when editing an existing task (always available) */}

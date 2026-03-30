@@ -187,16 +187,42 @@
   border-top: 1px solid var(--border-light);
 }
 
-.cv-list-card__btn {
-  flex: 1;
+/* Card action buttons */
+.cv-card-btn {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  font-size: var(--font-size-sm);
+  gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+  flex: 1;
   min-width: 0;
 }
+.cv-card-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
 
-.cv-list-card__btn--adapt {
-  display: flex;
+.cv-card-btn--primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--bg-primary);
+}
+.cv-card-btn--primary:hover {
+  opacity: 0.9;
+}
+
+.cv-card-btn--adapt {
+  display: inline-flex;
   align-items: center;
   gap: var(--spacing-xs);
 }

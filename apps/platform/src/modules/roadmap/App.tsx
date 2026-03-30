@@ -229,10 +229,18 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
         const startDate = today.toISOString().split('T')[0];
         const end = new Date(today); end.setDate(end.getDate() + 4);
         const endDate = end.toISOString().split('T')[0];
+        // Auto-assign color: root tasks get the next unused color, children inherit parent color
+        let autoColor: string;
+        if (data.parentId) {
+          const parentTask = tasks.find(t => t.id === data.parentId);
+          autoColor = parentTask?.color ?? getNextColor(tasks.filter(t => !t.parentId).map(t => t.color));
+        } else {
+          autoColor = getNextColor(tasks.filter(t => !t.parentId).map(t => t.color));
+        }
         const task = await api.createTask({
           planningId: selectedPlanning.id,
           name: data.name,
-          color: data.color,
+          color: autoColor,
           parentId: data.parentId || null,
           description: '',
           startDate,
@@ -309,10 +317,16 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
   }, [selectedPlanning]);
 
   const handleUpdateMarker = useCallback(async (markerId: string, data: Partial<{ name: string; markerDate: string; color: string; taskId: string | null }>) => {
-    setMarkers(prev => prev.map(m => m.id === markerId ? { ...m, ...data } : m));
-    try { await api.updateMarker(markerId, data); }
+    // If a task is being linked, inherit its color
+    let updatedData = { ...data };
+    if ('taskId' in data && data.taskId !== null && data.taskId !== undefined) {
+      const linkedTask = tasks.find(t => t.id === data.taskId);
+      if (linkedTask) updatedData = { ...updatedData, color: linkedTask.color };
+    }
+    setMarkers(prev => prev.map(m => m.id === markerId ? { ...m, ...updatedData } : m));
+    try { await api.updateMarker(markerId, updatedData); }
     catch { setError('Erreur lors de la mise a jour du marqueur'); if (selectedPlanning) api.fetchMarkers(selectedPlanning.id).then(setMarkers).catch(() => {}); }
-  }, [selectedPlanning]);
+  }, [selectedPlanning, tasks]);
 
   const handleDeleteMarker = useCallback(async (markerId: string) => {
     setMarkers(prev => prev.filter(m => m.id !== markerId));

@@ -259,19 +259,19 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations, onBack }: CVListPag
                   {/* Actions */}
                   <div className="cv-list-card__actions">
                     <button
-                      className="module-header-btn module-header-btn-primary cv-list-card__btn"
+                      className="cv-card-btn cv-card-btn--primary"
                       onClick={() => onEdit(cv.id)}
                     >
                       Éditer
                     </button>
                     <button
-                      className="module-header-btn cv-list-card__btn"
+                      className="cv-card-btn"
                       onClick={() => onAdapt(cv.id)}
                     >
                       Adapter
                     </button>
                     <button
-                      className="module-header-btn cv-list-card__btn cv-list-card__btn--adapt"
+                      className="cv-card-btn cv-card-btn--adapt"
                       onClick={() => onAdaptations(cv.id)}
                     >
                       Adaptations
