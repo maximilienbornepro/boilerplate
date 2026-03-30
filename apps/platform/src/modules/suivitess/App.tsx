@@ -11,6 +11,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const { docId } = useParams<{ docId: string }>();
   const navigate = useNavigate();
   const [copyFn, setCopyFn] = useState<(() => void) | null>(null);
+  const [exportJsonFn, setExportJsonFn] = useState<(() => void) | null>(null);
   const [saveFn, setSaveFn] = useState<(() => Promise<void>) | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -25,6 +26,10 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
 
   const handleCopyReady = useCallback((fn: (() => void) | null) => {
     setCopyFn(() => fn);
+  }, []);
+
+  const handleExportJsonReady = useCallback((fn: (() => void) | null) => {
+    setExportJsonFn(() => fn);
   }, []);
 
   const handleSaveAllReady = useCallback((fn: (() => Promise<void>) | null) => {
@@ -74,6 +79,14 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
             {isSaving ? 'Sauvegarde...' : 'Sauvegarder'}
           </button>
         )}
+        {exportJsonFn && (
+          <button
+            className="module-header-btn"
+            onClick={exportJsonFn}
+          >
+            Export JSON
+          </button>
+        )}
         {copyFn && (
           <button
             className="module-header-btn module-header-btn-primary"
@@ -111,6 +124,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           docId={docId}
           onBack={handleBack}
           onCopyReady={handleCopyReady}
+          onExportJsonReady={handleExportJsonReady}
           onSaveAllReady={handleSaveAllReady}
           onUnsavedChange={setHasUnsavedChanges}
         />

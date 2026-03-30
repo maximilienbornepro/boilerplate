@@ -15,9 +15,10 @@ import './MyProfilePage.css';
 
 interface MyProfilePageProps {
   onNavigate?: (path: string) => void;
+  cvId?: number;  // If provided, load and save this specific CV instead of default
 }
 
-export function MyProfilePage({ onNavigate }: MyProfilePageProps) {
+export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
   const [cv, setCv] = useState<CV | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,7 +45,7 @@ export function MyProfilePage({ onNavigate }: MyProfilePageProps) {
   const loadCV = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await api.fetchDefaultCV();
+      const data = cvId ? await api.fetchCV(cvId) : await api.fetchDefaultCV();
       setCv(data);
     } catch (err: any) {
       console.error('Failed to load CV:', err);
@@ -52,7 +53,7 @@ export function MyProfilePage({ onNavigate }: MyProfilePageProps) {
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [cvId, addToast]);
 
   useEffect(() => {
     loadCV();
@@ -62,7 +63,9 @@ export function MyProfilePage({ onNavigate }: MyProfilePageProps) {
   const saveCV = useCallback(async (cvData: CVData) => {
     try {
       setSaving(true);
-      const updated = await api.updateDefaultCV(cvData);
+      const updated = cvId
+        ? await api.updateCV(cvId, { cvData })
+        : await api.updateDefaultCV(cvData);
       setCv(updated);
     } catch (err: any) {
       console.error('Failed to save CV:', err);
@@ -70,7 +73,7 @@ export function MyProfilePage({ onNavigate }: MyProfilePageProps) {
     } finally {
       setSaving(false);
     }
-  }, [addToast]);
+  }, [cvId, addToast]);
 
   const handleChange = useCallback((updates: Partial<CVData>) => {
     if (!cv) return;
@@ -99,9 +102,11 @@ export function MyProfilePage({ onNavigate }: MyProfilePageProps) {
   }, []);
 
   const handleBack = useCallback(() => {
-    if (onNavigate) onNavigate('/');
+    // If viewing a specific CV (not default), go back to CV list
+    if (cvId && onNavigate) onNavigate('/mon-cv');
+    else if (onNavigate) onNavigate('/');
     else window.location.href = '/';
-  }, [onNavigate]);
+  }, [cvId, onNavigate]);
 
   const handleImportComplete = useCallback((newCV: CV) => {
     setCv(newCV);
@@ -213,7 +218,7 @@ export function MyProfilePage({ onNavigate }: MyProfilePageProps) {
 
   return (
     <>
-      <ModuleHeader title="Mon CV" onBack={handleBack}>
+      <ModuleHeader title={cv?.name || 'Mon CV'} onBack={handleBack}>
         <span className={`cv-save-status ${saving ? 'saving' : ''}`}>
           {saving ? 'Sauvegarde...' : 'Sauvegarde auto'}
         </span>
@@ -235,6 +240,13 @@ export function MyProfilePage({ onNavigate }: MyProfilePageProps) {
           onClick={() => setShowImport(true)}
         >
           Importer
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={() => cv && onNavigate?.(`/mon-cv/adaptations/${cv.id}`)}
+          title="Voir les adaptations de ce CV"
+        >
+          Adaptations
         </button>
         <button
           className="module-header-btn module-header-btn-primary"

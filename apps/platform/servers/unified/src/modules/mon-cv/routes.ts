@@ -7,7 +7,15 @@ import { createEmptyCV } from './types.js';
 import type { CVData, MergeRequest } from './types.js';
 import { parseCV, parseCVWithVision } from './parseService.js';
 import { processImage } from './imageService.js';
-import { adaptCV, modifyCV } from './adaptService.js';
+import { adaptCV, modifyCV, recommendImprovements, applyImprovements } from './adaptService.js';
+import {
+  createAdaptation,
+  getAdaptationsByCV,
+  getAdaptation,
+  updateAdaptation,
+  deleteAdaptation,
+  countAdaptationsByCV,
+} from './adaptationDbService.js';
 import { generatePDF, getFullPreviewHTML, generateFilename } from './pdfService.js';
 import { autofillForm } from './autofillService.js';
 
@@ -476,6 +484,52 @@ export function createMonCvRoutes(): Router {
 
   // ============ CV Adaptation ============
 
+  // POST /recommend - Get ATS improvement recommendations (no generation, analysis only)
+  router.post('/recommend', asyncHandler(async (req, res) => {
+    const { cvData, jobOffer } = req.body;
+
+    if (!jobOffer || typeof jobOffer !== 'string' || jobOffer.trim() === '') {
+      res.status(400).json({ error: 'Job offer text is required' });
+      return;
+    }
+
+    if (!cvData) {
+      res.status(400).json({ error: 'CV data is required' });
+      return;
+    }
+
+    try {
+      const result = await recommendImprovements(cvData, jobOffer);
+      res.json(result);
+    } catch (err: any) {
+      console.error('[Mon-CV] Recommend error:', err);
+      res.status(500).json({ error: err.message || 'Erreur lors de la génération des recommandations' });
+    }
+  }));
+
+  // POST /improve - Apply targeted improvements to an already-adapted CV
+  router.post('/improve', asyncHandler(async (req, res) => {
+    const { cvData, jobOffer } = req.body;
+
+    if (!jobOffer || typeof jobOffer !== 'string' || jobOffer.trim() === '') {
+      res.status(400).json({ error: 'Job offer text is required' });
+      return;
+    }
+
+    if (!cvData) {
+      res.status(400).json({ error: 'CV data is required' });
+      return;
+    }
+
+    try {
+      const result = await applyImprovements(cvData, jobOffer);
+      res.json(result);
+    } catch (err: any) {
+      console.error('[Mon-CV] Improve error:', err);
+      res.status(500).json({ error: err.message || 'Erreur lors de l\'amélioration du CV' });
+    }
+  }));
+
   // POST /adapt - Adapt CV to job offer
   router.post('/adapt', asyncHandler(async (req, res) => {
     const { cvData, jobOffer, customInstructions } = req.body;
@@ -605,6 +659,91 @@ export function createMonCvRoutes(): Router {
       console.error('[Mon-CV] Autofill error:', err);
       res.status(500).json({ error: err.message || 'Erreur lors du remplissage automatique' });
     }
+  }));
+
+  // ============ CV Adaptations History ============
+
+  // GET /cvs/:id/adaptations — list all adaptations for a CV
+  router.get('/cvs/:id/adaptations', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const cvId = parseInt(req.params.id, 10);
+    if (isNaN(cvId)) return res.status(400).json({ error: 'Invalid CV id' });
+    const adaptations = await getAdaptationsByCV(cvId, userId);
+    res.json(adaptations);
+  }));
+
+  // GET /cvs/:id/adaptations/count — count adaptations for a CV
+  router.get('/cvs/:id/adaptations/count', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const cvId = parseInt(req.params.id, 10);
+    if (isNaN(cvId)) return res.status(400).json({ error: 'Invalid CV id' });
+    const count = await countAdaptationsByCV(cvId, userId);
+    res.json({ count });
+  }));
+
+  // POST /cvs/:id/adaptations — save a new adaptation
+  router.post('/cvs/:id/adaptations', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const cvId = parseInt(req.params.id, 10);
+    if (isNaN(cvId)) return res.status(400).json({ error: 'Invalid CV id' });
+    const { jobOffer, adaptedCv, changes, atsBefore, atsAfter, jobAnalysis, name } = req.body;
+    if (!jobOffer || !adaptedCv || !changes || !atsBefore || !atsAfter || !jobAnalysis) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    const adaptation = await createAdaptation(cvId, userId, {
+      jobOffer,
+      adaptedCv,
+      changes,
+      atsBefore,
+      atsAfter,
+      jobAnalysis,
+      name,
+    });
+    res.status(201).json(adaptation);
+  }));
+
+  // GET /adaptations/:id — get a single adaptation (full detail)
+  router.get('/adaptations/:id', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const adaptation = await getAdaptation(id, userId);
+    if (!adaptation) return res.status(404).json({ error: 'Adaptation not found' });
+    res.json(adaptation);
+  }));
+
+  // PUT /adaptations/:id — update adapted CV content (name and/or adaptedCv)
+  router.put('/adaptations/:id', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const { adaptedCv, name } = req.body;
+    const updated = await updateAdaptation(id, userId, { adaptedCv, name });
+    if (!updated) return res.status(404).json({ error: 'Adaptation not found' });
+    res.json(updated);
+  }));
+
+  // DELETE /adaptations/:id — delete an adaptation
+  router.delete('/adaptations/:id', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const deleted = await deleteAdaptation(id, userId);
+    if (!deleted) return res.status(404).json({ error: 'Adaptation not found' });
+    res.status(204).send();
+  }));
+
+  // POST /adaptations/:id/pdf — generate and return PDF for a saved adaptation
+  router.post('/adaptations/:id/pdf', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const adaptation = await getAdaptation(id, userId);
+    if (!adaptation) return res.status(404).json({ error: 'Adaptation not found' });
+    const pdfBuffer = await generatePDF(adaptation.adaptedCv);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="CV_adapte.pdf"`);
+    res.send(pdfBuffer);
   }));
 
   return router;

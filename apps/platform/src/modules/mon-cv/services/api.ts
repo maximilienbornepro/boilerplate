@@ -1,4 +1,4 @@
-import type { CV, CVData, CVListItem, CVLogo, ImportPreviewResult, ProcessedImage, AdaptResponse, ModifyResponse } from '../types';
+import type { CV, CVData, CVListItem, CVLogo, ImportPreviewResult, ProcessedImage, AdaptResponse, ModifyResponse, AtsRecommendations, ImprovementResult, CVAdaptation, CVAdaptationListItem } from '../types';
 
 const API_BASE = '/mon-cv-api';
 
@@ -199,6 +199,32 @@ export async function adaptCV(cvData: CVData, jobOffer: string, customInstructio
   return handleResponse<AdaptResponse>(response);
 }
 
+export async function improveCV(
+  cvData: CVData,
+  jobOffer: string
+): Promise<ImprovementResult> {
+  const response = await fetch(`${API_BASE}/improve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ cvData, jobOffer }),
+  });
+  return handleResponse<ImprovementResult>(response);
+}
+
+export async function getAtsRecommendations(
+  cvData: CVData,
+  jobOffer: string
+): Promise<AtsRecommendations> {
+  const response = await fetch(`${API_BASE}/recommend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ cvData, jobOffer }),
+  });
+  return handleResponse<AtsRecommendations>(response);
+}
+
 export async function modifyCV(cvData: CVData, modificationRequest: string): Promise<ModifyResponse> {
   const response = await fetch(`${API_BASE}/modify`, {
     method: 'POST',
@@ -249,6 +275,89 @@ export async function downloadPDF(cvData: CVData, filename?: string): Promise<vo
   const a = document.createElement('a');
   a.href = url;
   a.download = filename || 'CV.pdf';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ============ CV Adaptations History ============
+
+export async function getAdaptations(cvId: number): Promise<CVAdaptationListItem[]> {
+  const response = await fetch(`${API_BASE}/cvs/${cvId}/adaptations`, { credentials: 'include' });
+  return handleResponse<CVAdaptationListItem[]>(response);
+}
+
+export async function getAdaptationsCount(cvId: number): Promise<number> {
+  const response = await fetch(`${API_BASE}/cvs/${cvId}/adaptations/count`, { credentials: 'include' });
+  const data = await handleResponse<{ count: number }>(response);
+  return data.count;
+}
+
+export async function createAdaptation(
+  cvId: number,
+  payload: {
+    jobOffer: string;
+    adaptedCv: CVData;
+    changes: CVAdaptation['changes'];
+    atsBefore: CVAdaptation['atsBefore'];
+    atsAfter: CVAdaptation['atsAfter'];
+    jobAnalysis: CVAdaptation['jobAnalysis'];
+    name?: string;
+  }
+): Promise<CVAdaptation> {
+  const response = await fetch(`${API_BASE}/cvs/${cvId}/adaptations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<CVAdaptation>(response);
+}
+
+export async function getAdaptation(id: number): Promise<CVAdaptation> {
+  const response = await fetch(`${API_BASE}/adaptations/${id}`, { credentials: 'include' });
+  return handleResponse<CVAdaptation>(response);
+}
+
+export async function updateAdaptation(
+  id: number,
+  updates: { adaptedCv?: CVData; name?: string }
+): Promise<CVAdaptation> {
+  const response = await fetch(`${API_BASE}/adaptations/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(updates),
+  });
+  return handleResponse<CVAdaptation>(response);
+}
+
+export async function deleteAdaptation(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE}/adaptations/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Erreur lors de la suppression');
+  }
+}
+
+export async function downloadAdaptationPDF(id: number, filename?: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/adaptations/${id}/pdf`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Erreur lors de la génération du PDF');
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'CV_adapte.pdf';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
