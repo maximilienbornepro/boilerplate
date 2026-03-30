@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import type { CVAdaptation, CVData, Project, AtsScore } from '../../types';
-import { getAdaptation, updateAdaptation, downloadAdaptationPDF } from '../../services/api';
+import { getAdaptation, updateAdaptation, downloadAdaptationPDF, getFullPreviewHTML } from '../../services/api';
 import './AdaptationDetailPage.css';
 
 interface AdaptationDetailPageProps {
@@ -68,6 +68,7 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
 
@@ -189,6 +190,23 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
     }
   };
 
+  const handlePreviewHTML = async () => {
+    setLoadingPreview(true);
+    setError('');
+    try {
+      const cv = buildEditedCV();
+      const html = await getFullPreviewHTML(cv);
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de la génération de l\'aperçu');
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
   const updateMission = (idx: number, value: string) => {
     setEditableMissions(prev => prev.map((m, i) => i === idx ? value : m));
   };
@@ -228,25 +246,29 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
       <ModuleHeader
         title="Détail de l'adaptation"
         onBack={onBack}
-        actions={
-          <div className="adapt-detail-header-actions">
-            <button
-              className="btn btn-outline"
-              onClick={handleDownloadPDF}
-              disabled={downloadingPDF}
-            >
-              {downloadingPDF ? '...' : '↓ PDF'}
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleSave}
-              disabled={saving || !hasEdits}
-            >
-              {saving ? 'Sauvegarde...' : saved ? '✓ Sauvegardé' : 'Sauvegarder'}
-            </button>
-          </div>
-        }
-      />
+      >
+        <button
+          className="module-header-btn"
+          onClick={handlePreviewHTML}
+          disabled={loadingPreview || downloadingPDF}
+        >
+          {loadingPreview ? '...' : '👁 Aperçu'}
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={handleDownloadPDF}
+          disabled={downloadingPDF || loadingPreview}
+        >
+          {downloadingPDF ? '...' : '↓ PDF'}
+        </button>
+        <button
+          className="module-header-btn module-header-btn-primary"
+          onClick={handleSave}
+          disabled={saving || !hasEdits}
+        >
+          {saving ? 'Sauvegarde...' : saved ? '✓ Sauvegardé' : 'Sauvegarder'}
+        </button>
+      </ModuleHeader>
 
       {error && <div className="adapt-detail-error-banner">{error}</div>}
 
