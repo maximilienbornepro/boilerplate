@@ -165,10 +165,16 @@ cmd_backup() {
 
   log "Backup de la base de données..."
 
+  # Use sh -c inside the container so $POSTGRES_USER is resolved from the container's environment,
+  # not from the host shell (where .env.prod variables are not exported).
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T postgres \
-    pg_dumpall -U "${POSTGRES_USER:-postgres}" | gzip > "$BACKUP_FILE" 2>/dev/null
+    sh -c 'pg_dump -U "$POSTGRES_USER" app' 2>/dev/null | gzip > "$BACKUP_FILE"
 
-  if [ -s "$BACKUP_FILE" ]; then
+  # A valid backup gzip is always > 1000 bytes; empty gzip headers are only ~20 bytes
+  local BACKUP_SIZE
+  BACKUP_SIZE=$(wc -c < "$BACKUP_FILE" 2>/dev/null || echo 0)
+
+  if [ "$BACKUP_SIZE" -gt 1000 ]; then
     ok "Backup créé : $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
   else
     warn "Backup vide ou échoué (la base n'est peut-être pas démarrée)"
