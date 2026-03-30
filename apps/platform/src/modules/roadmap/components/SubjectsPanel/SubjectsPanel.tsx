@@ -58,13 +58,11 @@ export function SubjectsPanel({
 
   // ── Task editing ──────────────────────────────────────────────────────
   const [taskName, setTaskName] = useState(task.name);
-  const [taskProgress, setTaskProgress] = useState(task.progress ?? 0);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
 
   // Sync when the task prop changes (user clicks another task)
   useEffect(() => {
     setTaskName(task.name);
-    setTaskProgress(task.progress ?? 0);
   }, [task.id]);
 
   const saveTaskName = useCallback(() => {
@@ -79,12 +77,6 @@ export function SubjectsPanel({
   const saveColor = useCallback((color: string) => {
     onTaskUpdate(task.id, { color });
   }, [task.id, onTaskUpdate]);
-
-  const saveProgress = useCallback(() => {
-    if (taskProgress !== (task.progress ?? 0)) {
-      onTaskUpdate(task.id, { progress: taskProgress });
-    }
-  }, [task.id, task.progress, taskProgress, onTaskUpdate]);
 
   const handleCopyEmbed = useCallback(async () => {
     if (!planningId) return;
@@ -236,31 +228,15 @@ export function SubjectsPanel({
             </div>
           </div>
 
-          {/* Progress */}
-          <div className="sp-field">
-            <label className="sp-label">Avancement — {taskProgress}%</label>
-            <input
-              className="sp-progress-range"
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={taskProgress}
-              onChange={e => setTaskProgress(Number(e.target.value))}
-              onMouseUp={saveProgress}
-              onTouchEnd={saveProgress}
-            />
-          </div>
-
           {/* Actions */}
           <div className="sp-task-actions">
             {planningId && (
-              <button className="sp-btn sp-btn-ghost" onClick={handleCopyEmbed}>
-                {copiedEmbed ? '✓ Copié !' : '🔗 Lien embed'}
+              <button className="sp-btn" onClick={handleCopyEmbed}>
+                {copiedEmbed ? '✓ Copié !' : 'Lien embed'}
               </button>
             )}
             <button className="sp-btn sp-btn-danger" onClick={handleDelete}>
-              🗑 Supprimer
+              Supprimer
             </button>
           </div>
         </div>
@@ -339,7 +315,7 @@ export function SubjectsPanel({
                     registerSave={registerSave}
                     unregisterSave={unregisterSave}
                   />
-                  <button className="sp-btn sp-btn-close-edit" onClick={handleCloseSubjectEdit}>
+                  <button className="sp-btn" onClick={handleCloseSubjectEdit}>
                     ← Fermer l'édition
                   </button>
                 </div>
@@ -357,14 +333,14 @@ export function SubjectsPanel({
                     <div className="sp-subject-responsibility">👤 {subject.responsibility}</div>
                   )}
                   <div className="sp-subject-actions">
-                    <button className="sp-btn sp-btn-edit" onClick={() => setEditingSubjectId(subject.id)}>
+                    <button className="sp-btn sp-btn-primary" onClick={() => setEditingSubjectId(subject.id)}>
                       Éditer
                     </button>
                     <button
-                      className="sp-btn sp-btn-unlink"
+                      className="sp-btn sp-btn-danger"
                       onClick={() => handleUnlink(subject.id)}
                       title="Délier ce sujet"
-                    >× Délier</button>
+                    >Délier</button>
                   </div>
                 </div>
               )}
