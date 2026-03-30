@@ -10,6 +10,16 @@ import { initJiraAuth } from './jiraAuth.js';
 // Available apps for permissions
 const AVAILABLE_APPS = ['conges', 'roadmap', 'suivitess', 'delivery', 'mon-cv', 'rag', 'admin'];
 
+// Consistent cookie options — must be the same for set AND clear to avoid duplicate cookies in browsers
+function authCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: config.isProduction,
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+}
+
 let pool: Pool;
 
 export async function initGateway() {
@@ -193,9 +203,7 @@ export function createGatewayRouter(): Router {
 
     // Set cookie
     res.cookie('auth_token', token, {
-      httpOnly: true,
-      secure: config.isProduction,
-      sameSite: 'strict',
+      ...authCookieOptions(),
       maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days
     });
 
@@ -213,7 +221,7 @@ export function createGatewayRouter(): Router {
 
   // Logout
   router.post('/auth/logout', (_req, res) => {
-    res.clearCookie('auth_token');
+    res.clearCookie('auth_token', authCookieOptions());
     res.json({ message: 'Déconnecté' });
   });
 
@@ -238,7 +246,7 @@ export function createGatewayRouter(): Router {
       );
 
       if (rows.length === 0) {
-        res.clearCookie('auth_token');
+        res.clearCookie('auth_token', authCookieOptions());
         res.json({ user: null });
         return;
       }
@@ -257,7 +265,7 @@ export function createGatewayRouter(): Router {
         },
       });
     } catch {
-      res.clearCookie('auth_token');
+      res.clearCookie('auth_token', authCookieOptions());
       res.json({ user: null });
     }
   }));
@@ -430,9 +438,7 @@ export function createGatewayRouter(): Router {
           jiraLinked: true,
         });
         res.cookie('auth_token', newToken, {
-          httpOnly: true,
-          secure: config.isProduction,
-          sameSite: 'lax',
+          ...authCookieOptions(),
           maxAge: 90 * 24 * 60 * 60 * 1000,
         });
       }
