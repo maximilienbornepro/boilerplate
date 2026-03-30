@@ -191,6 +191,8 @@ export interface AdaptResponse {
 export interface ImprovementResult {
   additionalMissions: string[];
   additionalSkills: Record<string, string[]>;
+  titleChange?: string;                                           // nouveau titre si écart avec l'offre
+  termReplacements: Array<{ find: string; replaceWith: string }>; // synonymes → tokens exacts
   scoreAfter: AtsScore;
 }
 

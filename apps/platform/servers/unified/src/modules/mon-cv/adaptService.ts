@@ -526,9 +526,11 @@ export async function adaptCV(request: AdaptRequest): Promise<AdaptResponse> {
 
 // Improvement result (applying recommendations to existing adapted CV)
 export interface ImprovementResult {
-  additionalMissions: string[];            // new missions targeting gap keywords
+  additionalMissions: string[];               // new missions targeting gap keywords
   additionalSkills: Record<string, string[]>; // new skills for gap keywords
-  scoreAfter: AtsScore;                    // recalculated score after applying improvements
+  titleChange?: string;                       // new CV title if job title mismatch detected
+  termReplacements: Array<{ find: string; replaceWith: string }>; // synonym → exact token substitutions
+  scoreAfter: AtsScore;                       // recalculated score after applying all improvements
 }
 
 // ATS recommendation types
@@ -566,11 +568,6 @@ export async function applyImprovements(
   const score = scoreCV(cvData, jobAnalysis);
   const { breakdown } = score;
 
-  // If already optimal, return empty result
-  if (breakdown.requiredMissing.length === 0 && breakdown.singleSectionKeywords.length === 0) {
-    return { additionalMissions: [], additionalSkills: {}, scoreAfter: score };
-  }
-
   // Extract current experience and skills text to avoid duplication
   const existingMissions =
     cvData.experiences?.flatMap(e => e.missions || []).join('\n') || '';
@@ -584,65 +581,105 @@ export async function applyImprovements(
 
   const firstExpTitle = cvData.experiences?.[0]?.title || '';
   const firstExpCompany = cvData.experiences?.[0]?.company || '';
+  const titleMismatch = !score.titleMatch;
 
-  const prompt = `You are an ATS optimization expert. The CV has already been partially adapted to a job offer. Generate SPECIFIC ADDITIONAL content to close the remaining ATS keyword gaps.
+  // If already optimal (no gaps and title matches), return empty result
+  if (
+    breakdown.requiredMissing.length === 0 &&
+    breakdown.singleSectionKeywords.length === 0 &&
+    !titleMismatch
+  ) {
+    return { additionalMissions: [], additionalSkills: {}, termReplacements: [], scoreAfter: score };
+  }
 
-CURRENT GAPS:
-- Missing required keywords (critical — ATS will reject): ${breakdown.requiredMissing.join(', ') || 'none'}
-- Keywords in only 1 section (need in experience AND skills): ${breakdown.singleSectionKeywords.join(', ') || 'none'}
+  const prompt = `Tu es un expert en optimisation ATS. Le CV a déjà été partiellement adapté à une offre d'emploi. Génère du contenu ADDITIONNEL ciblé pour combler les gaps ATS restants et corriger le titre si nécessaire.
 
-EXISTING CONTENT (DO NOT REPEAT):
-- Existing missions: ${existingMissions.substring(0, 800)}
-- Existing skills: ${existingSkills}
+═══ GAPS ACTUELS ═══
+Mots-clés requis MANQUANTS (rejet automatique ATS) : ${breakdown.requiredMissing.join(', ') || 'aucun'}
+Mots-clés en 1 seule section (besoin 2-section frequency) : ${breakdown.singleSectionKeywords.join(', ') || 'aucun'}
+Écart de titre : ${titleMismatch ? `OUI — titre CV : "${cvData.title}" / titre exact de l'offre : "${jobAnalysis.exactJobTitle}"` : 'NON — titre correspond'}
 
-EXPERIENCE CONTEXT:
-- Current role: ${firstExpTitle} at ${firstExpCompany}
+═══ CONTENU EXISTANT (NE PAS RÉPÉTER) ═══
+Titre CV actuel : ${cvData.title || '(non renseigné)'}
+Missions existantes :
+${existingMissions.substring(0, 800) || '(aucune)'}
+Compétences existantes : ${existingSkills || '(aucune)'}
 
-JOB OFFER CONTEXT:
-- Exact job title: ${jobAnalysis.exactJobTitle}
-- Domain: ${jobAnalysis.domain}
+═══ CONTEXTE ═══
+Rôle actuel : ${firstExpTitle} chez ${firstExpCompany}
+Titre exact de l'offre : ${jobAnalysis.exactJobTitle}
+Domaine : ${jobAnalysis.domain}
+Mots-clés requis : ${jobAnalysis.requiredKeywords.join(', ')}
 
-CRITICAL RULES:
-1. Generate 0-2 NEW missions ONLY for the listed gap keywords — use the EXACT token from the gap list verbatim
-2. NEVER repeat or paraphrase existing missions
-3. Missions must be realistic in the context of "${firstExpTitle}" at "${firstExpCompany}"
-4. For single-section keywords already in skills only → write a mission proving that skill (not just declaring it)
-5. For additionalSkills: add ONLY keywords that are missing from skills section — use exact tokens from the gap list
-6. Maximum 1 skill per category
-7. Keep the same language as existing missions
-8. If a gap keyword does NOT make sense as a mission bullet, add it as a skill only
+═══ RÈGLES CRITIQUES ═══
+1. additionalMissions : 0 à 2 NOUVELLES missions UNIQUEMENT pour les gap keywords — utilise le TOKEN EXACT du gap verbatim
+2. NE JAMAIS répéter ou paraphraser les missions existantes
+3. Les missions doivent être réalistes dans le contexte de "${firstExpTitle}" chez "${firstExpCompany}"
+4. Pour les mots-clés en 1 seule section (déjà dans skills) → écrire une mission qui prouve la compétence (pas juste la déclarer)
+5. additionalSkills : UNIQUEMENT les mots-clés manquants dans la section skills — tokens exacts du gap
+6. Maximum 1 skill par catégorie
+7. Garder la même langue que les missions existantes
+8. titleChange : si l'écart de titre est OUI → retourner le titre exact de l'offre ; si NON → retourner null
+9. termReplacements : scanner les missions existantes ci-dessus pour trouver des synonymes/paraphrases des mots-clés requis et recommander leurs remplacements exacts dans tout le CV
 
-Return ONLY valid JSON:
+Retourne UNIQUEMENT du JSON valide :
 {
-  "additionalMissions": ["mission targeting gap keyword 1", "mission targeting gap keyword 2"],
+  "additionalMissions": ["mission ciblant le gap keyword 1"],
   "additionalSkills": {
     "competences": [],
     "outils": [],
     "dev": [],
     "frameworks": [],
     "solutions": []
-  }
+  },
+  "titleChange": null,
+  "termReplacements": [
+    { "find": "pilotage de projet", "replaceWith": "gestion de projet" }
+  ]
 }`;
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 1000,
+    max_tokens: 1500,
     messages: [{ role: 'user', content: prompt }],
   });
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '';
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    return { additionalMissions: [], additionalSkills: {}, scoreAfter: score };
+    return { additionalMissions: [], additionalSkills: {}, termReplacements: [], scoreAfter: score };
   }
 
   const raw = JSON.parse(jsonMatch[0]) as {
     additionalMissions: string[];
     additionalSkills: Record<string, string[]>;
+    titleChange: string | null;
+    termReplacements: Array<{ find: string; replaceWith: string }>;
   };
+
+  const termReplacements = Array.isArray(raw.termReplacements) ? raw.termReplacements : [];
 
   // Build the improved CV to calculate the new score
   const improvedCV: CVData = JSON.parse(JSON.stringify(cvData));
+
+  // Apply title change
+  if (raw.titleChange) {
+    improvedCV.title = raw.titleChange;
+  }
+
+  // Apply term replacements to all missions across all experiences
+  if (termReplacements.length > 0) {
+    for (const exp of improvedCV.experiences || []) {
+      exp.missions = exp.missions.map(m => {
+        let updated = m;
+        for (const { find, replaceWith } of termReplacements) {
+          updated = updated.replace(new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), replaceWith);
+        }
+        return updated;
+      });
+    }
+  }
+
   if (improvedCV.experiences && improvedCV.experiences.length > 0) {
     improvedCV.experiences[0].missions = [
       ...improvedCV.experiences[0].missions,
@@ -671,6 +708,8 @@ Return ONLY valid JSON:
   return {
     additionalMissions: raw.additionalMissions || [],
     additionalSkills: filteredSkills,
+    titleChange: raw.titleChange || undefined,
+    termReplacements,
     scoreAfter,
   };
 }

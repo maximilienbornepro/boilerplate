@@ -780,6 +780,8 @@ describe('Mon CV - ImprovementResult', () => {
     const result = {
       additionalMissions: ['Mission ciblée sur le gap keyword'],
       additionalSkills: { competences: ['gestion de projet'] },
+      titleChange: 'Product Owner',
+      termReplacements: [{ find: 'pilotage de projet', replaceWith: 'gestion de projet' }],
       scoreAfter: {
         overall: 85,
         keywordMatch: 90,
@@ -796,6 +798,10 @@ describe('Mon CV - ImprovementResult', () => {
 
     expect(result.additionalMissions).toHaveLength(1);
     expect(result.additionalSkills.competences).toContain('gestion de projet');
+    expect(result.titleChange).toBe('Product Owner');
+    expect(result.termReplacements).toHaveLength(1);
+    expect(result.termReplacements[0].find).toBe('pilotage de projet');
+    expect(result.termReplacements[0].replaceWith).toBe('gestion de projet');
     expect(result.scoreAfter.overall).toBe(85);
   });
 
@@ -803,6 +809,7 @@ describe('Mon CV - ImprovementResult', () => {
     const result = {
       additionalMissions: [],
       additionalSkills: {},
+      termReplacements: [],
       scoreAfter: {
         overall: 100,
         keywordMatch: 100,

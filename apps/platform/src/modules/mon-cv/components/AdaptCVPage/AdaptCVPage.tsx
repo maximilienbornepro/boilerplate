@@ -401,9 +401,11 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
   const [result, setResult] = useState<AdaptResponse | null>(null);
 
   // Editable state for generated content
+  const [editableTitle, setEditableTitle] = useState<string>(cvData.title || '');
   const [editableMissions, setEditableMissions] = useState<string[]>([]);
   const [editableProject, setEditableProject] = useState<Project | undefined>(undefined);
   const [editableSkills, setEditableSkills] = useState<Record<string, string[]>>({});
+  const [termReplacements, setTermReplacements] = useState<Array<{ find: string; replaceWith: string }>>([]);
 
   // Live ATS score (starts as result.atsScore.after, updated in real-time on edits)
   const [liveScore, setLiveScore] = useState<AtsScore | null>(null);
@@ -437,6 +439,26 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
 
   const buildEditedCV = (): CVData => {
     const cv: CVData = JSON.parse(JSON.stringify(cvData));
+
+    // Apply title change
+    cv.title = editableTitle;
+
+    // Apply term replacements to all missions across all experiences
+    if (termReplacements.length > 0) {
+      for (const exp of cv.experiences || []) {
+        exp.missions = exp.missions.map(m => {
+          let updated = m;
+          for (const { find, replaceWith } of termReplacements) {
+            updated = updated.replace(
+              new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+              replaceWith
+            );
+          }
+          return updated;
+        });
+      }
+    }
+
     if (cv.experiences && cv.experiences.length > 0) {
       cv.experiences[0].missions = [...cv.experiences[0].missions, ...editableMissions];
       if (editableProject) {
@@ -521,6 +543,8 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     setRecoPrompt(undefined);
     setLiveScore(null);
     setJobAnalysis(null);
+    setEditableTitle(cvData.title || '');
+    setTermReplacements([]);
   };
 
   // ── PDF download ─────────────────────────────────────────────────────────────
@@ -568,6 +592,24 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     try {
       const currentCV = buildEditedCV();
       const improvement = await improveCV(currentCV, jobOffer);
+
+      // Apply title change (the main bug fix)
+      if (improvement.titleChange) {
+        setEditableTitle(improvement.titleChange);
+      }
+
+      // Apply term replacements to existing missions
+      if (improvement.termReplacements.length > 0) {
+        setTermReplacements(prev => {
+          const merged = [...prev];
+          for (const rep of improvement.termReplacements) {
+            if (!merged.some(r => r.find.toLowerCase() === rep.find.toLowerCase())) {
+              merged.push(rep);
+            }
+          }
+          return merged;
+        });
+      }
 
       // Merge additional missions
       if (improvement.additionalMissions.length > 0) {
@@ -635,6 +677,64 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
 
           <div className="adapt-changes">
             <h3>Modifications apportees — editables</h3>
+
+            {/* Titre du poste — toujours éditable */}
+            <div className="change-section">
+              <h4>
+                Titre du poste
+                {editableTitle !== cvData.title && (
+                  <span className="change-section-badge change-section-badge--modified">modifié</span>
+                )}
+              </h4>
+              <div className="editable-title-row">
+                <input
+                  className="editable-input"
+                  type="text"
+                  value={editableTitle}
+                  onChange={e => setEditableTitle(e.target.value)}
+                  placeholder="Titre du poste"
+                />
+                {editableTitle !== cvData.title && (
+                  <button
+                    className="btn-icon-remove"
+                    onClick={() => setEditableTitle(cvData.title || '')}
+                    title="Rétablir le titre original"
+                  >
+                    ↩
+                  </button>
+                )}
+              </div>
+              {editableTitle !== cvData.title && (
+                <div className="editable-title-diff">
+                  <span className="diff-original">{cvData.title}</span>
+                  <span className="diff-arrow"> → </span>
+                  <span className="diff-new">{editableTitle}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Remplacements de termes */}
+            {termReplacements.length > 0 && (
+              <div className="change-section">
+                <h4>Remplacements de termes <span className="change-section-badge change-section-badge--replace">dans tout le CV</span></h4>
+                <div className="term-replacements-list">
+                  {termReplacements.map((rep, idx) => (
+                    <div key={idx} className="term-replacement-row">
+                      <span className="term-find">"{rep.find}"</span>
+                      <span className="term-arrow"> ⟶ </span>
+                      <span className="term-replace">"{rep.replaceWith}"</span>
+                      <button
+                        className="btn-icon-remove"
+                        onClick={() => setTermReplacements(prev => prev.filter((_, i) => i !== idx))}
+                        title="Annuler ce remplacement"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {editableMissions.length > 0 && (
               <div className="change-section">

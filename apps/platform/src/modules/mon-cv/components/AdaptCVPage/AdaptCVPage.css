@@ -866,3 +866,79 @@
   color: var(--error);
   font-weight: var(--font-weight-bold);
 }
+
+/* ── Editable title row ─────────────────────────────────────────────────────── */
+
+.editable-title-row {
+  display: flex;
+  gap: var(--spacing-xs);
+  align-items: center;
+}
+
+.editable-title-diff {
+  margin-top: var(--spacing-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.diff-original {
+  text-decoration: line-through;
+  color: var(--error);
+  opacity: 0.8;
+}
+
+.diff-arrow { color: var(--text-muted); }
+
+.diff-new {
+  color: var(--success);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* ── Section badge ──────────────────────────────────────────────────────────── */
+
+.change-section-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 2px;
+  margin-left: var(--spacing-sm);
+  vertical-align: middle;
+}
+
+.change-section-badge--modified {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+  border: 1px solid var(--warning);
+}
+
+.change-section-badge--replace {
+  background: rgba(102, 126, 234, 0.15);
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+}
+
+/* ── Term replacements list ─────────────────────────────────────────────────── */
+
+.term-replacements-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.term-replacement-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(245, 158, 11, 0.05);
+  border-left: 2px solid var(--warning);
+}
+
+.term-find  { color: var(--error); text-decoration: line-through; }
+.term-arrow { color: var(--text-muted); }
+.term-replace { color: var(--success); font-weight: var(--font-weight-semibold); }
