@@ -181,92 +181,105 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations, onBack }: CVListPag
                 key={cv.id}
                 className={`cv-list-card${cv.isDefault ? ' cv-list-card--default' : ''}`}
               >
-                {/* Card header */}
-                <div className="cv-list-card__header">
-                  <div className="cv-list-card__name-area">
-                    {renamingId === cv.id ? (
-                      <input
-                        ref={renameInputRef}
-                        className="cv-list-card__rename-input"
-                        value={renameValue}
-                        onChange={e => setRenameValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') handleRenameConfirm(cv.id);
-                          if (e.key === 'Escape') setRenamingId(null);
-                        }}
-                        onBlur={() => handleRenameConfirm(cv.id)}
-                        onClick={e => e.stopPropagation()}
-                      />
-                    ) : (
-                      <span className="cv-list-card__name">
-                        {cv.isDefault && <span className="cv-list-card__star">★</span>}
-                        {cv.name}
-                      </span>
-                    )}
-                    {cv.isDefault && (
-                      <span className="cv-list-card__badge">Par défaut</span>
-                    )}
+                {/* Icon */}
+                <div className="cv-list-card__icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                  </svg>
+                </div>
+
+                {/* Body */}
+                <div className="cv-list-card__body">
+                  {/* Top: name + menu */}
+                  <div className="cv-list-card__top">
+                    <div className="cv-list-card__name-area">
+                      {renamingId === cv.id ? (
+                        <input
+                          ref={renameInputRef}
+                          className="cv-list-card__rename-input"
+                          value={renameValue}
+                          onChange={e => setRenameValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleRenameConfirm(cv.id);
+                            if (e.key === 'Escape') setRenamingId(null);
+                          }}
+                          onBlur={() => handleRenameConfirm(cv.id)}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span className="cv-list-card__name">
+                          {cv.isDefault && <span className="cv-list-card__star">★</span>}
+                          {cv.name}
+                        </span>
+                      )}
+                      {cv.isDefault && (
+                        <span className="cv-list-card__badge">Par défaut</span>
+                      )}
+                    </div>
+
+                    {/* ⋯ menu */}
+                    <div className="cv-list-menu" onClick={e => e.stopPropagation()}>
+                      <button
+                        className="cv-list-menu__trigger"
+                        onClick={() => setOpenMenuId(openMenuId === cv.id ? null : cv.id)}
+                      >
+                        ···
+                      </button>
+                      {openMenuId === cv.id && (
+                        <div className="cv-list-menu__dropdown">
+                          <button onClick={() => handleRenameStart(cv)}>Renommer</button>
+                          {!cv.isDefault && (
+                            <button onClick={() => handleSetDefault(cv.id)}>
+                              Définir par défaut
+                            </button>
+                          )}
+                          {!cv.isDefault ? (
+                            <button
+                              className="cv-list-menu__item--danger"
+                              onClick={() => { setConfirmDelete(cv); setOpenMenuId(null); }}
+                            >
+                              Supprimer
+                            </button>
+                          ) : (
+                            <span className="cv-list-menu__note">Non supprimable (défaut)</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  {/* ⋯ menu */}
-                  <div className="cv-list-menu" onClick={e => e.stopPropagation()}>
+                  {/* Meta */}
+                  <div className="cv-list-card__meta">
+                    Modifié {formatRelativeDate(cv.updatedAt)}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="cv-list-card__actions">
                     <button
-                      className="cv-list-menu__trigger"
-                      onClick={() => setOpenMenuId(openMenuId === cv.id ? null : cv.id)}
+                      className="module-header-btn module-header-btn-primary cv-list-card__btn"
+                      onClick={() => onEdit(cv.id)}
                     >
-                      ···
+                      Éditer
                     </button>
-                    {openMenuId === cv.id && (
-                      <div className="cv-list-menu__dropdown">
-                        <button onClick={() => handleRenameStart(cv)}>Renommer</button>
-                        {!cv.isDefault && (
-                          <button onClick={() => handleSetDefault(cv.id)}>
-                            Définir par défaut
-                          </button>
-                        )}
-                        {!cv.isDefault ? (
-                          <button
-                            className="cv-list-menu__item--danger"
-                            onClick={() => { setConfirmDelete(cv); setOpenMenuId(null); }}
-                          >
-                            Supprimer
-                          </button>
-                        ) : (
-                          <span className="cv-list-menu__note">Non supprimable (défaut)</span>
-                        )}
-                      </div>
-                    )}
+                    <button
+                      className="module-header-btn cv-list-card__btn"
+                      onClick={() => onAdapt(cv.id)}
+                    >
+                      Adapter
+                    </button>
+                    <button
+                      className="module-header-btn cv-list-card__btn cv-list-card__btn--adapt"
+                      onClick={() => onAdaptations(cv.id)}
+                    >
+                      Adaptations
+                      {adaptCounts[cv.id] !== undefined && adaptCounts[cv.id] > 0 && (
+                        <span className="cv-list-adapt-count">{adaptCounts[cv.id]}</span>
+                      )}
+                    </button>
                   </div>
-                </div>
-
-                {/* Meta */}
-                <div className="cv-list-card__meta">
-                  Modifié {formatRelativeDate(cv.updatedAt)}
-                </div>
-
-                {/* Actions */}
-                <div className="cv-list-card__actions">
-                  <button
-                    className="module-header-btn module-header-btn-primary cv-list-card__btn"
-                    onClick={() => onEdit(cv.id)}
-                  >
-                    Éditer
-                  </button>
-                  <button
-                    className="module-header-btn cv-list-card__btn"
-                    onClick={() => onAdapt(cv.id)}
-                  >
-                    Adapter
-                  </button>
-                  <button
-                    className="module-header-btn cv-list-card__btn cv-list-card__btn--adapt"
-                    onClick={() => onAdaptations(cv.id)}
-                  >
-                    Adaptations
-                    {adaptCounts[cv.id] !== undefined && adaptCounts[cv.id] > 0 && (
-                      <span className="cv-list-adapt-count">{adaptCounts[cv.id]}</span>
-                    )}
-                  </button>
                 </div>
               </div>
             ))}
