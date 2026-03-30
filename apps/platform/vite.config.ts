@@ -54,6 +54,9 @@ export default defineConfig({
       '/api/connectors': {
         target: UNIFIED_SERVER,
       },
+      '/api/platform': {
+        target: UNIFIED_SERVER,
+      },
     },
   },
   build: {

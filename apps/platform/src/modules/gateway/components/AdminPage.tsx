@@ -57,7 +57,7 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
 
   const loadPlatformSettings = useCallback(async () => {
     try {
-      const res = await fetch('/gateway-api/platform/settings', { credentials: 'include' });
+      const res = await fetch('/api/platform/settings', { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
       setPlatformSettings(data);
@@ -69,7 +69,7 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
   const toggleIntegration = useCallback(async (key: string, currentValue: string) => {
     const newValue = currentValue === 'true' ? 'false' : 'true';
     try {
-      const res = await fetch(`/gateway-api/platform/settings/${key}`, {
+      const res = await fetch(`/api/platform/settings/${key}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
