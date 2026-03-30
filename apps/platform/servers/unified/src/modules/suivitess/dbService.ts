@@ -163,6 +163,37 @@ export async function createSnapshotForDocument(documentId: string): Promise<voi
   );
 }
 
+// ==================== SEARCH ====================
+
+export interface SubjectSearchResult {
+  id: string;
+  title: string;
+  status: string;
+  section_name: string;
+  document_id: string;
+  document_title: string;
+}
+
+export async function searchSubjects(q: string): Promise<SubjectSearchResult[]> {
+  const result = await pool.query(
+    `SELECT
+      sub.id,
+      sub.title,
+      sub.status,
+      sec.name AS section_name,
+      doc.id   AS document_id,
+      doc.title AS document_title
+     FROM suivitess_subjects sub
+     JOIN suivitess_sections  sec ON sub.section_id = sec.id
+     JOIN suivitess_documents doc ON sec.document_id = doc.id
+     WHERE sub.title ILIKE $1
+     ORDER BY doc.title, sec.name, sub.title
+     LIMIT 20`,
+    [`%${q}%`]
+  );
+  return result.rows;
+}
+
 // ==================== DOCUMENT QUERIES ====================
 
 export async function getAllDocuments() {

@@ -203,3 +203,134 @@ describe('Roadmap Backend Module', () => {
     });
   });
 });
+
+// ==================== Integration: Roadmap ↔ SuiviTess ====================
+
+describe('Roadmap ↔ SuiviTess Integration', () => {
+  describe('Platform feature flag logic', () => {
+    interface PlatformSetting {
+      key: string;
+      value: string;
+    }
+
+    function isIntegrationEnabled(settings: PlatformSetting[]): boolean {
+      const setting = settings.find(s => s.key === 'integration_roadmap_suivitess');
+      return setting?.value === 'true';
+    }
+
+    it('should be disabled by default', () => {
+      const settings: PlatformSetting[] = [
+        { key: 'integration_roadmap_suivitess', value: 'false' },
+      ];
+      expect(isIntegrationEnabled(settings)).toBe(false);
+    });
+
+    it('should be enabled when value is "true"', () => {
+      const settings: PlatformSetting[] = [
+        { key: 'integration_roadmap_suivitess', value: 'true' },
+      ];
+      expect(isIntegrationEnabled(settings)).toBe(true);
+    });
+
+    it('should return false when setting is absent', () => {
+      const settings: PlatformSetting[] = [];
+      expect(isIntegrationEnabled(settings)).toBe(false);
+    });
+
+    it('should only accept exact "true" string', () => {
+      const settings: PlatformSetting[] = [
+        { key: 'integration_roadmap_suivitess', value: '1' },
+      ];
+      expect(isIntegrationEnabled(settings)).toBe(false);
+    });
+  });
+
+  describe('Task-Subject link data structure', () => {
+    interface LinkedSubject {
+      id: string;
+      title: string;
+      status: string;
+      situation: string | null;
+      responsibility: string | null;
+      section_name: string;
+      document_id: string;
+      document_title: string;
+    }
+
+    it('should have correct LinkedSubject shape', () => {
+      const subject: LinkedSubject = {
+        id: 'uuid-1',
+        title: 'Mise en conformité RGPD',
+        status: '🟡 en cours',
+        situation: 'En attente de validation juridique',
+        responsibility: 'DPO',
+        section_name: 'Conformité',
+        document_id: 'audit-2025',
+        document_title: 'Audit 2025',
+      };
+      expect(subject.id).toBe('uuid-1');
+      expect(subject.status).toContain('🟡');
+      expect(subject.document_id).toBe('audit-2025');
+    });
+
+    it('should allow null situation and responsibility', () => {
+      const subject: LinkedSubject = {
+        id: 'uuid-2',
+        title: 'Migration DB',
+        status: '🔴 à faire',
+        situation: null,
+        responsibility: null,
+        section_name: 'Infra',
+        document_id: 'infra-doc',
+        document_title: 'Infra',
+      };
+      expect(subject.situation).toBeNull();
+      expect(subject.responsibility).toBeNull();
+    });
+
+    it('should deduplicate linked subjects by id', () => {
+      const subjects: LinkedSubject[] = [
+        { id: 'uuid-1', title: 'S1', status: '🔴 à faire', situation: null, responsibility: null, section_name: 'A', document_id: 'doc1', document_title: 'Doc 1' },
+        { id: 'uuid-2', title: 'S2', status: '🟡 en cours', situation: null, responsibility: null, section_name: 'B', document_id: 'doc1', document_title: 'Doc 1' },
+        { id: 'uuid-1', title: 'S1 dup', status: '🔴 à faire', situation: null, responsibility: null, section_name: 'A', document_id: 'doc1', document_title: 'Doc 1' },
+      ];
+      const unique = subjects.filter((s, i, arr) => arr.findIndex(x => x.id === s.id) === i);
+      expect(unique).toHaveLength(2);
+      expect(unique[0].title).toBe('S1');
+    });
+  });
+
+  describe('Search subject filtering', () => {
+    interface SubjectSearchResult {
+      id: string;
+      title: string;
+      status: string;
+      section_name: string;
+      document_id: string;
+      document_title: string;
+    }
+
+    const mockResults: SubjectSearchResult[] = [
+      { id: 'a', title: 'RGPD conformité', status: '🟡 en cours', section_name: 'Sec1', document_id: 'doc1', document_title: 'Doc 1' },
+      { id: 'b', title: 'Migration base', status: '🔴 à faire', section_name: 'Sec2', document_id: 'doc2', document_title: 'Doc 2' },
+      { id: 'c', title: 'Audit sécurité', status: '🟢 fait', section_name: 'Sec1', document_id: 'doc1', document_title: 'Doc 1' },
+    ];
+
+    it('should filter out already linked subjects from results', () => {
+      const linkedIds = new Set(['a', 'c']);
+      const filtered = mockResults.filter(r => !linkedIds.has(r.id));
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0].id).toBe('b');
+    });
+
+    it('should not search when query is less than 2 chars', () => {
+      function shouldSearch(q: string): boolean {
+        return q.trim().length >= 2;
+      }
+      expect(shouldSearch('')).toBe(false);
+      expect(shouldSearch('r')).toBe(false);
+      expect(shouldSearch('rg')).toBe(true);
+      expect(shouldSearch('RGPD')).toBe(true);
+    });
+  });
+});

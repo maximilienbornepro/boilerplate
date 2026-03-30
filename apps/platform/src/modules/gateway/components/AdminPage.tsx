@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ConfirmModal, APPS } from '@boilerplate/shared/components';
 
@@ -11,6 +11,21 @@ interface User {
   permissions: string[];
 }
 
+interface PlatformSetting {
+  key: string;
+  value: string;
+  description: string;
+  updated_at: string;
+}
+
+const INTEGRATION_LABELS: Record<string, string> = {
+  integration_roadmap_suivitess: 'Roadmap ↔ SuiviTess',
+};
+
+const INTEGRATION_DESCRIPTIONS: Record<string, string> = {
+  integration_roadmap_suivitess: 'Lier des tâches Roadmap à des sujets SuiviTess et les éditer depuis Roadmap',
+};
+
 const APP_LABELS: Record<string, string> = Object.fromEntries(
   APPS.map(app => [app.id, app.name])
 );
@@ -22,6 +37,8 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [platformSettings, setPlatformSettings] = useState<PlatformSetting[]>([]);
+  const [settingsError, setSettingsError] = useState('');
 
   const availableApps = [...APPS.map(a => a.id), 'admin'];
 
@@ -38,9 +55,39 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const loadPlatformSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/platform/settings', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setPlatformSettings(data);
+    } catch {
+      setSettingsError('Impossible de charger les paramètres');
+    }
+  }, []);
+
+  const toggleIntegration = useCallback(async (key: string, currentValue: string) => {
+    const newValue = currentValue === 'true' ? 'false' : 'true';
+    try {
+      const res = await fetch(`/api/platform/settings/${key}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ value: newValue }),
+      });
+      if (!res.ok) throw new Error();
+      setPlatformSettings(prev =>
+        prev.map(s => s.key === key ? { ...s, value: newValue } : s)
+      );
+    } catch {
+      setSettingsError('Erreur lors de la mise à jour');
+    }
+  }, []);
+
   useEffect(() => {
     loadUsers();
-  }, []);
+    loadPlatformSettings();
+  }, [loadPlatformSettings]);
 
   const toggleUserStatus = async (userId: number, currentStatus: boolean) => {
     try {
@@ -165,6 +212,38 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Platform Integrations */}
+      <div className="admin-section">
+        <h2 className="admin-section-title">Intégrations inter-modules</h2>
+        <p className="admin-section-description">Activez ou désactivez les liaisons entre modules. Chaque module reste utilisable indépendamment.</p>
+
+        {settingsError && <div className="admin-error">{settingsError}</div>}
+
+        <div className="admin-integrations">
+          {platformSettings.filter(s => s.key.startsWith('integration_')).map(setting => (
+            <div key={setting.key} className="admin-integration-row">
+              <div className="admin-integration-info">
+                <span className="admin-integration-label">
+                  {INTEGRATION_LABELS[setting.key] || setting.key}
+                </span>
+                <span className="admin-integration-desc">
+                  {INTEGRATION_DESCRIPTIONS[setting.key] || setting.description}
+                </span>
+              </div>
+              <button
+                className={`admin-integration-toggle ${setting.value === 'true' ? 'on' : 'off'}`}
+                onClick={() => toggleIntegration(setting.key, setting.value)}
+              >
+                {setting.value === 'true' ? 'Activée' : 'Désactivée'}
+              </button>
+            </div>
+          ))}
+          {platformSettings.filter(s => s.key.startsWith('integration_')).length === 0 && (
+            <div className="admin-empty">Aucune intégration disponible</div>
+          )}
+        </div>
       </div>
 
       {userToDelete && (

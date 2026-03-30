@@ -206,6 +206,51 @@
 .taskBar.parentBar .dependencyHandle { display: none; }
 .taskBar.parentBar:hover { box-shadow: none; }
 
+.contextMenu {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding-top: var(--spacing-sm);
+  z-index: 300;
+  min-width: 160px;
+}
+
+.contextMenuInner {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px var(--spacing-md);
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition-normal);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.menuItem:last-child { border-bottom: none; }
+.menuItem:hover { background: var(--bg-hover); }
+
+.menuIcon {
+  font-size: var(--font-size-base);
+  width: 18px;
+  text-align: center;
+}
+
 :global(:root:not([data-theme="dark"])) .taskRow { border-bottom-color: var(--border-color); }
 :global(:root:not([data-theme="dark"])) .taskName { background: linear-gradient(90deg, var(--bg-primary) 0%, var(--bg-secondary) 100%); }
 :global(:root:not([data-theme="dark"])) .indentLine::before, :global(:root:not([data-theme="dark"])) .indentLine.indentLineCurrent::after { background: var(--text-light); }

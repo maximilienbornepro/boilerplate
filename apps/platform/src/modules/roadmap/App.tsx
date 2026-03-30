@@ -7,6 +7,8 @@ import { PlanningList } from './components/PlanningList/PlanningList';
 import { GanttBoard } from './components/GanttBoard/GanttBoard';
 import { TaskForm } from './components/TaskForm/TaskForm';
 import { ViewSelector } from './components/ViewSelector/ViewSelector';
+import { SubjectsPanel } from './components/SubjectsPanel/SubjectsPanel';
+import { usePlatformSettings } from '../../hooks/usePlatformSettings';
 import './index.css';
 
 function getUrlPlanningId(): string | null {
@@ -99,7 +101,11 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
 
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showSubjectsPanel, setShowSubjectsPanel] = useState(false);
   const [copiedPreview, setCopiedPreview] = useState(false);
+  const platformSettings = usePlatformSettings();
+  const integrationEnabled = platformSettings['integration_roadmap_suivitess'] ?? false;
 
   useEffect(() => { loadPlannings(); }, []);
 
@@ -191,7 +197,13 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
 
   // Task handlers
   const handleAddTask = () => { setEditingTask(null); setShowTaskForm(true); };
-  const handleTaskClick = (task: Task) => { setEditingTask(task); setShowTaskForm(true); };
+  const handleTaskClick = useCallback((task: Task) => {
+    setSelectedTask(task);
+    setShowSubjectsPanel(true);
+    // Close any open TaskForm if switching tasks
+    setShowTaskForm(false);
+    setEditingTask(null);
+  }, []);
 
   const handleTaskFormSubmit = async (data: { name: string; color: string; parentId?: string | null }) => {
     if (!selectedPlanning) return;
@@ -346,7 +358,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
             </button>
           </ModuleHeader>
 
-          <div className="roadmap-planning-view">
+          <div className={`roadmap-planning-view ${showSubjectsPanel && selectedTask ? 'roadmap-with-panel' : ''}`}>
             <div className="roadmap-gantt-container">
               <GanttBoard
                 planning={selectedPlanning}
@@ -367,14 +379,23 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
               />
             </div>
 
-            {showTaskForm && (
+            {showSubjectsPanel && selectedTask && (
+              <SubjectsPanel
+                task={selectedTask}
+                planningId={selectedPlanning?.id}
+                onClose={() => setShowSubjectsPanel(false)}
+                onTaskUpdate={handleTaskUpdate}
+                onTaskDelete={handleTaskDeleteDirect}
+                onNavigateToSuiviTess={onNavigate ? (docId) => onNavigate(`/suivitess?doc=${docId}`) : undefined}
+              />
+            )}
+
+            {showTaskForm && !editingTask && (
               <TaskForm
-                task={editingTask}
-                parentTasks={tasks.filter(t => t.id !== editingTask?.id)}
+                task={null}
                 planningId={selectedPlanning.id}
                 onSubmit={handleTaskFormSubmit}
                 onCancel={() => { setShowTaskForm(false); setEditingTask(null); }}
-                onDelete={editingTask ? handleTaskDelete : undefined}
               />
             )}
           </div>

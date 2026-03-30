@@ -5,6 +5,7 @@ import * as db from './dbService.js';
 
 export async function initDb() {
   await db.initPool();
+  await db.ensureTaskSubjectsTable();
 }
 
 export function createRoadmapRoutes(): Router {
@@ -119,6 +120,28 @@ export function createRoadmapRoutes(): Router {
     const success = await db.deleteTask(req.params.id);
     if (!success) { res.status(404).json({ error: 'Tache non trouvee' }); return; }
     res.json({ success: true });
+  }));
+
+  // --- Task-Subject links (Roadmap ↔ SuiviTess integration) ---
+
+  router.get('/tasks/:taskId/subjects', asyncHandler(async (req, res) => {
+    const subjects = await db.getLinkedSubjects(req.params.taskId);
+    res.json(subjects);
+  }));
+
+  router.post('/tasks/:taskId/subjects', asyncHandler(async (req, res) => {
+    const { subjectId } = req.body;
+    if (!subjectId) {
+      res.status(400).json({ error: 'subjectId is required' });
+      return;
+    }
+    await db.linkSubject(req.params.taskId, subjectId);
+    res.status(201).json({ ok: true });
+  }));
+
+  router.delete('/tasks/:taskId/subjects/:subjectId', asyncHandler(async (req, res) => {
+    await db.unlinkSubject(req.params.taskId, req.params.subjectId);
+    res.json({ ok: true });
   }));
 
   // --- Dependencies ---

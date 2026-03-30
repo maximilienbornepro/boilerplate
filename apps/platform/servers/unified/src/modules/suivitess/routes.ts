@@ -11,6 +11,19 @@ export function createRoutes(): Router {
 
   router.use(authMiddleware);
 
+  // ==================== SUBJECT SEARCH (cross-document) ====================
+
+  // GET /subjects/search?q=<query>
+  router.get('/subjects/search', asyncHandler(async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) {
+      res.json([]);
+      return;
+    }
+    const results = await db.searchSubjects(q);
+    res.json(results);
+  }));
+
   // ==================== DOCUMENTS ====================
 
   // List all documents

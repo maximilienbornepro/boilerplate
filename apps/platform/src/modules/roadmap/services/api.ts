@@ -1,5 +1,16 @@
 import type { Planning, Task, Dependency, Marker, PlanningFormData, TaskFormData } from '../types';
 
+export interface LinkedSubject {
+  id: string;
+  title: string;
+  status: string;
+  situation: string | null;
+  responsibility: string | null;
+  section_name: string;
+  document_id: string;
+  document_title: string;
+}
+
 const API_BASE = '/roadmap-api';
 
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
@@ -45,3 +56,27 @@ export const fetchPlanningEmbed = (id: string): Promise<Planning> => fetchApi(`/
 export const fetchTasksEmbed = (planningId: string): Promise<Task[]> => fetchApi(`/embed/${planningId}/tasks`);
 export const fetchDependenciesEmbed = (planningId: string): Promise<Dependency[]> => fetchApi(`/embed/${planningId}/dependencies`);
 export const fetchMarkersEmbed = (planningId: string): Promise<Marker[]> => fetchApi(`/embed/${planningId}/markers`);
+
+// Task-Subject links (Roadmap ↔ SuiviTess integration)
+export const fetchLinkedSubjects = (taskId: string): Promise<LinkedSubject[]> =>
+  fetchApi(`/tasks/${taskId}/subjects`);
+
+export const linkSubject = (taskId: string, subjectId: string): Promise<{ ok: boolean }> =>
+  fetchApi(`/tasks/${taskId}/subjects`, { method: 'POST', body: JSON.stringify({ subjectId }) });
+
+export const unlinkSubject = (taskId: string, subjectId: string): Promise<{ ok: boolean }> =>
+  fetchApi(`/tasks/${taskId}/subjects/${subjectId}`, { method: 'DELETE' });
+
+// Subject update (calls SuiviTess API directly)
+export async function updateSubject(
+  subjectId: string,
+  data: Partial<{ title: string; situation: string; status: string; responsibility: string }>
+): Promise<void> {
+  const response = await fetch(`/suivitess-api/subjects/${subjectId}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error('Failed to update subject');
+}

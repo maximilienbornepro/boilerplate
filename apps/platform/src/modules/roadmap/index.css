@@ -7,6 +7,17 @@
   min-height: 0;
 }
 
+/* When SubjectsPanel is visible, switch to row layout */
+.roadmap-with-panel {
+  flex-direction: row;
+}
+
+.roadmap-with-panel .roadmap-gantt-container {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .roadmap-gantt-container {
   flex: 1;
   min-height: 0;
