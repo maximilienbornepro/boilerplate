@@ -197,12 +197,13 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
 
   // Task handlers
   const handleAddTask = () => { setEditingTask(null); setShowTaskForm(true); };
-  const handleTaskClick = (task: Task) => {
-    setEditingTask(task);
+  const handleTaskClick = useCallback((task: Task) => {
     setSelectedTask(task);
-    setShowTaskForm(true);
-    if (integrationEnabled) setShowSubjectsPanel(true);
-  };;
+    setShowSubjectsPanel(true);
+    // Close any open TaskForm if switching tasks
+    setShowTaskForm(false);
+    setEditingTask(null);
+  }, []);
 
   const handleTaskFormSubmit = async (data: { name: string; color: string; parentId?: string | null }) => {
     if (!selectedPlanning) return;
@@ -357,7 +358,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
             </button>
           </ModuleHeader>
 
-          <div className={`roadmap-planning-view ${showSubjectsPanel && selectedTask && integrationEnabled ? 'roadmap-with-panel' : ''}`}>
+          <div className={`roadmap-planning-view ${showSubjectsPanel && selectedTask ? 'roadmap-with-panel' : ''}`}>
             <div className="roadmap-gantt-container">
               <GanttBoard
                 planning={selectedPlanning}
@@ -378,23 +379,23 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
               />
             </div>
 
-            {showSubjectsPanel && selectedTask && integrationEnabled && (
+            {showSubjectsPanel && selectedTask && (
               <SubjectsPanel
                 task={selectedTask}
+                planningId={selectedPlanning?.id}
                 onClose={() => setShowSubjectsPanel(false)}
+                onTaskUpdate={handleTaskUpdate}
+                onTaskDelete={handleTaskDeleteDirect}
                 onNavigateToSuiviTess={onNavigate ? (docId) => onNavigate(`/suivitess?doc=${docId}`) : undefined}
               />
             )}
 
-            {showTaskForm && (
+            {showTaskForm && !editingTask && (
               <TaskForm
-                task={editingTask}
-                parentTasks={tasks.filter(t => t.id !== editingTask?.id)}
+                task={null}
                 planningId={selectedPlanning.id}
-                integrationEnabled={integrationEnabled}
                 onSubmit={handleTaskFormSubmit}
                 onCancel={() => { setShowTaskForm(false); setEditingTask(null); }}
-                onDelete={editingTask ? handleTaskDelete : undefined}
               />
             )}
           </div>
