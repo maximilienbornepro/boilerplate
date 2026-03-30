@@ -69,6 +69,7 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations, onBack }: CVListPag
       const list = await api.fetchAllCVs();
       setCvs(list);
       loadAdaptCounts(list);
+      if (list.length === 0) setShowCreate(true);
     } catch (err: any) {
       setError(err.message || 'Erreur lors du chargement');
     } finally {
@@ -172,12 +173,6 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations, onBack }: CVListPag
             <div className="cv-list-empty-icon">📄</div>
             <p className="cv-list-empty-title">Aucun CV</p>
             <p className="cv-list-empty-text">Créez votre premier CV pour commencer.</p>
-            <button
-              className="module-header-btn module-header-btn-primary"
-              onClick={() => setShowCreate(true)}
-            >
-              + Créer mon premier CV
-            </button>
           </div>
         ) : (
           <div className="cv-list-grid">

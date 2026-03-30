@@ -6,17 +6,15 @@ interface Props {
   onOpen: (bot: RagBot) => void;
   onEdit: (bot: RagBot) => void;
   onDelete: (bot: RagBot) => void;
-  onCreate: () => void;
 }
 
-export function RagList({ bots, onOpen, onEdit, onDelete, onCreate }: Props) {
+export function RagList({ bots, onOpen, onEdit, onDelete }: Props) {
   return (
     <div className={styles.container}>
       {bots.length === 0 ? (
         <div className={styles.empty}>
           <p className={styles.emptyTitle}>Aucun RAG créé</p>
           <p>Créez votre premier assistant documentaire pour commencer à indexer des contenus et discuter avec eux.</p>
-          <button className={styles.emptyBtn} onClick={onCreate}>Créer mon premier RAG</button>
         </div>
       ) : (
         <div className={styles.grid}>

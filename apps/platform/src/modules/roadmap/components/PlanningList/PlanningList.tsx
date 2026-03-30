@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Modal } from '@boilerplate/shared/components';
 import type { Planning, PlanningFormData } from '../../types';
 import styles from './PlanningList.module.css';
@@ -24,6 +24,14 @@ export function PlanningList({
 }: PlanningListProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingPlanning, setEditingPlanning] = useState<Planning | null>(null);
+
+  // Auto-open form when there are no plannings
+  useEffect(() => {
+    if (plannings.length === 0) {
+      setEditingPlanning(null);
+      setShowForm(true);
+    }
+  }, [plannings.length]);
 
   const handleCreate = useCallback(() => {
     setEditingPlanning(null);

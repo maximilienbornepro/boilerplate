@@ -35,7 +35,10 @@ function RagApp({ onNavigate }: { onNavigate?: (path: string) => void }) {
 
   useEffect(() => {
     if (view.type === 'list') {
-      fetchBots().then(setBots).catch(console.error);
+      fetchBots().then(list => {
+        setBots(list);
+        if (list.length === 0) { setEditBot(undefined); setShowForm(true); }
+      }).catch(console.error);
     }
   }, [view]);
 
@@ -96,7 +99,6 @@ function RagApp({ onNavigate }: { onNavigate?: (path: string) => void }) {
         onOpen={(bot) => setView({ type: 'detail', bot })}
         onEdit={(bot) => { setEditBot(bot); setShowForm(true); }}
         onDelete={(bot) => setConfirmDelete(bot)}
-        onCreate={() => { setEditBot(undefined); setShowForm(true); }}
       />
 
       {showForm && (
