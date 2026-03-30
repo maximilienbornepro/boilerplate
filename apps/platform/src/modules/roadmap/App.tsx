@@ -4,6 +4,7 @@ import type { Planning, Task, Dependency, ViewMode, Marker, PlanningFormData } f
 import * as api from './services/api';
 import { getNextColor } from './utils/taskUtils';
 import { PlanningList } from './components/PlanningList/PlanningList';
+import { PlanningForm } from './components/PlanningList/PlanningForm';
 import { GanttBoard } from './components/GanttBoard/GanttBoard';
 import { TaskForm } from './components/TaskForm/TaskForm';
 import { ViewSelector } from './components/ViewSelector/ViewSelector';
@@ -101,6 +102,8 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
 
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [showPlanningForm, setShowPlanningForm] = useState(false);
+  const [editingPlanningForForm, setEditingPlanningForForm] = useState<Planning | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showSubjectsPanel, setShowSubjectsPanel] = useState(false);
   const [copiedPreview, setCopiedPreview] = useState(false);
@@ -417,19 +420,36 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
       ) : (
         <>
           <ModuleHeader title="Roadmap" onBack={handleNavigateHome}>
-            <button className="module-header-btn module-header-btn-primary" onClick={handleCreatePlanning}>
-              + Nouveau
+            <button
+              className="module-header-btn module-header-btn-primary"
+              onClick={() => { setEditingPlanningForForm(null); setShowPlanningForm(true); }}
+            >
+              + Nouveau planning
             </button>
           </ModuleHeader>
           <PlanningList
             plannings={plannings}
             activePlanningId={selectedPlanning?.id ?? null}
             onSelect={setSelectedPlanning}
-            onCreate={handleCreatePlanningFromForm}
-            onUpdate={handleEditPlanning}
+            onEdit={(p) => { setEditingPlanningForForm(p); setShowPlanningForm(true); }}
             onDelete={handleDeletePlanning}
-            onClose={() => onNavigate ? onNavigate('/') : (window.location.href = '/')}
+            onAdd={() => { setEditingPlanningForForm(null); setShowPlanningForm(true); }}
           />
+          {showPlanningForm && (
+            <PlanningForm
+              planning={editingPlanningForForm}
+              onSubmit={async (data) => {
+                if (editingPlanningForForm) {
+                  await handleEditPlanning(editingPlanningForForm.id, data);
+                } else {
+                  await handleCreatePlanningFromForm(data);
+                }
+                setShowPlanningForm(false);
+                setEditingPlanningForForm(null);
+              }}
+              onClose={() => { setShowPlanningForm(false); setEditingPlanningForForm(null); }}
+            />
+          )}
         </>
       )}
     </>
