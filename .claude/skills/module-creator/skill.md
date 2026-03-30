@@ -730,7 +730,40 @@ Ajouter dans `proxy` :
 },
 ```
 
-#### 4.3 Server Index `apps/platform/servers/unified/src/index.ts`
+#### 4.3 Production Proxy `proxy-nginx/nginx/nginx.conf`
+
+**OBLIGATOIRE** pour que les appels API passent par le reverse proxy en production (et remontent dans Grafana).
+
+Pour **boilerplate.vitess.tech** : ajouter le nom du module dans le regex existant :
+
+```nginx
+location ~* ^/(suivitess|conges|delivery|roadmap|rag|poker|products|connectors|gateway|mon-cv|<module>)-api/ {
+```
+
+Si le module utilise du SSE streaming, l'ajouter aussi dans :
+
+```nginx
+location ~* ^/(rag|suivitess|conges|<module>)/api/ {
+```
+
+Pour **studio.vitess.tech** : ajouter un nouveau location block :
+
+```nginx
+location /<module>-api/ {
+    set $upstream_unified studio-unified-server:3010;
+    rewrite ^/<module>-api/(.*) /<module>/api/$1 break;
+    proxy_pass http://$upstream_unified;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+> Le repo proxy-nginx est dans `~/Documents/workspace/proxy-nginx/`. Penser a commit + deploy apres modification.
+
+#### 4.4 Server Index `apps/platform/servers/unified/src/index.ts`
 
 Ajouter :
 

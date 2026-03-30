@@ -498,6 +498,7 @@ Si un test échoue, le déploiement est **annulé**. Pas de contournement possib
     rewrite: (path) => path.replace(/^\/<module>-api/, '/<module>/api'),
   },
   ```
+- [ ] `proxy-nginx/nginx/nginx.conf` - Ajouter route du module dans le regex boilerplate.vitess.tech (`/<module>` dans le pattern) + commit/deploy proxy-nginx
 - [ ] `index.ts` (serveur) - Monter le module
   ```ts
   import { init<Module>, create<Module>Router } from './modules/<module>/index.js';
