@@ -534,14 +534,18 @@ export interface ImprovementResult {
 // ATS recommendation types
 export interface AtsRecommendationItem {
   priority: 'critique' | 'important' | 'bonus';
+  type: 'add' | 'replace' | 'repeat';
   action: string;
   example: string;
   keywords: string[];
+  termToFind?: string;
+  termToReplace?: string;
 }
 
 export interface AtsRecommendations {
   recommendations: AtsRecommendationItem[];
   currentScore: AtsScore;
+  promptUsed: string;
 }
 
 /**
@@ -690,41 +694,107 @@ export async function recommendImprovements(
   const { breakdown } = score;
   const total = breakdown.requiredFound.length + breakdown.requiredMissing.length;
 
-  const prompt = `You are an ATS optimization expert. Based on this CV's ATS score analysis, provide 3-5 SPECIFIC, ACTIONABLE recommendations to improve the score.
+  // Extract full CV text for synonym detection across the entire document
+  const currentMissionsText = (cvData.experiences || [])
+    .flatMap(e => [
+      e.title,
+      ...(e.missions || []),
+      ...(e.projects || []).map(p => `${p.title} ${p.description || ''}`),
+      ...(e.technologies || []),
+    ])
+    .filter(Boolean)
+    .join('\n');
 
-Current ATS score: ${score.overall}/100
-- Keyword match: ${score.keywordMatch}% (${breakdown.requiredFound.length}/${total} required keywords found)
-- Section coverage: ${score.sectionCoverage}% (keywords present in experience AND skills sections)
-- Title match: ${score.titleMatch ? '✓ matches' : `✗ mismatch (CV title: "${cvData.title}" vs job title: "${jobAnalysis.exactJobTitle}")`}
+  const currentSkillsText = [
+    ...(cvData.competences || []),
+    ...(cvData.outils || []),
+    ...(cvData.dev || []),
+    ...(cvData.frameworks || []),
+    ...(cvData.solutions || []),
+  ].join(', ');
 
-Required keywords MISSING from CV: ${breakdown.requiredMissing.join(', ') || 'none'}
-Required keywords in only 1 section (need 2-section frequency): ${breakdown.singleSectionKeywords.join(', ') || 'none'}
-Preferred keywords for bonus points: ${jobAnalysis.preferredKeywords.slice(0, 5).join(', ') || 'none'}
+  const prompt = `Tu es un expert en optimisation ATS (Applicant Tracking System). Analyse ce CV par rapport à l'offre d'emploi et génère 3-5 recommandations SPÉCIFIQUES et ACTIONNABLES.
 
-RULES for recommendations:
-- "critique" priority = missing required keywords (ATS will auto-reject) — always address first
-- "important" priority = keywords in only 1 section (need repetition in experience + skills)
-- "bonus" priority = title mismatch, preferred keywords, or style improvements
-- action: precise instruction in the same language as the job offer ("Ajouter X dans les compétences")
-- example: the exact text to add verbatim ("Compétences → Gestion de projet Agile")
-- keywords: array of required keyword strings this recommendation covers
-- If score is already 100, return 1 bonus recommendation about CV style
+Tu peux recommander TROIS types d'actions :
+- TYPE "add"     → Ajouter un mot-clé complètement absent dans une section
+- TYPE "replace" → Remplacer un synonyme/paraphrase existant par le TOKEN EXACT de l'offre dans TOUT le CV
+- TYPE "repeat"  → Répéter un mot-clé déjà présent dans une section vers une 2ème section
 
-Return ONLY valid JSON:
+⚠️  REPLACE EST L'ACTION LA PLUS IMPORTANTE :
+Les ATS font du matching token-exact. "pilotage de projet" et "gestion de projet" sont DIFFÉRENTS pour un ATS.
+Si le CV contient une paraphrase d'un mot-clé requis → recommande TOUJOURS de le remplacer dans TOUT le CV.
+
+═══ ANALYSE ATS ACTUELLE ═══
+Score global : ${score.overall}/100
+- Correspondance mots-clés : ${score.keywordMatch}% (${breakdown.requiredFound.length}/${total} mots-clés requis trouvés)
+- Couverture sections : ${score.sectionCoverage}% (mots-clés présents dans expériences ET compétences)
+- Correspondance titre : ${score.titleMatch ? `✓ correspond ("${cvData.title}")` : `✗ écart — CV : "${cvData.title}" / Offre : "${jobAnalysis.exactJobTitle}"`}
+
+Mots-clés requis MANQUANTS (rejet automatique ATS) : ${breakdown.requiredMissing.join(', ') || 'aucun'}
+Mots-clés en 1 seule section (besoin 2-section frequency) : ${breakdown.singleSectionKeywords.join(', ') || 'aucun'}
+Mots-clés préférés (bonus) : ${jobAnalysis.preferredKeywords.slice(0, 5).join(', ') || 'aucun'}
+
+═══ CONTENU COMPLET DU CV (scanner pour détecter les synonymes à remplacer) ═══
+Titre CV : ${cvData.title || '(non renseigné)'}
+Résumé : ${(cvData.summary || '(non renseigné)').substring(0, 400)}
+Missions & projets :
+${currentMissionsText.substring(0, 1500) || '(aucune mission)'}
+Compétences : ${currentSkillsText || '(aucune compétence)'}
+
+═══ MOTS-CLÉS REQUIS PAR L'OFFRE ═══
+${jobAnalysis.requiredKeywords.join(', ') || '(aucun)'}
+
+═══ RÈGLES DE GÉNÉRATION ═══
+Priorité "critique" = mots-clés requis manquants → action "add" ou "replace"
+Priorité "important" = mot-clé dans 1 seule section → action "repeat" (ou "replace" si synonyme détecté dans le CV)
+Priorité "bonus"    = écart de titre, mots-clés préférés, style
+
+Pour type "replace" :
+  • Scanne TOUT le contenu CV ci-dessus pour trouver des synonymes/paraphrases des mots-clés requis
+  • termToFind    : le terme EXACT tel qu'il apparaît dans le CV (copie mot-pour-mot)
+  • termToReplace : le token EXACT de l'offre d'emploi (copie mot-pour-mot)
+  • action        : préciser dans quelle(s) section(s) effectuer le remplacement
+
+Pour type "add" :
+  • Préciser la section cible et le texte exact à ajouter
+
+Pour type "repeat" :
+  • Indiquer le mot-clé à répéter et la section cible (ex: "ajouter dans les compétences, déjà dans les missions")
+
+Si le score est déjà 100, retourner 1 recommandation bonus sur le style ou la formulation.
+
+Retourne UNIQUEMENT du JSON valide :
 {
   "recommendations": [
     {
       "priority": "critique",
-      "action": "...",
-      "example": "...",
-      "keywords": ["..."]
+      "type": "replace",
+      "action": "Remplacer 'pilotage de projet' par 'gestion de projet' dans toutes les missions et le titre",
+      "example": "pilotage de projet → gestion de projet",
+      "keywords": ["gestion de projet"],
+      "termToFind": "pilotage de projet",
+      "termToReplace": "gestion de projet"
+    },
+    {
+      "priority": "critique",
+      "type": "add",
+      "action": "Ajouter 'reporting' dans les compétences",
+      "example": "Compétences → reporting",
+      "keywords": ["reporting"]
+    },
+    {
+      "priority": "important",
+      "type": "repeat",
+      "action": "Répéter 'agile' dans une mission (déjà présent dans les compétences)",
+      "example": "Mission → '...en méthodologie agile...'",
+      "keywords": ["agile"]
     }
   ]
 }`;
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 1500,
+    max_tokens: 2000,
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -734,7 +804,7 @@ Return ONLY valid JSON:
     ? (JSON.parse(jsonMatch[0]) as { recommendations: AtsRecommendationItem[] })
     : { recommendations: [] };
 
-  return { ...parsed, currentScore: score };
+  return { ...parsed, currentScore: score, promptUsed: prompt };
 }
 
 /**

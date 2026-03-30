@@ -659,29 +659,55 @@ describe('Mon CV - ATS Recommendations', () => {
   it('should structure AtsRecommendationItem correctly', () => {
     const item = {
       priority: 'critique' as const,
+      type: 'add' as const,
       action: "Ajouter 'gestion de projet' dans les compétences",
       example: 'Compétences → Gestion de projet Agile',
       keywords: ['gestion de projet'],
     };
 
     expect(item.priority).toBe('critique');
+    expect(item.type).toBe('add');
     expect(item.action).toContain('gestion de projet');
     expect(item.keywords).toContain('gestion de projet');
+  });
+
+  it('should support replace type with termToFind and termToReplace', () => {
+    const item = {
+      priority: 'critique' as const,
+      type: 'replace' as const,
+      action: "Remplacer 'pilotage de projet' par 'gestion de projet' dans tout le CV",
+      example: 'pilotage de projet → gestion de projet',
+      keywords: ['gestion de projet'],
+      termToFind: 'pilotage de projet',
+      termToReplace: 'gestion de projet',
+    };
+
+    expect(item.type).toBe('replace');
+    expect(item.termToFind).toBe('pilotage de projet');
+    expect(item.termToReplace).toBe('gestion de projet');
   });
 
   it('should accept all priority levels', () => {
     const priorities = ['critique', 'important', 'bonus'] as const;
     for (const p of priorities) {
-      const item = { priority: p, action: 'action', example: 'example', keywords: [] };
+      const item = { priority: p, type: 'add' as const, action: 'action', example: 'example', keywords: [] };
       expect(item.priority).toBe(p);
     }
   });
 
-  it('should validate AtsRecommendations structure with currentScore', () => {
+  it('should accept all type values', () => {
+    const types = ['add', 'replace', 'repeat'] as const;
+    for (const t of types) {
+      const item = { priority: 'bonus' as const, type: t, action: 'a', example: 'e', keywords: [] };
+      expect(item.type).toBe(t);
+    }
+  });
+
+  it('should validate AtsRecommendations structure with currentScore and promptUsed', () => {
     const reco = {
       recommendations: [
-        { priority: 'critique' as const, action: 'A', example: 'B', keywords: ['k1'] },
-        { priority: 'important' as const, action: 'C', example: 'D', keywords: ['k2', 'k3'] },
+        { priority: 'critique' as const, type: 'add' as const, action: 'A', example: 'B', keywords: ['k1'] },
+        { priority: 'important' as const, type: 'repeat' as const, action: 'C', example: 'D', keywords: ['k2', 'k3'] },
       ],
       currentScore: {
         overall: 60,
@@ -695,6 +721,7 @@ describe('Mon CV - ATS Recommendations', () => {
           singleSectionKeywords: ['Agile'],
         },
       },
+      promptUsed: 'Tu es un expert ATS...',
     };
 
     expect(reco.recommendations).toHaveLength(2);
@@ -703,6 +730,7 @@ describe('Mon CV - ATS Recommendations', () => {
     expect(reco.currentScore).toBeDefined();
     expect(reco.currentScore.overall).toBe(60);
     expect(reco.currentScore.breakdown.requiredMissing).toContain('gestion de projet');
+    expect(reco.promptUsed).toContain('expert ATS');
   });
 
   it('should map priority to display icon', () => {
@@ -717,6 +745,18 @@ describe('Mon CV - ATS Recommendations', () => {
     expect(PRIORITY_ICON['bonus']).toBe('🔵');
   });
 
+  it('should map type to display badge', () => {
+    const TYPE_BADGE: Record<string, string> = {
+      add: 'AJOUT',
+      replace: 'REMPLACEMENT',
+      repeat: 'RÉPÉTITION',
+    };
+
+    expect(TYPE_BADGE['add']).toBe('AJOUT');
+    expect(TYPE_BADGE['replace']).toBe('REMPLACEMENT');
+    expect(TYPE_BADGE['repeat']).toBe('RÉPÉTITION');
+  });
+
   it('should handle empty recommendations list (score 100)', () => {
     const reco = {
       recommendations: [],
@@ -727,9 +767,11 @@ describe('Mon CV - ATS Recommendations', () => {
         titleMatch: true,
         breakdown: { requiredFound: [], requiredMissing: [], multiSectionKeywords: [], singleSectionKeywords: [] },
       },
+      promptUsed: 'prompt...',
     };
     expect(reco.recommendations).toHaveLength(0);
     expect(reco.currentScore.overall).toBe(100);
+    expect(reco.promptUsed).toBeDefined();
   });
 });
 

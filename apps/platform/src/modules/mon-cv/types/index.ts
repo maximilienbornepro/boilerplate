@@ -197,15 +197,19 @@ export interface ImprovementResult {
 // ATS recommendation item
 export interface AtsRecommendationItem {
   priority: 'critique' | 'important' | 'bonus';
-  action: string;      // ex: "Ajouter 'gestion de projet' dans les compétences"
-  example: string;     // ex: "Compétences → Gestion de projet Agile"
-  keywords: string[];  // mots-clés couverts par cette recommandation
+  type: 'add' | 'replace' | 'repeat';  // add=ajouter, replace=remplacer synonyme, repeat=répéter 2ème section
+  action: string;         // ex: "Remplacer 'pilotage de projet' par 'gestion de projet' dans tout le CV"
+  example: string;        // ex: "pilotage de projet → gestion de projet"
+  keywords: string[];     // mots-clés couverts par cette recommandation
+  termToFind?: string;    // pour type="replace" : terme exact à trouver dans le CV
+  termToReplace?: string; // pour type="replace" : token exact de l'offre à substituer
 }
 
 // ATS recommendations response
 export interface AtsRecommendations {
   recommendations: AtsRecommendationItem[];
   currentScore: AtsScore;  // score computed at time of analysis (reflects current CV state)
+  promptUsed: string;      // prompt exact envoyé à Claude (affiché dans l'UI pour transparence)
 }
 
 // ============ Adaptation History Types ============

@@ -732,3 +732,137 @@
   color: var(--text-secondary);
   margin: 0;
 }
+
+/* ── Type badge (add / replace / repeat) ────────────────────────────────────── */
+
+.reco-type-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.reco-type-replace { color: var(--warning); border-color: var(--warning); }
+.reco-type-add     { color: var(--success); border-color: var(--success); }
+.reco-type-repeat  { color: var(--accent-primary); border-color: var(--accent-primary); }
+
+/* ── Replace detail (find → replace) ──────────────────────────────────────── */
+
+.reco-replace-detail {
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(245, 158, 11, 0.06);
+  border-left: 2px solid var(--warning);
+  font-family: var(--font-family-mono);
+  font-size: 0.78rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.reco-replace-find  { color: var(--error); text-decoration: line-through; }
+.reco-replace-arrow { color: var(--text-muted); }
+.reco-replace-with  { color: var(--success); font-weight: 600; }
+.reco-replace-scope { color: var(--text-muted); font-style: italic; }
+
+/* ── Prompt collapsible ─────────────────────────────────────────────────────── */
+
+.reco-prompt-block {
+  margin-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-light);
+  padding-top: var(--spacing-sm);
+}
+
+.reco-prompt-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline dotted;
+  transition: color var(--transition-fast);
+}
+
+.reco-prompt-toggle:hover { color: var(--text-secondary); }
+
+.reco-prompt-text {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* ── Treatment summary ──────────────────────────────────────────────────────── */
+
+.treatment-summary {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-md) var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.treatment-summary__title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.treatment-summary__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.treatment-row {
+  display: flex;
+  gap: var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  line-height: 1.4;
+}
+
+.treatment-row__label {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 160px;
+}
+
+.treatment-row__value {
+  color: var(--text-primary);
+}
+
+.treatment-row--score .treatment-row__value {
+  font-weight: var(--font-weight-semibold);
+}
+
+.treatment-delta-pos {
+  color: var(--success);
+  font-weight: var(--font-weight-bold);
+}
+
+.treatment-delta-neg {
+  color: var(--error);
+  font-weight: var(--font-weight-bold);
+}

@@ -190,6 +190,68 @@ function AtsScoreBlock({
   );
 }
 
+// ─── Treatment summary (what adaptCV did) ────────────────────────────────────
+
+function TreatmentSummary({
+  result,
+}: {
+  result: AdaptResponse;
+}) {
+  const { jobAnalysis, changes, atsScore } = result;
+  const delta = atsScore.after.overall - atsScore.before.overall;
+  const allAddedSkills = Object.entries(changes.addedSkills)
+    .flatMap(([cat, skills]) => skills.map(s => `${s} (${cat})`));
+
+  return (
+    <div className="treatment-summary">
+      <div className="treatment-summary__title">📋 Traitements appliqués</div>
+      <div className="treatment-summary__rows">
+        <div className="treatment-row">
+          <span className="treatment-row__label">Analyse offre</span>
+          <span className="treatment-row__value">
+            {jobAnalysis.requiredKeywords.length} mots-clés requis · {jobAnalysis.preferredKeywords.length} préférés · domaine : {jobAnalysis.domain}
+          </span>
+        </div>
+        <div className="treatment-row">
+          <span className="treatment-row__label">Titre ciblé</span>
+          <span className="treatment-row__value">"{jobAnalysis.exactJobTitle}"</span>
+        </div>
+        <div className="treatment-row">
+          <span className="treatment-row__label">Missions générées</span>
+          <span className="treatment-row__value">
+            {changes.newMissions.length > 0
+              ? `${changes.newMissions.length} mission${changes.newMissions.length > 1 ? 's' : ''} ajoutée${changes.newMissions.length > 1 ? 's' : ''} à la 1ère expérience`
+              : 'aucune'}
+          </span>
+        </div>
+        <div className="treatment-row">
+          <span className="treatment-row__label">Projet généré</span>
+          <span className="treatment-row__value">
+            {changes.newProject ? `"${changes.newProject.title}"` : 'aucun'}
+          </span>
+        </div>
+        <div className="treatment-row">
+          <span className="treatment-row__label">Compétences ajoutées</span>
+          <span className="treatment-row__value">
+            {allAddedSkills.length > 0 ? allAddedSkills.join(', ') : 'aucune'}
+          </span>
+        </div>
+        <div className="treatment-row treatment-row--score">
+          <span className="treatment-row__label">Impact score ATS</span>
+          <span className="treatment-row__value">
+            {atsScore.before.overall}% → {atsScore.after.overall}%
+            {delta !== 0 && (
+              <span className={delta > 0 ? 'treatment-delta-pos' : 'treatment-delta-neg'}>
+                {' '}{delta > 0 ? '+' : ''}{delta} pts
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Recommendations panel ────────────────────────────────────────────────────
 
 const PRIORITY_ICON: Record<string, string> = {
@@ -204,16 +266,24 @@ const PRIORITY_LABEL: Record<string, string> = {
   bonus: 'Bonus',
 };
 
+const TYPE_BADGE: Record<string, string> = {
+  add: 'AJOUT',
+  replace: 'REMPLACEMENT',
+  repeat: 'RÉPÉTITION',
+};
+
 function RecommendationsPanel({
   items,
   loading,
   loadingApply,
   onApply,
+  prompt,
 }: {
   items: AtsRecommendationItem[] | null;
   loading: boolean;
   loadingApply?: boolean;
   onApply?: () => void;
+  prompt?: string;
 }) {
   if (loading) {
     return (
@@ -232,6 +302,7 @@ function RecommendationsPanel({
       <div className="reco-panel">
         <div className="reco-header">💡 Recommandations IA</div>
         <p className="reco-empty">Aucune recommandation — score optimal !</p>
+        {prompt && <PromptCollapsible prompt={prompt} />}
       </div>
     );
   }
@@ -245,9 +316,22 @@ function RecommendationsPanel({
             <div className="reco-item-title">
               <span className="reco-icon">{PRIORITY_ICON[item.priority] || '🔵'}</span>
               <span className="reco-priority-badge">{PRIORITY_LABEL[item.priority]}</span>
+              {item.type && (
+                <span className={`reco-type-badge reco-type-${item.type}`}>
+                  {TYPE_BADGE[item.type] || item.type}
+                </span>
+              )}
               <span className="reco-action">{item.action}</span>
             </div>
             {item.example && <div className="reco-example">→ {item.example}</div>}
+            {item.type === 'replace' && item.termToFind && item.termToReplace && (
+              <div className="reco-replace-detail">
+                <span className="reco-replace-find">"{item.termToFind}"</span>
+                <span className="reco-replace-arrow"> ⟶ </span>
+                <span className="reco-replace-with">"{item.termToReplace}"</span>
+                <span className="reco-replace-scope"> dans tout le CV</span>
+              </div>
+            )}
             {item.keywords.length > 0 && (
               <div className="reco-keywords">
                 {item.keywords.map(k => (
@@ -282,6 +366,24 @@ function RecommendationsPanel({
           </p>
         </div>
       )}
+
+      {prompt && <PromptCollapsible prompt={prompt} />}
+    </div>
+  );
+}
+
+// ─── Prompt collapsible (transparence — affiche le prompt envoyé à Claude) ────
+
+function PromptCollapsible({ prompt }: { prompt: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="reco-prompt-block">
+      <button className="reco-prompt-toggle" onClick={() => setOpen(o => !o)}>
+        {open ? '▲' : '▼'} Voir le prompt envoyé à Claude
+      </button>
+      {open && (
+        <pre className="reco-prompt-text">{prompt}</pre>
+      )}
     </div>
   );
 }
@@ -312,6 +414,7 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
   // Recommendation state
   const [showReco, setShowReco] = useState(false);
   const [recoItems, setRecoItems] = useState<AtsRecommendationItem[] | null>(null);
+  const [recoPrompt, setRecoPrompt] = useState<string | undefined>(undefined);
 
   // ── Real-time score recomputation (debounced, pure client-side) ──────────────
 
@@ -415,6 +518,7 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     setError('');
     setShowReco(false);
     setRecoItems(null);
+    setRecoPrompt(undefined);
     setLiveScore(null);
     setJobAnalysis(null);
   };
@@ -441,16 +545,13 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     setLoadingReco(true);
     setShowReco(true);
     setRecoItems(null);
+    setRecoPrompt(undefined);
     try {
       const reco = await getAtsRecommendations(cvToAnalyze, jobOffer);
       setRecoItems(reco.recommendations);
+      setRecoPrompt(reco.promptUsed);
       // currentScore reflects the CV state at analysis time
       setLiveScore(reco.currentScore);
-      // Also cache jobAnalysis for future real-time scoring (if not yet set from adaptation)
-      if (!jobAnalysis && reco.currentScore) {
-        // jobAnalysis not available from recommend endpoint directly,
-        // but liveScore will be set so real-time diff is visible
-      }
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la génération des recommandations');
       setShowReco(false);
@@ -529,6 +630,8 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
 
         <div className="adapt-result">
           <AtsScoreBlock before={scoreBefore} after={scoreAfter} />
+
+          <TreatmentSummary result={result} />
 
           <div className="adapt-changes">
             <h3>Modifications apportees — editables</h3>
@@ -630,6 +733,7 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
               loading={loadingReco}
               loadingApply={loadingApply}
               onApply={handleApplyImprovements}
+              prompt={recoPrompt}
             />
           )}
 
