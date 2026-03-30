@@ -279,3 +279,65 @@ export async function deleteMarker(id: string): Promise<boolean> {
   const result = await pool.query('DELETE FROM roadmap_markers WHERE id = $1', [id]);
   return (result.rowCount || 0) > 0;
 }
+
+// ==================== TASK-SUBJECT LINKS ====================
+
+export interface LinkedSubject {
+  id: string;
+  title: string;
+  status: string;
+  situation: string | null;
+  responsibility: string | null;
+  section_name: string;
+  document_id: string;
+  document_title: string;
+}
+
+export async function getLinkedSubjects(taskId: string): Promise<LinkedSubject[]> {
+  const result = await pool.query(
+    `SELECT
+      sub.id,
+      sub.title,
+      sub.status,
+      sub.situation,
+      sub.responsibility,
+      sec.name   AS section_name,
+      doc.id     AS document_id,
+      doc.title  AS document_title
+     FROM roadmap_task_subjects rts
+     JOIN suivitess_subjects  sub ON rts.subject_id = sub.id
+     JOIN suivitess_sections  sec ON sub.section_id  = sec.id
+     JOIN suivitess_documents doc ON sec.document_id = doc.id
+     WHERE rts.task_id = $1
+     ORDER BY doc.title, sec.name, sub.title`,
+    [taskId]
+  );
+  return result.rows;
+}
+
+export async function linkSubject(taskId: string, subjectId: string): Promise<void> {
+  await pool.query(
+    'INSERT INTO roadmap_task_subjects (task_id, subject_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [taskId, subjectId]
+  );
+}
+
+export async function unlinkSubject(taskId: string, subjectId: string): Promise<void> {
+  await pool.query(
+    'DELETE FROM roadmap_task_subjects WHERE task_id = $1 AND subject_id = $2',
+    [taskId, subjectId]
+  );
+}
+
+export async function ensureTaskSubjectsTable(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS roadmap_task_subjects (
+      task_id    UUID NOT NULL,
+      subject_id UUID NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (task_id, subject_id)
+    )
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_rts_task ON roadmap_task_subjects(task_id)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_rts_subject ON roadmap_task_subjects(subject_id)');
+}

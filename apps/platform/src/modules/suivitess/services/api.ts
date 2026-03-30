@@ -2,6 +2,26 @@ import type { Document, Section, Subject, DocumentWithSections, SnapshotInfo, Sn
 
 const API_BASE = '/suivitess-api';
 
+// ==================== CROSS-MODULE SEARCH ====================
+
+export interface SubjectSearchResult {
+  id: string;
+  title: string;
+  status: string;
+  section_name: string;
+  document_id: string;
+  document_title: string;
+}
+
+export async function searchSubjects(q: string): Promise<SubjectSearchResult[]> {
+  if (q.trim().length < 2) return [];
+  const response = await fetch(`${API_BASE}/subjects/search?q=${encodeURIComponent(q)}`, {
+    credentials: 'include',
+  });
+  if (!response.ok) return [];
+  return response.json();
+}
+
 // ==================== DOCUMENTS ====================
 
 export async function fetchDocuments(): Promise<Document[]> {

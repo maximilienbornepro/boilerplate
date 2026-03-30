@@ -37,6 +37,21 @@ export async function initGateway() {
   // Share pool with jiraAuth module
   initJiraAuth(pool);
 
+  // Ensure platform_settings table exists (idempotent)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS platform_settings (
+      key         VARCHAR(100) PRIMARY KEY,
+      value       TEXT         NOT NULL DEFAULT 'false',
+      description TEXT,
+      updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    INSERT INTO platform_settings (key, value, description)
+    VALUES ('integration_roadmap_suivitess', 'false', 'Liaison Tâches Roadmap ↔ Sujets SuiviTess')
+    ON CONFLICT (key) DO NOTHING
+  `);
+
   // Always create default admin account (admin/admin)
   await createDefaultAdmin();
 
@@ -574,6 +589,47 @@ export function createGatewayRouter(): Router {
 
     await pool.query('DELETE FROM users WHERE id = $1', [userId]);
     res.json({ success: true });
+  }));
+
+  // ==================== PLATFORM SETTINGS ====================
+
+  // GET /platform/settings/public — authenticated users read all flags as { key: boolean }
+  router.get('/platform/settings/public', authMiddleware, asyncHandler(async (_req, res) => {
+    const { rows } = await pool.query(
+      'SELECT key, value FROM platform_settings ORDER BY key'
+    );
+    const result: Record<string, boolean> = {};
+    for (const row of rows) {
+      result[row.key] = row.value === 'true';
+    }
+    res.json(result);
+  }));
+
+  // GET /platform/settings — admin reads full settings list
+  router.get('/platform/settings', authMiddleware, adminMiddleware, asyncHandler(async (_req, res) => {
+    const { rows } = await pool.query(
+      'SELECT key, value, description, updated_at FROM platform_settings ORDER BY key'
+    );
+    res.json(rows);
+  }));
+
+  // PUT /platform/settings/:key — admin updates a flag
+  router.put('/platform/settings/:key', authMiddleware, adminMiddleware, asyncHandler(async (req, res) => {
+    const { key } = req.params;
+    const { value } = req.body;
+    if (value !== 'true' && value !== 'false') {
+      res.status(400).json({ error: 'value must be "true" or "false"' });
+      return;
+    }
+    const { rowCount } = await pool.query(
+      'UPDATE platform_settings SET value = $1, updated_at = NOW() WHERE key = $2',
+      [value, key]
+    );
+    if (rowCount === 0) {
+      res.status(404).json({ error: 'Setting not found' });
+      return;
+    }
+    res.json({ key, value });
   }));
 
   return router;
