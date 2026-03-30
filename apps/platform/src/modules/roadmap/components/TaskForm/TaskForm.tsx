@@ -44,7 +44,7 @@ export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, int
   const debouncedSubjectSearch = useDebounce(subjectSearch, 300);
 
   const loadSubjects = useCallback(async () => {
-    if (!task?.id || !integrationEnabled) return;
+    if (!task?.id) return;
     try {
       const data = await api.fetchLinkedSubjects(task.id);
       setSubjects(data);
@@ -54,7 +54,7 @@ export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, int
   useEffect(() => { loadSubjects(); }, [loadSubjects]);
 
   useEffect(() => {
-    if (!integrationEnabled || debouncedSubjectSearch.length < 2) {
+    if (debouncedSubjectSearch.length < 2) {
       setSubjectResults([]);
       setShowSubjectDropdown(false);
       return;
@@ -144,8 +144,8 @@ export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, int
             </div>
           </div>
 
-          {/* SuiviTess subjects — only shown when editing an existing task and integration enabled */}
-          {task && integrationEnabled && (
+          {/* SuiviTess subjects — shown when editing an existing task (always available) */}
+          {task && (
             <div className={styles.formGroup}>
               <label>Sujets SuiviTess liés</label>
 

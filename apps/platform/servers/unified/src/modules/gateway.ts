@@ -48,8 +48,9 @@ export async function initGateway() {
   `);
   await pool.query(`
     INSERT INTO platform_settings (key, value, description)
-    VALUES ('integration_roadmap_suivitess', 'false', 'Liaison Tâches Roadmap ↔ Sujets SuiviTess')
-    ON CONFLICT (key) DO NOTHING
+    VALUES ('integration_roadmap_suivitess', 'true', 'Liaison Tâches Roadmap ↔ Sujets SuiviTess')
+    ON CONFLICT (key) DO UPDATE SET
+      description = EXCLUDED.description
   `);
 
   // Always create default admin account (admin/admin)
