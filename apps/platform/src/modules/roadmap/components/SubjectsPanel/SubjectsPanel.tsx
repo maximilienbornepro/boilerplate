@@ -15,6 +15,20 @@ import { SubjectReview } from '../../../suivitess/components/SubjectReview/Subje
 import type { Subject as SuiviTessSubject } from '../../../suivitess/types';
 import './SubjectsPanel.css';
 
+const TrashIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </svg>
+);
+
+const LinkIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+  </svg>
+);
+
 interface SubjectsPanelProps {
   task: Task;
   planningId?: string;
@@ -59,6 +73,8 @@ export function SubjectsPanel({
   // ── Task editing ──────────────────────────────────────────────────────
   const [taskName, setTaskName] = useState(task.name);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const colorPickerRef = useRef<HTMLDivElement>(null);
 
   // Sync when the task prop changes (user clicks another task)
   useEffect(() => {
@@ -135,6 +151,7 @@ export function SubjectsPanel({
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowDropdown(false);
+      if (colorPickerRef.current && !colorPickerRef.current.contains(e.target as Node)) setShowColorPicker(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -188,6 +205,14 @@ export function SubjectsPanel({
       <div className="sp-header">
         <div className="sp-header-info">
           <div className="sp-header-label">TÂCHE</div>
+          <input
+            className="sp-task-name-input"
+            value={taskName}
+            onChange={e => setTaskName(e.target.value)}
+            onBlur={saveTaskName}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            placeholder="Nom de la tâche"
+          />
         </div>
         <button className="sp-close" onClick={onClose} title="Fermer">×</button>
       </div>
@@ -195,51 +220,6 @@ export function SubjectsPanel({
       {error && <div className="sp-error">{error}</div>}
 
       <div className="sp-scrollable">
-
-        {/* ── Task editing ── */}
-        <div className="sp-task-section">
-
-          {/* Name */}
-          <div className="sp-field">
-            <label className="sp-label">Nom</label>
-            <input
-              className="sp-task-name-input"
-              value={taskName}
-              onChange={e => setTaskName(e.target.value)}
-              onBlur={saveTaskName}
-              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-              placeholder="Nom de la tâche"
-            />
-          </div>
-
-          {/* Color */}
-          <div className="sp-field">
-            <label className="sp-label">Couleur</label>
-            <div className="sp-color-grid">
-              {TASK_COLORS.map(color => (
-                <button
-                  key={color}
-                  className={`sp-color-swatch ${task.color === color ? 'sp-color-swatch--selected' : ''}`}
-                  style={{ backgroundColor: color }}
-                  onClick={() => saveColor(color)}
-                  title={color}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="sp-task-actions">
-            {planningId && (
-              <button className="sp-btn" onClick={handleCopyEmbed}>
-                {copiedEmbed ? '✓ Copié !' : 'Lien embed'}
-              </button>
-            )}
-            <button className="sp-btn sp-btn-danger" onClick={handleDelete}>
-              Supprimer
-            </button>
-          </div>
-        </div>
 
         {/* ── Divider ── */}
         <div className="sp-divider">
@@ -349,6 +329,51 @@ export function SubjectsPanel({
         </div>
 
       </div>{/* end scrollable */}
+
+      {/* ── Compact footer ── */}
+      <div className="sp-footer">
+        {/* Color picker trigger */}
+        <div className="sp-footer-color-wrap" ref={colorPickerRef}>
+          <button
+            className="sp-footer-color-btn"
+            style={{ backgroundColor: task.color }}
+            onClick={() => setShowColorPicker(prev => !prev)}
+            title="Couleur de la tâche"
+          />
+          {showColorPicker && (
+            <div className="sp-color-popover">
+              {TASK_COLORS.map(color => (
+                <button
+                  key={color}
+                  className={`sp-color-swatch ${task.color === color ? 'sp-color-swatch--selected' : ''}`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => { saveColor(color); setShowColorPicker(false); }}
+                  title={color}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="sp-footer-actions">
+          {planningId && (
+            <button
+              className={`sp-footer-btn ${copiedEmbed ? 'sp-footer-btn--copied' : ''}`}
+              onClick={handleCopyEmbed}
+              title="Copier le lien embed"
+            >
+              {copiedEmbed ? '✓' : <LinkIcon />}
+            </button>
+          )}
+          <button
+            className="sp-footer-btn sp-footer-btn--danger"
+            onClick={handleDelete}
+            title="Supprimer la tâche"
+          >
+            <TrashIcon />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
