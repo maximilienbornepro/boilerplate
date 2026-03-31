@@ -4,7 +4,11 @@
   width: 420px;
   min-width: 380px;
   max-width: 500px;
-  height: 100%;
+  /* Sticky: stays in viewport when Gantt is scrolled */
+  position: sticky;
+  top: 110px; /* 50px SharedNav + 60px ModuleHeader */
+  height: calc(100vh - 110px);
+  align-self: flex-start;
   display: flex;
   flex-direction: column;
   background: var(--bg-secondary);
