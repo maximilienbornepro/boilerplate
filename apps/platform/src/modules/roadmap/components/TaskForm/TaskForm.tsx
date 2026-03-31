@@ -121,7 +121,7 @@ export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, int
     <div className={styles.overlay} onClick={onCancel}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
-          <h2 className={styles.title}>{task ? 'Modifier la tache' : 'Nouvelle tache'}</h2>
+          <h2 className={styles.title}>{task ? 'Modifier la tâche' : 'Nouvelle tâche'}</h2>
           <button className={styles.closeButton} onClick={onCancel}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -132,7 +132,7 @@ export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, int
         <form onSubmit={handleSubmit}>
           <div className={styles.formGroup}>
             <label htmlFor="name">Nom *</label>
-            <input id="name" type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Nom de la tache" required autoFocus />
+            <input id="name" type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Nom de la tâche" required autoFocus />
           </div>
 
           {/* SuiviTess subjects — shown when editing an existing task (always available) */}

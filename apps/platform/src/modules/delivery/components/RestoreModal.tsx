@@ -43,13 +43,13 @@ export function RestoreModal({ hiddenTasks, onRestore, onClose }: RestoreModalPr
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
-          <h3>Restaurer des taches masquees</h3>
+          <h3>Restaurer des tâches masquées</h3>
           <button className={styles.closeBtn} onClick={onClose}>x</button>
         </div>
 
         <div className={styles.actions}>
-          <button className={styles.selectBtn} onClick={selectAll}>Tout selectionner</button>
-          <button className={styles.selectBtn} onClick={deselectAll}>Tout deselectionner</button>
+          <button className={styles.selectBtn} onClick={selectAll}>Tout sélectionner</button>
+          <button className={styles.selectBtn} onClick={deselectAll}>Tout désélectionner</button>
         </div>
 
         <div className={styles.list}>

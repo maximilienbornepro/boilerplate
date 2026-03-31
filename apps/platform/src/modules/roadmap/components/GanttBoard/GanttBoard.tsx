@@ -286,7 +286,7 @@ export function GanttBoard({
                 <div className={styles.addTaskRow} style={{ height: ROW_HEIGHT }}>
                   <button className={styles.addTaskButton} onClick={onAddTask}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                    Ajouter une tache
+                    Ajouter une tâche
                   </button>
                 </div>
                 {onAddMarker && (
@@ -335,7 +335,7 @@ export function GanttBoard({
 
       {isDrawing && (
         <div className={styles.drawingOverlay}>
-          Cliquez sur une tache pour creer la dependance (Echap pour annuler)
+          Cliquez sur une tâche pour créer la dépendance (Échap pour annuler)
         </div>
       )}
     </div>

@@ -828,7 +828,7 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
 
             {Object.keys(editableSkills).length > 0 && (
               <div className="change-section">
-                <h4>Competences ajoutees</h4>
+                <h4>Compétences ajoutées</h4>
                 <div className="editable-skills-row">
                   {Object.entries(editableSkills).map(([category, skills]) =>
                     skills.map((skill, idx) => (

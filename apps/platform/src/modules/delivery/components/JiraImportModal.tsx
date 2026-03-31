@@ -150,7 +150,7 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
                   value={selectedProjectKey}
                   onChange={(e) => setSelectedProjectKey(e.target.value)}
                 >
-                  <option value="">-- Selectionner un projet --</option>
+                  <option value="">-- Sélectionner un projet --</option>
                   {projects.map(p => (
                     <option key={p.id} value={p.key}>{p.name} ({p.key})</option>
                   ))}

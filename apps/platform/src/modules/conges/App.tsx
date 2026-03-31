@@ -3,7 +3,6 @@ import { Layout, ToastContainer, ConfirmModal, ModuleHeader, useGatewayUser } fr
 import type { ToastData } from '@boilerplate/shared/components';
 import { LeaveCalendar } from './components/LeaveCalendar/LeaveCalendar';
 import { LeaveForm } from './components/LeaveForm/LeaveForm';
-import { MemberList } from './components/MemberList/MemberList';
 import { ViewControls } from './components/ViewControls/ViewControls';
 import type { Member, Leave, LeaveFormData, ViewMode } from './types';
 import * as api from './services/api';
@@ -29,7 +28,6 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
 
   const [showLeaveForm, setShowLeaveForm] = useState(false);
   const [editingLeave, setEditingLeave] = useState<Leave | null>(null);
-  const [showMemberList, setShowMemberList] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Leave | null>(null);
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [scrollToTodayTrigger, setScrollToTodayTrigger] = useState(0);
@@ -61,7 +59,7 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
       setLeaves(leavesData);
     } catch (err) {
       console.error('Failed to load data:', err);
-      addToast({ type: 'error', message: 'Erreur lors du chargement des donnees' });
+      addToast({ type: 'error', message: 'Erreur lors du chargement des données' });
     } finally {
       setLoading(false);
     }
@@ -86,10 +84,10 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
     try {
       if (editingLeave) {
         await api.updateLeave(editingLeave.id, data);
-        addToast({ type: 'success', message: 'Conge modifie' });
+        addToast({ type: 'success', message: 'Congé modifié' });
       } else {
         await api.createLeave(data);
-        addToast({ type: 'success', message: 'Conge ajoute' });
+        addToast({ type: 'success', message: 'Congé ajouté' });
       }
       setShowLeaveForm(false);
       setEditingLeave(null);
@@ -111,7 +109,7 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
     if (!deleteConfirm) return;
     try {
       await api.deleteLeave(deleteConfirm.id);
-      addToast({ type: 'success', message: 'Conge supprime' });
+      addToast({ type: 'success', message: 'Congé supprimé' });
       setDeleteConfirm(null);
       setEditingLeave(null);
       await loadData();
@@ -120,17 +118,6 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
       addToast({ type: 'error', message: err.message || 'Erreur lors de la suppression' });
     }
   }, [deleteConfirm, addToast, loadData]);
-
-  const handleUpdateMember = useCallback(async (id: number, data: Partial<{ color: string; sortOrder: number }>) => {
-    try {
-      await api.updateMember(id, data);
-      addToast({ type: 'success', message: 'Preferences mises a jour' });
-      await loadData();
-    } catch (err) {
-      console.error('Failed to update member:', err);
-      addToast({ type: 'error', message: 'Erreur lors de la modification' });
-    }
-  }, [addToast, loadData]);
 
   const handleToday = useCallback(() => {
     setYear(new Date().getFullYear());
@@ -144,7 +131,7 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
 
   return (
     <>
-      <ModuleHeader title="Conges" onBack={handleBack}>
+      <ModuleHeader title="Congés" onBack={handleBack}>
         <button className="module-header-btn" onClick={handleToday}>
           Aujourd&apos;hui
         </button>
@@ -154,9 +141,6 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
           year={year}
           onYearChange={handleYearChange}
         />
-        <button className="module-header-btn" onClick={() => setShowMemberList(true)}>
-          Equipe
-        </button>
         <button className="module-header-btn module-header-btn-primary" onClick={handleAddLeave}>
           + Nouveau
         </button>
@@ -168,9 +152,9 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
             <div className="conges-loading">Chargement...</div>
           ) : members.length === 0 ? (
             <div className="conges-empty">
-              <p>Aucun membre avec la permission &quot;conges&quot;</p>
+              <p>Aucun membre avec la permission &quot;congés&quot;</p>
               <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                Les membres sont geres via les permissions gateway.
+                Les membres sont gérés via les permissions gateway.
               </p>
             </div>
           ) : (
@@ -199,18 +183,10 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
         />
       )}
 
-      {showMemberList && (
-        <MemberList
-          members={members}
-          onUpdate={handleUpdateMember}
-          onClose={() => setShowMemberList(false)}
-        />
-      )}
-
       {deleteConfirm && (
         <ConfirmModal
-          title="Supprimer le conge"
-          message="Etes-vous sur de vouloir supprimer ce conge ?"
+          title="Supprimer le congé"
+          message="Êtes-vous sûr de vouloir supprimer ce congé ?"
           onConfirm={confirmDelete}
           onCancel={() => setDeleteConfirm(null)}
         />

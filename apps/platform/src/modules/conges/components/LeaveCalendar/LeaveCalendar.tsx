@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect } from 'react';
+import { useMemo, useRef, useEffect, useState } from 'react';
 import type { Member, Leave, ViewMode } from '../../types';
 import { LeaveBar } from './LeaveBar';
 import styles from './LeaveCalendar.module.css';
@@ -14,14 +14,13 @@ interface LeaveCalendarProps {
   scrollToTodayTrigger?: number;
 }
 
-const COLUMN_WIDTHS: Record<ViewMode, number> = {
+const COLUMN_WIDTHS: Record<string, number> = {
   month: 28,
   quarter: 10,
-  year: 3,
 };
 
-const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec'];
-const ROW_HEIGHT = 48;
+const MONTH_NAMES = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+const ROW_HEIGHT = 56;
 const NAME_COL_WIDTH = 200;
 
 interface DayColumn {
@@ -87,9 +86,33 @@ export function LeaveCalendar({
   const gridScrollRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const nameScrollRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
 
-  const colWidth = COLUMN_WIDTHS[viewMode];
+  // Measure container width for dynamic year column sizing
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
   const columns = useMemo(() => generateColumns(startDate, endDate), [startDate, endDate]);
+
+  const colWidth = useMemo(() => {
+    if (viewMode === 'year' && containerWidth > 0 && columns.length > 0) {
+      const availableWidth = containerWidth - NAME_COL_WIDTH;
+      return Math.max(3, Math.floor(availableWidth / columns.length));
+    }
+    return COLUMN_WIDTHS[viewMode] || 3;
+  }, [viewMode, containerWidth, columns.length]);
+
   const monthGroups = useMemo(() => getMonthGroups(columns), [columns]);
   const totalWidth = columns.length * colWidth;
   const todayIndex = columns.findIndex((c) => c.isToday);
@@ -133,7 +156,7 @@ export function LeaveCalendar({
   }, [todayIndex, colWidth, scrollToTodayTrigger]);
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} ref={containerRef}>
       {/* Header */}
       <div className={styles.headerArea}>
         <div className={styles.nameColHeader}>Membres</div>

@@ -364,62 +364,119 @@
   font-weight: var(--font-weight-bold);
 }
 
+/* Line action buttons container */
+.lineActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
 /* Check/Done toggle button */
 .checkBtn {
-  width: var(--spacing-lg);
-  height: var(--spacing-lg);
+  width: 1.5rem;
+  height: 1.5rem;
   padding: 0;
   border-radius: var(--radius-sm);
-  border: 1px solid transparent;
+  border: 1.5px solid #059669;
   background: transparent;
-  color: var(--text-muted);
+  color: #059669;
   cursor: pointer;
-  font-size: var(--font-size-2);
+  font-size: 18px;
   font-weight: var(--font-weight-bold);
   font-family: inherit;
-  opacity: 0.4;
+  opacity: 0.5;
   transition: all var(--transition-fast);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .checkBtn:hover {
   opacity: 1;
-  border-color: var(--border-color);
-  background: var(--bg-hover);
+  background: rgba(5, 150, 105, 0.1);
+  border-color: #059669;
 }
 
 .checkBtn.active {
   opacity: 1;
-  color: var(--success);
-  border-color: var(--success);
-  background: var(--success-light);
+  color: #fff;
+  border-color: #059669;
+  background: #059669;
 }
 
 /* Delete line button */
 .deleteLineBtn {
-  width: var(--spacing-5);
-  height: var(--spacing-5);
+  width: 1.5rem;
+  height: 1.5rem;
   padding: 0;
   border-radius: var(--radius-sm);
-  border: none;
+  border: 1.5px solid #dc2626;
   background: transparent;
-  color: var(--text-muted);
+  color: #dc2626;
   cursor: pointer;
-  font-size: var(--font-size-md);
-  line-height: var(--line-height-tight);
-  opacity: 0;
+  font-size: 18px;
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+  opacity: 0.5;
   transition: all var(--transition-fast);
   flex-shrink: 0;
-}
-
-.editorLine:hover .deleteLineBtn {
-  opacity: 0.5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .deleteLineBtn:hover {
   opacity: 1 !important;
-  color: var(--error);
-  background: var(--error-light);
+  color: #fff;
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+/* Reorder buttons */
+.reorderBtn {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+  opacity: 0.5;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reorderBtn:hover {
+  opacity: 1;
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-light);
+}
+
+/* Responsibility badge */
+.responsibilityBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-light);
+  color: var(--accent-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  margin-left: var(--spacing-xs);
+  vertical-align: middle;
+  letter-spacing: 0.01em;
 }
 
 .addLineBtn {

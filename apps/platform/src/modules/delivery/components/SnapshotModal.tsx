@@ -99,7 +99,7 @@ export function SnapshotModal({ incrementId, onRestore, onClose }: SnapshotModal
             <div className={styles.empty}>
               Aucun historique disponible.
               <br />
-              <span className={styles.hint}>Les snapshots sont crees automatiquement chaque jour.</span>
+              <span className={styles.hint}>Les snapshots sont créés automatiquement chaque jour.</span>
             </div>
           ) : (
             <div className={styles.layout}>

@@ -23,6 +23,20 @@ export function ProjectEditor({ label, projects, onChange, placeholder }: Projec
     onChange(updated);
   };
 
+  const handleMoveUp = (index: number) => {
+    if (index <= 0) return;
+    const updated = [...projects];
+    [updated[index - 1], updated[index]] = [updated[index], updated[index - 1]];
+    onChange(updated);
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (index >= projects.length - 1) return;
+    const updated = [...projects];
+    [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
+    onChange(updated);
+  };
+
   return (
     <div className="project-editor">
       <label className="project-editor-label">{label}</label>
@@ -42,17 +56,37 @@ export function ProjectEditor({ label, projects, onChange, placeholder }: Projec
                 className="project-editor-description"
                 value={project.description || ''}
                 onChange={(e) => handleChange(index, 'description', e.target.value)}
-                placeholder="Description (technologies, details...)"
+                placeholder="Description (technologies, détails...)"
               />
             </div>
-            <button
-              type="button"
-              className="project-editor-remove"
-              onClick={() => handleRemove(index)}
-              title="Supprimer"
-            >
-              x
-            </button>
+            <div className="project-editor-actions">
+              <button
+                type="button"
+                className="project-editor-move"
+                onClick={() => handleMoveUp(index)}
+                disabled={index === 0}
+                title="Déplacer vers le haut"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className="project-editor-move"
+                onClick={() => handleMoveDown(index)}
+                disabled={index === projects.length - 1}
+                title="Déplacer vers le bas"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                className="project-editor-remove"
+                onClick={() => handleRemove(index)}
+                title="Supprimer"
+              >
+                ×
+              </button>
+            </div>
           </div>
         ))}
       </div>

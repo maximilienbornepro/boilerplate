@@ -365,7 +365,7 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
               <input
                 type="text"
                 className="add-task-input"
-                placeholder="Titre de la nouvelle tache..."
+                placeholder="Titre de la nouvelle tâche..."
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
@@ -387,7 +387,7 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
           )}
 
           {isLoading && tasks.length === 0 ? (
-            <LoadingSpinner size="lg" message="Chargement des taches..." fullPage />
+            <LoadingSpinner size="lg" message="Chargement des tâches..." fullPage />
           ) : (
             <div className="main-content">
               <div className="board-section">

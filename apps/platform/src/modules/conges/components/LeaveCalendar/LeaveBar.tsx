@@ -18,7 +18,7 @@ function getDayOffset(date: string, chartStart: string): number {
 
 const PERIOD_LABELS: Record<string, string> = {
   morning: 'Matin',
-  afternoon: 'Apres-midi',
+  afternoon: 'Après-midi',
   full: '',
 };
 
@@ -44,9 +44,9 @@ export function LeaveBar({ leave, color, chartStartDate, columnWidth, onClick }:
 
   const title = [
     leave.reason,
-    leave.startPeriod !== 'full' ? `Debut: ${PERIOD_LABELS[leave.startPeriod]}` : null,
+    leave.startPeriod !== 'full' ? `Début: ${PERIOD_LABELS[leave.startPeriod]}` : null,
     leave.endPeriod !== 'full' ? `Fin: ${PERIOD_LABELS[leave.endPeriod]}` : null,
-  ].filter(Boolean).join(' | ') || 'Conge';
+  ].filter(Boolean).join(' | ') || 'Congé';
 
   return (
     <div
@@ -64,7 +64,7 @@ export function LeaveBar({ leave, color, chartStartDate, columnWidth, onClick }:
     >
       {position.width > 60 && (
         <span className={styles.label}>
-          {leave.reason || 'Conge'}
+          {leave.reason || 'Congé'}
         </span>
       )}
     </div>

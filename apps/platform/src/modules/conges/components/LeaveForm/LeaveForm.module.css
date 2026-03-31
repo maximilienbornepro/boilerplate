@@ -58,6 +58,22 @@
   font-size: var(--font-size-sm);
 }
 
+.warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.warning {
+  font-size: var(--font-size-xs);
+  color: var(--warning);
+  padding: 6px 10px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--warning-bg);
+  font-family: var(--font-family-mono);
+}
+
 .actions {
   display: flex;
   justify-content: space-between;

@@ -36,7 +36,7 @@ describe('Conges Module', () => {
         endDate: '2026-01-17',
         startPeriod: 'full' as const,
         endPeriod: 'morning' as const,
-        reason: 'Conges payes',
+        reason: 'Congés payés',
         status: 'approved',
         createdBy: 1,
         createdAt: '2026-01-10T10:00:00Z',

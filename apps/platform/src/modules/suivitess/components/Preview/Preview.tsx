@@ -59,7 +59,7 @@ export function Preview({ changes, summary, finalContent, isUpdating, onUpdate, 
                   <div className={styles.changeHeader}>
                     <span className={styles.changeType}>
                       {change.type === 'new' && 'Nouveau'}
-                      {change.type === 'modified' && 'Modifie'}
+                      {change.type === 'modified' && 'Modifié'}
                       {change.type === 'status_change' && 'Statut'}
                     </span>
                     <span className={styles.changeSection}>{change.section}</span>

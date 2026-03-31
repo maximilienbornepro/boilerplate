@@ -294,8 +294,8 @@ export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpda
       {showConfirmDialog && (
         <div className={styles.confirmOverlay} onClick={(e) => e.stopPropagation()}>
           <div className={styles.confirmDialog}>
-            <p className={styles.confirmText}>Masquer cette tache ?</p>
-            <p className={styles.confirmSubtext}>Elle pourra etre restauree depuis le menu</p>
+            <p className={styles.confirmText}>Masquer cette tâche ?</p>
+            <p className={styles.confirmSubtext}>Elle pourra être restaurée depuis le menu</p>
             <div className={styles.confirmButtons}>
               <button
                 className={styles.confirmCancel}
@@ -320,7 +320,7 @@ export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpda
       {isEditing && (
         <div className={styles.confirmOverlay} onClick={(e) => { e.stopPropagation(); setIsEditing(false); }}>
           <div className={styles.renameDialog} onClick={(e) => e.stopPropagation()}>
-            <p className={styles.renameTitle}>Renommer la tache</p>
+            <p className={styles.renameTitle}>Renommer la tâche</p>
             <input
               type="text"
               className={styles.renameInput}

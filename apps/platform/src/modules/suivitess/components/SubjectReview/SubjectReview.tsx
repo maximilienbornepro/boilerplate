@@ -140,6 +140,31 @@ export function SubjectReview({
 
   const getBullet = (level: number): string => BULLETS[Math.min(level, BULLETS.length - 1)];
 
+  // Parse inline @name responsibility annotation from line text
+  const parseResponsibility = (text: string): { cleanText: string; responsible: string | null } => {
+    const match = text.match(/^(.*?)\s+(@\S+)\s*$/);
+    if (match) {
+      return { cleanText: match[1], responsible: match[2] };
+    }
+    return { cleanText: text, responsible: null };
+  };
+
+  // Move a line up or down in the situation text
+  const moveLine = (lineIndex: number, direction: 'up' | 'down') => {
+    setSituation(prev => {
+      const lines = prev.split('\n');
+      const targetIndex = direction === 'up' ? lineIndex - 1 : lineIndex + 1;
+      if (targetIndex < 0 || targetIndex >= lines.length) return prev;
+      const temp = lines[lineIndex];
+      lines[lineIndex] = lines[targetIndex];
+      lines[targetIndex] = temp;
+      return lines.join('\n');
+    });
+    // Focus on the line at its new position
+    const newIndex = direction === 'up' ? lineIndex - 1 : lineIndex + 1;
+    setFocusLineIndex(newIndex);
+  };
+
   // Initialize content from subject
   useEffect(() => {
     setSituation(subject.situation || '');
@@ -510,13 +535,13 @@ export function SubjectReview({
 
         {/* Editable Content */}
         <div className={styles.contentSection}>
-          <label>Etat de la situation</label>
+          <label>État de la situation</label>
           {editingContent ? (
             <div className={styles.contentEditor}>
               <div className={styles.editorHint}>
                 Tab = indenter | ⇧Tab = désindenter | Enter = nouvelle ligne | ⌘B = gras | ⌘⇧S = fait | Coller = multi-lignes
               </div>
-              {situation.split('\n').map((line, i) => {
+              {situation.split('\n').map((line, i, allLines) => {
                 const { level, text, strikethrough } = parseLine(line);
                 return (
                   <div
@@ -624,33 +649,55 @@ export function SubjectReview({
                           }
                         }
                       }}
-                      data-placeholder="Nouvelle ligne..."
+                      data-placeholder="Nouvelle ligne... (ajouter @Nom pour assigner)"
                     />
-                    <button
-                      type="button"
-                      className={`${styles.checkBtn} ${strikethrough ? styles.active : ''}`}
-                      onClick={() => toggleStrikethrough(i)}
-                      title="Marquer comme fait (⌘⇧S)"
-                    >
-                      ✓
-                    </button>
-                    {situation.split('\n').length > 1 && (
+                    <div className={styles.lineActions}>
+                      {i > 0 && (
+                        <button
+                          type="button"
+                          className={styles.reorderBtn}
+                          onClick={() => moveLine(i, 'up')}
+                          title="Déplacer vers le haut"
+                        >
+                          ↑
+                        </button>
+                      )}
+                      {i < allLines.length - 1 && (
+                        <button
+                          type="button"
+                          className={styles.reorderBtn}
+                          onClick={() => moveLine(i, 'down')}
+                          title="Déplacer vers le bas"
+                        >
+                          ↓
+                        </button>
+                      )}
                       <button
                         type="button"
-                        className={styles.deleteLineBtn}
-                        onClick={() => {
-                          setSituation(prev => {
-                            const lines = prev.split('\n');
-                            lines.splice(i, 1);
-                            return lines.join('\n');
-                          });
-                          if (i > 0) setFocusLineIndex(i - 1);
-                        }}
-                        title="Supprimer la ligne"
+                        className={`${styles.checkBtn} ${strikethrough ? styles.active : ''}`}
+                        onClick={() => toggleStrikethrough(i)}
+                        title="Marquer comme fait (⌘⇧S)"
                       >
-                        ×
+                        ✓
                       </button>
-                    )}
+                      {allLines.length > 1 && (
+                        <button
+                          type="button"
+                          className={styles.deleteLineBtn}
+                          onClick={() => {
+                            setSituation(prev => {
+                              const lines = prev.split('\n');
+                              lines.splice(i, 1);
+                              return lines.join('\n');
+                            });
+                            if (i > 0) setFocusLineIndex(i - 1);
+                          }}
+                          title="Supprimer la ligne"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -669,6 +716,7 @@ export function SubjectReview({
               {situation.split('\n').map((line, i) => {
                 const { level, text, strikethrough } = parseLine(line);
                 if (!text.trim()) return <div key={i} className={styles.emptyLine} />;
+                const { cleanText, responsible } = parseResponsibility(text);
                 return (
                   <div
                     key={i}
@@ -679,9 +727,12 @@ export function SubjectReview({
                       {getBullet(level)}
                     </span>
                     {strikethrough ? (
-                      <s dangerouslySetInnerHTML={{ __html: textToHtml(text) }} />
+                      <s dangerouslySetInnerHTML={{ __html: textToHtml(cleanText) }} />
                     ) : (
-                      <span dangerouslySetInnerHTML={{ __html: textToHtml(text) }} />
+                      <span dangerouslySetInnerHTML={{ __html: textToHtml(cleanText) }} />
+                    )}
+                    {responsible && (
+                      <span className={styles.responsibilityBadge}>{responsible}</span>
                     )}
                   </div>
                 );
@@ -703,14 +754,14 @@ export function SubjectReview({
               onChange={(e) => setResponsibility(e.target.value)}
               onBlur={() => setEditingResponsibility(false)}
               onKeyDown={(e) => e.key === 'Enter' && setEditingResponsibility(false)}
-              placeholder="@Nom ou equipe"
+              placeholder="@Nom ou équipe"
             />
           ) : (
             <div
               className={`${styles.responsibilityDisplay} ${responsibility !== (subject.responsibility || '') ? styles.changed : ''}`}
               onClick={() => { setEditingResponsibility(true); onFocus?.(); }}
             >
-              {responsibility || <span className={styles.placeholder}>Non assigne</span>}
+              {responsibility || <span className={styles.placeholder}>Non assigné</span>}
               <span className={styles.editIcon}>&#x270E;</span>
             </div>
           )}

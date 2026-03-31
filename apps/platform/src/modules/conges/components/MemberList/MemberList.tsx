@@ -30,7 +30,7 @@ export function MemberList({ members, onUpdate, onClose }: MemberListProps) {
   };
 
   return (
-    <Modal title="Equipe" onClose={onClose} maxWidth={520}>
+    <Modal title="Équipe" onClose={onClose} maxWidth={520}>
       <div className={styles.content}>
         <div className={styles.list}>
           {members.map((m) => (
@@ -69,11 +69,11 @@ export function MemberList({ members, onUpdate, onClose }: MemberListProps) {
             </div>
           ))}
           {members.length === 0 && (
-            <div className={styles.empty}>Aucun membre avec la permission &quot;conges&quot;</div>
+            <div className={styles.empty}>Aucun membre avec la permission &quot;congés&quot;</div>
           )}
         </div>
         <div className={styles.hint}>
-          Les membres sont geres via les permissions dans l&apos;administration du gateway.
+          Les membres sont gérés via les permissions dans l&apos;administration du gateway.
         </div>
       </div>
     </Modal>

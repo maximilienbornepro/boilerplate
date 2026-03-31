@@ -153,7 +153,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
         api.fetchMarkers(planningId),
       ]);
       setTasks(t); setDependencies(d); setMarkers(m);
-    } catch { setError('Erreur lors du chargement des donnees'); }
+    } catch { setError('Erreur lors du chargement des données'); }
     finally { setLoading(false); }
   };
 
@@ -171,7 +171,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
       });
       setPlannings(prev => [planning, ...prev]);
       setSelectedPlanning(planning);
-    } catch { setError('Erreur lors de la creation du planning'); }
+    } catch { setError('Erreur lors de la création du planning'); }
   };
 
   const handleCreatePlanningFromForm = async (data: PlanningFormData) => {
@@ -179,7 +179,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
       const planning = await api.createPlanning(data);
       setPlannings(prev => [planning, ...prev]);
       setSelectedPlanning(planning);
-    } catch { setError('Erreur lors de la creation du planning'); }
+    } catch { setError('Erreur lors de la création du planning'); }
   };
 
   const handleEditPlanning = async (id: string, data: Partial<Planning>) => {
@@ -253,7 +253,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
         setTasks(prev => [...prev, task]);
       }
       setShowTaskForm(false); setEditingTask(null);
-    } catch { setError("Erreur lors de l'enregistrement de la tache"); }
+    } catch { setError("Erreur lors de l'enregistrement de la tâche"); }
   };
 
   const handleTaskDelete = async () => {
@@ -262,14 +262,14 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
       await api.deleteTask(editingTask.id);
       setTasks(prev => prev.filter(t => t.id !== editingTask.id));
       setShowTaskForm(false); setEditingTask(null);
-    } catch { setError('Erreur lors de la suppression de la tache'); }
+    } catch { setError('Erreur lors de la suppression de la tâche'); }
   };
 
   const handleTaskDeleteDirect = useCallback(async (taskId: string) => {
     try {
       await api.deleteTask(taskId);
       setTasks(prev => prev.filter(t => t.id !== taskId && t.parentId !== taskId));
-    } catch { setError('Erreur lors de la suppression de la tache'); }
+    } catch { setError('Erreur lors de la suppression de la tâche'); }
   }, []);
 
   const handleAddChildTask = useCallback(async (parentId: string) => {
@@ -281,17 +281,17 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
     const parentTask = tasks.find(t => t.id === parentId);
     const color = parentTask?.color || getNextColor(tasks.map(t => t.color));
     const existingChildren = tasks.filter(t => t.parentId === parentId);
-    const name = `Sous-tache ${existingChildren.length + 1}`;
+    const name = `Sous-tâche ${existingChildren.length + 1}`;
     try {
       const task = await api.createTask({ planningId: selectedPlanning.id, parentId, name, startDate, endDate, color, description: '', progress: 0 });
       setTasks(prev => [...prev, task]);
-    } catch { setError('Erreur lors de la creation de la sous-tache'); }
+    } catch { setError('Erreur lors de la création de la sous-tâche'); }
   }, [selectedPlanning, tasks]);
 
   const handleTaskUpdate = useCallback(async (taskId: string, updates: Partial<Task>) => {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
     try { await api.updateTask(taskId, updates); }
-    catch { setError('Erreur lors de la mise a jour'); if (selectedPlanning) loadPlanningData(selectedPlanning.id); }
+    catch { setError('Erreur lors de la mise à jour'); if (selectedPlanning) loadPlanningData(selectedPlanning.id); }
   }, [selectedPlanning]);
 
   // Dependency handlers
@@ -299,14 +299,14 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
     try {
       const dep = await api.createDependency(fromTaskId, toTaskId);
       setDependencies(prev => [...prev, dep]);
-    } catch { setError('Erreur lors de la creation de la dependance'); }
+    } catch { setError('Erreur lors de la création de la dépendance'); }
   }, []);
 
   const handleDeleteDependency = useCallback(async (depId: string) => {
     try {
       await api.deleteDependency(depId);
       setDependencies(prev => prev.filter(d => d.id !== depId));
-    } catch { setError('Erreur lors de la suppression de la dependance'); }
+    } catch { setError('Erreur lors de la suppression de la dépendance'); }
   }, []);
 
   // Marker handlers
@@ -316,7 +316,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
     try {
       const marker = await api.createMarker(selectedPlanning.id, 'Marqueur', today);
       setMarkers(prev => [...prev, marker]);
-    } catch { setError('Erreur lors de la creation du marqueur'); }
+    } catch { setError('Erreur lors de la création du marqueur'); }
   }, [selectedPlanning]);
 
   const handleUpdateMarker = useCallback(async (markerId: string, data: Partial<{ name: string; markerDate: string; color: string; taskId: string | null }>) => {

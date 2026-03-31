@@ -36,6 +36,24 @@
   font-family: var(--font-family-mono);
   font-size: var(--text-sm);
   color: var(--text-primary);
+  cursor: grab;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.tag-editor-tag.tag-dragging {
+  opacity: 0.3;
+}
+
+.tag-editor-tag.tag-drag-over {
+  border-color: var(--accent-primary);
+  background: var(--bg-secondary);
+}
+
+.tag-editor-drag-handle {
+  color: var(--text-muted);
+  font-size: 0.8em;
+  cursor: grab;
+  user-select: none;
 }
 
 .tag-editor-remove {

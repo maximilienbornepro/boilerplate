@@ -65,7 +65,7 @@ export function DependencyLines({
 
   const handleDeleteClick = (e: React.MouseEvent, depId: string) => {
     e.stopPropagation();
-    if (onDelete && window.confirm('Supprimer cette dependance ?')) {
+    if (onDelete && window.confirm('Supprimer cette dépendance ?')) {
       onDelete(depId);
     }
   };

@@ -354,7 +354,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
 
           {/* Skills */}
           <ExpandableSection
-            title="Competences"
+            title="Compétences"
             badge={
               (cvData.languages?.length || 0) +
               (cvData.competences?.length || 0) +
@@ -372,10 +372,10 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                 placeholder="Ajouter une langue..."
               />
               <TagEditor
-                label="Competences"
+                label="Compétences"
                 tags={cvData.competences || []}
                 onChange={(tags) => handleChange({ competences: tags })}
-                placeholder="Ajouter une competence..."
+                placeholder="Ajouter une compétence..."
               />
               <TagEditor
                 label="Outils"
@@ -384,7 +384,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                 placeholder="Ajouter un outil..."
               />
               <TagEditor
-                label="Developpement"
+                label="Développement"
                 tags={cvData.dev || []}
                 onChange={(tags) => handleChange({ dev: tags })}
                 placeholder="Ajouter un langage..."
@@ -406,7 +406,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
 
           {/* Experiences */}
           <ExpandableSection
-            title="Experiences"
+            title="Expériences"
             badge={cvData.experiences?.length || 0}
           >
             <div className="cv-experiences">
@@ -442,7 +442,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                       />
                     </div>
                     <div className="cv-field">
-                      <label>Periode</label>
+                      <label>Période</label>
                       <input
                         type="text"
                         value={exp.period}
@@ -537,7 +537,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                       />
                     </div>
                     <div className="cv-field">
-                      <label>Periode</label>
+                      <label>Période</label>
                       <input
                         type="text"
                         value={form.period}
@@ -684,8 +684,8 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
 
       {deleteExperienceConfirm !== null && (
         <ConfirmModal
-          title="Supprimer l'experience"
-          message="Etes-vous sur de vouloir supprimer cette experience ?"
+          title="Supprimer l'expérience"
+          message="Êtes-vous sûr de vouloir supprimer cette expérience ?"
           confirmLabel="Supprimer"
           danger
           onConfirm={() => removeExperience(deleteExperienceConfirm)}

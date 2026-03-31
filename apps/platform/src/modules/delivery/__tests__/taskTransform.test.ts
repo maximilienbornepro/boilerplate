@@ -20,7 +20,7 @@ const DEFAULT_PLACEMENT = { startCol: 0, endCol: 1, row: 0 };
 
 // --- transformTask ---
 describe('transformTask', () => {
-  it('transforme une tache avec les champs de base', () => {
+  it('transforme une tâche avec les champs de base', () => {
     const task = transformTask(MOCK_TASK_DATA, undefined, DEFAULT_PLACEMENT);
 
     expect(task.id).toBe('abc-123');

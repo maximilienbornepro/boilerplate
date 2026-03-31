@@ -14,15 +14,15 @@ type Step = 'upload' | 'preview' | 'merging';
 const SECTION_LABELS: Record<string, string> = {
   name: 'Nom',
   title: 'Titre',
-  summary: 'Resume',
+  summary: 'Résumé',
   contact: 'Contact',
   languages: 'Langues',
-  competences: 'Competences',
+  competences: 'Compétences',
   outils: 'Outils',
-  dev: 'Developpement',
+  dev: 'Développement',
   frameworks: 'Frameworks',
   solutions: 'Solutions',
-  experiences: 'Experiences',
+  experiences: 'Expériences',
   formations: 'Formations',
   awards: 'Distinctions',
   sideProjects: 'Projets personnels',
@@ -219,7 +219,7 @@ export function ImportCVModal({ onClose, onImport }: ImportCVModalProps) {
                     <span className="import-cv-badge new">Nouveau</span>
                   )}
                   {item.hasChanges && !item.isNew && (
-                    <span className="import-cv-badge changed">Modifie</span>
+                    <span className="import-cv-badge changed">Modifié</span>
                   )}
                   {!item.hasChanges && (
                     <span className="import-cv-badge empty">Vide</span>

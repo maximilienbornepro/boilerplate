@@ -64,7 +64,7 @@ export function generateTimeColumns(
   const today = new Date();
   let current = new Date(startDate);
 
-  const monthNames = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aout', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
 
   while (current <= endDate) {
     if (viewMode === 'month') {
