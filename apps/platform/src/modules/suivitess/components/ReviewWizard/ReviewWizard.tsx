@@ -686,6 +686,16 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
   }, [sections.length, onCopyReady, handleCopyTable]);
 
   const handleExportJson = useCallback(() => {
+    // Filter out strikethrough lines (~~text~~) from situation text
+    const cleanSituation = (text: string | null): string | null => {
+      if (!text) return text;
+      const lines = text.split('\n').filter(line => {
+        const trimmed = line.replace(/^[\s>]*/, '');
+        return !trimmed.startsWith('~~');
+      });
+      return lines.length > 0 ? lines.join('\n') : null;
+    };
+
     const exportData = {
       exportedAt: new Date().toISOString(),
       document: docTitle,
@@ -693,7 +703,7 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
         name: section.name,
         subjects: section.subjects.map(subject => ({
           title: subject.title,
-          situation: subject.situation,
+          situation: cleanSituation(subject.situation),
           status: subject.status,
           responsibility: subject.responsibility,
         })),
