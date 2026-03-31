@@ -74,7 +74,7 @@ function getDateRangeWarnings(start: string, end: string): string[] {
 export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onClose }: LeaveFormProps) {
   const isAdmin = currentUser?.isAdmin ?? false;
 
-  const [memberId, setMemberId] = useState<number>(leave?.memberId ?? currentUser?.id ?? 0);
+  const [memberId, setMemberId] = useState<number>(leave?.memberId ?? currentUser?.id ?? members[0]?.id ?? 0);
   const [startDate, setStartDate] = useState(leave?.startDate || '');
   const [endDate, setEndDate] = useState(leave?.endDate || '');
   const [period, setPeriod] = useState<'full' | 'morning' | 'afternoon'>(() => {
@@ -112,7 +112,6 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
               onChange={(e) => setMemberId(Number(e.target.value))}
               required
             >
-              <option value={0}>Sélectionner un membre</option>
               {members.map((m) => (
                 <option key={m.id} value={m.id}>{m.email}</option>
               ))}
