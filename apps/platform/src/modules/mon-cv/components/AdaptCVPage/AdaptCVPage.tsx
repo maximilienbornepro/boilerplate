@@ -468,7 +468,9 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     for (const [cat, skills] of Object.entries(editableSkills)) {
       const key = cat as keyof CVData;
       const existing = (cv[key] as string[]) || [];
-      (cv[key] as string[]) = [...existing, ...skills];
+      (cv[key] as string[]) = [...existing, ...skills].sort((a, b) =>
+        a.localeCompare(b, 'fr', { sensitivity: 'base' })
+      );
     }
     return cv;
   };
@@ -660,6 +662,14 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     });
   };
 
+  const updateSkill = (cat: string, skillIdx: number, value: string) => {
+    setEditableSkills(prev => {
+      const updated = { ...prev };
+      updated[cat] = prev[cat].map((s, i) => i === skillIdx ? value : s);
+      return updated;
+    });
+  };
+
   // ── Result view ──────────────────────────────────────────────────────────────
 
   if (result) {
@@ -667,8 +677,24 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     const scoreAfter = liveScore ?? result.atsScore.after;
 
     return (
-      <div className="adapt-page">
-        <ModuleHeader title="Resultat de l'adaptation" onBack={handleRetry} />
+      <>
+        <ModuleHeader title="Résultat de l'adaptation" onBack={handleRetry}>
+          <button
+            className="module-header-btn"
+            onClick={handleDownloadPDF}
+            disabled={loadingPDF || loadingValidate}
+          >
+            {loadingPDF ? '...' : '↓ PDF'}
+          </button>
+          <button
+            className="module-header-btn module-header-btn-primary"
+            onClick={handleValidate}
+            disabled={loadingValidate || loadingPDF}
+          >
+            {loadingValidate ? 'Sauvegarde...' : '✓ Sauvegarder'}
+          </button>
+        </ModuleHeader>
+        <div className="adapt-page">
 
         <div className="adapt-result">
           <AtsScoreBlock before={scoreBefore} after={scoreAfter} />
@@ -741,19 +767,22 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
                 <h4>Nouvelles missions</h4>
                 {editableMissions.map((mission, idx) => (
                   <div key={idx} className="editable-mission-row">
+                    <div className="editable-mission-header">
+                      <span className="editable-mission-num">Mission {idx + 1}</span>
+                      <button
+                        className="btn-icon-remove"
+                        onClick={() => removeMission(idx)}
+                        title="Supprimer cette mission"
+                      >
+                        × Supprimer
+                      </button>
+                    </div>
                     <textarea
                       className="editable-textarea"
                       value={mission}
                       onChange={e => updateMission(idx, e.target.value)}
-                      rows={2}
+                      rows={4}
                     />
-                    <button
-                      className="btn-icon-remove"
-                      onClick={() => removeMission(idx)}
-                      title="Supprimer cette mission"
-                    >
-                      ×
-                    </button>
                   </div>
                 ))}
               </div>
@@ -784,7 +813,7 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
                           p ? { ...p, description: e.target.value } : p
                         )
                       }
-                      rows={2}
+                      rows={5}
                     />
                   </div>
                   <button
@@ -805,7 +834,12 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
                     skills.map((skill, idx) => (
                       <div key={`${category}-${idx}`} className="editable-skill-tag">
                         <span className="editable-skill-cat">{category}</span>
-                        <span className="editable-skill-name">{skill}</span>
+                        <input
+                          className="editable-skill-input"
+                          value={skill}
+                          onChange={e => updateSkill(category, idx, e.target.value)}
+                          size={Math.max(skill.length, 4)}
+                        />
                         <button
                           className="editable-skill-remove"
                           onClick={() => removeSkill(category, idx)}
@@ -840,30 +874,6 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
           {error && <div className="adapt-error">{error}</div>}
 
           <div className="adapt-actions">
-            <button className="btn btn-secondary" onClick={handleRetry}>
-              Modifier les parametres
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleValidate}
-              disabled={loadingValidate}
-            >
-              {loadingValidate ? 'Sauvegarde...' : '✓ Sauvegarder l\'adaptation'}
-            </button>
-            <button
-              className="btn btn-outline"
-              onClick={handleDownloadPDF}
-              disabled={loadingPDF}
-            >
-              {loadingPDF ? (
-                <>
-                  <LoadingSpinner size="small" />
-                  <span>PDF...</span>
-                </>
-              ) : (
-                '↓ Télécharger PDF'
-              )}
-            </button>
             <button
               className="btn btn-reco"
               onClick={() => handleGetRecommendations(buildEditedCV())}
@@ -878,21 +888,19 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
                 '💡 Analyser les gaps'
               )}
             </button>
-            <button className="btn btn-outline" onClick={onCancel}>
-              Annuler
-            </button>
           </div>
         </div>
-      </div>
+        </div>
+      </>
     );
   }
 
   // ── Form view ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="adapt-page">
+    <>
       <ModuleHeader title="Adapter le CV" onBack={onCancel} />
-
+      <div className="adapt-page">
       <div className="adapt-form">
         <div className="form-section">
           <label htmlFor="jobOffer">Offre d'emploi *</label>
@@ -970,18 +978,19 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
           <h4>Comment fonctionne l'adaptation ?</h4>
           <ul>
             <li>L'IA analyse l'offre pour extraire les mots-clés ATS <em>exacts</em> (token-exact)</li>
-            <li>1-2 nouvelles missions sont ajoutees avec les tokens verbatim de l'offre</li>
-            <li>Un nouveau projet pertinent peut etre genere</li>
-            <li>Des competences ciblees sont ajoutees (max 1 par categorie)</li>
-            <li>Score ATS avant/apres calcule (modele Jobscan)</li>
-            <li>Missions, projet et competences sont editables avant validation</li>
+            <li>1-2 nouvelles missions sont ajoutées avec les tokens verbatim de l'offre</li>
+            <li>Un nouveau projet pertinent peut être généré</li>
+            <li>2-3 compétences ciblées sont ajoutées par catégorie, triées alphabétiquement</li>
+            <li>Score ATS avant/après calculé (modèle Jobscan)</li>
+            <li>Missions, projet et compétences sont éditables avant validation</li>
             <li>
               "Analyser les gaps" → identifie les mots manquants → "Générer et appliquer" les
-              ajoute directement aux champs
+              ajoute directement aux champs éditables
             </li>
           </ul>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

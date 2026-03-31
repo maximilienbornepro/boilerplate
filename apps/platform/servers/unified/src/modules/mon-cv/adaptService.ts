@@ -289,9 +289,10 @@ ${customInstructions ? `Custom instructions: ${customInstructions}` : ''}
 
 RULES:
 - Generate 1-2 NEW missions ONLY
-- Missions must be realistic and plausible in the context of this experience
+- ⚠️ Missions MUST be realistic and directly plausible in the context of this specific experience (${currentExperience.title} at ${currentExperience.company}). Do NOT invent unrelated responsibilities.
 - Do NOT repeat existing missions
 - Required keywords MUST appear verbatim in at least one mission
+- ⚠️ ALWAYS use the same language as the existing missions. If existing missions are in French → generate in French. NEVER generate in English if the CV is in French.
 
 Return ONLY a JSON array of strings, no explanations:
 ["Mission 1", "Mission 2"]`;
@@ -344,10 +345,11 @@ Technologies used: ${sideProjects?.technologies?.join(', ') || 'N/A'}
 ${customInstructions ? `Custom instructions: ${customInstructions}` : ''}
 
 RULES:
-- Create a professional project (not a personal side project)
+- Create a professional project directly inspired by the side projects listed above
+- If no side projects are listed, skip and return null instead of inventing a project
 - Incorporate required keywords verbatim in the description
-- Must be realistic and achievable
-- Keep the same language as the job offer
+- Must be realistic and coherent with the candidate's actual background
+- ⚠️ TOUJOURS utiliser la même langue que les missions du CV. Si le CV est en français → projet en français. NE PAS générer en anglais si le CV est en français.
 
 Return ONLY valid JSON:
 {
@@ -407,10 +409,12 @@ Current skills:
 - Solutions: ${currentSkills.solutions?.join(', ') || 'none'}
 
 RULES:
-- Maximum 1 new skill per category
+- 2 to 3 new skills per category (if relevant)
 - ONLY suggest skills NOT already in the list (exact or near-exact match check)
 - Use EXACT tokens from the job offer
 - Prioritize required keywords over preferred keywords
+- Capitalize the first letter of each skill (ex: "Gestion de projet" not "gestion de projet")
+- Use the same language as the CV (if the CV is in French, suggest in French)
 - Empty array if no relevant skill to add for that category
 
 Return ONLY valid JSON:
@@ -436,7 +440,7 @@ Return ONLY valid JSON:
 
   const suggestions = JSON.parse(jsonMatch[0]) as Record<string, string[]>;
 
-  // Validate: max 1 per category, not already present
+  // Validate: max 3 per category, not already present, capitalize
   const result: Record<string, string[]> = {};
   const categories = ['competences', 'outils', 'dev', 'frameworks', 'solutions'] as const;
 
@@ -445,7 +449,8 @@ Return ONLY valid JSON:
     const current = currentSkills[cat] || [];
     const newSkills = suggested
       .filter(s => !current.map(c => c.toLowerCase()).includes(s.toLowerCase()))
-      .slice(0, 1);
+      .slice(0, 3)
+      .map(s => s.charAt(0).toUpperCase() + s.slice(1)); // capitalize
     if (newSkills.length > 0) {
       result[cat] = newSkills;
     }
@@ -602,7 +607,7 @@ Mots-clés en 1 seule section (besoin 2-section frequency) : ${breakdown.singleS
 ═══ CONTENU EXISTANT (NE PAS RÉPÉTER) ═══
 Titre CV actuel : ${cvData.title || '(non renseigné)'}
 Missions existantes :
-${existingMissions.substring(0, 800) || '(aucune)'}
+${existingMissions.substring(0, 1200) || '(aucune)'}
 Compétences existantes : ${existingSkills || '(aucune)'}
 
 ═══ CONTEXTE ═══
@@ -610,15 +615,16 @@ Rôle actuel : ${firstExpTitle} chez ${firstExpCompany}
 Titre exact de l'offre : ${jobAnalysis.exactJobTitle}
 Domaine : ${jobAnalysis.domain}
 Mots-clés requis : ${jobAnalysis.requiredKeywords.join(', ')}
+Technologies utilisées dans le CV : ${cvData.experiences?.flatMap(e => e.technologies || []).join(', ') || '(non renseigné)'}
 
 ═══ RÈGLES CRITIQUES ═══
 1. additionalMissions : 0 à 2 NOUVELLES missions UNIQUEMENT pour les gap keywords — utilise le TOKEN EXACT du gap verbatim
 2. NE JAMAIS répéter ou paraphraser les missions existantes
-3. Les missions doivent être réalistes dans le contexte de "${firstExpTitle}" chez "${firstExpCompany}"
-4. Pour les mots-clés en 1 seule section (déjà dans skills) → écrire une mission qui prouve la compétence (pas juste la déclarer)
-5. additionalSkills : UNIQUEMENT les mots-clés manquants dans la section skills — tokens exacts du gap
-6. Maximum 1 skill par catégorie
-7. Garder la même langue que les missions existantes
+3. ⚠️ Les missions DOIVENT être réalistes et cohérentes avec le profil réel : "${firstExpTitle}" chez "${firstExpCompany}". Ne PAS inventer des expériences qui n'ont aucun lien avec ce rôle.
+4. Pour les mots-clés en 1 seule section (déjà dans skills) → écrire une mission qui PROUVE la compétence en contexte (pas juste la déclarer)
+5. additionalSkills : 2 à 3 compétences par catégorie pour les mots-clés manquants — tokens exacts du gap
+6. ⚠️ Mettre une MAJUSCULE à la première lettre de chaque compétence ajoutée (ex: "Gestion de projet" et non "gestion de projet")
+7. ⚠️ TOUJOURS utiliser la même langue que les missions existantes du CV. Si le CV est en français → tout en français. Ne PAS générer de contenu en anglais si le CV est en français.
 8. titleChange : si l'écart de titre est OUI → retourner le titre exact de l'offre ; si NON → retourner null
 9. termReplacements : scanner les missions existantes ci-dessus pour trouver des synonymes/paraphrases des mots-clés requis et recommander leurs remplacements exacts dans tout le CV
 
@@ -626,7 +632,7 @@ Retourne UNIQUEMENT du JSON valide :
 {
   "additionalMissions": ["mission ciblant le gap keyword 1"],
   "additionalSkills": {
-    "competences": [],
+    "competences": ["Gestion de projet", "Méthode Agile", "Pilotage budgétaire"],
     "outils": [],
     "dev": [],
     "frameworks": [],
@@ -694,12 +700,16 @@ Retourne UNIQUEMENT du JSON valide :
     const current = (cvData[cat] as string[]) || [];
     const newSkills = suggested
       .filter(s => !current.map(c => c.toLowerCase()).includes(s.toLowerCase()))
-      .slice(0, 1);
+      .slice(0, 3)
+      .map(s => s.charAt(0).toUpperCase() + s.slice(1)); // capitalize
     if (newSkills.length > 0) {
       filteredSkills[cat] = newSkills;
       const key = cat as keyof CVData;
       const existing = (improvedCV[key] as string[]) || [];
-      (improvedCV[key] as string[]) = [...existing, ...newSkills];
+      // Sort combined list alphabetically (mix in, don't just append)
+      (improvedCV[key] as string[]) = [...existing, ...newSkills].sort((a, b) =>
+        a.localeCompare(b, 'fr', { sensitivity: 'base' })
+      );
     }
   }
 

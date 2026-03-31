@@ -3,6 +3,10 @@ import type { CV, CVData, CVListItem, CVLogo, ImportPreviewResult, ProcessedImag
 const API_BASE = '/mon-cv-api';
 
 async function handleResponse<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Erreur serveur (${response.status}) — réponse inattendue`);
+  }
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || 'Une erreur est survenue');
