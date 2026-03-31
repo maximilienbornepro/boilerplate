@@ -4,6 +4,7 @@ import * as api from '../../services/api';
 import type { LinkedSubject } from '../../services/api';
 import { searchSubjects } from '../../../suivitess/services/api';
 import type { SubjectSearchResult } from '../../../suivitess/services/api';
+import { TASK_COLORS } from '../../utils/taskUtils';
 import styles from './TaskForm.module.css';
 
 interface TaskFormProps {
