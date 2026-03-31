@@ -324,19 +324,22 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
           <div className="adapt-detail-label">Missions générées</div>
           {editableMissions.map((mission, idx) => (
             <div key={idx} className="adapt-detail-mission-row">
+              <div className="adapt-detail-mission-header">
+                <span className="adapt-detail-mission-num">Mission {idx + 1}</span>
+                <button
+                  className="adapt-detail-btn-remove adapt-detail-btn-remove-inline"
+                  onClick={() => removeMission(idx)}
+                  title="Supprimer cette mission"
+                >
+                  × Supprimer
+                </button>
+              </div>
               <textarea
                 className="adapt-detail-textarea"
                 value={mission}
                 onChange={e => updateMission(idx, e.target.value)}
-                rows={2}
+                rows={4}
               />
-              <button
-                className="adapt-detail-btn-remove"
-                onClick={() => removeMission(idx)}
-                title="Supprimer cette mission"
-              >
-                ×
-              </button>
             </div>
           ))}
         </div>
@@ -364,7 +367,7 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
             className="adapt-detail-textarea"
             value={editableProject.description || ''}
             onChange={e => setEditableProject(prev => prev ? { ...prev, description: e.target.value } : prev)}
-            rows={2}
+            rows={6}
             placeholder="Description du projet"
           />
         </div>

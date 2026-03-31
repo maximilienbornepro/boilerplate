@@ -1,6 +1,6 @@
 .adapt-detail-page {
-  padding: var(--spacing-lg);
-  max-width: 800px;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  max-width: 960px;
   margin: 0 auto;
 }
 
@@ -28,7 +28,8 @@
 .adapt-detail-section {
   margin-bottom: var(--spacing-lg);
   border: 1px solid var(--border-color);
-  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
   background: var(--bg-secondary);
 }
 
@@ -142,27 +143,49 @@
 /* Editable missions */
 .adapt-detail-mission-row {
   display: flex;
+  flex-direction: column;
   gap: var(--spacing-xs);
-  margin-bottom: var(--spacing-xs);
-  align-items: flex-start;
+  margin-bottom: var(--spacing-md);
+}
+
+.adapt-detail-mission-row:last-child {
+  margin-bottom: 0;
+}
+
+.adapt-detail-mission-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.adapt-detail-mission-num {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .adapt-detail-textarea {
-  flex: 1;
+  width: 100%;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  padding: var(--spacing-sm);
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
+  padding: var(--spacing-md);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
   resize: vertical;
-  min-height: 60px;
-  line-height: 1.5;
+  min-height: 100px;
+  line-height: 1.6;
+  box-sizing: border-box;
 }
 
 .adapt-detail-textarea:focus {
   outline: none;
   border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-light);
 }
 
 .adapt-detail-btn-remove {
