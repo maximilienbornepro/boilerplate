@@ -120,48 +120,77 @@ export function AdaptationsListPage({
         ) : (
           <div className="apl-grid">
             {adaptations.map(adaptation => (
-              <div key={adaptation.id} className="apl-card">
-                <div className="apl-card__header">
-                  <span className="apl-card__name">
-                    {adaptation.name || 'Adaptation sans titre'}
-                  </span>
-                  <span className={`apl-score ${getScoreClass(adaptation.atsAfterOverall)}`}>
-                    {adaptation.atsAfterOverall}%
-                  </span>
+              <div
+                key={adaptation.id}
+                className="apl-card"
+                role="button"
+                tabIndex={0}
+                onClick={() => onView(adaptation.id)}
+                onKeyDown={(e) => e.key === 'Enter' && onView(adaptation.id)}
+              >
+                {/* Icon */}
+                <div className="apl-card__icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <path d="M9 13h6M9 17h4" />
+                  </svg>
                 </div>
 
-                <p className="apl-card__offer">
-                  {adaptation.jobOfferPreview}
-                  {adaptation.jobOfferPreview.length >= 120 && '…'}
-                </p>
+                {/* Body */}
+                <div className="apl-card__body">
+                  <div className="apl-card__top">
+                    <span className="apl-card__name">
+                      {adaptation.name || 'Adaptation sans titre'}
+                    </span>
+                    <span className={`apl-score ${getScoreClass(adaptation.atsAfterOverall)}`}>
+                      {adaptation.atsAfterOverall}%
+                    </span>
+                  </div>
 
-                <div className="apl-card__meta">
-                  <span>+{adaptation.missionsAdded} mission{adaptation.missionsAdded !== 1 ? 's' : ''}</span>
-                  <span className="apl-card__sep">·</span>
-                  <span>{formatDate(adaptation.createdAt)}</span>
+                  <p className="apl-card__offer">
+                    {adaptation.jobOfferPreview}
+                    {adaptation.jobOfferPreview.length >= 120 && '…'}
+                  </p>
+
+                  <div className="apl-card__meta">
+                    <span>+{adaptation.missionsAdded} mission{adaptation.missionsAdded !== 1 ? 's' : ''}</span>
+                    <span className="apl-card__sep">·</span>
+                    <span>{formatDate(adaptation.createdAt)}</span>
+                  </div>
                 </div>
 
-                <div className="apl-card__actions">
-                  <button
-                    className="module-header-btn apl-card__btn"
-                    onClick={() => onView(adaptation.id)}
-                  >
-                    Voir / Éditer
-                  </button>
-                  <button
-                    className="module-header-btn apl-card__btn"
-                    onClick={() => handleDownloadPDF(adaptation)}
-                    disabled={downloadingId === adaptation.id}
-                  >
-                    {downloadingId === adaptation.id ? '…' : '↓ PDF'}
-                  </button>
-                  <button
-                    className="module-header-btn apl-card__btn apl-card__btn--delete"
-                    onClick={() => setConfirmDelete(adaptation)}
-                    disabled={deletingId === adaptation.id}
-                  >
-                    {deletingId === adaptation.id ? '…' : '×'}
-                  </button>
+                {/* Hover actions */}
+                <button
+                  className="apl-card__action-btn"
+                  onClick={(e) => { e.stopPropagation(); handleDownloadPDF(adaptation); }}
+                  disabled={downloadingId === adaptation.id}
+                  title="Télécharger PDF"
+                >
+                  {downloadingId === adaptation.id ? (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg>
+                  ) : (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                  )}
+                </button>
+                <button
+                  className="apl-card__action-btn apl-card__action-btn--danger"
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(adaptation); }}
+                  disabled={deletingId === adaptation.id}
+                  title="Supprimer"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+
+                {/* Arrow */}
+                <div className="apl-card__arrow">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
                 </div>
               </div>
             ))}
