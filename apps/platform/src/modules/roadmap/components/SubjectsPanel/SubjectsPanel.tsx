@@ -187,11 +187,11 @@ export function SubjectsPanel({
     try {
       const docs = await fetchDocuments();
       setAvailableDocs(docs);
-      if (docs.length > 0 && !selectedDocId) setSelectedDocId(docs[0].id);
+      if (docs.length > 0) setSelectedDocId(prev => prev || docs[0].id);
     } catch {
       setError('Erreur lors du chargement des documents');
     }
-  }, [selectedDocId]);
+  }, []);
 
   const handleCreateSubject = useCallback(async () => {
     if (!newSubjectTitle.trim() || !selectedDocId) return;
@@ -303,8 +303,10 @@ export function SubjectsPanel({
                 {searchResults.map(result => (
                   <button key={result.id} className="sp-dropdown-item" onClick={() => handleLink(result)}>
                     <span className="sp-dropdown-status">{result.status.split(' ')[0]}</span>
-                    <span className="sp-dropdown-title">{result.title}</span>
-                    <span className="sp-dropdown-doc">{result.document_title} › {result.section_name}</span>
+                    <div className="sp-dropdown-content">
+                      <span className="sp-dropdown-title">{result.title}</span>
+                      <span className="sp-dropdown-doc">{result.document_title} › {result.section_name}</span>
+                    </div>
                   </button>
                 ))}
               </div>
