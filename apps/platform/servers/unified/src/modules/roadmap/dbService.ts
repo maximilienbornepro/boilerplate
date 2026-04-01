@@ -288,6 +288,7 @@ export interface LinkedSubject {
   status: string;
   situation: string | null;
   responsibility: string | null;
+  section_id: string;
   section_name: string;
   document_id: string;
   document_title: string;
@@ -301,6 +302,7 @@ export async function getLinkedSubjects(taskId: string): Promise<LinkedSubject[]
       sub.status,
       sub.situation,
       sub.responsibility,
+      sec.id     AS section_id,
       sec.name   AS section_name,
       doc.id     AS document_id,
       doc.title  AS document_title

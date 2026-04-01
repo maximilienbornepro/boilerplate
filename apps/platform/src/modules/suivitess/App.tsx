@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
+import { Routes, Route, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Layout, ModuleHeader } from '@boilerplate/shared/components';
 import { ReviewWizard } from './components/ReviewWizard/ReviewWizard';
 import { DocumentSelector } from './components/DocumentSelector/DocumentSelector';
@@ -9,6 +9,8 @@ import { SuggestionsPanel } from './components/SuggestionsPanel/SuggestionsPanel
 
 function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void }) {
   const { docId } = useParams<{ docId: string }>();
+  const [searchParams] = useSearchParams();
+  const scrollToSectionId = searchParams.get('section') || undefined;
   const navigate = useNavigate();
   const [copyFn, setCopyFn] = useState<(() => void) | null>(null);
   const [exportJsonFn, setExportJsonFn] = useState<(() => void) | null>(null);
@@ -127,6 +129,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           onExportJsonReady={handleExportJsonReady}
           onSaveAllReady={handleSaveAllReady}
           onUnsavedChange={setHasUnsavedChanges}
+          scrollToSectionId={scrollToSectionId}
         />
         {showSuggestions && docId && (
           <SuggestionsPanel

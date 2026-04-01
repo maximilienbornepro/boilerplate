@@ -403,7 +403,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
                 onClose={() => setShowSubjectsPanel(false)}
                 onTaskUpdate={handleTaskUpdate}
                 onTaskDelete={handleTaskDeleteDirect}
-                onNavigateToSuiviTess={onNavigate ? (docId) => onNavigate(`/suivitess?doc=${docId}`) : undefined}
+                onNavigateToSuiviTess={onNavigate ? (docId, sectionId) => onNavigate(`/suivitess/${docId}${sectionId ? `?section=${sectionId}` : ''}`) : undefined}
               />
             )}
 

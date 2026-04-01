@@ -3,7 +3,7 @@
 .sp-panel {
   width: 420px;
   min-width: 380px;
-  max-width: 500px;
+  max-width: 50vw;
   /* Sticky: stays in viewport when Gantt is scrolled */
   position: sticky;
   top: 110px; /* 50px SharedNav + 60px ModuleHeader */
@@ -297,6 +297,11 @@
   box-shadow: 0 0 0 2px var(--accent-light);
 }
 
+/* Panel expands to 50vw when editing a subject */
+.sp-panel:has(.sp-subject-card--editing) {
+  width: 50vw;
+}
+
 .sp-subject-meta {
   display: flex;
   align-items: center;
@@ -326,6 +331,7 @@
   font-size: var(--font-size-xs);
   padding: 0;
   margin-left: auto;
+  text-decoration: none;
 }
 .sp-subject-open:hover { text-decoration: underline; }
 
@@ -337,6 +343,13 @@
 }
 
 .sp-subject-status { flex-shrink: 0; font-size: var(--font-size-base); }
+
+.sp-subject-status-badge {
+  display: inline-block;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-bottom: var(--spacing-xs);
+}
 
 .sp-subject-title {
   font-size: var(--font-size-base);
@@ -406,6 +419,76 @@
 .sp-btn-primary:hover {
   background: var(--accent-secondary);
   border-color: var(--accent-secondary);
+}
+
+/* ── New subject creation ── */
+
+.sp-new-subject-section {
+  padding: var(--spacing-sm) var(--spacing-xl);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.sp-btn-new {
+  width: 100%;
+  justify-content: center;
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+.sp-btn-new:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.sp-new-subject-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.sp-new-subject-select {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+}
+
+.sp-new-subject-select:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.sp-new-subject-input {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  box-sizing: border-box;
+}
+
+.sp-new-subject-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.sp-new-subject-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.sp-new-subject-actions {
+  display: flex;
+  gap: var(--spacing-sm);
 }
 
 .sp-btn-danger {

@@ -6,6 +6,7 @@ export interface LinkedSubject {
   status: string;
   situation: string | null;
   responsibility: string | null;
+  section_id: string;
   section_name: string;
   document_id: string;
   document_title: string;

@@ -103,9 +103,10 @@ interface ReviewWizardProps {
   onExportJsonReady?: (exportFn: (() => void) | null) => void;
   onSaveAllReady?: (saveFn: (() => Promise<void>) | null) => void;
   onUnsavedChange?: (hasUnsaved: boolean) => void;
+  scrollToSectionId?: string;
 }
 
-export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, onSaveAllReady, onUnsavedChange }: ReviewWizardProps) {
+export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, onSaveAllReady, onUnsavedChange, scrollToSectionId }: ReviewWizardProps) {
   const [step, setStep] = useState<WizardStep>(docId ? 'review' : 'select');
   const [selectedDoc, setSelectedDoc] = useState<string>(docId || '');
   const [docTitle, setDocTitle] = useState<string>('');
@@ -307,6 +308,15 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
 
     loadDocument();
   }, [docId]);
+
+  // Scroll to section when coming from Roadmap with ?section= param
+  useEffect(() => {
+    if (!scrollToSectionId || sections.length === 0) return;
+    const el = document.querySelector(`[data-section-id="${scrollToSectionId}"]`);
+    if (el) {
+      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    }
+  }, [scrollToSectionId, sections]);
 
   const addToast = (toast: Omit<ToastData, 'id'>) => {
     const id = Date.now().toString();
@@ -847,7 +857,7 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
                 </div>
               )}
               {sections.map((section, sIdx) => (
-                <div key={section.id} className={styles.sectionBlock}>
+                <div key={section.id} className={styles.sectionBlock} data-section-id={section.id}>
                   <div className={styles.sectionHeader}>
                     {editingSectionId === section.id ? (
                       <input
