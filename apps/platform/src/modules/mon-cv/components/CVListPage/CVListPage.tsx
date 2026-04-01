@@ -268,7 +268,7 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations, onBack }: CVListPag
                       className="cv-card-btn"
                       onClick={() => onAdapt(cv.id)}
                     >
-                      Adapter
+                      Analyser
                     </button>
                     <button
                       className="cv-card-btn cv-card-btn--adapt"

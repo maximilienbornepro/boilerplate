@@ -1,5 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { CVData, Experience, Project } from './types.js';
+import { extractCVMap } from './pipeline/step1-extract.js';
+import { analyzeMatches } from './pipeline/step2-match.js';
+import { optimizeContent, applyReplacements } from './pipeline/step3-optimize.js';
+import { validateOptimization } from './pipeline/validation.js';
+import type { PipelineStepStatus, TermReplacement as PipelineTermReplacement } from './pipeline/types.js';
 
 const MODEL = 'claude-sonnet-4-20250514';
 
@@ -29,12 +34,67 @@ export interface AdaptResponse {
     newMissions: string[];
     newProject?: Project;
     addedSkills: Record<string, string[]>;
+    // Pipeline fields (optional for backward compat)
+    termReplacements?: PipelineTermReplacement[];
+    titleChange?: { original: string; proposed: string; reason?: string };
+    matchedKeywords?: string[];
+    remainingGaps?: string[];
   };
   atsScore: {
     before: AtsScore;
     after: AtsScore;
   };
   jobAnalysis: JobAnalysis;
+}
+
+export interface PipelineLogEvent {
+  type: 'step' | 'log' | 'result' | 'error';
+  step?: number;
+  name?: string;
+  status?: 'running' | 'completed' | 'error';
+  message?: string;
+  durationMs?: number;
+  data?: any;
+}
+
+export interface ActionItem {
+  id: string;                    // unique action ID
+  elementId: string;             // CV element to modify
+  section: string;               // 'mission' | 'skill' | 'title' | etc.
+  experienceIndex?: number;      // which experience
+  experienceContext?: string;    // "Senior Dev at Acme Corp"
+  type: 'replace' | 'title_change';
+  cvTerm: string;               // current word/phrase in CV
+  offerTerm: string;             // target word/phrase from offer
+  fullTextBefore: string;        // full sentence before
+  fullTextAfter?: string;        // full sentence after (from LLM, filled in apply step)
+  keyword: string;               // which offer keyword this serves
+  confidence: number;
+  impact: 'critical' | 'important' | 'bonus';  // critical = needed for 75%, important = for 100%
+  scoreGain: number;             // estimated ATS score gain
+}
+
+export interface AnalysisResult {
+  score: AtsScore;
+  jobAnalysis: JobAnalysis;
+  matchedKeywords: string[];     // exact matches (green)
+  synonymsFound: string[];       // synonym terms found (yellow)
+  gaps: string[];                // not found at all (red)
+  actions: ActionItem[];         // ordered by impact then scoreGain
+  targetScore75: {
+    actions: ActionItem[];       // subset needed to reach ~75%
+    estimatedScore: number;
+  };
+  targetScore100: {
+    actions: ActionItem[];       // all actions
+    estimatedScore: number;
+  };
+  cvMap: {
+    language: string;
+    elementCount: number;
+    experienceCount: number;
+  };
+  pipelineLogs: PipelineLogEvent[];
 }
 
 export interface ModifyRequest {
@@ -854,6 +914,325 @@ Retourne UNIQUEMENT du JSON valide :
     : { recommendations: [] };
 
   return { ...parsed, currentScore: score, promptUsed: prompt };
+}
+
+/**
+ * Pipeline-based CV adaptation.
+ * Replaces the old adaptCV for the /adapt endpoint.
+ * Uses 3-step pipeline: extract -> match -> optimize.
+ * No content invention — only term replacements and title alignment.
+ */
+export async function adaptCVPipeline(request: AdaptRequest): Promise<AdaptResponse> {
+  const { cvData, jobOffer } = request;
+  const steps: PipelineStepStatus[] = [];
+  const startTime = Date.now();
+
+  // Step 1: Extract CV map (algorithmic, instant)
+  const step1Start = Date.now();
+  const cvMap = extractCVMap(cvData);
+  steps.push({ step: 1, name: 'Extraction CV', status: 'completed', durationMs: Date.now() - step1Start });
+
+  // Step 2: Analyze matches (2 LLM calls: job analysis + synonym detection)
+  const step2Start = Date.now();
+  const matchAnalysis = await analyzeMatches(cvMap, jobOffer, cvData);
+  steps.push({ step: 2, name: 'Analyse des correspondances', status: 'completed', durationMs: Date.now() - step2Start });
+
+  // Step 3: Optimize content (1 LLM call: term replacement)
+  const step3Start = Date.now();
+  const optimization = await optimizeContent(cvData, cvMap, matchAnalysis);
+  steps.push({ step: 3, name: 'Optimisation du contenu', status: 'completed', durationMs: Date.now() - step3Start });
+
+  // Build adapted CV by applying replacements
+  const adaptedCV = applyReplacements(cvData, optimization.replacements, optimization.titleChange);
+
+  // Validate
+  const validation = validateOptimization(cvData, adaptedCV, optimization.replacements);
+  if (!validation.valid) {
+    console.warn('[Mon-CV Pipeline] Validation warnings:', validation.warnings);
+  }
+
+  const totalDurationMs = Date.now() - startTime;
+  console.log(`[Mon-CV Pipeline] Completed in ${totalDurationMs}ms — ${optimization.replacements.length} replacements, ${matchAnalysis.exactMatches.length} exact matches, ${optimization.remainingGaps.length} gaps`);
+
+  // Build backward-compatible response
+  return {
+    adaptedCV,
+    changes: {
+      newMissions: [],
+      newProject: undefined,
+      addedSkills: {},
+      // New pipeline fields
+      termReplacements: optimization.replacements,
+      titleChange: optimization.titleChange,
+      matchedKeywords: matchAnalysis.exactMatches,
+      remainingGaps: optimization.remainingGaps,
+    },
+    atsScore: {
+      before: matchAnalysis.scoreBefore,
+      after: optimization.scoreAfter,
+    },
+    jobAnalysis: matchAnalysis.jobAnalysis,
+  };
+}
+
+/**
+ * Pipeline-based CV adaptation with SSE streaming.
+ * Yields PipelineLogEvent events so the frontend can render live progress.
+ */
+export async function* adaptCVPipelineStream(request: AdaptRequest): AsyncGenerator<PipelineLogEvent, AdaptResponse> {
+  const { cvData, jobOffer } = request;
+
+  // Step 1: Extract CV map
+  yield { type: 'step', step: 1, name: 'Extraction du CV', status: 'running' };
+  yield { type: 'log', step: 1, message: `Indexation de ${(cvData.experiences || []).length} expériences, ${(cvData.competences || []).concat(cvData.outils || [], cvData.dev || [], cvData.frameworks || [], cvData.solutions || []).length} compétences...` };
+  const step1Start = Date.now();
+  const cvMap = extractCVMap(cvData);
+  const step1Ms = Date.now() - step1Start;
+  yield { type: 'log', step: 1, message: `${cvMap.elements.length} éléments indexés, langue détectée : ${cvMap.language === 'fr' ? 'Français' : 'Anglais'}` };
+  yield { type: 'step', step: 1, name: 'Extraction du CV', status: 'completed', durationMs: step1Ms };
+
+  // Step 2: Analyze matches
+  yield { type: 'step', step: 2, name: 'Analyse des correspondances', status: 'running' };
+  yield { type: 'log', step: 2, message: 'Analyse de l\'offre d\'emploi (LLM)...' };
+  const step2Start = Date.now();
+  const matchAnalysis = await analyzeMatches(cvMap, jobOffer, cvData);
+  const step2Ms = Date.now() - step2Start;
+  yield { type: 'log', step: 2, message: `${matchAnalysis.jobAnalysis.requiredKeywords.length} mots-clés requis extraits` };
+  yield { type: 'log', step: 2, message: `${matchAnalysis.exactMatches.length} correspondances exactes trouvées` };
+  yield { type: 'log', step: 2, message: `${matchAnalysis.synonyms.length} synonymes détectés` };
+  yield { type: 'log', step: 2, message: `${matchAnalysis.gaps.length} mots-clés manquants (gaps)` };
+  yield { type: 'log', step: 2, message: `Score ATS avant : ${matchAnalysis.scoreBefore.overall}%` };
+  yield { type: 'step', step: 2, name: 'Analyse des correspondances', status: 'completed', durationMs: step2Ms };
+
+  // Step 3: Optimize content
+  yield { type: 'step', step: 3, name: 'Optimisation du contenu', status: 'running' };
+  if (matchAnalysis.synonyms.length > 0) {
+    yield { type: 'log', step: 3, message: `Remplacement de ${matchAnalysis.synonyms.length} termes (LLM)...` };
+    for (const syn of matchAnalysis.synonyms) {
+      yield { type: 'log', step: 3, message: `  « ${syn.cvTerm} » → « ${syn.offerTerm} » (confiance: ${Math.round(syn.confidence * 100)}%)` };
+    }
+  } else {
+    yield { type: 'log', step: 3, message: 'Aucun synonyme à remplacer — pas d\'appel LLM' };
+  }
+  const step3Start = Date.now();
+  const optimization = await optimizeContent(cvData, cvMap, matchAnalysis);
+  const step3Ms = Date.now() - step3Start;
+  yield { type: 'log', step: 3, message: `${optimization.replacements.length} remplacements appliqués` };
+  if (optimization.titleChange) {
+    yield { type: 'log', step: 3, message: `Titre proposé : « ${optimization.titleChange.proposed} »` };
+  }
+  yield { type: 'log', step: 3, message: `Score ATS après : ${optimization.scoreAfter.overall}%` };
+  yield { type: 'log', step: 3, message: `${optimization.remainingGaps.length} gaps restants` };
+  yield { type: 'step', step: 3, name: 'Optimisation du contenu', status: 'completed', durationMs: step3Ms };
+
+  // Build adapted CV
+  const adaptedCV = applyReplacements(cvData, optimization.replacements, optimization.titleChange);
+
+  // Validate
+  const validation = validateOptimization(cvData, adaptedCV, optimization.replacements);
+  if (validation.warnings.length > 0) {
+    for (const w of validation.warnings) {
+      yield { type: 'log', step: 3, message: `⚠ Validation : ${w.message}` };
+    }
+  }
+
+  const response: AdaptResponse = {
+    adaptedCV,
+    changes: {
+      newMissions: [],
+      newProject: undefined,
+      addedSkills: {},
+      termReplacements: optimization.replacements,
+      titleChange: optimization.titleChange,
+      matchedKeywords: matchAnalysis.exactMatches,
+      remainingGaps: optimization.remainingGaps,
+    },
+    atsScore: {
+      before: matchAnalysis.scoreBefore,
+      after: optimization.scoreAfter,
+    },
+    jobAnalysis: matchAnalysis.jobAnalysis,
+  };
+
+  yield { type: 'result', data: response };
+  return response;
+}
+
+/**
+ * Analyze CV against a job offer without modifying it.
+ * Streams progress events, then yields a final AnalysisResult.
+ * Steps: 1) Extract CVMap, 2) Analyze matches, 3) Build action plan.
+ */
+export async function* analyzeCVStream(
+  cvData: CVData,
+  jobOffer: string
+): AsyncGenerator<PipelineLogEvent> {
+  // Step 1: Extract
+  yield { type: 'step', step: 1, name: 'Extraction du CV', status: 'running' };
+  const cvMap = extractCVMap(cvData);
+  yield { type: 'log', step: 1, message: `${cvMap.elements.length} éléments indexés, langue : ${cvMap.language === 'fr' ? 'Français' : 'Anglais'}` };
+  yield { type: 'step', step: 1, name: 'Extraction du CV', status: 'completed' };
+
+  // Step 2: Match
+  yield { type: 'step', step: 2, name: 'Analyse de l\'offre', status: 'running' };
+  yield { type: 'log', step: 2, message: 'Extraction des mots-clés de l\'offre (LLM)...' };
+  const matchAnalysis = await analyzeMatches(cvMap, jobOffer, cvData);
+  yield { type: 'log', step: 2, message: `${matchAnalysis.jobAnalysis.requiredKeywords.length} mots-clés requis` };
+  yield { type: 'log', step: 2, message: `${matchAnalysis.exactMatches.length} correspondances exactes` };
+  yield { type: 'step', step: 2, name: 'Analyse de l\'offre', status: 'completed' };
+
+  // Step 3: Synonym detection + action plan
+  yield { type: 'step', step: 3, name: 'Détection des synonymes', status: 'running' };
+  yield { type: 'log', step: 3, message: `${matchAnalysis.synonyms.length} synonymes détectés` };
+
+  // Build action items from synonyms
+  const actions: ActionItem[] = matchAnalysis.synonyms.map((syn, idx) => {
+    const element = cvMap.elements.find(el => syn.elementIds.includes(el.id));
+    return {
+      id: `action-${idx}`,
+      elementId: syn.elementIds[0],
+      section: element?.section || 'mission',
+      experienceIndex: element?.experienceIndex,
+      experienceContext: element?.parentContext,
+      type: 'replace' as const,
+      cvTerm: syn.cvTerm,
+      offerTerm: syn.offerTerm,
+      fullTextBefore: element?.text || '',
+      keyword: syn.offerTerm,
+      confidence: syn.confidence,
+      impact: 'critical' as const,  // will be recalculated below
+      scoreGain: 0,
+    };
+  });
+
+  // Add title change action if needed
+  const jobTitle = matchAnalysis.jobAnalysis.exactJobTitle;
+  if (jobTitle && cvData.title && !cvData.title.toLowerCase().includes(jobTitle.toLowerCase())) {
+    actions.push({
+      id: 'action-title',
+      elementId: 'title',
+      section: 'title',
+      type: 'title_change',
+      cvTerm: cvData.title,
+      offerTerm: jobTitle,
+      fullTextBefore: cvData.title,
+      keyword: jobTitle,
+      confidence: 1.0,
+      impact: 'critical',
+      scoreGain: 20,  // title match = 20% of score
+    });
+  }
+
+  // Calculate impact levels:
+  // Each synonym replacement potentially gains (50/total_keywords)% for keywordMatch
+  // + (30/total_keywords)% if it creates cross-section coverage
+  const totalKw = matchAnalysis.jobAnalysis.requiredKeywords.length;
+  const baseGainPerKw = totalKw > 0 ? Math.round(50 / totalKw) : 0;
+
+  for (const action of actions) {
+    if (action.type === 'title_change') continue;
+    action.scoreGain = baseGainPerKw;
+  }
+
+  // Sort by scoreGain descending
+  actions.sort((a, b) => b.scoreGain - a.scoreGain);
+
+  // Assign impact: calculate cumulative score to reach 75%
+  const scoreBefore = matchAnalysis.scoreBefore.overall;
+  const scoreNeeded75 = Math.max(0, 75 - scoreBefore);
+  const scoreNeeded100 = Math.max(0, 100 - scoreBefore);
+  let cumGain = 0;
+  for (const action of actions) {
+    cumGain += action.scoreGain;
+    if (cumGain <= scoreNeeded75) {
+      action.impact = 'critical';
+    } else if (cumGain <= scoreNeeded100) {
+      action.impact = 'important';
+    } else {
+      action.impact = 'bonus';
+    }
+  }
+
+  // Log gap items
+  for (const gap of matchAnalysis.gaps) {
+    yield { type: 'log', step: 3, message: `Gap sans correspondance : « ${gap} »` };
+  }
+
+  yield { type: 'step', step: 3, name: 'Détection des synonymes', status: 'completed' };
+
+  // Build analysis result
+  const criticalActions = actions.filter(a => a.impact === 'critical');
+  const allActions = actions;
+
+  const analysisResult: AnalysisResult = {
+    score: matchAnalysis.scoreBefore,
+    jobAnalysis: matchAnalysis.jobAnalysis,
+    matchedKeywords: matchAnalysis.exactMatches,
+    synonymsFound: matchAnalysis.synonyms.map(s => s.cvTerm),
+    gaps: matchAnalysis.gaps,
+    actions: allActions,
+    targetScore75: {
+      actions: criticalActions,
+      estimatedScore: Math.min(100, scoreBefore + criticalActions.reduce((sum, a) => sum + a.scoreGain, 0)),
+    },
+    targetScore100: {
+      actions: allActions,
+      estimatedScore: Math.min(100, scoreBefore + allActions.reduce((sum, a) => sum + a.scoreGain, 0)),
+    },
+    cvMap: {
+      language: cvMap.language,
+      elementCount: cvMap.elements.length,
+      experienceCount: cvMap.experienceCount,
+    },
+    pipelineLogs: [],
+  };
+
+  yield { type: 'result', data: analysisResult };
+}
+
+/**
+ * Apply selected actions to a CV.
+ * Runs Step 3 (LLM grammatical replacement) for selected synonym actions,
+ * and applies title change if selected.
+ */
+export async function applySelectedActions(
+  cvData: CVData,
+  actions: ActionItem[],
+  jobAnalysis: JobAnalysis
+): Promise<{ adaptedCV: CVData; replacements: PipelineTermReplacement[]; scoreAfter: AtsScore }> {
+  // Convert actions to SynonymPairs for step3
+  const synonyms: import('./pipeline/types.js').SynonymPair[] = actions
+    .filter(a => a.type === 'replace')
+    .map(a => ({
+      cvTerm: a.cvTerm,
+      offerTerm: a.offerTerm,
+      elementIds: [a.elementId],
+      confidence: a.confidence,
+    }));
+
+  const cvMap = extractCVMap(cvData);
+
+  const matchAnalysis: import('./pipeline/types.js').MatchAnalysis = {
+    jobAnalysis,
+    exactMatches: [],
+    synonyms,
+    gaps: [],
+    scoreBefore: scoreCV(cvData, jobAnalysis),
+  };
+
+  const optimization = await optimizeContent(cvData, cvMap, matchAnalysis);
+
+  // Apply title change if in selected actions
+  const titleAction = actions.find(a => a.type === 'title_change');
+  let titleChange = optimization.titleChange;
+  if (titleAction) {
+    titleChange = { original: titleAction.cvTerm, proposed: titleAction.offerTerm, reason: 'Titre adapté à l\'offre' };
+  }
+
+  const adaptedCV = applyReplacements(cvData, optimization.replacements, titleChange);
+  const scoreAfter = scoreCV(adaptedCV, jobAnalysis);
+
+  return { adaptedCV, replacements: optimization.replacements, scoreAfter };
 }
 
 /**

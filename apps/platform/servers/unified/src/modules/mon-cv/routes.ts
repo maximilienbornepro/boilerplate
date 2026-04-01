@@ -7,7 +7,8 @@ import { createEmptyCV } from './types.js';
 import type { CVData, MergeRequest } from './types.js';
 import { parseCV, parseCVWithVision } from './parseService.js';
 import { processImage } from './imageService.js';
-import { adaptCV, modifyCV, recommendImprovements, applyImprovements } from './adaptService.js';
+import { adaptCVPipeline, adaptCVPipelineStream, modifyCV, recommendImprovements, applyImprovements, analyzeCVStream, applySelectedActions } from './adaptService.js';
+import type { PipelineLogEvent, AnalysisResult } from './adaptService.js';
 import {
   createAdaptation,
   getAdaptationsByCV,
@@ -484,6 +485,53 @@ export function createMonCvRoutes(): Router {
 
   // ============ CV Adaptation ============
 
+  // POST /analyze-stream — SSE: analyze CV vs offer without modifying
+  router.post('/analyze-stream', asyncHandler(async (req, res) => {
+    const { cvData, jobOffer } = req.body;
+    if (!jobOffer || typeof jobOffer !== 'string' || jobOffer.trim() === '') {
+      res.status(400).json({ error: 'Job offer text is required' });
+      return;
+    }
+    if (!cvData) {
+      res.status(400).json({ error: 'CV data is required' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    try {
+      const stream = analyzeCVStream(cvData, jobOffer);
+      for await (const event of stream) {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+    } catch (err: any) {
+      console.error('[Mon-CV] Analysis stream error:', err);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message || 'Erreur analyse' })}\n\n`);
+    }
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }));
+
+  // POST /apply-actions — Apply selected adaptation actions to CV
+  router.post('/apply-actions', asyncHandler(async (req, res) => {
+    const { cvData, actions, jobAnalysis } = req.body;
+    if (!cvData || !actions || !jobAnalysis) {
+      res.status(400).json({ error: 'Missing required fields' });
+      return;
+    }
+    try {
+      const result = await applySelectedActions(cvData, actions, jobAnalysis);
+      res.json(result);
+    } catch (err: any) {
+      console.error('[Mon-CV] Apply actions error:', err);
+      res.status(500).json({ error: err.message || 'Erreur lors de l\'application' });
+    }
+  }));
+
   // POST /recommend - Get ATS improvement recommendations (no generation, analysis only)
   router.post('/recommend', asyncHandler(async (req, res) => {
     const { cvData, jobOffer } = req.body;
@@ -530,6 +578,41 @@ export function createMonCvRoutes(): Router {
     }
   }));
 
+  // POST /adapt-stream - SSE endpoint for pipeline with logs
+  router.post('/adapt-stream', asyncHandler(async (req, res) => {
+    const { cvData, jobOffer, customInstructions } = req.body;
+
+    if (!jobOffer || typeof jobOffer !== 'string' || jobOffer.trim() === '') {
+      res.status(400).json({ error: 'Job offer text is required' });
+      return;
+    }
+    if (!cvData) {
+      res.status(400).json({ error: 'CV data is required' });
+      return;
+    }
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    try {
+      const pipeline = adaptCVPipelineStream({ cvData, jobOffer, customInstructions });
+
+      for await (const event of pipeline) {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+    } catch (err: any) {
+      console.error('[Mon-CV] Pipeline stream error:', err);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message || 'Erreur pipeline' })}\n\n`);
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  }));
+
   // POST /adapt - Adapt CV to job offer
   router.post('/adapt', asyncHandler(async (req, res) => {
     const { cvData, jobOffer, customInstructions } = req.body;
@@ -545,7 +628,7 @@ export function createMonCvRoutes(): Router {
     }
 
     try {
-      const result = await adaptCV({ cvData, jobOffer, customInstructions });
+      const result = await adaptCVPipeline({ cvData, jobOffer, customInstructions });
       res.json(result);
     } catch (err: any) {
       console.error('[Mon-CV] Adaptation error:', err);

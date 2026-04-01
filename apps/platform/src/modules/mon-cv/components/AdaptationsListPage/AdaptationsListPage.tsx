@@ -114,7 +114,7 @@ export function AdaptationsListPage({
               Adaptez ce CV à une offre d'emploi pour générer une version optimisée ATS.
             </p>
             <button className="module-header-btn module-header-btn-primary" onClick={onAdapt}>
-              Adapter ce CV
+              Analyser une offre
             </button>
           </div>
         ) : (

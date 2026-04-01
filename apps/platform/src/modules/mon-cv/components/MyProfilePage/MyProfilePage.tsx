@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react';
 import { ModuleHeader, ToastContainer, ConfirmModal } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import { ExpandableSection } from '../ExpandableSection';
@@ -152,6 +152,15 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
     setDeleteExperienceConfirm(null);
   }, [cv, handleChange]);
 
+  const moveExperience = useCallback((index: number, direction: 'up' | 'down') => {
+    if (!cv) return;
+    const experiences = [...(cv.cvData.experiences || [])];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= experiences.length) return;
+    [experiences[index], experiences[targetIndex]] = [experiences[targetIndex], experiences[index]];
+    handleChange({ experiences });
+  }, [cv, handleChange]);
+
   // Formation handlers
   const addFormation = useCallback(() => {
     if (!cv) return;
@@ -176,6 +185,15 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
   const removeFormation = useCallback((index: number) => {
     if (!cv) return;
     const formations = cv.cvData.formations?.filter((_, i) => i !== index) || [];
+    handleChange({ formations });
+  }, [cv, handleChange]);
+
+  const moveFormation = useCallback((index: number, direction: 'up' | 'down') => {
+    if (!cv) return;
+    const formations = [...(cv.cvData.formations || [])];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= formations.length) return;
+    [formations[index], formations[targetIndex]] = [formations[targetIndex], formations[index]];
     handleChange({ formations });
   }, [cv, handleChange]);
 
@@ -205,6 +223,24 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
     const awards = cv.cvData.awards?.filter((_, i) => i !== index) || [];
     handleChange({ awards });
   }, [cv, handleChange]);
+
+  // Auto-resize textarea helper
+  const autoResize = useCallback((el: HTMLTextAreaElement) => {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  }, []);
+
+  const handleTextareaInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
+    autoResize(e.currentTarget);
+  }, [autoResize]);
+
+  // Auto-resize all textareas on mount and when data changes
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const textareas = contentRef.current.querySelectorAll('textarea');
+    textareas.forEach((ta) => autoResize(ta));
+  }, [cvData, autoResize]);
 
   if (loading) {
     return (
@@ -252,12 +288,12 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
           className="module-header-btn module-header-btn-primary"
           onClick={() => onNavigate?.('/mon-cv/adapt')}
         >
-          Adapter
+          Analyser une offre
         </button>
       </ModuleHeader>
 
       <div className="cv-profile-page">
-        <div className="cv-profile-content">
+        <div className="cv-profile-content" ref={contentRef}>
           {/* Basic Info */}
           <ExpandableSection title="Informations de base" defaultExpanded>
             <div className="cv-profile-grid">
@@ -296,8 +332,9 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
               <textarea
                 value={cvData.summary || ''}
                 onChange={(e) => handleChange({ summary: e.target.value })}
-                placeholder="Resume de votre parcours professionnel..."
-                rows={4}
+                onInput={handleTextareaInput}
+                placeholder="Résumé de votre parcours professionnel..."
+                className="cv-textarea-auto"
               />
             </div>
           </ExpandableSection>
@@ -414,13 +451,33 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                 <div key={index} className="cv-experience-item">
                   <div className="cv-experience-header">
                     <span className="cv-experience-number">#{index + 1}</span>
-                    <button
-                      type="button"
-                      className="cv-experience-delete"
-                      onClick={() => setDeleteExperienceConfirm(index)}
-                    >
-                      Supprimer
-                    </button>
+                    <div className="cv-experience-actions">
+                      <button
+                        type="button"
+                        className="cv-move-btn"
+                        onClick={() => moveExperience(index, 'up')}
+                        disabled={index === 0}
+                        title="Monter"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="cv-move-btn"
+                        onClick={() => moveExperience(index, 'down')}
+                        disabled={index === (cvData.experiences?.length || 1) - 1}
+                        title="Descendre"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="cv-experience-delete"
+                        onClick={() => setDeleteExperienceConfirm(index)}
+                      >
+                        Supprimer
+                      </button>
+                    </div>
                   </div>
                   <div className="cv-profile-form-grid">
                     <div className="cv-field">
@@ -465,8 +522,9 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                     <textarea
                       value={exp.description || ''}
                       onChange={(e) => updateExperience(index, { description: e.target.value })}
+                      onInput={handleTextareaInput}
                       placeholder="Description du poste..."
-                      rows={3}
+                      className="cv-textarea-auto"
                     />
                   </div>
                   <ListEditor
@@ -509,13 +567,33 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                 <div key={index} className="cv-formation-item">
                   <div className="cv-experience-header">
                     <span className="cv-experience-number">#{index + 1}</span>
-                    <button
-                      type="button"
-                      className="cv-experience-delete"
-                      onClick={() => removeFormation(index)}
-                    >
-                      Supprimer
-                    </button>
+                    <div className="cv-experience-actions">
+                      <button
+                        type="button"
+                        className="cv-move-btn"
+                        onClick={() => moveFormation(index, 'up')}
+                        disabled={index === 0}
+                        title="Monter"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="cv-move-btn"
+                        onClick={() => moveFormation(index, 'down')}
+                        disabled={index === (cvData.formations?.length || 1) - 1}
+                        title="Descendre"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="cv-experience-delete"
+                        onClick={() => removeFormation(index)}
+                      >
+                        Supprimer
+                      </button>
+                    </div>
                   </div>
                   <div className="cv-profile-form-grid">
                     <div className="cv-field">
@@ -655,8 +733,9 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                 onChange={(e) => handleChange({
                   sideProjects: { ...cvData.sideProjects, items: cvData.sideProjects?.items || [], description: e.target.value }
                 })}
+                onInput={handleTextareaInput}
                 placeholder="Description de vos projets..."
-                rows={3}
+                className="cv-textarea-auto"
               />
             </div>
             <TagEditor

@@ -172,6 +172,17 @@ export interface AdaptRequest {
   customInstructions?: string;
 }
 
+// Pipeline term replacement (synonym -> exact token swap)
+export interface PipelineTermReplacement {
+  elementId: string;
+  section: string;
+  originalText: string;
+  replacedText: string;
+  cvTerm: string;
+  offerTerm: string;
+  confidence: number;
+}
+
 // Response from CV adaptation
 export interface AdaptResponse {
   adaptedCV: CVData;
@@ -179,6 +190,11 @@ export interface AdaptResponse {
     newMissions: string[];
     newProject?: Project;
     addedSkills: Record<string, string[]>;
+    // Pipeline fields (from new pipeline-based adaptation)
+    termReplacements?: PipelineTermReplacement[];
+    titleChange?: { original: string; proposed: string; reason?: string };
+    matchedKeywords?: string[];
+    remainingGaps?: string[];
   };
   atsScore: {
     before: AtsScore;
@@ -212,6 +228,51 @@ export interface AtsRecommendations {
   recommendations: AtsRecommendationItem[];
   currentScore: AtsScore;  // score computed at time of analysis (reflects current CV state)
   promptUsed: string;      // prompt exact envoyé à Claude (affiché dans l'UI pour transparence)
+}
+
+// ============ Analysis Types (2-step flow) ============
+
+// Action item from analysis
+export interface ActionItem {
+  id: string;
+  elementId: string;
+  section: string;
+  experienceIndex?: number;
+  experienceContext?: string;
+  type: 'replace' | 'title_change';
+  cvTerm: string;
+  offerTerm: string;
+  fullTextBefore: string;
+  fullTextAfter?: string;
+  keyword: string;
+  confidence: number;
+  impact: 'critical' | 'important' | 'bonus';
+  scoreGain: number;
+}
+
+// Full analysis result from analyze-stream
+export interface AnalysisResult {
+  score: AtsScore;
+  jobAnalysis: JobAnalysis;
+  matchedKeywords: string[];
+  synonymsFound: string[];
+  gaps: string[];
+  actions: ActionItem[];
+  targetScore75: { actions: ActionItem[]; estimatedScore: number };
+  targetScore100: { actions: ActionItem[]; estimatedScore: number };
+  cvMap: { language: string; elementCount: number; experienceCount: number };
+  pipelineLogs: PipelineLogEvent[];
+}
+
+// Pipeline log event (shared with api.ts)
+export interface PipelineLogEvent {
+  type: 'step' | 'log' | 'result' | 'error';
+  step?: number;
+  name?: string;
+  status?: 'running' | 'completed' | 'error';
+  message?: string;
+  durationMs?: number;
+  data?: any;
 }
 
 // ============ Adaptation History Types ============
