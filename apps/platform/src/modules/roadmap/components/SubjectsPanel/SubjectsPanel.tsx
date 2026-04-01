@@ -121,6 +121,10 @@ export function SubjectsPanel({
   const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
+  // AI Suggestions
+  const [suggestions, setSuggestions] = useState<SubjectSearchResult[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
   // New subject creation
   const [showNewSubject, setShowNewSubject] = useState(false);
   const [newSubjectTitle, setNewSubjectTitle] = useState('');
@@ -143,6 +147,18 @@ export function SubjectsPanel({
   }, [task.id]);
 
   useEffect(() => { loadSubjects(); }, [loadSubjects]);
+
+  // Load AI suggestions when task changes
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingSuggestions(true);
+    setSuggestions([]);
+    api.suggestSubjects(task.id)
+      .then(results => { if (!cancelled) setSuggestions(results); })
+      .catch(() => { /* silent fail */ })
+      .finally(() => { if (!cancelled) setLoadingSuggestions(false); });
+    return () => { cancelled = true; };
+  }, [task.id]);
 
   useEffect(() => {
     if (debouncedQuery.length < 2) { setSearchResults([]); setShowDropdown(false); return; }
@@ -169,6 +185,7 @@ export function SubjectsPanel({
     try {
       await api.linkSubject(task.id, result.id);
       setSearchQuery(''); setShowDropdown(false);
+      setSuggestions(prev => prev.filter(s => s.id !== result.id));
       await loadSubjects();
     } catch { setError('Erreur lors de la liaison'); }
   }, [task.id, loadSubjects]);
@@ -314,6 +331,26 @@ export function SubjectsPanel({
             {showDropdown && searchResults.length === 0 && debouncedQuery.length >= 2 && !searchLoading && (
               <div className="sp-dropdown sp-dropdown-empty">Aucun sujet trouvé</div>
             )}
+          </div>
+        )}
+
+        {/* ── AI Suggestions ── */}
+        {!editingSubjectId && (loadingSuggestions || suggestions.length > 0) && (
+          <div className="sp-suggestions">
+            <div className="sp-suggestions-header">
+              <span className="sp-suggestions-badge">IA</span>
+              <span>Suggestions</span>
+              {loadingSuggestions && <span className="sp-search-spinner">⏳</span>}
+            </div>
+            {suggestions.map(s => (
+              <button key={s.id} className="sp-suggestion-item" onClick={() => handleLink(s)}>
+                <span className="sp-dropdown-status">{s.status.split(' ')[0]}</span>
+                <div className="sp-dropdown-content">
+                  <span className="sp-dropdown-title">{s.title}</span>
+                  <span className="sp-dropdown-doc">{s.document_title} › {s.section_name}</span>
+                </div>
+              </button>
+            ))}
           </div>
         )}
 

@@ -68,6 +68,9 @@ export const linkSubject = (taskId: string, subjectId: string): Promise<{ ok: bo
 export const unlinkSubject = (taskId: string, subjectId: string): Promise<{ ok: boolean }> =>
   fetchApi(`/tasks/${taskId}/subjects/${subjectId}`, { method: 'DELETE' });
 
+export const suggestSubjects = (taskId: string): Promise<Array<{ id: string; title: string; status: string; section_name: string; document_id: string; document_title: string }>> =>
+  fetchApi(`/tasks/${taskId}/suggest-subjects`, { method: 'POST' });
+
 // Subject update (calls SuiviTess API directly)
 export async function updateSubject(
   subjectId: string,

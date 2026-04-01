@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import Anthropic from '@anthropic-ai/sdk';
 import { authMiddleware } from '../../middleware/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
+import { searchSubjects as searchSuivitessSubjects } from '../suivitess/dbService.js';
 
 export async function initDb() {
   await db.initPool();
@@ -142,6 +144,71 @@ export function createRoadmapRoutes(): Router {
   router.delete('/tasks/:taskId/subjects/:subjectId', asyncHandler(async (req, res) => {
     await db.unlinkSubject(req.params.taskId, req.params.subjectId);
     res.json({ ok: true });
+  }));
+
+  // --- AI Subject Suggestions ---
+
+  router.post('/tasks/:taskId/suggest-subjects', asyncHandler(async (req, res) => {
+    const taskId = req.params.taskId;
+    const task = await db.getTaskById(taskId);
+    if (!task) { res.status(404).json({ error: 'Tache non trouvee' }); return; }
+
+    // Get parent task name for context
+    let parentName = '';
+    if (task.parentId) {
+      const parent = await db.getTaskById(task.parentId);
+      if (parent) parentName = parent.name;
+    }
+
+    // Get all subjects and already linked ones
+    const allSubjects = await searchSuivitessSubjects('');
+    const linked = await db.getLinkedSubjects(taskId);
+    const linkedIds = new Set(linked.map(s => s.id));
+    const available = allSubjects.filter(s => !linkedIds.has(s.id));
+
+    if (available.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' }); return; }
+
+    const client = new Anthropic({ apiKey });
+    const subjectList = available.map(s => `[${s.id}] ${s.title} (${s.document_title} › ${s.section_name})`).join('\n');
+
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 500,
+      messages: [{
+        role: 'user',
+        content: `Tu es un assistant qui aide à lier des sujets de suivi à des tâches de roadmap.
+
+Tâche roadmap : "${task.name}"
+${parentName ? `Projet parent : "${parentName}"` : ''}
+
+Sujets suivitess disponibles :
+${subjectList}
+
+Retourne les IDs des 5 sujets les plus pertinents pour cette tâche, classés par pertinence.
+Base-toi sur le nom de la tâche et son parent pour deviner le contexte.
+Retourne UNIQUEMENT un tableau JSON d'IDs : ["id1", "id2", ...]
+Si aucun sujet n'est pertinent, retourne [].`,
+      }],
+    });
+
+    const text = response.content[0].type === 'text' ? response.content[0].text : '[]';
+    const jsonMatch = text.match(/\[[\s\S]*?\]/);
+    if (!jsonMatch) { res.json([]); return; }
+
+    try {
+      const ids: string[] = JSON.parse(jsonMatch[0]);
+      const subjectMap = new Map(available.map(s => [s.id, s]));
+      const suggestions = ids.filter(id => subjectMap.has(id)).map(id => subjectMap.get(id)!);
+      res.json(suggestions);
+    } catch {
+      res.json([]);
+    }
   }));
 
   // --- Dependencies ---
