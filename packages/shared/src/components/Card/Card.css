@@ -1,0 +1,28 @@
+.shared-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-md);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.shared-card--compact {
+  padding: var(--spacing-sm);
+}
+
+.shared-card--clickable {
+  cursor: pointer;
+}
+
+.shared-card--clickable:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+}
+
+.shared-card--selected {
+  border-color: var(--accent-primary);
+  background: var(--accent-light);
+}
+
+.shared-card--interactive:hover {
+  background: var(--bg-hover);
+}

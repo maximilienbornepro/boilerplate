@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react';
-import { ModuleHeader, ToastContainer, ConfirmModal } from '@boilerplate/shared/components';
+import { ModuleHeader, ToastContainer, ConfirmModal, ExpandableSection, TagEditor, ListEditor, ImageUploader } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
-import { ExpandableSection } from '../ExpandableSection';
-import { TagEditor } from '../TagEditor';
-import { ListEditor } from '../ListEditor';
 import { ProjectEditor } from '../ProjectEditor';
-import { ImageUploader } from '../ImageUploader';
 import { ImportCVModal } from '../ImportCVModal';
 import { ExportSection } from '../ExportSection';
 import type { CV, CVData, Experience, Formation, Award } from '../../types';

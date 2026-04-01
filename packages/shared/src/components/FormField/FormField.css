@@ -1,0 +1,50 @@
+.shared-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.shared-form-field-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.shared-form-field-required {
+  color: var(--error);
+  margin-left: 2px;
+}
+
+.shared-form-field-content input,
+.shared-form-field-content select,
+.shared-form-field-content textarea {
+  width: 100%;
+  padding: var(--spacing-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  transition: border-color var(--transition-fast);
+}
+
+.shared-form-field-content input:focus,
+.shared-form-field-content select:focus,
+.shared-form-field-content textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.shared-form-field--error .shared-form-field-content input,
+.shared-form-field--error .shared-form-field-content select,
+.shared-form-field--error .shared-form-field-content textarea {
+  border-color: var(--error);
+}
+
+.shared-form-field-error {
+  font-size: var(--font-size-xs);
+  color: var(--error);
+}

@@ -243,6 +243,14 @@
 
 /* ── Components ── */
 
+.ds-component-path {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  color: var(--accent-primary);
+  margin-bottom: var(--spacing-md);
+  opacity: 0.7;
+}
+
 .ds-comp-group {
   margin-bottom: var(--spacing-xl);
 }
@@ -252,6 +260,31 @@
   align-items: center;
   gap: var(--spacing-md);
   flex-wrap: wrap;
+}
+
+.ds-comp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.ds-comp-constrained {
+  max-width: 500px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.ds-form-demo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  max-width: 400px;
+}
+
+.ds-demo-value {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-left: var(--spacing-md);
 }
 
 /* ── Badges ── */
@@ -269,3 +302,12 @@
 .ds-badge--error { color: var(--error); border-color: var(--error); background: var(--error-bg); }
 .ds-badge--info { color: var(--info); border-color: var(--info); background: var(--info-bg); }
 .ds-badge--accent { color: var(--accent-primary); border-color: var(--accent-primary); background: var(--accent-light); }
+
+/* ── Module component demos ── */
+
+.ds-gantt-demo,
+.ds-delivery-demo {
+  border: 1px solid var(--border-color);
+  overflow: auto;
+  max-height: 400px;
+}
