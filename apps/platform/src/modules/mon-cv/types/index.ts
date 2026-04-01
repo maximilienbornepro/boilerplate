@@ -239,7 +239,7 @@ export interface ActionItem {
   section: string;
   experienceIndex?: number;
   experienceContext?: string;
-  type: 'replace' | 'title_change';
+  type: 'replace' | 'title_change' | 'add_skill' | 'add_project';
   cvTerm: string;
   offerTerm: string;
   fullTextBefore: string;
@@ -248,6 +248,8 @@ export interface ActionItem {
   confidence: number;
   impact: 'critical' | 'important' | 'bonus';
   scoreGain: number;
+  skillCategory?: string;
+  suggestedText?: string;
 }
 
 // Full analysis result from analyze-stream
@@ -288,6 +290,7 @@ export interface CVAdaptation {
     newMissions: string[];
     newProject?: Project;
     addedSkills: Record<string, string[]>;
+    termReplacements?: Array<{ section: string; cvTerm: string; offerTerm: string; originalText: string; replacedText: string }>;
   };
   atsBefore: AtsScore;
   atsAfter: AtsScore;

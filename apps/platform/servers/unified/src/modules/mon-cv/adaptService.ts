@@ -63,7 +63,7 @@ export interface ActionItem {
   section: string;               // 'mission' | 'skill' | 'title' | etc.
   experienceIndex?: number;      // which experience
   experienceContext?: string;    // "Senior Dev at Acme Corp"
-  type: 'replace' | 'title_change';
+  type: 'replace' | 'title_change' | 'add_skill' | 'add_project';
   cvTerm: string;               // current word/phrase in CV
   offerTerm: string;             // target word/phrase from offer
   fullTextBefore: string;        // full sentence before
@@ -72,6 +72,8 @@ export interface ActionItem {
   confidence: number;
   impact: 'critical' | 'important' | 'bonus';  // critical = needed for 75%, important = for 100%
   scoreGain: number;             // estimated ATS score gain
+  skillCategory?: string;        // for add_skill: target category (competences, outils, dev, etc.)
+  suggestedText?: string;        // for add_project: LLM-generated mission text
 }
 
 export interface AnalysisResult {
@@ -134,11 +136,30 @@ function normalizeText(text: string): string {
 }
 
 /**
- * Check if a keyword appears in a text block (substring, case-insensitive)
+ * Check if a keyword appears in a text block.
+ * For long keyword phrases (6+ words), also checks significant token overlap
+ * so that adding "Stack ELK" can match "Bonne maîtrise de la stack ELK...".
  */
 function containsKeyword(text: string, keyword: string): boolean {
   if (!keyword || !text) return false;
-  return normalizeText(text).includes(normalizeText(keyword));
+  const normText = normalizeText(text);
+  const normKw = normalizeText(keyword);
+
+  // Direct substring match
+  if (normText.includes(normKw)) return true;
+
+  // For long keyword phrases (6+ words), do token-based matching
+  const kwWords = normKw.split(/\s+/);
+  if (kwWords.length < 6) return false;
+
+  // Extract significant tokens (4+ chars, no stop words)
+  const stopWords = new Set(['dans', 'avec', 'pour', 'les', 'des', 'une', 'que', 'sur', 'par', 'est', 'qui', 'son', 'ses', 'aux', 'été', 'bonne', 'minimum', 'expérience', 'connaissance', 'maîtrise', 'environnements']);
+  const kwTokens = kwWords.filter(t => t.length >= 4 && !stopWords.has(t));
+  if (kwTokens.length < 2) return false;
+
+  const matchCount = kwTokens.filter(t => normText.includes(t)).length;
+  // At least 2/3 of significant tokens must be present
+  return matchCount >= Math.ceil(kwTokens.length * 2 / 3);
 }
 
 /**
@@ -430,6 +451,101 @@ Return ONLY valid JSON:
   }
 
   return JSON.parse(jsonMatch[0]) as Project;
+}
+
+/**
+ * Generate add_skill + add_project suggestions for gap keywords (not found in CV).
+ * Single LLM call to classify each gap into a skill category and generate a mission.
+ */
+interface GapSuggestions {
+  skills: Array<{ keyword: string; category: string }>;
+  missions: Array<{ keyword: string; experienceIndex: number; text: string }>;
+}
+
+async function generateGapSuggestions(
+  cvData: CVData,
+  gaps: string[],
+  cvLanguage: string,
+): Promise<GapSuggestions> {
+  const client = getAnthropicClient();
+
+  const experiences = (cvData.experiences || []).map((exp, i) => (
+    `[${i}] ${exp.title} @ ${exp.company} (${exp.period})`
+  )).join('\n');
+
+  const currentSkills = {
+    competences: cvData.competences || [],
+    outils: cvData.outils || [],
+    dev: cvData.dev || [],
+    frameworks: cvData.frameworks || [],
+    solutions: cvData.solutions || [],
+  };
+
+  const lang = cvLanguage === 'fr' ? 'French' : 'English';
+
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 2000,
+    messages: [{
+      role: 'user',
+      content: `You are an ATS optimization expert. For each missing keyword, suggest:
+1. A skill to add in the most relevant CV category
+2. A realistic mission to add in the most relevant experience
+
+MISSING KEYWORDS (gap — not found anywhere in the CV):
+${gaps.join(', ')}
+
+CURRENT CV EXPERIENCES:
+${experiences}
+
+CURRENT CV SKILLS:
+- Competences: ${currentSkills.competences.join(', ') || 'none'}
+- Outils: ${currentSkills.outils.join(', ') || 'none'}
+- Dev: ${currentSkills.dev.join(', ') || 'none'}
+- Frameworks: ${currentSkills.frameworks.join(', ') || 'none'}
+- Solutions: ${currentSkills.solutions.join(', ') || 'none'}
+
+RULES:
+- For skills: use the EXACT keyword token from the job offer, capitalize first letter
+- For skill category: choose from "competences", "outils", "dev", "frameworks", "solutions"
+- For missions: write a realistic mission that naturally uses the keyword, coherent with the target experience
+- Mission format: action verb + context + measurable result (when possible)
+- Write in ${lang} (same language as the CV)
+- experienceIndex must reference an existing experience index (0 to ${(cvData.experiences || []).length - 1})
+- Pick the experience where the keyword is most plausible
+
+Return ONLY valid JSON:
+{
+  "skills": [
+    { "keyword": "Docker", "category": "outils" }
+  ],
+  "missions": [
+    { "keyword": "Docker", "experienceIndex": 0, "text": "Conteneurisation des micro-services avec Docker et orchestration via Docker Compose" }
+  ]
+}`,
+    }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    return { skills: [], missions: [] };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonMatch[0]) as GapSuggestions;
+    // Validate experienceIndex bounds
+    const maxIdx = (cvData.experiences || []).length - 1;
+    parsed.missions = (parsed.missions || []).filter(m =>
+      m.experienceIndex >= 0 && m.experienceIndex <= maxIdx && m.text && m.keyword
+    );
+    parsed.skills = (parsed.skills || []).filter(s =>
+      ['competences', 'outils', 'dev', 'frameworks', 'solutions'].includes(s.category) && s.keyword
+    );
+    return parsed;
+  } catch {
+    return { skills: [], missions: [] };
+  }
 }
 
 /**
@@ -1160,6 +1276,67 @@ export async function* analyzeCVStream(
 
   yield { type: 'step', step: 3, name: 'Détection des synonymes', status: 'completed' };
 
+  // Step 4: Generate add_skill + add_project suggestions for gaps
+  if (matchAnalysis.gaps.length > 0) {
+    yield { type: 'step', step: 4, name: 'Suggestions pour les gaps', status: 'running' };
+    yield { type: 'log', step: 4, message: `${matchAnalysis.gaps.length} mots-clés manquants à couvrir...` };
+
+    try {
+      const gapSuggestions = await generateGapSuggestions(cvData, matchAnalysis.gaps, cvMap.language);
+
+      // Create add_skill actions
+      for (const skill of gapSuggestions.skills) {
+        const actionId = `action-skill-${actions.length}`;
+        actions.push({
+          id: actionId,
+          elementId: `skill-${skill.category}`,
+          section: skill.category,
+          type: 'add_skill',
+          cvTerm: '',
+          offerTerm: skill.keyword,
+          fullTextBefore: '',
+          keyword: skill.keyword,
+          confidence: 0.9,
+          impact: 'critical',
+          scoreGain: baseGainPerKw,
+          skillCategory: skill.category,
+        });
+        yield { type: 'log', step: 4, message: `+ Compétence « ${skill.keyword} » → ${skill.category}` };
+      }
+
+      // Create add_project actions
+      for (const mission of gapSuggestions.missions) {
+        const expIndex = mission.experienceIndex;
+        const exp = cvData.experiences?.[expIndex];
+        const context = exp ? `${exp.title} @ ${exp.company}` : undefined;
+        const actionId = `action-mission-${actions.length}`;
+        actions.push({
+          id: actionId,
+          elementId: `exp-${expIndex}-new-mission`,
+          section: 'mission',
+          experienceIndex: expIndex,
+          experienceContext: context,
+          type: 'add_project',
+          cvTerm: '',
+          offerTerm: mission.keyword,
+          fullTextBefore: '',
+          keyword: mission.keyword,
+          confidence: 0.85,
+          impact: 'important',
+          scoreGain: baseGainPerKw,
+          suggestedText: mission.text,
+        });
+        yield { type: 'log', step: 4, message: `+ Mission « ${mission.keyword} » → ${context || `exp ${expIndex}`}` };
+      }
+
+      yield { type: 'log', step: 4, message: `${gapSuggestions.skills.length} compétences + ${gapSuggestions.missions.length} missions suggérées` };
+    } catch (err: any) {
+      yield { type: 'log', step: 4, message: `Erreur suggestions : ${err.message}` };
+    }
+
+    yield { type: 'step', step: 4, name: 'Suggestions pour les gaps', status: 'completed' };
+  }
+
   // Build analysis result
   const criticalActions = actions.filter(a => a.impact === 'critical');
   const allActions = actions;
@@ -1230,7 +1407,29 @@ export async function applySelectedActions(
   }
 
   const adaptedCV = applyReplacements(cvData, optimization.replacements, titleChange);
+
+  // Apply add_skill actions
+  for (const action of actions.filter(a => a.type === 'add_skill' && a.skillCategory)) {
+    const cat = action.skillCategory as keyof CVData;
+    const existing = (adaptedCV[cat] as string[]) || [];
+    if (!existing.some(s => s.toLowerCase() === action.offerTerm.toLowerCase())) {
+      (adaptedCV[cat] as string[]) = [...existing, action.offerTerm];
+    }
+  }
+
+  // Apply add_project actions
+  for (const action of actions.filter(a => a.type === 'add_project' && a.suggestedText)) {
+    const expIdx = action.experienceIndex ?? 0;
+    if (adaptedCV.experiences?.[expIdx]) {
+      adaptedCV.experiences[expIdx].missions = [
+        ...adaptedCV.experiences[expIdx].missions,
+        action.suggestedText!,
+      ];
+    }
+  }
+
   const scoreAfter = scoreCV(adaptedCV, jobAnalysis);
+  console.log('[Mon-CV] applySelectedActions score:', scoreAfter.overall, '% — found:', scoreAfter.breakdown.requiredFound, '— missing:', scoreAfter.breakdown.requiredMissing);
 
   return { adaptedCV, replacements: optimization.replacements, scoreAfter };
 }

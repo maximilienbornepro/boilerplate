@@ -16,6 +16,7 @@ export interface CVAdaptation {
     newMissions: string[];
     newProject?: { title: string; description?: string };
     addedSkills: Record<string, string[]>;
+    termReplacements?: Array<{ section: string; cvTerm: string; offerTerm: string; originalText: string; replacedText: string }>;
   };
   atsBefore: AtsScore;
   atsAfter: AtsScore;

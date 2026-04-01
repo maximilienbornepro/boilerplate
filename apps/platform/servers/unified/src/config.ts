@@ -6,7 +6,7 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '../../../../..');
-dotenvConfig({ path: join(rootDir, '.env') });
+dotenvConfig({ path: join(rootDir, '.env'), override: true });
 
 export const config = {
   // Server

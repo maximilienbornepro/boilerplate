@@ -273,6 +273,45 @@
   opacity: 1;
 }
 
+/* Term Replacements */
+.adapt-detail-replacements {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.adapt-detail-replacement-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.adapt-detail-replacement-section {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  min-width: 70px;
+}
+
+.adapt-detail-replacement-old {
+  color: var(--error);
+  text-decoration: line-through;
+}
+
+.adapt-detail-replacement-arrow {
+  color: var(--text-muted);
+}
+
+.adapt-detail-replacement-new {
+  color: var(--success);
+  font-weight: var(--font-weight-semibold);
+}
+
 /* AI Recommendations Panel */
 .adapt-detail-reco-panel {
   margin-bottom: var(--spacing-lg);
@@ -400,4 +439,21 @@
   background: rgba(0, 217, 255, 0.08);
   padding: 1px 6px;
   border: 1px solid rgba(0, 217, 255, 0.2);
+}
+
+.adapt-detail-reco-apply-btn {
+  margin-top: var(--spacing-xs);
+  padding: 3px 12px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  background: transparent;
+  border: 1px solid var(--success);
+  color: var(--success);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.adapt-detail-reco-apply-btn:hover {
+  background: var(--success);
+  color: var(--bg);
 }

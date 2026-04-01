@@ -23,7 +23,20 @@ function normalizeText(text: string): string {
 
 function containsKeyword(text: string, keyword: string): boolean {
   if (!keyword || !text) return false;
-  return normalizeText(text).includes(normalizeText(keyword));
+  const normText = normalizeText(text);
+  const normKw = normalizeText(keyword);
+
+  if (normText.includes(normKw)) return true;
+
+  const kwWords = normKw.split(/\s+/);
+  if (kwWords.length < 6) return false;
+
+  const stopWords = new Set(['dans', 'avec', 'pour', 'les', 'des', 'une', 'que', 'sur', 'par', 'est', 'qui', 'son', 'ses', 'aux', 'été', 'bonne', 'minimum', 'expérience', 'connaissance', 'maîtrise', 'environnements']);
+  const kwTokens = kwWords.filter(t => t.length >= 4 && !stopWords.has(t));
+  if (kwTokens.length < 2) return false;
+
+  const matchCount = kwTokens.filter(t => normText.includes(t)).length;
+  return matchCount >= Math.ceil(kwTokens.length * 2 / 3);
 }
 
 function extractExperienceText(cv: CVData): string {
@@ -434,7 +447,7 @@ function PromptCollapsible({ prompt }: { prompt: string }) {
 
 function ActionCard({ action, selected, onToggle }: { action: ActionItem; selected: boolean; onToggle: (id: string) => void }) {
   return (
-    <div className={`action-card ${selected ? 'action-card--selected' : ''} action-card--${action.impact}`}>
+    <div className={`action-card ${selected ? 'action-card--selected' : ''} action-card--${action.impact} action-card--${action.type}`}>
       <label className="action-card-check">
         <input type="checkbox" checked={selected} onChange={() => onToggle(action.id)} />
       </label>
@@ -442,13 +455,34 @@ function ActionCard({ action, selected, onToggle }: { action: ActionItem; select
         {action.experienceContext && (
           <div className="action-card-context">{action.experienceContext}</div>
         )}
-        <div className="action-card-replacement">
-          <span className="action-card-old">{'\u00AB'} {action.cvTerm} {'\u00BB'}</span>
-          <span className="action-card-arrow">{'\u2192'}</span>
-          <span className="action-card-new">{'\u00AB'} {action.offerTerm} {'\u00BB'}</span>
-        </div>
+        {action.type === 'replace' && (
+          <div className="action-card-replacement">
+            <span className="action-card-old">{'\u00AB'} {action.cvTerm} {'\u00BB'}</span>
+            <span className="action-card-arrow">{'\u2192'}</span>
+            <span className="action-card-new">{'\u00AB'} {action.offerTerm} {'\u00BB'}</span>
+          </div>
+        )}
         {action.type === 'title_change' && (
-          <div className="action-card-type">Changement de titre</div>
+          <>
+            <div className="action-card-replacement">
+              <span className="action-card-old">{'\u00AB'} {action.cvTerm} {'\u00BB'}</span>
+              <span className="action-card-arrow">{'\u2192'}</span>
+              <span className="action-card-new">{'\u00AB'} {action.offerTerm} {'\u00BB'}</span>
+            </div>
+            <div className="action-card-type">Changement de titre</div>
+          </>
+        )}
+        {action.type === 'add_skill' && (
+          <div className="action-card-add">
+            <span className="action-card-badge action-card-badge--skill">+ {action.skillCategory}</span>
+            <span className="action-card-new">{'\u00AB'} {action.offerTerm} {'\u00BB'}</span>
+          </div>
+        )}
+        {action.type === 'add_project' && (
+          <div className="action-card-add">
+            <span className="action-card-badge action-card-badge--mission">+ mission</span>
+            <div className="action-card-suggested">{action.suggestedText}</div>
+          </div>
         )}
       </div>
       <div className="action-card-meta">
@@ -531,11 +565,9 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
   // ── Build current edited CV ──────────────────────────────────────────────────
 
   const buildEditedCV = (): CVData => {
-    // When pipeline replacements exist, use the adapted CV as base
-    // (it already has synonyms replaced). Otherwise start from original.
-    const baseCV = (result && pipelineReplacements.length > 0)
-      ? result.adaptedCV
-      : cvData;
+    // When we have a result, use the adapted CV as base
+    // (it already has synonyms replaced + skills/missions added). Otherwise start from original.
+    const baseCV = result ? result.adaptedCV : cvData;
     const cv: CVData = JSON.parse(JSON.stringify(baseCV));
 
     // Apply title change
@@ -667,35 +699,34 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
       const selectedActions = analysis.actions.filter(a => selectedActionIds.has(a.id));
       const { adaptedCV, replacements, scoreAfter } = await applyActions(cvData, selectedActions, analysis.jobAnalysis);
 
-      // Build AdaptResponse for the result view
-      setResult({
-        adaptedCV,
+      // Save adaptation directly — no intermediate result page
+      const savedAdaptation = await createAdaptation(cvId, {
+        jobOffer,
+        adaptedCv: adaptedCV,
         changes: {
-          newMissions: [],
-          addedSkills: {},
-          termReplacements: replacements,
-          matchedKeywords: analysis.matchedKeywords,
-          remainingGaps: analysis.gaps,
+          newMissions: selectedActions.filter(a => a.type === 'add_project').map(a => a.suggestedText || ''),
+          addedSkills: Object.fromEntries(
+            selectedActions.filter(a => a.type === 'add_skill' && a.skillCategory)
+              .reduce((acc, a) => {
+                const cat = a.skillCategory!;
+                if (!acc.has(cat)) acc.set(cat, []);
+                acc.get(cat)!.push(a.offerTerm);
+                return acc;
+              }, new Map<string, string[]>())
+          ),
+          termReplacements: replacements.map(r => ({
+            section: r.section,
+            cvTerm: r.cvTerm,
+            offerTerm: r.offerTerm,
+            originalText: r.originalText,
+            replacedText: r.replacedText,
+          })),
         },
-        atsScore: { before: analysis.score, after: scoreAfter },
+        atsBefore: analysis.score,
+        atsAfter: scoreAfter,
         jobAnalysis: analysis.jobAnalysis,
       });
-
-      // Set up editable state for result view
-      setEditableMissions([]);
-      setEditableProject(undefined);
-      setEditableSkills({});
-      setPipelineReplacements(replacements);
-      setMatchedKeywords(analysis.matchedKeywords);
-      setRemainingGaps(analysis.gaps);
-      setJobAnalysis(analysis.jobAnalysis);
-      setLiveScore(scoreAfter);
-
-      // Apply title change if selected
-      const titleAction = selectedActions.find(a => a.type === 'title_change');
-      if (titleAction) {
-        setEditableTitle(titleAction.offerTerm);
-      }
+      onSaved(savedAdaptation.id);
     } catch (err: any) {
       setError(err.message || 'Erreur lors de l\'application');
     } finally {
@@ -962,7 +993,7 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
                     ))}
                   </div>
                   <p className="pipeline-hint">
-                    Ces mots-cles ne sont pas dans votre CV et n'ont pas de synonyme detectable. Utilisez "Analyser les gaps" pour obtenir des recommandations.
+                    Ces mots-clés n'ont pas pu être couverts par les modifications appliquées.
                   </p>
                 </div>
               )}
@@ -1141,22 +1172,24 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
 
           {error && <div className="adapt-error">{error}</div>}
 
-          <div className="adapt-actions">
-            <button
-              className="btn btn-reco"
-              onClick={() => handleGetRecommendations(buildEditedCV())}
-              disabled={loadingReco || loadingApply}
-            >
-              {loadingReco ? (
-                <>
-                  <LoadingSpinner size="small" />
-                  <span>Analyse...</span>
-                </>
-              ) : (
-                '💡 Analyser les gaps'
-              )}
-            </button>
-          </div>
+          {remainingGaps.length > 0 && (
+            <div className="adapt-actions">
+              <button
+                className="btn btn-reco"
+                onClick={() => handleGetRecommendations(buildEditedCV())}
+                disabled={loadingReco || loadingApply}
+              >
+                {loadingReco ? (
+                  <>
+                    <LoadingSpinner size="small" />
+                    <span>Analyse...</span>
+                  </>
+                ) : (
+                  '💡 Analyser les gaps'
+                )}
+              </button>
+            </div>
+          )}
         </div>
         </div>
       </>
@@ -1173,6 +1206,9 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     })();
 
     const nonCriticalActions = analysis.targetScore100.actions.filter(a => a.impact !== 'critical');
+    const replaceActions = analysis.actions.filter(a => a.type === 'replace' || a.type === 'title_change');
+    const skillActions = analysis.actions.filter(a => a.type === 'add_skill');
+    const missionActions = analysis.actions.filter(a => a.type === 'add_project');
 
     return (
       <>
@@ -1226,27 +1262,37 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
               </div>
             </div>
 
-            {/* Target 75% */}
-            {analysis.targetScore75.actions.length > 0 && (
+            {/* Synonym replacements */}
+            {replaceActions.length > 0 && (
               <div className="analysis-target">
                 <div className="analysis-target-header">
-                  <h3>Pour atteindre ~75%</h3>
-                  <span className="analysis-target-score">Score estimé : {analysis.targetScore75.estimatedScore}%</span>
+                  <h3>Synonymes à remplacer ({replaceActions.length})</h3>
                 </div>
-                {analysis.targetScore75.actions.map(action => (
+                {replaceActions.map(action => (
                   <ActionCard key={action.id} action={action} selected={selectedActionIds.has(action.id)} onToggle={toggleAction} />
                 ))}
               </div>
             )}
 
-            {/* Target 100% */}
-            {nonCriticalActions.length > 0 && (
+            {/* Skill additions */}
+            {skillActions.length > 0 && (
               <div className="analysis-target">
                 <div className="analysis-target-header">
-                  <h3>Pour maximiser le score</h3>
-                  <span className="analysis-target-score">Score estimé : {analysis.targetScore100.estimatedScore}%</span>
+                  <h3>Compétences à ajouter ({skillActions.length})</h3>
                 </div>
-                {nonCriticalActions.map(action => (
+                {skillActions.map(action => (
+                  <ActionCard key={action.id} action={action} selected={selectedActionIds.has(action.id)} onToggle={toggleAction} />
+                ))}
+              </div>
+            )}
+
+            {/* Mission additions */}
+            {missionActions.length > 0 && (
+              <div className="analysis-target">
+                <div className="analysis-target-header">
+                  <h3>Missions à ajouter ({missionActions.length})</h3>
+                </div>
+                {missionActions.map(action => (
                   <ActionCard key={action.id} action={action} selected={selectedActionIds.has(action.id)} onToggle={toggleAction} />
                 ))}
               </div>
@@ -1293,7 +1339,7 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
                   className="pipeline-logs-toggle"
                   onClick={() => setShowLogs(!showLogs)}
                 >
-                  {showLogs ? '\u25BC' : '\u25B6'} Pipeline ({pipelineLogs.filter(l => l.type === 'step' && l.status === 'completed').length}/3 étapes)
+                  {showLogs ? '\u25BC' : '\u25B6'} Pipeline ({pipelineLogs.filter(l => l.type === 'step' && l.status === 'completed').length}/{pipelineLogs.some(l => l.type === 'step' && l.step === 4) ? 4 : 3} étapes)
                 </button>
                 {showLogs && (
                   <div className="pipeline-logs-content">

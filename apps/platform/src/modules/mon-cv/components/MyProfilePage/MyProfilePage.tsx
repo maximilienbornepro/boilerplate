@@ -234,6 +234,8 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
     autoResize(e.currentTarget);
   }, [autoResize]);
 
+  const cvData = cv?.cvData || createEmptyCV();
+
   // Auto-resize all textareas on mount and when data changes
   const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -249,8 +251,6 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
       </div>
     );
   }
-
-  const cvData = cv?.cvData || createEmptyCV();
 
   return (
     <>

@@ -14,7 +14,20 @@ interface AdaptationDetailPageProps {
 function normalizeText(text: string): string { return text.toLowerCase().trim(); }
 function containsKeyword(text: string, keyword: string): boolean {
   if (!keyword || !text) return false;
-  return normalizeText(text).includes(normalizeText(keyword));
+  const normText = normalizeText(text);
+  const normKw = normalizeText(keyword);
+
+  if (normText.includes(normKw)) return true;
+
+  const kwWords = normKw.split(/\s+/);
+  if (kwWords.length < 6) return false;
+
+  const stopWords = new Set(['dans', 'avec', 'pour', 'les', 'des', 'une', 'que', 'sur', 'par', 'est', 'qui', 'son', 'ses', 'aux', 'été', 'bonne', 'minimum', 'expérience', 'connaissance', 'maîtrise', 'environnements']);
+  const kwTokens = kwWords.filter(t => t.length >= 4 && !stopWords.has(t));
+  if (kwTokens.length < 2) return false;
+
+  const matchCount = kwTokens.filter(t => normText.includes(t)).length;
+  return matchCount >= Math.ceil(kwTokens.length * 2 / 3);
 }
 function extractExpText(cv: CVData): string {
   const parts: string[] = [];
@@ -268,6 +281,43 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
     }
   };
 
+  const handleApplyReco = (item: AtsRecommendationItem) => {
+    if (!adaptation) return;
+
+    if (item.type === 'replace' && item.termToFind && item.termToReplace) {
+      // Apply term replacement across all missions in adaptedCv
+      const cv = buildEditedCV();
+      const regex = new RegExp(item.termToFind.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      let applied = false;
+      for (const exp of cv.experiences || []) {
+        exp.missions = exp.missions.map(m => {
+          const replaced = m.replace(regex, item.termToReplace!);
+          if (replaced !== m) applied = true;
+          return replaced;
+        });
+      }
+      if (applied) {
+        // Update adaptation in memory and recalculate
+        setAdaptation(prev => prev ? { ...prev, adaptedCv: cv } : prev);
+        setLiveScore(computeScore(cv, adaptation.jobAnalysis));
+      }
+    } else if (item.type === 'add' && item.keywords.length > 0) {
+      // Add keyword as a skill in competences
+      const keyword = item.keywords[0];
+      setEditableSkills(prev => ({
+        ...prev,
+        competences: [...(prev.competences || []), keyword],
+      }));
+    } else if (item.type === 'repeat' && item.keywords.length > 0) {
+      // Add keyword as a mission in the first experience
+      const keyword = item.keywords[0];
+      setEditableMissions(prev => [...prev, keyword]);
+    }
+
+    // Remove applied recommendation from the list
+    setRecoItems(prev => prev ? prev.filter(r => r !== item) : prev);
+  };
+
   if (loading) return (
     <div className="adapt-detail-page">
       <ModuleHeader title="Adaptation" onBack={onBack} />
@@ -368,6 +418,12 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
                       ))}
                     </div>
                   )}
+                  <button
+                    className="adapt-detail-reco-apply-btn"
+                    onClick={() => handleApplyReco(item)}
+                  >
+                    Appliquer
+                  </button>
                 </div>
               ))}
             </div>
@@ -420,6 +476,23 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
         <div className="adapt-detail-label">Offre d'emploi utilisée</div>
         <div className="adapt-detail-offer-text">{adaptation.jobOffer}</div>
       </div>
+
+      {/* Term replacements (read-only) */}
+      {adaptation.changes.termReplacements && adaptation.changes.termReplacements.length > 0 && (
+        <div className="adapt-detail-section">
+          <div className="adapt-detail-label">Synonymes remplacés ({adaptation.changes.termReplacements.length})</div>
+          <div className="adapt-detail-replacements">
+            {adaptation.changes.termReplacements.map((r, idx) => (
+              <div key={idx} className="adapt-detail-replacement-row">
+                <span className="adapt-detail-replacement-section">{r.section}</span>
+                <span className="adapt-detail-replacement-old">{r.cvTerm}</span>
+                <span className="adapt-detail-replacement-arrow">→</span>
+                <span className="adapt-detail-replacement-new">{r.offerTerm}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Editable missions */}
       {editableMissions.length > 0 && (
