@@ -635,6 +635,7 @@
 .compact {
   padding: 0;
   max-width: none;
+  width: 100%;
 }
 
 .compact .subjectCard {
