@@ -89,9 +89,9 @@ function generateSidebarHTML(cvData: CVData): string {
       : '';
 
   const skillSections = [
-    { title: 'Competences', items: cvData.competences },
+    { title: 'Compétences', items: cvData.competences },
     { title: 'Outils', items: cvData.outils },
-    { title: 'Developpement', items: cvData.dev },
+    { title: 'Développement', items: cvData.dev },
     { title: 'Frameworks', items: cvData.frameworks },
     { title: 'Solutions', items: cvData.solutions },
   ]
@@ -248,7 +248,7 @@ function generateAwardsHTML(awards: Award[]): string {
 function generateMainHTML(cvData: CVData): string {
   return `
     <main class="main-content">
-      <h2 class="main-section-title">Experiences Professionnelles</h2>
+      <h2 class="main-section-title">Expériences Professionnelles</h2>
       ${(cvData.experiences || []).map(exp => generateExperienceHTML(exp)).join('')}
       ${generateFormationsHTML(cvData.formations || [])}
       ${generateSideProjectsHTML(cvData.sideProjects)}
@@ -672,13 +672,33 @@ export async function generatePDF(
   // Generate HTML
   const html = generateCVHTML(cvData);
 
-  // Launch Puppeteer (use system Chromium in production via PUPPETEER_EXECUTABLE_PATH)
+  // Detect Chrome executable path: env var > common Linux/Docker paths > bundled Puppeteer
+  const chromePaths = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/snap/bin/chromium',
+  ].filter(Boolean) as string[];
+
+  let executablePath: string | undefined;
+  for (const p of chromePaths) {
+    try {
+      const { existsSync } = await import('fs');
+      if (existsSync(p)) {
+        executablePath = p;
+        break;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    ...(process.env.PUPPETEER_EXECUTABLE_PATH && {
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-    }),
+    ...(executablePath ? { executablePath } : {}),
   });
 
   try {

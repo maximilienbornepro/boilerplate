@@ -89,6 +89,12 @@
   opacity: 0.5;
 }
 
+.dayHoliday {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
 .dayToday {
   background: rgba(0, 188, 212, 0.15);
   color: var(--accent-primary);
@@ -156,6 +162,11 @@
 .gridInner {
   position: relative;
   min-height: 100%;
+  min-width: 100%;
+}
+
+.headerInner {
+  min-width: 100%;
 }
 
 /* Background columns */
@@ -176,6 +187,10 @@
 }
 
 .weekend {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.holiday {
   background: rgba(255, 255, 255, 0.02);
 }
 
@@ -210,6 +225,14 @@
 }
 
 :global(:root:not([data-theme="dark"])) .dayWeekend {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+:global(:root:not([data-theme="dark"])) .holiday {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+:global(:root:not([data-theme="dark"])) .dayHoliday {
   background: rgba(0, 0, 0, 0.03);
 }
 

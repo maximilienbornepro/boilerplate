@@ -176,6 +176,23 @@
   color: var(--text-muted);
 }
 
+.import-cv-badge.cannot {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+
+.import-cv-section.cannot-import {
+  cursor: default;
+}
+
+.import-cv-cannot-hint {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* Footer */
 .import-cv-footer {
   display: flex;

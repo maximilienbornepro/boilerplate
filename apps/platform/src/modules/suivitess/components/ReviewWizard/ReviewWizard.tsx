@@ -904,6 +904,20 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
 
                   {section.subjects.map((subject, subIdx) => (
                     <div key={subject.id} data-subject-id={`subject-${sIdx}-${subIdx}`} className={styles.subjectItem}>
+                      <div className={styles.subjectReorderBtns}>
+                        <button
+                          className={styles.subjectReorderBtn}
+                          onClick={() => handleReorderSubject(sIdx, subIdx, subIdx - 1)}
+                          disabled={subIdx === 0}
+                          title="Monter"
+                        >↑</button>
+                        <button
+                          className={styles.subjectReorderBtn}
+                          onClick={() => handleReorderSubject(sIdx, subIdx, subIdx + 1)}
+                          disabled={subIdx === section.subjects.length - 1}
+                          title="Descendre"
+                        >↓</button>
+                      </div>
                       <SubjectReview
                         compact
                         subject={subject}

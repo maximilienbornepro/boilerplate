@@ -28,4 +28,4 @@ export { ModuleHeader } from './ModuleHeader/ModuleHeader.js';
 export type { ModuleHeaderProps } from './ModuleHeader/ModuleHeader.js';
 
 // Auth hooks
-export { useGatewayAuth, AuthGuard, useGatewayUser } from '../hooks/useGatewayAuth.js';
+export { useGatewayAuth, AuthGuard, useGatewayUser, GatewayAuthProvider } from '../hooks/useGatewayAuth.js';

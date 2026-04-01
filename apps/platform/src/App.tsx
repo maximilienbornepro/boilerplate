@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './modules/gateway/context/AuthContext';
 import { LoginPage } from './modules/gateway/components/LoginPage';
 import { RegisterPage } from './modules/gateway/components/RegisterPage';
-import { LoadingSpinner } from '@boilerplate/shared/components';
+import { LoadingSpinner, GatewayAuthProvider } from '@boilerplate/shared/components';
 import { useSharedTheme } from '@boilerplate/shared/hooks';
 import { AppRouter } from './router';
 import './modules/gateway/App.css';
@@ -83,9 +83,11 @@ export default function App() {
 
   // Normal mode: require auth
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <GatewayAuthProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </GatewayAuthProvider>
   );
 }
 

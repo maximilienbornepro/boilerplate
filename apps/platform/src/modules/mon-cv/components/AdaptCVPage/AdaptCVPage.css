@@ -108,10 +108,27 @@
   color: var(--text-primary);
 }
 
+.adapt-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+}
+
+@media (max-width: 640px) {
+  .adapt-info-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .adapt-info {
   padding: var(--spacing-lg);
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
+}
+
+.adapt-info--reco {
+  border-color: var(--accent-primary);
+  opacity: 0.85;
 }
 
 .adapt-info h4 {

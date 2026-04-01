@@ -7,6 +7,7 @@ import './ImportCVModal.css';
 interface ImportCVModalProps {
   onClose: () => void;
   onImport: (cv: CV) => void;
+  cvId?: number;
 }
 
 type Step = 'upload' | 'preview' | 'merging';
@@ -15,6 +16,7 @@ const SECTION_LABELS: Record<string, string> = {
   name: 'Nom',
   title: 'Titre',
   summary: 'Résumé',
+  profilePhoto: 'Photo de profil',
   contact: 'Contact',
   languages: 'Langues',
   competences: 'Compétences',
@@ -28,7 +30,7 @@ const SECTION_LABELS: Record<string, string> = {
   sideProjects: 'Projets personnels',
 };
 
-export function ImportCVModal({ onClose, onImport }: ImportCVModalProps) {
+export function ImportCVModal({ onClose, onImport, cvId }: ImportCVModalProps) {
   const [step, setStep] = useState<Step>('upload');
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -85,7 +87,7 @@ export function ImportCVModal({ onClose, onImport }: ImportCVModalProps) {
 
     try {
       setIsProcessing(true);
-      const result = await api.previewImport(file);
+      const result = await api.previewImport(file, cvId);
       setPreview(result);
 
       // Pre-select sections with changes
@@ -125,7 +127,7 @@ export function ImportCVModal({ onClose, onImport }: ImportCVModalProps) {
 
     try {
       setStep('merging');
-      const cv = await api.mergeImport(selectedSections, preview.parsed);
+      const cv = await api.mergeImport(selectedSections, preview.parsed, cvId);
       onImport(cv);
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la fusion');
@@ -140,7 +142,7 @@ export function ImportCVModal({ onClose, onImport }: ImportCVModalProps) {
       setStep('merging');
       // Select all sections for direct import
       const allSections = Object.keys(SECTION_LABELS);
-      const cv = await api.mergeImport(allSections, preview.parsed);
+      const cv = await api.mergeImport(allSections, preview.parsed, cvId);
       onImport(cv);
     } catch (err: any) {
       setError(err.message || 'Erreur lors de l\'import');
@@ -202,29 +204,42 @@ export function ImportCVModal({ onClose, onImport }: ImportCVModalProps) {
 
             <div className="import-cv-sections">
               {preview.diff.map((item) => (
-                <label
-                  key={item.section}
-                  className={`import-cv-section ${!item.hasChanges ? 'disabled' : ''}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedSections.includes(item.section)}
-                    onChange={() => toggleSection(item.section)}
-                    disabled={!item.hasChanges}
-                  />
-                  <span className="import-cv-section-name">
-                    {SECTION_LABELS[item.section] || item.section}
-                  </span>
-                  {item.isNew && (
-                    <span className="import-cv-badge new">Nouveau</span>
-                  )}
-                  {item.hasChanges && !item.isNew && (
-                    <span className="import-cv-badge changed">Modifié</span>
-                  )}
-                  {!item.hasChanges && (
-                    <span className="import-cv-badge empty">Vide</span>
-                  )}
-                </label>
+                item.cannotImport ? (
+                  <div key={item.section} className="import-cv-section disabled cannot-import">
+                    <input type="checkbox" disabled checked={false} onChange={() => {}} />
+                    <span className="import-cv-section-name">
+                      {SECTION_LABELS[item.section] || item.section}
+                    </span>
+                    <span className="import-cv-badge cannot">Non importable</span>
+                    <span className="import-cv-cannot-hint">
+                      À ajouter manuellement
+                    </span>
+                  </div>
+                ) : (
+                  <label
+                    key={item.section}
+                    className={`import-cv-section ${!item.hasChanges ? 'disabled' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSections.includes(item.section)}
+                      onChange={() => toggleSection(item.section)}
+                      disabled={!item.hasChanges}
+                    />
+                    <span className="import-cv-section-name">
+                      {SECTION_LABELS[item.section] || item.section}
+                    </span>
+                    {item.isNew && (
+                      <span className="import-cv-badge new">Nouveau</span>
+                    )}
+                    {item.hasChanges && !item.isNew && (
+                      <span className="import-cv-badge changed">Modifié</span>
+                    )}
+                    {!item.hasChanges && (
+                      <span className="import-cv-badge empty">Vide</span>
+                    )}
+                  </label>
+                )
               ))}
             </div>
 

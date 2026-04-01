@@ -119,6 +119,28 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
     }
   }, [deleteConfirm, addToast, loadData]);
 
+  const handleLeaveMove = useCallback(async (leave: Leave, newStartDate: string, newEndDate: string, warnings: string[]) => {
+    try {
+      await api.updateLeave(leave.id, { startDate: newStartDate, endDate: newEndDate });
+      addToast({ type: 'success', message: 'Congé déplacé' });
+      warnings.forEach((w) => addToast({ type: 'warning', message: `⚠ ${w}` }));
+      await loadData();
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message || 'Erreur lors du déplacement' });
+    }
+  }, [addToast, loadData]);
+
+  const handleLeaveResize = useCallback(async (leave: Leave, newStartDate: string, newEndDate: string, warnings: string[]) => {
+    try {
+      await api.updateLeave(leave.id, { startDate: newStartDate, endDate: newEndDate });
+      addToast({ type: 'success', message: 'Congé redimensionné' });
+      warnings.forEach((w) => addToast({ type: 'warning', message: `⚠ ${w}` }));
+      await loadData();
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message || 'Erreur lors du redimensionnement' });
+    }
+  }, [addToast, loadData]);
+
   const handleToday = useCallback(() => {
     setYear(new Date().getFullYear());
     setScrollToTodayTrigger((n) => n + 1);
@@ -165,7 +187,10 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
               endDate={endDate}
               viewMode={viewMode}
               currentUserId={user?.id}
+              isAdmin={user?.isAdmin ?? false}
               onLeaveClick={handleLeaveClick}
+              onLeaveMove={handleLeaveMove}
+              onLeaveResize={handleLeaveResize}
               scrollToTodayTrigger={scrollToTodayTrigger}
             />
           )}

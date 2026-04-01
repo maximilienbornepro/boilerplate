@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Modal } from '@boilerplate/shared/components';
 import type { Member, Leave, LeaveFormData } from '../../types';
+import { getDateRangeWarnings } from '../../utils/holidays';
 import styles from './LeaveForm.module.css';
 
 interface LeaveFormProps {
@@ -12,64 +13,12 @@ interface LeaveFormProps {
   onClose: () => void;
 }
 
-// French public holidays for 2026
-const FRENCH_HOLIDAYS_2026 = [
-  '2026-01-01', // Jour de l'An
-  '2026-04-06', // Lundi de Pâques
-  '2026-04-09', // Jeudi saint (Alsace)
-  '2026-05-01', // Fête du Travail
-  '2026-05-14', // Ascension
-  '2026-05-21', // Jeudi de l'Ascension
-  '2026-05-24', // Lundi de Pentecôte
-  '2026-07-14', // Fête nationale
-  '2026-08-15', // Assomption
-  '2026-11-01', // Toussaint
-  '2026-11-11', // Armistice
-  '2026-12-25', // Noël
-];
-
 const REASON_OPTIONS = [
   'Congé payé',
   'RTT',
   'Congé maladie',
   'Congé sans solde',
 ];
-
-function isWeekend(date: Date): boolean {
-  const day = date.getDay();
-  return day === 0 || day === 6;
-}
-
-function isHoliday(date: Date): boolean {
-  const dateStr = date.toISOString().split('T')[0];
-  return FRENCH_HOLIDAYS_2026.includes(dateStr);
-}
-
-function getDateRangeWarnings(start: string, end: string): string[] {
-  const warnings: string[] = [];
-  if (!start) return warnings;
-
-  const endDate = end || start;
-  const current = new Date(start);
-  const last = new Date(endDate);
-  let hasWeekend = false;
-  let hasHoliday = false;
-
-  while (current <= last) {
-    if (isWeekend(current)) hasWeekend = true;
-    if (isHoliday(current)) hasHoliday = true;
-    current.setDate(current.getDate() + 1);
-  }
-
-  if (hasWeekend) {
-    warnings.push('La période sélectionnée inclut un ou plusieurs jours de week-end.');
-  }
-  if (hasHoliday) {
-    warnings.push('La période sélectionnée inclut un ou plusieurs jours fériés.');
-  }
-
-  return warnings;
-}
 
 export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onClose }: LeaveFormProps) {
   const isAdmin = currentUser?.isAdmin ?? false;
@@ -83,13 +32,21 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
   });
   const [reason, setReason] = useState(leave?.reason || REASON_OPTIONS[0]);
 
+  // Fix: ensure memberId always matches currentUser for non-admins
+  useEffect(() => {
+    if (!isAdmin && currentUser?.id) {
+      setMemberId(currentUser.id);
+    }
+  }, [currentUser?.id, isAdmin]);
+
   const warnings = useMemo(() => getDateRangeWarnings(startDate, endDate), [startDate, endDate]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!memberId || !startDate) return;
+    const effectiveMemberId = isAdmin ? memberId : (currentUser?.id ?? memberId);
+    if (!effectiveMemberId || !startDate) return;
     onSubmit({
-      memberId,
+      memberId: effectiveMemberId,
       startDate,
       endDate: endDate || startDate,
       startPeriod: period,
@@ -172,7 +129,7 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
         {warnings.length > 0 && (
           <div className={styles.warnings}>
             {warnings.map((w, i) => (
-              <div key={i} className={styles.warning}>{w}</div>
+              <div key={i} className={styles.warning}>⚠ {w}</div>
             ))}
           </div>
         )}

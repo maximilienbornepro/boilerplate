@@ -185,6 +185,39 @@
   border-color: var(--error);
 }
 
+.cv-reorder-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.cv-reorder-btn {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-family-mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: all 0.15s;
+}
+
+.cv-reorder-btn:hover:not(:disabled) {
+  opacity: 1;
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.cv-reorder-btn:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
 /* Add buttons */
 .cv-add-btn {
   background: transparent;

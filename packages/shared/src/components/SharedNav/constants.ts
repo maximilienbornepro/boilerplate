@@ -27,8 +27,8 @@ export const CATEGORIES: CategoryInfo[] = [
 export const APPS: AppInfo[] = [
   {
     id: 'conges',
-    name: 'Conges',
-    description: 'Gestion des conges et absences',
+    name: 'Congés',
+    description: 'Gestion des congés et absences',
     color: '#00bcd4',
     gradientEnd: '#0097a7',
     path: '/conges',

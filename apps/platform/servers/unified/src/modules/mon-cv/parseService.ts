@@ -113,6 +113,12 @@ export async function parseCV(buffer: Buffer, type: 'pdf' | 'docx'): Promise<CVD
 }
 
 export async function parseCVWithText(text: string): Promise<CVData> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey === 'your-anthropic-api-key' || apiKey.trim() === '') {
+    console.error('[Mon-CV] ANTHROPIC_API_KEY is not configured');
+    throw new Error('ANTHROPIC_API_KEY non configurée - veuillez ajouter votre clé API Anthropic dans le fichier .env');
+  }
+
   try {
     console.log('[Mon-CV] Calling Anthropic API for CV parsing...');
     const response = await anthropic.messages.create({
@@ -158,6 +164,11 @@ export async function parseCVWithText(text: string): Promise<CVData> {
 
 // Vision-based PDF parsing for scanned PDFs using Claude's document type
 export async function parseCVWithVision(buffer: Buffer): Promise<CVData> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey === 'your-anthropic-api-key' || apiKey.trim() === '') {
+    throw new Error('ANTHROPIC_API_KEY non configurée - veuillez ajouter votre clé API Anthropic dans le fichier .env');
+  }
+
   const base64 = buffer.toString('base64');
 
   const response = await anthropic.messages.create({

@@ -122,6 +122,7 @@ export interface DiffItem {
   section: string;
   hasChanges: boolean;
   isNew: boolean;
+  cannotImport?: boolean;
 }
 
 // Import preview result

@@ -141,6 +141,7 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
       const data = await getAdaptation(adaptationId);
       setAdaptation(data);
       setName(data.name || '');
+      // changes is always up-to-date because handleSave persists it
       setEditableMissions([...(data.changes.newMissions || [])]);
       setEditableProject(data.changes.newProject ? { ...data.changes.newProject } : undefined);
       const skillsCopy: Record<string, string[]> = {};
@@ -209,7 +210,18 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
     setSaved(false);
     try {
       const adaptedCv = buildEditedCV();
-      const updated = await updateAdaptation(adaptationId, { adaptedCv, name: name || undefined });
+      // Persist updated changes so loadAdaptation reconstructs state correctly on reload
+      const updatedChanges: CVAdaptation['changes'] = {
+        ...adaptation.changes,
+        newMissions: [...editableMissions],
+        newProject: editableProject ? { ...editableProject } : undefined,
+        addedSkills: { ...editableSkills },
+      };
+      const updated = await updateAdaptation(adaptationId, {
+        adaptedCv,
+        name: name || undefined,
+        changes: updatedChanges,
+      });
       setAdaptation(updated);
       setLiveScore(updated.atsAfter);
       setSaved(true);

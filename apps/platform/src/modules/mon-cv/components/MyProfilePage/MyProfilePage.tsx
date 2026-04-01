@@ -322,13 +322,13 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                     type="text"
                     value={cvData.title || ''}
                     onChange={(e) => handleChange({ title: e.target.value })}
-                    placeholder="Developpeur Full Stack"
+                    placeholder="Développeur Full Stack"
                   />
                 </div>
               </div>
             </div>
             <div className="cv-field cv-field-full">
-              <label>Resume</label>
+              <label>Résumé</label>
               <textarea
                 value={cvData.summary || ''}
                 onChange={(e) => handleChange({ summary: e.target.value })}
@@ -354,7 +354,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                 />
               </div>
               <div className="cv-field">
-                <label>Telephone</label>
+                <label>Téléphone</label>
                 <input
                   type="tel"
                   value={cvData.contact?.phone || ''}
@@ -486,7 +486,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                         type="text"
                         value={exp.title}
                         onChange={(e) => updateExperience(index, { title: e.target.value })}
-                        placeholder="Developpeur Senior"
+                        placeholder="Développeur Senior"
                       />
                     </div>
                     <div className="cv-field">
@@ -597,7 +597,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                   </div>
                   <div className="cv-profile-form-grid">
                     <div className="cv-field">
-                      <label>Diplome</label>
+                      <label>Diplôme</label>
                       <input
                         type="text"
                         value={form.title}
@@ -606,12 +606,12 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                       />
                     </div>
                     <div className="cv-field">
-                      <label>Etablissement</label>
+                      <label>Établissement</label>
                       <input
                         type="text"
                         value={form.school}
                         onChange={(e) => updateFormation(index, { school: e.target.value })}
-                        placeholder="Universite Paris-Saclay"
+                        placeholder="Université Paris-Saclay"
                       />
                     </div>
                     <div className="cv-field">
@@ -683,7 +683,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
                       />
                     </div>
                     <div className="cv-field">
-                      <label>Annee</label>
+                      <label>Année</label>
                       <input
                         type="text"
                         value={award.year}
@@ -758,6 +758,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
         <ImportCVModal
           onClose={() => setShowImport(false)}
           onImport={handleImportComplete}
+          cvId={cv?.id}
         />
       )}
 

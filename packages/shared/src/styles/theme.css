@@ -30,9 +30,13 @@
   --line-height-normal: 1.5;
   --line-height-relaxed: 1.6;
 
-  --letter-spacing-tight: -0.01em;
-  --letter-spacing-normal: -0.02em;
-  --letter-spacing-wide: 0;
+  --letter-spacing-tight: 0;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.02em;
+
+  /* Improve accent rendering for monospace fonts */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 
   /* ---- Spacing ---- */
   --spacing-2xs: 0.125rem;  /* 2px */

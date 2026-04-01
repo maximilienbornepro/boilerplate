@@ -111,9 +111,10 @@ export async function uploadCV(file: File): Promise<CV> {
   return handleResponse<CV>(response);
 }
 
-export async function previewImport(file: File): Promise<ImportPreviewResult> {
+export async function previewImport(file: File, cvId?: number): Promise<ImportPreviewResult> {
   const formData = new FormData();
   formData.append('file', file);
+  if (cvId !== undefined) formData.append('cvId', String(cvId));
 
   const response = await fetch(`${API_BASE}/import-cv-preview`, {
     method: 'POST',
@@ -123,12 +124,12 @@ export async function previewImport(file: File): Promise<ImportPreviewResult> {
   return handleResponse<ImportPreviewResult>(response);
 }
 
-export async function mergeImport(sections: string[], parsedData: CVData): Promise<CV> {
+export async function mergeImport(sections: string[], parsedData: CVData, cvId?: number): Promise<CV> {
   const response = await fetch(`${API_BASE}/import-cv-merge`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ sections, parsedData }),
+    body: JSON.stringify({ sections, parsedData, cvId }),
   });
   return handleResponse<CV>(response);
 }
@@ -381,7 +382,7 @@ export async function getAdaptation(id: number): Promise<CVAdaptation> {
 
 export async function updateAdaptation(
   id: number,
-  updates: { adaptedCv?: CVData; name?: string }
+  updates: { adaptedCv?: CVData; name?: string; changes?: CVAdaptation['changes'] }
 ): Promise<CVAdaptation> {
   const response = await fetch(`${API_BASE}/adaptations/${id}`, {
     method: 'PUT',

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
 import type { Member, Leave, ViewMode } from '../../types';
 import { LeaveBar } from './LeaveBar';
+import { isHoliday, getDateRangeWarnings } from '../../utils/holidays';
 import styles from './LeaveCalendar.module.css';
 
 interface LeaveCalendarProps {
@@ -10,7 +11,10 @@ interface LeaveCalendarProps {
   endDate: string;
   viewMode: ViewMode;
   currentUserId?: number;
+  isAdmin?: boolean;
   onLeaveClick: (leave: Leave) => void;
+  onLeaveMove?: (leave: Leave, newStartDate: string, newEndDate: string, warnings: string[]) => void;
+  onLeaveResize?: (leave: Leave, newStartDate: string, newEndDate: string, warnings: string[]) => void;
   scrollToTodayTrigger?: number;
 }
 
@@ -20,7 +24,7 @@ const COLUMN_WIDTHS: Record<string, number> = {
 };
 
 const MONTH_NAMES = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-const ROW_HEIGHT = 56;
+const ROW_HEIGHT = 72;
 const NAME_COL_WIDTH = 200;
 
 interface DayColumn {
@@ -28,6 +32,7 @@ interface DayColumn {
   day: number;
   month: number;
   isWeekend: boolean;
+  isHoliday: boolean;
   isToday: boolean;
 }
 
@@ -39,19 +44,26 @@ interface MonthGroup {
 
 function generateColumns(start: string, end: string): DayColumn[] {
   const cols: DayColumn[] = [];
-  const today = new Date().toISOString().split('T')[0];
+  const todayLocal = (() => {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  })();
   const current = new Date(start);
   const endDate = new Date(end);
 
   while (current <= endDate) {
-    const dateStr = current.toISOString().split('T')[0];
+    const yyyy = current.getFullYear();
+    const mm = String(current.getMonth() + 1).padStart(2, '0');
+    const dd = String(current.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
     const dow = current.getDay();
     cols.push({
       date: dateStr,
       day: current.getDate(),
       month: current.getMonth(),
       isWeekend: dow === 0 || dow === 6,
-      isToday: dateStr === today,
+      isHoliday: isHoliday(dateStr),
+      isToday: dateStr === todayLocal,
     });
     current.setDate(current.getDate() + 1);
   }
@@ -73,6 +85,16 @@ function getMonthGroups(columns: DayColumn[]): MonthGroup[] {
   return groups;
 }
 
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  // Use local date parts to avoid UTC offset shifting the date (e.g. UTC+1/+2)
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export function LeaveCalendar({
   members,
   leaves,
@@ -80,41 +102,53 @@ export function LeaveCalendar({
   endDate,
   viewMode,
   currentUserId,
+  isAdmin = false,
   onLeaveClick,
+  onLeaveMove,
+  onLeaveResize,
   scrollToTodayTrigger,
 }: LeaveCalendarProps) {
+  // Drag state
+  const dragRef = useRef<{ leave: Leave; grabDayOffset: number } | null>(null);
+
+  // Resize state
+  type ResizeState = { leave: Leave; side: 'left' | 'right'; startClientX: number; origStart: string; origEnd: string };
+  const resizeRef = useRef<ResizeState | null>(null);
+  const [resizePreview, setResizePreview] = useState<{ leaveId: string; startDate: string; endDate: string } | null>(null);
   const gridScrollRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const nameScrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
+  const [gridScrollWidth, setGridScrollWidth] = useState(0);
 
-  // Measure container width for dynamic year column sizing
+  // Measure the grid scroll area directly for accurate year-view column sizing
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
+    const el = gridScrollRef.current;
+    if (!el) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width);
+        setGridScrollWidth(entry.contentRect.width);
       }
     });
-    observer.observe(container);
+    observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
   const columns = useMemo(() => generateColumns(startDate, endDate), [startDate, endDate]);
 
   const colWidth = useMemo(() => {
-    if (viewMode === 'year' && containerWidth > 0 && columns.length > 0) {
-      const availableWidth = containerWidth - NAME_COL_WIDTH;
-      return Math.max(3, Math.floor(availableWidth / columns.length));
+    if (viewMode === 'year' && gridScrollWidth > 0 && columns.length > 0) {
+      // Use exact fractional width so all columns together fill gridScrollWidth precisely
+      return Math.max(2, gridScrollWidth / columns.length);
     }
     return COLUMN_WIDTHS[viewMode] || 3;
-  }, [viewMode, containerWidth, columns.length]);
+  }, [viewMode, gridScrollWidth, columns.length]);
 
   const monthGroups = useMemo(() => getMonthGroups(columns), [columns]);
-  const totalWidth = columns.length * colWidth;
+  // For year view, force totalWidth = gridScrollWidth to guarantee full-width (no rounding gap)
+  const totalWidth = viewMode === 'year' && gridScrollWidth > 0
+    ? gridScrollWidth
+    : columns.length * colWidth;
   const todayIndex = columns.findIndex((c) => c.isToday);
 
   const leavesByMember = useMemo(() => {
@@ -143,6 +177,54 @@ export function LeaveCalendar({
     grid.addEventListener('scroll', onScroll);
     return () => grid.removeEventListener('scroll', onScroll);
   }, []);
+
+  // Resize mouse handlers (global, so drag outside the bar still works)
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const { leave, side, startClientX, origStart, origEnd } = resizeRef.current;
+      const deltaPx = e.clientX - startClientX;
+      const deltaDays = Math.round(deltaPx / colWidth);
+      if (deltaDays === 0) return;
+
+      let newStart = origStart;
+      let newEnd = origEnd;
+
+      if (side === 'left') {
+        const candidate = addDays(origStart, deltaDays);
+        // Can't go past end date (min 1 day)
+        if (candidate < origEnd) newStart = candidate;
+        else newStart = addDays(origEnd, -1);
+      } else {
+        const candidate = addDays(origEnd, deltaDays);
+        // Can't go before start date (min 1 day)
+        if (candidate > origStart) newEnd = candidate;
+        else newEnd = addDays(origStart, 1);
+      }
+
+      setResizePreview({ leaveId: leave.id, startDate: newStart, endDate: newEnd });
+    };
+
+    const onMouseUp = () => {
+      const state = resizeRef.current;
+      resizeRef.current = null;
+      if (!state || !onLeaveResize) { setResizePreview(null); return; }
+      setResizePreview(prev => {
+        if (prev) {
+          const warnings = getDateRangeWarnings(prev.startDate, prev.endDate);
+          onLeaveResize(state.leave, prev.startDate, prev.endDate, warnings);
+        }
+        return null;
+      });
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [colWidth, resizePreview, onLeaveResize]);
 
   // Scroll to today on mount + when trigger changes
   useEffect(() => {
@@ -180,8 +262,9 @@ export function LeaveCalendar({
                 {columns.map((col, i) => (
                   <div
                     key={i}
-                    className={`${styles.dayLabel} ${col.isWeekend ? styles.dayWeekend : ''} ${col.isToday ? styles.dayToday : ''}`}
+                    className={`${styles.dayLabel} ${col.isWeekend ? styles.dayWeekend : ''} ${col.isHoliday ? styles.dayHoliday : ''} ${col.isToday ? styles.dayToday : ''}`}
                     style={{ left: i * colWidth, width: colWidth }}
+                    title={col.isHoliday ? 'Jour férié' : undefined}
                   >
                     {viewMode === 'month' ? col.day : ''}
                   </div>
@@ -212,7 +295,7 @@ export function LeaveCalendar({
               {columns.map((col, i) => (
                 <div
                   key={i}
-                  className={`${styles.gridCol} ${col.isWeekend ? styles.weekend : ''}`}
+                  className={`${styles.gridCol} ${col.isWeekend ? styles.weekend : ''} ${col.isHoliday ? styles.holiday : ''}`}
                   style={{ left: i * colWidth, width: colWidth }}
                 />
               ))}
@@ -229,17 +312,58 @@ export function LeaveCalendar({
             {members.map((member) => {
               const memberLeaves = leavesByMember.get(member.id) || [];
               return (
-                <div key={member.id} className={styles.gridRow} style={{ height: ROW_HEIGHT }}>
-                  {memberLeaves.map((leave) => (
-                    <LeaveBar
-                      key={leave.id}
-                      leave={leave}
-                      color={member.color}
-                      chartStartDate={startDate}
-                      columnWidth={colWidth}
-                      onClick={onLeaveClick}
-                    />
-                  ))}
+                <div
+                  key={member.id}
+                  className={styles.gridRow}
+                  style={{ height: ROW_HEIGHT }}
+                  onDragOver={(e) => { if (dragRef.current) e.preventDefault(); }}
+                  onDrop={(e) => {
+                    if (!dragRef.current || !onLeaveMove) return;
+                    e.preventDefault();
+                    const { leave, grabDayOffset } = dragRef.current;
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    // getBoundingClientRect().left already accounts for scroll offset — no need to add scrollLeft
+                    const dropX = e.clientX - rect.left;
+                    const dropDayIndex = Math.floor(dropX / colWidth);
+                    const newStartIndex = dropDayIndex - grabDayOffset;
+                    const duration =
+                      Math.floor((new Date(leave.endDate).getTime() - new Date(leave.startDate).getTime()) / (1000 * 60 * 60 * 24));
+                    const newStart = addDays(startDate, newStartIndex);
+                    const newEnd = addDays(newStart, duration);
+                    const warnings = getDateRangeWarnings(newStart, newEnd);
+                    dragRef.current = null;
+                    onLeaveMove(leave, newStart, newEnd, warnings);
+                  }}
+                >
+                  {memberLeaves.map((leave) => {
+                    const canDrag = isAdmin || leave.memberId === currentUserId;
+                    const preview = resizePreview?.leaveId === leave.id ? resizePreview : null;
+                    return (
+                      <LeaveBar
+                        key={leave.id}
+                        leave={leave}
+                        color={member.color}
+                        chartStartDate={startDate}
+                        columnWidth={colWidth}
+                        isDraggable={canDrag}
+                        previewStart={preview?.startDate}
+                        previewEnd={preview?.endDate}
+                        onClick={onLeaveClick}
+                        onDragStart={(_e, l, grabDayOffset) => {
+                          dragRef.current = { leave: l, grabDayOffset };
+                        }}
+                        onResizeStart={(_e, l, side) => {
+                          resizeRef.current = {
+                            leave: l,
+                            side,
+                            startClientX: _e.clientX,
+                            origStart: l.startDate,
+                            origEnd: l.endDate,
+                          };
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               );
             })}

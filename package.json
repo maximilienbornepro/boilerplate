@@ -1,7 +1,7 @@
 {
   "name": "boilerplate-platform",
   "version": "1.0.0",
-  "description": "Boilerplate platform with JWT authentication and design system",
+  "description": "Boilerplate",
   "private": true,
   "type": "module",
   "workspaces": [

@@ -23,7 +23,7 @@ export function Preview({ changes, summary, finalContent, isUpdating, onUpdate, 
           className={`${styles.tab} ${activeTab === 'summary' ? styles.active : ''}`}
           onClick={() => setActiveTab('summary')}
         >
-          Resume
+          Résumé
         </button>
         <button
           className={`${styles.tab} ${activeTab === 'changes' ? styles.active : ''}`}
@@ -42,7 +42,7 @@ export function Preview({ changes, summary, finalContent, isUpdating, onUpdate, 
       <div className={styles.content}>
         {activeTab === 'summary' && (
           <div className={styles.summary}>
-            <h3>Resume des changements</h3>
+            <h3>Résumé des changements</h3>
             <div className={styles.markdownPreview}>
               <pre>{summary}</pre>
             </div>

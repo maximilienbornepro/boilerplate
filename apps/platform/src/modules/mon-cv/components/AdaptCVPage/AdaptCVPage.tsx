@@ -1080,6 +1080,11 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
                       className="editable-textarea"
                       value={mission}
                       onChange={e => updateMission(idx, e.target.value)}
+                      onInput={e => {
+                        const el = e.currentTarget;
+                        el.style.height = 'auto';
+                        el.style.height = `${el.scrollHeight}px`;
+                      }}
                       rows={4}
                     />
                   </div>
@@ -1112,6 +1117,11 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
                           p ? { ...p, description: e.target.value } : p
                         )
                       }
+                      onInput={e => {
+                        const el = e.currentTarget;
+                        el.style.height = 'auto';
+                        el.style.height = `${el.scrollHeight}px`;
+                      }}
                       rows={5}
                     />
                   </div>
@@ -1417,7 +1427,22 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
                 <span>Analyse en cours...</span>
               </>
             ) : (
-              'Analyser'
+              'Adapter automatiquement'
+            )}
+          </button>
+          <button
+            className="btn btn-reco"
+            onClick={() => handleGetRecommendations(cvData)}
+            disabled={loading || loadingReco || !jobOffer.trim()}
+            title="Analyser le CV actuel vs l'offre sans l'adapter"
+          >
+            {loadingReco ? (
+              <>
+                <LoadingSpinner size="small" />
+                <span>Analyse...</span>
+              </>
+            ) : (
+              '💡 Analyser & recommander'
             )}
           </button>
           <button className="btn btn-outline" onClick={onCancel} disabled={loading}>
@@ -1469,15 +1494,27 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
           </div>
         )}
 
-        <div className="adapt-info">
-          <h4>Comment fonctionne l'adaptation ?</h4>
-          <ul>
-            <li>L'IA analyse l'offre pour extraire les mots-clés ATS <em>exacts</em> (token-exact)</li>
-            <li>Les synonymes et paraphrases sont détectés automatiquement</li>
-            <li>Vous choisissez quels remplacements appliquer</li>
-            <li>Score ATS avant/après calculé (modèle Jobscan)</li>
-            <li>Les modifications sont prévisualisées avant application</li>
-          </ul>
+        <div className="adapt-info-grid">
+          <div className="adapt-info adapt-info--adapt">
+            <h4>Adapter automatiquement</h4>
+            <ul>
+              <li>L'IA analyse l'offre pour extraire les mots-clés ATS <em>exacts</em> (token-exact)</li>
+              <li>Les synonymes et paraphrases sont détectés automatiquement</li>
+              <li>Vous choisissez quels remplacements appliquer</li>
+              <li>Score ATS avant/après calculé (modèle Jobscan)</li>
+              <li>Les modifications sont prévisualisées avant application</li>
+            </ul>
+          </div>
+          <div className="adapt-info adapt-info--reco">
+            <h4>💡 Analyser &amp; recommander</h4>
+            <ul>
+              <li>Analyse les gaps entre votre CV et l'offre <em>sans modifier le CV</em></li>
+              <li>Liste les mots-clés ATS manquants dans votre profil</li>
+              <li>Propose des recommandations ciblées (ajout, remplacement, répétition)</li>
+              <li>Score ATS calculé sur votre CV actuel</li>
+              <li>Vous appliquez chaque recommandation à la carte</li>
+            </ul>
+          </div>
         </div>
       </div>
       </div>

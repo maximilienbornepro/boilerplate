@@ -47,7 +47,7 @@ export function ViewControls({
           className={`${styles.button} ${viewMode === 'year' ? styles.active : ''}`}
           onClick={() => onViewModeChange('year')}
         >
-          Annee
+          Année
         </button>
       </div>
     </div>

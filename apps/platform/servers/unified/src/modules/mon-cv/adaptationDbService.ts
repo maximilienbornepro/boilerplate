@@ -158,7 +158,7 @@ export async function getAdaptation(
 export async function updateAdaptation(
   id: number,
   userId: number,
-  updates: { adaptedCv?: CVData; name?: string }
+  updates: { adaptedCv?: CVData; name?: string; changes?: CVAdaptation['changes'] }
 ): Promise<CVAdaptation | null> {
   // Fetch current record to get jobAnalysis for rescoring
   const existing = await getAdaptation(id, userId);
@@ -166,19 +166,21 @@ export async function updateAdaptation(
 
   const newAdaptedCv = updates.adaptedCv ?? existing.adaptedCv;
   const newName = updates.name !== undefined ? updates.name : existing.name;
+  const newChanges = updates.changes !== undefined ? updates.changes : existing.changes;
 
   // Recalculate ats_after based on new adapted_cv
   const newAtsAfter = scoreCV(newAdaptedCv, existing.jobAnalysis);
 
   const result = await pool.query(
     `UPDATE cv_adaptations
-     SET adapted_cv = $1, ats_after = $2, name = $3, updated_at = NOW()
-     WHERE id = $4 AND user_id = $5
+     SET adapted_cv = $1, ats_after = $2, name = $3, changes = $4, updated_at = NOW()
+     WHERE id = $5 AND user_id = $6
      RETURNING *`,
     [
       JSON.stringify(newAdaptedCv),
       JSON.stringify(newAtsAfter),
       newName,
+      JSON.stringify(newChanges),
       id,
       userId,
     ]

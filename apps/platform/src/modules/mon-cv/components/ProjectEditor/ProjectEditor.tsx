@@ -1,3 +1,4 @@
+import { type FormEvent, useCallback } from 'react';
 import type { Project } from '../../types';
 import './ProjectEditor.css';
 
@@ -8,7 +9,16 @@ interface ProjectEditorProps {
   placeholder?: string;
 }
 
+function autoResizeEl(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
 export function ProjectEditor({ label, projects, onChange, placeholder }: ProjectEditorProps) {
+  const handleTextareaInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
+    autoResizeEl(e.currentTarget);
+  }, []);
   const handleAdd = () => {
     onChange([...projects, { title: '', description: '' }]);
   };
@@ -51,12 +61,14 @@ export function ProjectEditor({ label, projects, onChange, placeholder }: Projec
                 onChange={(e) => handleChange(index, 'title', e.target.value)}
                 placeholder={placeholder || 'Titre du projet'}
               />
-              <input
-                type="text"
+              <textarea
                 className="project-editor-description"
                 value={project.description || ''}
                 onChange={(e) => handleChange(index, 'description', e.target.value)}
+                onInput={handleTextareaInput}
+                ref={(el) => { if (el) requestAnimationFrame(() => autoResizeEl(el)); }}
                 placeholder="Description (technologies, details...)"
+                rows={2}
               />
             </div>
             <div className="project-editor-actions">

@@ -258,8 +258,11 @@ export function createMonCvRoutes(): Router {
         parsedData = await parseCV(req.file.buffer, 'docx');
       }
 
-      // Get current CV for comparison
-      const currentCV = await db.getDefaultCV(userId);
+      // Get current CV for comparison — use cvId from form field if provided
+      const cvIdParam = req.body?.cvId ? parseInt(req.body.cvId, 10) : null;
+      const currentCV = cvIdParam
+        ? await db.getCVById(cvIdParam, userId)
+        : await db.getDefaultCV(userId);
       const currentData = currentCV?.cvData || createEmptyCV();
 
       // Calculate diff
@@ -269,28 +272,38 @@ export function createMonCvRoutes(): Router {
         'experiences', 'formations', 'awards', 'sideProjects'
       ];
 
-      const diff = sections.map(section => {
-        const parsedValue = (parsedData as any)[section];
-        const currentValue = (currentData as any)[section];
+      const diff = [
+        // Photo de profil : impossible à extraire depuis un PDF/DOCX
+        {
+          section: 'profilePhoto',
+          hasChanges: false,
+          isNew: false,
+          cannotImport: true,
+        },
+        ...sections.map(section => {
+          const parsedValue = (parsedData as any)[section];
+          const currentValue = (currentData as any)[section];
 
-        const hasContent = Array.isArray(parsedValue)
-          ? parsedValue.length > 0
-          : typeof parsedValue === 'object'
-            ? Object.keys(parsedValue || {}).length > 0
-            : !!parsedValue;
+          const hasContent = Array.isArray(parsedValue)
+            ? parsedValue.length > 0
+            : typeof parsedValue === 'object'
+              ? Object.keys(parsedValue || {}).length > 0
+              : !!parsedValue;
 
-        const currentHasContent = Array.isArray(currentValue)
-          ? currentValue.length > 0
-          : typeof currentValue === 'object'
-            ? Object.keys(currentValue || {}).length > 0
-            : !!currentValue;
+          const currentHasContent = Array.isArray(currentValue)
+            ? currentValue.length > 0
+            : typeof currentValue === 'object'
+              ? Object.keys(currentValue || {}).length > 0
+              : !!currentValue;
 
-        return {
-          section,
-          hasChanges: hasContent,
-          isNew: hasContent && !currentHasContent,
-        };
-      });
+          return {
+            section,
+            hasChanges: hasContent,
+            isNew: hasContent && !currentHasContent,
+            cannotImport: false,
+          };
+        }),
+      ];
 
       res.json({
         parsed: parsedData,
@@ -305,15 +318,17 @@ export function createMonCvRoutes(): Router {
   // POST /import-cv-merge - Merge selected sections
   router.post('/import-cv-merge', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
-    const { sections, parsedData } = req.body as MergeRequest;
+    const { sections, parsedData, cvId } = req.body as MergeRequest & { cvId?: number };
 
     if (!sections || !Array.isArray(sections) || !parsedData) {
       res.status(400).json({ error: 'Donnees de merge invalides' });
       return;
     }
 
-    // Get current CV
-    let cv = await db.getDefaultCV(userId);
+    // Get current CV — use the specific cvId if provided, otherwise fall back to default
+    let cv = cvId
+      ? await db.getCVById(cvId, userId)
+      : await db.getDefaultCV(userId);
     const currentData = cv?.cvData || createEmptyCV();
 
     // Merge only selected sections
@@ -800,8 +815,8 @@ export function createMonCvRoutes(): Router {
     const userId = (req as any).user?.id;
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid adaptation id' });
-    const { adaptedCv, name } = req.body;
-    const updated = await updateAdaptation(id, userId, { adaptedCv, name });
+    const { adaptedCv, name, changes } = req.body;
+    const updated = await updateAdaptation(id, userId, { adaptedCv, name, changes });
     if (!updated) return res.status(404).json({ error: 'Adaptation not found' });
     res.json(updated);
   }));

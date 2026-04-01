@@ -374,18 +374,18 @@
 
 /* Check/Done toggle button */
 .checkBtn {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.75rem;
+  height: 1.75rem;
   padding: 0;
   border-radius: var(--radius-sm);
-  border: 1.5px solid #059669;
+  border: 2px solid #059669;
   background: transparent;
   color: #059669;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: var(--font-weight-bold);
   font-family: inherit;
-  opacity: 0.5;
+  opacity: 0.8;
   transition: all var(--transition-fast);
   flex-shrink: 0;
   display: flex;
@@ -409,18 +409,18 @@
 
 /* Delete line button */
 .deleteLineBtn {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.75rem;
+  height: 1.75rem;
   padding: 0;
   border-radius: var(--radius-sm);
-  border: 1.5px solid #dc2626;
+  border: 2px solid #dc2626;
   background: transparent;
   color: #dc2626;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: var(--font-weight-bold);
   line-height: 1;
-  opacity: 0.5;
+  opacity: 0.8;
   transition: all var(--transition-fast);
   flex-shrink: 0;
   display: flex;

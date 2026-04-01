@@ -6,6 +6,8 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const rootDir = join(__dirname, '../../../../..');
+// Use override:true so .env values take precedence over any empty env vars
+// (macOS may pre-define some keys as empty strings)
 dotenvConfig({ path: join(rootDir, '.env'), override: true });
 
 export const config = {
