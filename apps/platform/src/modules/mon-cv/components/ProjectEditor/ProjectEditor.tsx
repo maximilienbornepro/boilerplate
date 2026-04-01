@@ -17,23 +17,23 @@ export function ProjectEditor({ label, projects, onChange, placeholder }: Projec
     onChange(projects.filter((_, i) => i !== index));
   };
 
-  const handleChange = (index: number, field: 'title' | 'description', value: string) => {
-    const updated = [...projects];
-    updated[index] = { ...updated[index], [field]: value };
-    onChange(updated);
-  };
-
   const handleMoveUp = (index: number) => {
-    if (index <= 0) return;
-    const updated = [...projects];
-    [updated[index - 1], updated[index]] = [updated[index], updated[index - 1]];
-    onChange(updated);
+    if (index === 0) return;
+    const newProjects = [...projects];
+    [newProjects[index - 1], newProjects[index]] = [newProjects[index], newProjects[index - 1]];
+    onChange(newProjects);
   };
 
   const handleMoveDown = (index: number) => {
-    if (index >= projects.length - 1) return;
+    if (index === projects.length - 1) return;
+    const newProjects = [...projects];
+    [newProjects[index], newProjects[index + 1]] = [newProjects[index + 1], newProjects[index]];
+    onChange(newProjects);
+  };
+
+  const handleChange = (index: number, field: 'title' | 'description', value: string) => {
     const updated = [...projects];
-    [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
+    updated[index] = { ...updated[index], [field]: value };
     onChange(updated);
   };
 
@@ -56,7 +56,7 @@ export function ProjectEditor({ label, projects, onChange, placeholder }: Projec
                 className="project-editor-description"
                 value={project.description || ''}
                 onChange={(e) => handleChange(index, 'description', e.target.value)}
-                placeholder="Description (technologies, détails...)"
+                placeholder="Description (technologies, details...)"
               />
             </div>
             <div className="project-editor-actions">
@@ -65,7 +65,7 @@ export function ProjectEditor({ label, projects, onChange, placeholder }: Projec
                 className="project-editor-move"
                 onClick={() => handleMoveUp(index)}
                 disabled={index === 0}
-                title="Déplacer vers le haut"
+                title="Monter"
               >
                 ↑
               </button>
@@ -74,7 +74,7 @@ export function ProjectEditor({ label, projects, onChange, placeholder }: Projec
                 className="project-editor-move"
                 onClick={() => handleMoveDown(index)}
                 disabled={index === projects.length - 1}
-                title="Déplacer vers le bas"
+                title="Descendre"
               >
                 ↓
               </button>
@@ -84,7 +84,7 @@ export function ProjectEditor({ label, projects, onChange, placeholder }: Projec
                 onClick={() => handleRemove(index)}
                 title="Supprimer"
               >
-                ×
+                x
               </button>
             </div>
           </div>

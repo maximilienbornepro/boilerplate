@@ -37,7 +37,11 @@
   font-size: var(--text-sm);
   color: var(--text-primary);
   cursor: grab;
-  transition: opacity 0.15s, border-color 0.15s;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+
+.tag-editor-tag:active {
+  cursor: grabbing;
 }
 
 .tag-editor-tag.tag-dragging {
@@ -46,14 +50,7 @@
 
 .tag-editor-tag.tag-drag-over {
   border-color: var(--accent-primary);
-  background: var(--bg-secondary);
-}
-
-.tag-editor-drag-handle {
-  color: var(--text-muted);
-  font-size: 0.8em;
-  cursor: grab;
-  user-select: none;
+  background: rgba(0, 217, 255, 0.08);
 }
 
 .tag-editor-remove {

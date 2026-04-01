@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import type { CVAdaptation, CVData, Project, AtsScore, AtsRecommendationItem } from '../../types';
 import { getAdaptation, updateAdaptation, downloadAdaptationPDF, getFullPreviewHTML, getAtsRecommendations } from '../../services/api';
@@ -63,12 +63,6 @@ function computeScore(cv: CVData, jobAnalysis: CVAdaptation['jobAnalysis']): Ats
 
 function getScoreClass(s: number) { return s >= 75 ? 'detail-score-good' : s >= 50 ? 'detail-score-medium' : 'detail-score-bad'; }
 
-// Auto-resize helper for textareas
-function autoResize(el: HTMLTextAreaElement) {
-  el.style.height = 'auto';
-  el.style.height = el.scrollHeight + 'px';
-}
-
 export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailPageProps) {
   const [adaptation, setAdaptation] = useState<CVAdaptation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,16 +88,26 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
 
+  // Auto-resize textarea helper
+  const autoResize = useCallback((el: HTMLTextAreaElement) => {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  }, []);
+
+  const handleTextareaInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
+    autoResize(e.currentTarget);
+  }, [autoResize]);
+
+  // Auto-resize all textareas when editable content changes
+  useEffect(() => {
+    if (!pageRef.current) return;
+    const textareas = pageRef.current.querySelectorAll('textarea');
+    textareas.forEach((ta) => autoResize(ta));
+  }, [editableMissions, editableProject, autoResize]);
+
   useEffect(() => {
     loadAdaptation();
   }, [adaptationId]);
-
-  // Auto-resize textareas on content change
-  useEffect(() => {
-    if (!pageRef.current) return;
-    const textareas = pageRef.current.querySelectorAll<HTMLTextAreaElement>('.adapt-detail-textarea-auto');
-    textareas.forEach(autoResize);
-  }, [editableMissions, editableProject]);
 
   // Real-time score on edits
   useEffect(() => {
@@ -141,27 +145,31 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
 
   const buildEditedCV = (): CVData => {
     if (!adaptation) return {} as CVData;
+    // Start from adaptedCv (which includes the generated content)
     const cv: CVData = JSON.parse(JSON.stringify(adaptation.adaptedCv));
+
     if (cv.experiences && cv.experiences.length > 0) {
-      // Remove ORIGINAL generated missions (by their original text from adaptation.changes)
-      const originalGenerated = adaptation.changes.newMissions || [];
+      // Remove ALL originally generated missions (by their ORIGINAL text before any edits)
+      const originalNewMissions = adaptation.changes.newMissions || [];
       const baseMissions = cv.experiences[0].missions.filter(
-        m => !originalGenerated.includes(m)
+        m => !originalNewMissions.includes(m)
       );
-      // Add current editable missions (filter empty)
+      // Add current editable missions (user may have edited them)
       cv.experiences[0].missions = [...baseMissions, ...editableMissions.filter(m => m.trim())];
-      // Remove ORIGINAL generated project (by its original title)
+
+      // Remove generated project by ORIGINAL title (not current edited title)
       if (adaptation.changes.newProject) {
         cv.experiences[0].projects = cv.experiences[0].projects.filter(
           p => p.title !== adaptation.changes.newProject!.title
         );
       }
-      // Add current editable project if non-empty
+      // Add current editable project
       if (editableProject && editableProject.title.trim()) {
         cv.experiences[0].projects = [editableProject, ...cv.experiences[0].projects];
       }
     }
-    // Replace generated skills with editable skills
+
+    // Skills: remove ORIGINAL generated skills, add current editable
     const originalAddedSkills = adaptation.changes.addedSkills || {};
     for (const [cat, origSkills] of Object.entries(originalAddedSkills)) {
       const key = cat as keyof CVData;
@@ -170,7 +178,7 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
       const editedSkills = editableSkills[cat] || [];
       (cv[key] as string[]) = [...withoutGenerated, ...editedSkills];
     }
-    // Add any new categories from editable not in original
+    // Add any new skill categories from editable not in original
     for (const [cat, skills] of Object.entries(editableSkills)) {
       if (!(cat in originalAddedSkills) && skills.length > 0) {
         const key = cat as keyof CVData;
@@ -229,26 +237,6 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
     }
   };
 
-  const handleGetRecommendations = async () => {
-    if (!adaptation) return;
-    setLoadingReco(true);
-    setRecoError('');
-    setShowReco(true);
-    try {
-      const cv = buildEditedCV();
-      const reco = await getAtsRecommendations(cv, adaptation.jobOffer);
-      setRecoItems(reco.recommendations);
-    } catch (err: any) {
-      setRecoError(err.message || 'Erreur lors de la génération des recommandations');
-    } finally {
-      setLoadingReco(false);
-    }
-  };
-
-  const handleTextareaInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
-    autoResize(e.currentTarget);
-  }, []);
-
   const updateMission = (idx: number, value: string) => {
     setEditableMissions(prev => prev.map((m, i) => i === idx ? value : m));
   };
@@ -262,8 +250,23 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
     }));
   };
 
-  const priorityIcon = (p: string) => p === 'critique' ? '🔴' : p === 'important' ? '🟡' : '🟢';
-  const typeLabel = (t: string) => t === 'add' ? 'Ajouter' : t === 'replace' ? 'Remplacer' : 'Répéter';
+  const handleGetRecommendations = async () => {
+    if (!adaptation) return;
+    setLoadingReco(true);
+    setRecoError('');
+    setShowReco(true);
+    setRecoItems(null);
+    try {
+      const currentCV = buildEditedCV();
+      const reco = await getAtsRecommendations(currentCV, adaptation.jobOffer);
+      setRecoItems(reco.recommendations);
+      setLiveScore(reco.currentScore);
+    } catch (err: any) {
+      setRecoError(err.message || 'Erreur lors de l\'analyse');
+    } finally {
+      setLoadingReco(false);
+    }
+  };
 
   if (loading) return (
     <div className="adapt-detail-page">
@@ -309,7 +312,7 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
         <button
           className="module-header-btn"
           onClick={handleGetRecommendations}
-          disabled={loadingReco}
+          disabled={loadingReco || downloadingPDF}
         >
           {loadingReco ? '...' : '✦ Optimiser le score ATS'}
         </button>
@@ -324,27 +327,47 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
 
       {error && <div className="adapt-detail-error-banner">{error}</div>}
 
-      {/* AI Recommendations panel */}
+      {/* AI Recommendations */}
       {showReco && (
         <div className="adapt-detail-reco-panel">
           <div className="adapt-detail-reco-header">
-            <span>Recommandations IA</span>
-            <button onClick={() => setShowReco(false)} className="adapt-detail-reco-close">×</button>
+            <span>Optimisation ATS</span>
+            <button
+              className="adapt-detail-btn-remove-inline"
+              onClick={() => setShowReco(false)}
+            >
+              Fermer
+            </button>
           </div>
-          {loadingReco && <div className="adapt-detail-reco-loading"><LoadingSpinner size="small" /> Analyse en cours...</div>}
-          {recoError && <div className="adapt-detail-error-banner">{recoError}</div>}
-          {recoItems && recoItems.length === 0 && <div className="adapt-detail-reco-empty">Aucune recommandation — votre CV est bien optimisé !</div>}
-          {recoItems && recoItems.length > 0 && (
+          {recoError && <div className="adapt-detail-reco-error">{recoError}</div>}
+          {loadingReco && (
+            <div className="adapt-detail-reco-loading">
+              <LoadingSpinner size="small" />
+              <span>Analyse en cours...</span>
+            </div>
+          )}
+          {!loadingReco && recoItems && recoItems.length === 0 && (
+            <p className="adapt-detail-reco-empty">Aucune recommandation — score optimal !</p>
+          )}
+          {!loadingReco && recoItems && recoItems.length > 0 && (
             <div className="adapt-detail-reco-list">
               {recoItems.map((item, idx) => (
-                <div key={idx} className={`adapt-detail-reco-item reco-priority-${item.priority}`}>
-                  <div className="adapt-detail-reco-item-header">
-                    <span className="adapt-detail-reco-priority">{priorityIcon(item.priority)}</span>
-                    <span className="adapt-detail-reco-type">{typeLabel(item.type)}</span>
-                    {item.keyword && <span className="adapt-detail-reco-keyword">« {item.keyword} »</span>}
+                <div key={idx} className={`adapt-detail-reco-item adapt-detail-reco-priority-${item.priority}`}>
+                  <div className="adapt-detail-reco-item-title">
+                    <span className="adapt-detail-reco-badge">{item.priority.toUpperCase()}</span>
+                    <span className={`adapt-detail-reco-type adapt-detail-reco-type-${item.type}`}>
+                      {item.type === 'add' ? 'AJOUT' : item.type === 'replace' ? 'REMPLACEMENT' : 'RÉPÉTITION'}
+                    </span>
+                    <span className="adapt-detail-reco-action">{item.action}</span>
                   </div>
-                  <div className="adapt-detail-reco-action">{item.action}</div>
-                  {item.example && <div className="adapt-detail-reco-example">Ex : {item.example}</div>}
+                  {item.example && <div className="adapt-detail-reco-example">{item.example}</div>}
+                  {item.keywords.length > 0 && (
+                    <div className="adapt-detail-reco-keywords">
+                      {item.keywords.map(k => (
+                        <span key={k} className="adapt-detail-reco-keyword">"{k}"</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -415,7 +438,7 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
                 </button>
               </div>
               <textarea
-                className="adapt-detail-textarea-auto"
+                className="adapt-detail-textarea adapt-detail-textarea-auto"
                 value={mission}
                 onChange={e => updateMission(idx, e.target.value)}
                 onInput={handleTextareaInput}
@@ -444,7 +467,7 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
             placeholder="Titre du projet"
           />
           <textarea
-            className="adapt-detail-textarea-auto"
+            className="adapt-detail-textarea adapt-detail-textarea-auto"
             value={editableProject.description || ''}
             onChange={e => setEditableProject(prev => prev ? { ...prev, description: e.target.value } : prev)}
             onInput={handleTextareaInput}

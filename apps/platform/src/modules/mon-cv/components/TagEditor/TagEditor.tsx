@@ -10,8 +10,9 @@ interface TagEditorProps {
 
 export function TagEditor({ tags, onChange, placeholder = 'Ajouter...', label }: TagEditorProps) {
   const [input, setInput] = useState('');
-  const dragIndexRef = useRef<number | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragCounter = useRef(0);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && input.trim()) {
@@ -29,42 +30,51 @@ export function TagEditor({ tags, onChange, placeholder = 'Ajouter...', label }:
     onChange(tags.filter((_, i) => i !== index));
   };
 
-  // Drag and drop reorder
-  const handleDragStart = (e: DragEvent, index: number) => {
-    dragIndexRef.current = index;
+  // Drag-and-drop handlers
+  const handleDragStart = (e: DragEvent<HTMLSpanElement>, index: number) => {
+    setDragIndex(index);
     e.dataTransfer.effectAllowed = 'move';
-    (e.currentTarget as HTMLElement).classList.add('tag-dragging');
+    e.dataTransfer.setData('text/plain', String(index));
   };
 
-  const handleDragEnd = (e: DragEvent) => {
-    dragIndexRef.current = null;
-    setDragOverIndex(null);
-    (e.currentTarget as HTMLElement).classList.remove('tag-dragging');
+  const handleDragEnter = (e: DragEvent<HTMLSpanElement>, index: number) => {
+    e.preventDefault();
+    dragCounter.current++;
+    setDragOverIndex(index);
   };
 
-  const handleDragOver = (e: DragEvent) => {
+  const handleDragLeave = () => {
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setDragOverIndex(null);
+    }
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLSpanElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDragEnter = (_e: DragEvent, index: number) => {
-    if (dragIndexRef.current !== null && dragIndexRef.current !== index) {
-      setDragOverIndex(index);
+  const handleDrop = (e: DragEvent<HTMLSpanElement>, dropIndex: number) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    if (dragIndex === null || dragIndex === dropIndex) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
     }
+    const newTags = [...tags];
+    const [moved] = newTags.splice(dragIndex, 1);
+    newTags.splice(dropIndex, 0, moved);
+    onChange(newTags);
+    setDragIndex(null);
+    setDragOverIndex(null);
   };
 
-  const handleDrop = (e: DragEvent, dropIndex: number) => {
-    e.preventDefault();
-    const dragIndex = dragIndexRef.current;
-    if (dragIndex === null || dragIndex === dropIndex) return;
-
-    const newTags = [...tags];
-    const [dragged] = newTags.splice(dragIndex, 1);
-    newTags.splice(dropIndex, 0, dragged);
-    onChange(newTags);
-
-    dragIndexRef.current = null;
+  const handleDragEnd = () => {
+    setDragIndex(null);
     setDragOverIndex(null);
+    dragCounter.current = 0;
   };
 
   return (
@@ -75,15 +85,15 @@ export function TagEditor({ tags, onChange, placeholder = 'Ajouter...', label }:
           {tags.map((tag, index) => (
             <span
               key={index}
-              className={`tag-editor-tag${dragOverIndex === index ? ' tag-drag-over' : ''}`}
+              className={`tag-editor-tag${dragIndex === index ? ' tag-dragging' : ''}${dragOverIndex === index && dragIndex !== index ? ' tag-drag-over' : ''}`}
               draggable
               onDragStart={(e) => handleDragStart(e, index)}
-              onDragEnd={handleDragEnd}
-              onDragOver={handleDragOver}
               onDragEnter={(e) => handleDragEnter(e, index)}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, index)}
+              onDragEnd={handleDragEnd}
             >
-              <span className="tag-editor-drag-handle">⠿</span>
               {tag}
               <button
                 type="button"

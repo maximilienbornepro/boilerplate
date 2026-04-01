@@ -7,8 +7,12 @@ import type {
   AtsScore,
   AtsRecommendationItem,
   JobAnalysis,
+  PipelineTermReplacement,
+  ActionItem,
+  AnalysisResult,
+  PipelineLogEvent,
 } from '../../types';
-import { adaptCV, downloadPDF, getAtsRecommendations, improveCV, createAdaptation } from '../../services/api';
+import { adaptCVStream, downloadPDF, getAtsRecommendations, improveCV, createAdaptation, analyzeCVStreamAPI, applyActions } from '../../services/api';
 import './AdaptCVPage.css';
 
 // ─── Client-side ATS scoring (mirrors backend scoreCV — pure computation) ─────
@@ -201,41 +205,79 @@ function TreatmentSummary({
   const delta = atsScore.after.overall - atsScore.before.overall;
   const allAddedSkills = Object.entries(changes.addedSkills)
     .flatMap(([cat, skills]) => skills.map(s => `${s} (${cat})`));
+  const hasPipelineData = !!(changes.termReplacements || changes.matchedKeywords || changes.remainingGaps);
 
   return (
     <div className="treatment-summary">
-      <div className="treatment-summary__title">📋 Traitements appliqués</div>
+      <div className="treatment-summary__title">Traitements appliques</div>
       <div className="treatment-summary__rows">
         <div className="treatment-row">
           <span className="treatment-row__label">Analyse offre</span>
           <span className="treatment-row__value">
-            {jobAnalysis.requiredKeywords.length} mots-clés requis · {jobAnalysis.preferredKeywords.length} préférés · domaine : {jobAnalysis.domain}
+            {jobAnalysis.requiredKeywords.length} mots-cles requis · {jobAnalysis.preferredKeywords.length} preferes · domaine : {jobAnalysis.domain}
           </span>
         </div>
         <div className="treatment-row">
-          <span className="treatment-row__label">Titre ciblé</span>
+          <span className="treatment-row__label">Titre cible</span>
           <span className="treatment-row__value">"{jobAnalysis.exactJobTitle}"</span>
         </div>
-        <div className="treatment-row">
-          <span className="treatment-row__label">Missions générées</span>
-          <span className="treatment-row__value">
-            {changes.newMissions.length > 0
-              ? `${changes.newMissions.length} mission${changes.newMissions.length > 1 ? 's' : ''} ajoutée${changes.newMissions.length > 1 ? 's' : ''} à la 1ère expérience`
-              : 'aucune'}
-          </span>
-        </div>
-        <div className="treatment-row">
-          <span className="treatment-row__label">Projet généré</span>
-          <span className="treatment-row__value">
-            {changes.newProject ? `"${changes.newProject.title}"` : 'aucun'}
-          </span>
-        </div>
-        <div className="treatment-row">
-          <span className="treatment-row__label">Compétences ajoutées</span>
-          <span className="treatment-row__value">
-            {allAddedSkills.length > 0 ? allAddedSkills.join(', ') : 'aucune'}
-          </span>
-        </div>
+
+        {hasPipelineData && (
+          <>
+            <div className="treatment-row">
+              <span className="treatment-row__label">Mots-cles trouves</span>
+              <span className="treatment-row__value">
+                {changes.matchedKeywords?.length || 0} correspondances exactes
+              </span>
+            </div>
+            <div className="treatment-row">
+              <span className="treatment-row__label">Synonymes remplaces</span>
+              <span className="treatment-row__value">
+                {changes.termReplacements?.length || 0} remplacement{(changes.termReplacements?.length || 0) > 1 ? 's' : ''}
+              </span>
+            </div>
+            {changes.titleChange && (
+              <div className="treatment-row">
+                <span className="treatment-row__label">Titre modifie</span>
+                <span className="treatment-row__value">
+                  "{changes.titleChange.original}" → "{changes.titleChange.proposed}"
+                </span>
+              </div>
+            )}
+            <div className="treatment-row">
+              <span className="treatment-row__label">Gaps restants</span>
+              <span className="treatment-row__value">
+                {changes.remainingGaps?.length || 0} mot{(changes.remainingGaps?.length || 0) > 1 ? 's' : ''}-cle{(changes.remainingGaps?.length || 0) > 1 ? 's' : ''} sans correspondance
+              </span>
+            </div>
+          </>
+        )}
+
+        {!hasPipelineData && (
+          <>
+            <div className="treatment-row">
+              <span className="treatment-row__label">Missions generees</span>
+              <span className="treatment-row__value">
+                {changes.newMissions.length > 0
+                  ? `${changes.newMissions.length} mission${changes.newMissions.length > 1 ? 's' : ''} ajoutee${changes.newMissions.length > 1 ? 's' : ''}`
+                  : 'aucune'}
+              </span>
+            </div>
+            <div className="treatment-row">
+              <span className="treatment-row__label">Projet genere</span>
+              <span className="treatment-row__value">
+                {changes.newProject ? `"${changes.newProject.title}"` : 'aucun'}
+              </span>
+            </div>
+            <div className="treatment-row">
+              <span className="treatment-row__label">Competences ajoutees</span>
+              <span className="treatment-row__value">
+                {allAddedSkills.length > 0 ? allAddedSkills.join(', ') : 'aucune'}
+              </span>
+            </div>
+          </>
+        )}
+
         <div className="treatment-row treatment-row--score">
           <span className="treatment-row__label">Impact score ATS</span>
           <span className="treatment-row__value">
@@ -388,6 +430,35 @@ function PromptCollapsible({ prompt }: { prompt: string }) {
   );
 }
 
+// ─── Action Card (for 2-step analysis flow) ─────────────────────────────────
+
+function ActionCard({ action, selected, onToggle }: { action: ActionItem; selected: boolean; onToggle: (id: string) => void }) {
+  return (
+    <div className={`action-card ${selected ? 'action-card--selected' : ''} action-card--${action.impact}`}>
+      <label className="action-card-check">
+        <input type="checkbox" checked={selected} onChange={() => onToggle(action.id)} />
+      </label>
+      <div className="action-card-content">
+        {action.experienceContext && (
+          <div className="action-card-context">{action.experienceContext}</div>
+        )}
+        <div className="action-card-replacement">
+          <span className="action-card-old">{'\u00AB'} {action.cvTerm} {'\u00BB'}</span>
+          <span className="action-card-arrow">{'\u2192'}</span>
+          <span className="action-card-new">{'\u00AB'} {action.offerTerm} {'\u00BB'}</span>
+        </div>
+        {action.type === 'title_change' && (
+          <div className="action-card-type">Changement de titre</div>
+        )}
+      </div>
+      <div className="action-card-meta">
+        <span className="action-card-confidence">{Math.round(action.confidence * 100)}%</span>
+        <span className="action-card-gain">+{action.scoreGain}pts</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProps) {
@@ -407,11 +478,26 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
   const [editableSkills, setEditableSkills] = useState<Record<string, string[]>>({});
   const [termReplacements, setTermReplacements] = useState<Array<{ find: string; replaceWith: string }>>([]);
 
+  // Pipeline-specific state
+  const [pipelineReplacements, setPipelineReplacements] = useState<PipelineTermReplacement[]>([]);
+  const [matchedKeywords, setMatchedKeywords] = useState<string[]>([]);
+  const [remainingGaps, setRemainingGaps] = useState<string[]>([]);
+
   // Live ATS score (starts as result.atsScore.after, updated in real-time on edits)
   const [liveScore, setLiveScore] = useState<AtsScore | null>(null);
 
   // Cached job analysis for client-side real-time scoring (no AI round-trip)
   const [jobAnalysis, setJobAnalysis] = useState<JobAnalysis | null>(null);
+
+  // Pipeline logs state
+  const [pipelineLogs, setPipelineLogs] = useState<PipelineLogEvent[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Analysis state (2-step flow)
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [selectedActionIds, setSelectedActionIds] = useState<Set<string>>(new Set());
+  const [applying, setApplying] = useState(false);
 
   // Recommendation state
   const [showReco, setShowReco] = useState(false);
@@ -435,15 +521,27 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editableMissions, editableProject, editableSkills, jobAnalysis]);
 
+  // Auto-scroll pipeline logs
+  useEffect(() => {
+    if (logsEndRef.current && showLogs) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [pipelineLogs, showLogs]);
+
   // ── Build current edited CV ──────────────────────────────────────────────────
 
   const buildEditedCV = (): CVData => {
-    const cv: CVData = JSON.parse(JSON.stringify(cvData));
+    // When pipeline replacements exist, use the adapted CV as base
+    // (it already has synonyms replaced). Otherwise start from original.
+    const baseCV = (result && pipelineReplacements.length > 0)
+      ? result.adaptedCV
+      : cvData;
+    const cv: CVData = JSON.parse(JSON.stringify(baseCV));
 
     // Apply title change
     cv.title = editableTitle;
 
-    // Apply term replacements to all missions across all experiences
+    // Apply term replacements to all missions across all experiences (legacy improve flow)
     if (termReplacements.length > 0) {
       for (const exp of cv.experiences || []) {
         exp.missions = exp.missions.map(m => {
@@ -486,8 +584,15 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     setError('');
     setShowReco(false);
     setRecoItems(null);
+    setPipelineLogs([]);
+    setShowLogs(true);
     try {
-      const response = await adaptCV(cvData, jobOffer, customInstructions || undefined);
+      const response = await adaptCVStream(
+        cvData,
+        jobOffer,
+        (event) => setPipelineLogs(prev => [...prev, event]),
+        customInstructions || undefined,
+      );
       setResult(response);
       setJobAnalysis(response.jobAnalysis);
       setLiveScore(response.atsScore.after);
@@ -500,10 +605,101 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
         skillsCopy[cat] = [...skills];
       }
       setEditableSkills(skillsCopy);
+
+      // Pipeline-specific data
+      if (response.changes.termReplacements) {
+        setPipelineReplacements([...response.changes.termReplacements]);
+      }
+      if (response.changes.matchedKeywords) {
+        setMatchedKeywords([...response.changes.matchedKeywords]);
+      }
+      if (response.changes.remainingGaps) {
+        setRemainingGaps([...response.changes.remainingGaps]);
+      }
+      // Apply title change from pipeline
+      if (response.changes.titleChange?.proposed) {
+        setEditableTitle(response.changes.titleChange.proposed);
+      }
     } catch (err: any) {
       setError(err.message || "Erreur lors de l'adaptation du CV");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── Analysis (2-step flow) ───────────────────────────────────────────────────
+
+  const toggleAction = (id: string) => {
+    setSelectedActionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleAnalyze = async () => {
+    if (!jobOffer.trim()) return;
+    setLoading(true);
+    setError('');
+    setPipelineLogs([]);
+    setShowLogs(true);
+    setAnalysis(null);
+    setResult(null);
+    try {
+      const analysisResult = await analyzeCVStreamAPI(cvData, jobOffer, (event) => {
+        setPipelineLogs(prev => [...prev, event]);
+      });
+      setAnalysis(analysisResult);
+      setSelectedActionIds(new Set(analysisResult.actions.map(a => a.id)));
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de l\'analyse');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyActions = async () => {
+    if (!analysis || selectedActionIds.size === 0) return;
+    setApplying(true);
+    setError('');
+    try {
+      const selectedActions = analysis.actions.filter(a => selectedActionIds.has(a.id));
+      const { adaptedCV, replacements, scoreAfter } = await applyActions(cvData, selectedActions, analysis.jobAnalysis);
+
+      // Build AdaptResponse for the result view
+      setResult({
+        adaptedCV,
+        changes: {
+          newMissions: [],
+          addedSkills: {},
+          termReplacements: replacements,
+          matchedKeywords: analysis.matchedKeywords,
+          remainingGaps: analysis.gaps,
+        },
+        atsScore: { before: analysis.score, after: scoreAfter },
+        jobAnalysis: analysis.jobAnalysis,
+      });
+
+      // Set up editable state for result view
+      setEditableMissions([]);
+      setEditableProject(undefined);
+      setEditableSkills({});
+      setPipelineReplacements(replacements);
+      setMatchedKeywords(analysis.matchedKeywords);
+      setRemainingGaps(analysis.gaps);
+      setJobAnalysis(analysis.jobAnalysis);
+      setLiveScore(scoreAfter);
+
+      // Apply title change if selected
+      const titleAction = selectedActions.find(a => a.type === 'title_change');
+      if (titleAction) {
+        setEditableTitle(titleAction.offerTerm);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de l\'application');
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -539,6 +735,9 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
 
   const handleRetry = () => {
     setResult(null);
+    setAnalysis(null);
+    setSelectedActionIds(new Set());
+    setApplying(false);
     setError('');
     setShowReco(false);
     setRecoItems(null);
@@ -547,6 +746,11 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     setJobAnalysis(null);
     setEditableTitle(cvData.title || '');
     setTermReplacements([]);
+    setPipelineReplacements([]);
+    setMatchedKeywords([]);
+    setRemainingGaps([]);
+    setPipelineLogs([]);
+    setShowLogs(false);
   };
 
   // ── PDF download ─────────────────────────────────────────────────────────────
@@ -700,6 +904,70 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
           <AtsScoreBlock before={scoreBefore} after={scoreAfter} />
 
           <TreatmentSummary result={result} />
+
+          {/* ── Pipeline results: keywords, replacements, gaps ──────────────── */}
+          {(matchedKeywords.length > 0 || pipelineReplacements.length > 0 || remainingGaps.length > 0) && (
+            <div className="pipeline-results">
+              <h3>Analyse des correspondances</h3>
+
+              {/* Matched keywords */}
+              {matchedKeywords.length > 0 && (
+                <div className="pipeline-section">
+                  <h4>Mots-cles trouves ({matchedKeywords.length})</h4>
+                  <div className="pipeline-tags">
+                    {matchedKeywords.map(kw => (
+                      <span key={kw} className="pipeline-tag pipeline-tag--match">{kw}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pipeline term replacements (before/after cards) */}
+              {pipelineReplacements.length > 0 && (
+                <div className="pipeline-section">
+                  <h4>Remplacements de synonymes ({pipelineReplacements.length})</h4>
+                  <div className="pipeline-replacements">
+                    {pipelineReplacements.map((rep, idx) => (
+                      <div key={idx} className="pipeline-replacement-card">
+                        <div className="pipeline-replacement-header">
+                          <span className="pipeline-replacement-section">{rep.section}</span>
+                          <span className="pipeline-replacement-confidence">
+                            {Math.round(rep.confidence * 100)}%
+                          </span>
+                        </div>
+                        <div className="pipeline-replacement-diff">
+                          <div className="pipeline-replacement-before">
+                            <span className="pipeline-diff-label">Avant</span>
+                            <span className="pipeline-diff-text pipeline-diff-text--old">{rep.cvTerm}</span>
+                          </div>
+                          <span className="pipeline-replacement-arrow">→</span>
+                          <div className="pipeline-replacement-after">
+                            <span className="pipeline-diff-label">Apres</span>
+                            <span className="pipeline-diff-text pipeline-diff-text--new">{rep.offerTerm}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Remaining gaps */}
+              {remainingGaps.length > 0 && (
+                <div className="pipeline-section">
+                  <h4>Mots-cles sans correspondance ({remainingGaps.length})</h4>
+                  <div className="pipeline-tags">
+                    {remainingGaps.map(kw => (
+                      <span key={kw} className="pipeline-tag pipeline-tag--gap">{kw}</span>
+                    ))}
+                  </div>
+                  <p className="pipeline-hint">
+                    Ces mots-cles ne sont pas dans votre CV et n'ont pas de synonyme detectable. Utilisez "Analyser les gaps" pour obtenir des recommandations.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="adapt-changes">
             <h3>Modifications apportees — editables</h3>
@@ -895,11 +1163,182 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
     );
   }
 
+  // ── Analysis view (2-step flow: between form and result) ─────────────────────
+
+  if (analysis && !result) {
+    const estimatedScore = (() => {
+      const selected = analysis.actions.filter(a => selectedActionIds.has(a.id));
+      const gain = selected.reduce((sum, a) => sum + a.scoreGain, 0);
+      return Math.min(100, analysis.score.overall + gain);
+    })();
+
+    const nonCriticalActions = analysis.targetScore100.actions.filter(a => a.impact !== 'critical');
+
+    return (
+      <>
+        <ModuleHeader title="Analyse ATS" onBack={handleRetry}>
+          <button
+            className="module-header-btn module-header-btn-primary"
+            onClick={handleApplyActions}
+            disabled={applying || selectedActionIds.size === 0}
+          >
+            {applying ? 'Application...' : `Appliquer (${selectedActionIds.size})`}
+          </button>
+        </ModuleHeader>
+        <div className="adapt-page">
+          <div className="adapt-analysis">
+
+            {/* Current score */}
+            <div className="analysis-score-current">
+              <div className={`analysis-score-value ${getScoreClass(analysis.score.overall)}`}>
+                {analysis.score.overall}%
+              </div>
+              <div className="analysis-score-label">Score ATS actuel</div>
+            </div>
+
+            {/* Keywords summary */}
+            <div className="analysis-keywords">
+              <div className="analysis-kw-section">
+                <h4>Trouvés ({analysis.matchedKeywords.length})</h4>
+                <div className="analysis-tags">
+                  {analysis.matchedKeywords.map(kw => (
+                    <span key={kw} className="analysis-tag analysis-tag--match">{kw}</span>
+                  ))}
+                </div>
+              </div>
+              {analysis.synonymsFound.length > 0 && (
+                <div className="analysis-kw-section">
+                  <h4>Synonymes détectés ({analysis.synonymsFound.length})</h4>
+                  <div className="analysis-tags">
+                    {analysis.synonymsFound.map(kw => (
+                      <span key={kw} className="analysis-tag analysis-tag--synonym">{kw}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="analysis-kw-section">
+                <h4>Non couverts ({analysis.gaps.length})</h4>
+                <div className="analysis-tags">
+                  {analysis.gaps.map(kw => (
+                    <span key={kw} className="analysis-tag analysis-tag--gap">{kw}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Target 75% */}
+            {analysis.targetScore75.actions.length > 0 && (
+              <div className="analysis-target">
+                <div className="analysis-target-header">
+                  <h3>Pour atteindre ~75%</h3>
+                  <span className="analysis-target-score">Score estimé : {analysis.targetScore75.estimatedScore}%</span>
+                </div>
+                {analysis.targetScore75.actions.map(action => (
+                  <ActionCard key={action.id} action={action} selected={selectedActionIds.has(action.id)} onToggle={toggleAction} />
+                ))}
+              </div>
+            )}
+
+            {/* Target 100% */}
+            {nonCriticalActions.length > 0 && (
+              <div className="analysis-target">
+                <div className="analysis-target-header">
+                  <h3>Pour maximiser le score</h3>
+                  <span className="analysis-target-score">Score estimé : {analysis.targetScore100.estimatedScore}%</span>
+                </div>
+                {nonCriticalActions.map(action => (
+                  <ActionCard key={action.id} action={action} selected={selectedActionIds.has(action.id)} onToggle={toggleAction} />
+                ))}
+              </div>
+            )}
+
+            {/* Estimated score after selection */}
+            <div className="analysis-estimated">
+              <div className="analysis-estimated-label">Score estimé après application</div>
+              <div className={`analysis-estimated-value ${getScoreClass(estimatedScore)}`}>
+                {estimatedScore}%
+              </div>
+              <div className="analysis-estimated-count">
+                {selectedActionIds.size} action{selectedActionIds.size > 1 ? 's' : ''} sélectionnée{selectedActionIds.size > 1 ? 's' : ''}
+              </div>
+            </div>
+
+            {/* Apply button (bottom) */}
+            <div className="adapt-actions">
+              <button
+                className="btn btn-primary"
+                onClick={handleApplyActions}
+                disabled={applying || selectedActionIds.size === 0}
+              >
+                {applying ? (
+                  <>
+                    <LoadingSpinner size="small" />
+                    <span>Application en cours...</span>
+                  </>
+                ) : (
+                  `Appliquer les modifications sélectionnées (${selectedActionIds.size})`
+                )}
+              </button>
+              <button className="btn btn-outline" onClick={handleRetry} disabled={applying}>
+                Recommencer
+              </button>
+            </div>
+
+            {error && <div className="adapt-error">{error}</div>}
+
+            {/* Pipeline logs */}
+            {pipelineLogs.length > 0 && (
+              <div className="pipeline-logs-panel">
+                <button
+                  className="pipeline-logs-toggle"
+                  onClick={() => setShowLogs(!showLogs)}
+                >
+                  {showLogs ? '\u25BC' : '\u25B6'} Pipeline ({pipelineLogs.filter(l => l.type === 'step' && l.status === 'completed').length}/3 étapes)
+                </button>
+                {showLogs && (
+                  <div className="pipeline-logs-content">
+                    {pipelineLogs.map((log, idx) => (
+                      <div key={idx} className={`pipeline-log-entry pipeline-log-${log.type}`}>
+                        {log.type === 'step' && log.status === 'running' && (
+                          <span className="pipeline-log-icon">{'\u23F3'}</span>
+                        )}
+                        {log.type === 'step' && log.status === 'completed' && (
+                          <span className="pipeline-log-icon">{'\u2705'}</span>
+                        )}
+                        {log.type === 'step' && log.status === 'error' && (
+                          <span className="pipeline-log-icon">{'\u274C'}</span>
+                        )}
+                        {log.type === 'log' && (
+                          <span className="pipeline-log-icon">  {'\u2192'}</span>
+                        )}
+                        {log.type === 'error' && (
+                          <span className="pipeline-log-icon">{'\u274C'}</span>
+                        )}
+                        <span className="pipeline-log-message">
+                          {log.type === 'step' && log.status === 'running' && `Étape ${log.step}: ${log.name}...`}
+                          {log.type === 'step' && log.status === 'completed' && `Étape ${log.step}: ${log.name} (${log.durationMs}ms)`}
+                          {log.type === 'step' && log.status === 'error' && `Étape ${log.step}: ${log.name} — ERREUR`}
+                          {log.type === 'log' && log.message}
+                          {log.type === 'error' && log.message}
+                        </span>
+                      </div>
+                    ))}
+                    <div ref={logsEndRef} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
   // ── Form view ────────────────────────────────────────────────────────────────
 
   return (
     <>
-      <ModuleHeader title="Adapter le CV" onBack={onCancel} />
+      <ModuleHeader title="Analyse ATS" onBack={onCancel} />
       <div className="adapt-page">
       <div className="adapt-form">
         <div className="form-section">
@@ -914,22 +1353,7 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
           />
           <p className="form-hint">
             Copiez-collez le texte de l'offre d'emploi. L'IA analysera les mots-clés ATS exacts
-            et adaptera votre CV en consequence.
-          </p>
-        </div>
-
-        <div className="form-section">
-          <label htmlFor="instructions">Instructions personnalisees (optionnel)</label>
-          <textarea
-            id="instructions"
-            value={customInstructions}
-            onChange={e => setCustomInstructions(e.target.value)}
-            placeholder="Ex: Mettre l'accent sur l'experience en management..."
-            rows={4}
-            disabled={loading}
-          />
-          <p className="form-hint">
-            Ajoutez des instructions specifiques pour guider l'adaptation.
+            et adaptera votre CV en conséquence.
           </p>
         </div>
 
@@ -938,31 +1362,16 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
         <div className="adapt-actions">
           <button
             className="btn btn-primary"
-            onClick={handleAdapt}
+            onClick={handleAnalyze}
             disabled={loading || !jobOffer.trim()}
           >
             {loading ? (
               <>
                 <LoadingSpinner size="small" />
-                <span>Adaptation en cours...</span>
+                <span>Analyse en cours...</span>
               </>
             ) : (
-              'Adapter le CV'
-            )}
-          </button>
-          <button
-            className="btn btn-reco"
-            onClick={() => handleGetRecommendations(cvData)}
-            disabled={loading || loadingReco || !jobOffer.trim()}
-            title="Analyser le CV actuel vs l'offre sans l'adapter"
-          >
-            {loadingReco ? (
-              <>
-                <LoadingSpinner size="small" />
-                <span>Analyse...</span>
-              </>
-            ) : (
-              '💡 Recommandations IA'
+              'Analyser'
             )}
           </button>
           <button className="btn btn-outline" onClick={onCancel} disabled={loading}>
@@ -970,23 +1379,58 @@ export function AdaptCVPage({ cvId, cvData, onSaved, onCancel }: AdaptCVPageProp
           </button>
         </div>
 
-        {showReco && (
-          <RecommendationsPanel items={recoItems} loading={loadingReco} />
+        {/* Pipeline Logs — visible during AND after analysis */}
+        {pipelineLogs.length > 0 && (
+          <div className="pipeline-logs-panel pipeline-logs-panel--form">
+            <button
+              className="pipeline-logs-toggle"
+              onClick={() => setShowLogs(!showLogs)}
+            >
+              {showLogs ? '\u25BC' : '\u25B6'} Pipeline ({pipelineLogs.filter(l => l.type === 'step' && l.status === 'completed').length}/3 étapes)
+              {loading && ' — en cours...'}
+            </button>
+            {showLogs && (
+              <div className="pipeline-logs-content">
+                {pipelineLogs.map((log, idx) => (
+                  <div key={idx} className={`pipeline-log-entry pipeline-log-${log.type}`}>
+                    {log.type === 'step' && log.status === 'running' && (
+                      <span className="pipeline-log-icon">{'\u23F3'}</span>
+                    )}
+                    {log.type === 'step' && log.status === 'completed' && (
+                      <span className="pipeline-log-icon">{'\u2705'}</span>
+                    )}
+                    {log.type === 'step' && log.status === 'error' && (
+                      <span className="pipeline-log-icon">{'\u274C'}</span>
+                    )}
+                    {log.type === 'log' && (
+                      <span className="pipeline-log-icon">  {'\u2192'}</span>
+                    )}
+                    {log.type === 'error' && (
+                      <span className="pipeline-log-icon">{'\u274C'}</span>
+                    )}
+                    <span className="pipeline-log-message">
+                      {log.type === 'step' && log.status === 'running' && `Étape ${log.step}: ${log.name}...`}
+                      {log.type === 'step' && log.status === 'completed' && `Étape ${log.step}: ${log.name} (${log.durationMs}ms)`}
+                      {log.type === 'step' && log.status === 'error' && `Étape ${log.step}: ${log.name} — ERREUR`}
+                      {log.type === 'log' && log.message}
+                      {log.type === 'error' && log.message}
+                    </span>
+                  </div>
+                ))}
+                <div ref={logsEndRef} />
+              </div>
+            )}
+          </div>
         )}
 
         <div className="adapt-info">
           <h4>Comment fonctionne l'adaptation ?</h4>
           <ul>
             <li>L'IA analyse l'offre pour extraire les mots-clés ATS <em>exacts</em> (token-exact)</li>
-            <li>1-2 nouvelles missions sont ajoutées avec les tokens verbatim de l'offre</li>
-            <li>Un nouveau projet pertinent peut être généré</li>
-            <li>2-3 compétences ciblées sont ajoutées par catégorie, triées alphabétiquement</li>
+            <li>Les synonymes et paraphrases sont détectés automatiquement</li>
+            <li>Vous choisissez quels remplacements appliquer</li>
             <li>Score ATS avant/après calculé (modèle Jobscan)</li>
-            <li>Missions, projet et compétences sont éditables avant validation</li>
-            <li>
-              "Analyser les gaps" → identifie les mots manquants → "Générer et appliquer" les
-              ajoute directement aux champs éditables
-            </li>
+            <li>Les modifications sont prévisualisées avant application</li>
           </ul>
         </div>
       </div>

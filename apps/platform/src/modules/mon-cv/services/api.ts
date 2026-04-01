@@ -1,4 +1,5 @@
-import type { CV, CVData, CVListItem, CVLogo, ImportPreviewResult, ProcessedImage, AdaptResponse, ModifyResponse, AtsRecommendations, ImprovementResult, CVAdaptation, CVAdaptationListItem } from '../types';
+import type { CV, CVData, CVListItem, CVLogo, ImportPreviewResult, ProcessedImage, AdaptResponse, ModifyResponse, AtsRecommendations, ImprovementResult, CVAdaptation, CVAdaptationListItem, ActionItem, AnalysisResult, JobAnalysis, AtsScore, PipelineTermReplacement } from '../types';
+import type { PipelineLogEvent } from '../types';
 
 const API_BASE = '/mon-cv-api';
 
@@ -193,6 +194,60 @@ export async function deleteLogo(id: number): Promise<void> {
 
 // ============ CV Adaptation ============
 
+// Re-export PipelineLogEvent from types for backward compatibility
+export type { PipelineLogEvent } from '../types';
+
+export async function adaptCVStream(
+  cvData: CVData,
+  jobOffer: string,
+  onEvent: (event: PipelineLogEvent) => void,
+  customInstructions?: string,
+): Promise<AdaptResponse> {
+  const response = await fetch(`${API_BASE}/adapt-stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ cvData, jobOffer, customInstructions }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Erreur lors de l\'adaptation');
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: AdaptResponse | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const payload = line.slice(6).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const event: PipelineLogEvent = JSON.parse(payload);
+          onEvent(event);
+          if (event.type === 'result' && event.data) {
+            result = event.data;
+          }
+        } catch { /* skip parse errors */ }
+      }
+    }
+  }
+
+  if (!result) throw new Error('Pipeline completed without result');
+  return result;
+}
+
 export async function adaptCV(cvData: CVData, jobOffer: string, customInstructions?: string): Promise<AdaptResponse> {
   const response = await fetch(`${API_BASE}/adapt`, {
     method: 'POST',
@@ -366,4 +421,63 @@ export async function downloadAdaptationPDF(id: number, filename?: string): Prom
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ============ CV Analysis (2-step flow) ============
+
+export async function analyzeCVStreamAPI(
+  cvData: CVData,
+  jobOffer: string,
+  onEvent: (event: PipelineLogEvent) => void,
+): Promise<AnalysisResult> {
+  const response = await fetch(`${API_BASE}/analyze-stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ cvData, jobOffer }),
+  });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Erreur lors de l\'analyse');
+  }
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: AnalysisResult | null = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const payload = line.slice(6).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const event = JSON.parse(payload) as PipelineLogEvent;
+          onEvent(event);
+          if (event.type === 'result' && event.data) {
+            result = event.data as AnalysisResult;
+          }
+        } catch { /* skip */ }
+      }
+    }
+  }
+  if (!result) throw new Error('Analysis completed without result');
+  return result;
+}
+
+export async function applyActions(
+  cvData: CVData,
+  actions: ActionItem[],
+  jobAnalysis: JobAnalysis
+): Promise<{ adaptedCV: CVData; replacements: PipelineTermReplacement[]; scoreAfter: AtsScore }> {
+  const response = await fetch(`${API_BASE}/apply-actions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ cvData, actions, jobAnalysis }),
+  });
+  return handleResponse(response);
 }
