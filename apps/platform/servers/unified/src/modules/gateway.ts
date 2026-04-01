@@ -8,7 +8,7 @@ import { asyncHandler } from '@boilerplate/shared/server';
 import { initJiraAuth } from './jiraAuth.js';
 
 // Available apps for permissions
-const AVAILABLE_APPS = ['conges', 'roadmap', 'suivitess', 'delivery', 'mon-cv', 'rag', 'admin'];
+const AVAILABLE_APPS = ['conges', 'roadmap', 'suivitess', 'delivery', 'mon-cv', 'rag', 'design-system', 'admin'];
 
 // Consistent cookie options — must be the same for set AND clear to avoid duplicate cookies in browsers
 function authCookieOptions() {

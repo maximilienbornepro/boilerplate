@@ -79,6 +79,15 @@ export const APPS: AppInfo[] = [
     path: '/rag',
     category: 'main',
   },
+  {
+    id: 'design-system',
+    name: 'Design System',
+    description: 'Tokens, couleurs, typographie et composants',
+    color: '#00bcd4',
+    gradientEnd: '#0097a7',
+    path: '/design-system',
+    category: 'main',
+  },
 ];
 
 export function getAppUrl(appId: string): string {

@@ -12,6 +12,7 @@ const SuivitessApp = lazy(() => import('./modules/suivitess/App'));
 const DeliveryApp = lazy(() => import('./modules/delivery/App'));
 const MonCvApp = lazy(() => import('./modules/mon-cv/App'));
 const RagApp = lazy(() => import('./modules/rag/App'));
+const DesignSystemApp = lazy(() => import('./modules/design-system/App'));
 
 interface User {
   id: number;
@@ -203,6 +204,14 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <RagApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/design-system/*"
+        element={
+          <SuspenseWrapper>
+            <DesignSystemApp onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />
