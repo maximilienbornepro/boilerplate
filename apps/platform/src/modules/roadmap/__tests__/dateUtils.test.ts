@@ -15,6 +15,10 @@ import {
   generateTimeColumns,
   getMonthGroups,
   getExtendedDateRange,
+  getWeekNumber,
+  getTotalWidth,
+  calculatePixelOffset,
+  MONTH_COLUMN_WIDTH,
 } from '../utils/dateUtils';
 
 describe('Date Utils', () => {
@@ -152,8 +156,8 @@ describe('Date Utils', () => {
   });
 
   describe('getColumnWidth', () => {
-    it('should return 40 for month view', () => {
-      expect(getColumnWidth('month')).toBe(40);
+    it('should return 28 for month view (uniform like Congés)', () => {
+      expect(getColumnWidth('month')).toBe(MONTH_COLUMN_WIDTH);
     });
 
     it('should return 80 for quarter view', () => {
@@ -166,14 +170,14 @@ describe('Date Utils', () => {
   });
 
   describe('calculateTaskPosition', () => {
-    it('should calculate correct position in month view', () => {
+    it('should calculate correct position in month view using calendar days', () => {
       const chartStart = new Date(2026, 2, 23); // Monday
-      const taskStart = new Date(2026, 2, 25); // Wednesday
-      const taskEnd = new Date(2026, 2, 27); // Friday
-      const pos = calculateTaskPosition(taskStart, taskEnd, chartStart, 40, 'month');
-      // 2 business days offset, 3 business days duration
-      expect(pos.left).toBe(2 * 40);
-      expect(pos.width).toBe(3 * 40);
+      const taskStart = new Date(2026, 2, 25); // Wednesday (2 days after Monday)
+      const taskEnd = new Date(2026, 2, 27); // Friday (4 days after Monday, inclusive = 3 days span)
+      const pos = calculateTaskPosition(taskStart, taskEnd, chartStart, MONTH_COLUMN_WIDTH, 'month');
+      // 2 calendar days offset, 3 calendar days duration (Wed + Thu + Fri)
+      expect(pos.left).toBe(2 * MONTH_COLUMN_WIDTH);
+      expect(pos.width).toBe(3 * MONTH_COLUMN_WIDTH);
     });
 
     it('should enforce minimum width', () => {
@@ -222,11 +226,39 @@ describe('Date Utils', () => {
   });
 
   describe('generateTimeColumns', () => {
-    it('should generate columns for month view (excluding weekends)', () => {
+    it('should generate columns for month view including weekends', () => {
+      // Mon 23 to Sun 29 March 2026 = 7 days
+      const start = new Date(2026, 2, 23); // Monday
+      const end = new Date(2026, 2, 29); // Sunday
+      const cols = generateTimeColumns(start, end, 'month');
+      expect(cols.length).toBe(7);
+      // All days get their day number label
+      expect(cols[0].label).toBe('23'); // Monday
+      expect(cols[4].label).toBe('27'); // Friday
+      expect(cols[5].label).toBe('28'); // Saturday (weekend)
+      expect(cols[6].label).toBe('29'); // Sunday (weekend)
+    });
+
+    it('should mark weekend columns with isWeekend (uniform width, no per-column width set)', () => {
+      const start = new Date(2026, 2, 27); // Friday
+      const end = new Date(2026, 2, 30); // Monday
+      const cols = generateTimeColumns(start, end, 'month');
+      expect(cols[0].isWeekend).toBe(false);
+      expect(cols[0].width).toBeUndefined(); // uniform — uses default MONTH_COLUMN_WIDTH
+      expect(cols[1].isWeekend).toBe(true); // Saturday
+      expect(cols[1].width).toBeUndefined();
+      expect(cols[2].isWeekend).toBe(true); // Sunday
+      expect(cols[2].width).toBeUndefined();
+      expect(cols[3].isWeekend).toBe(false); // Monday
+      expect(cols[3].width).toBeUndefined();
+    });
+
+    it('should generate 5 columns (Mon-Fri) with no weekends for pure week', () => {
       const start = new Date(2026, 2, 23); // Monday
       const end = new Date(2026, 2, 27); // Friday
       const cols = generateTimeColumns(start, end, 'month');
       expect(cols.length).toBe(5);
+      expect(cols.every(c => !c.isWeekend)).toBe(true);
       expect(cols[0].label).toBe('23');
       expect(cols[4].label).toBe('27');
     });
@@ -238,11 +270,11 @@ describe('Date Utils', () => {
       expect(cols.length).toBe(3); // 3 weeks
     });
 
-    it('should generate monthly columns for year view', () => {
+    it('should generate daily columns for year view', () => {
       const start = new Date(2026, 0, 1);
       const end = new Date(2026, 11, 31);
       const cols = generateTimeColumns(start, end, 'year');
-      expect(cols.length).toBe(12);
+      expect(cols.length).toBe(365);
     });
   });
 
@@ -254,17 +286,92 @@ describe('Date Utils', () => {
       const groups = getMonthGroups(cols, 'month');
       expect(groups.length).toBe(2);
       expect(groups[0].label).toContain('Janvier');
-      expect(groups[1].label).toContain('Fevrier');
+      expect(groups[1].label).toContain('Février');
     });
 
-    it('should group columns by year for year view', () => {
+    it('should group columns by month for year view', () => {
       const start = new Date(2025, 0, 1);
-      const end = new Date(2026, 11, 31);
+      const end = new Date(2025, 11, 31);
       const cols = generateTimeColumns(start, end, 'year');
       const groups = getMonthGroups(cols, 'year');
-      expect(groups.length).toBe(2);
-      expect(groups[0].label).toBe('2025');
-      expect(groups[1].label).toBe('2026');
+      expect(groups.length).toBe(12);
+      expect(groups[0].label).toBe('Janvier');
+      expect(groups[11].label).toBe('Décembre');
+    });
+  });
+
+  describe('getWeekNumber', () => {
+    it('should return 1 for the first week of 2026', () => {
+      // Jan 1 2026 is a Thursday — ISO week 1
+      const date = new Date(2026, 0, 1);
+      expect(getWeekNumber(date)).toBe(1);
+    });
+
+    it('should return correct week number for a known date', () => {
+      // March 16, 2026 is in week 12
+      const date = new Date(2026, 2, 16);
+      expect(getWeekNumber(date)).toBe(12);
+    });
+
+    it('should return 53 or 1 for last week of year boundary', () => {
+      // Dec 28 is always in the last ISO week
+      const date = new Date(2026, 11, 28);
+      const wk = getWeekNumber(date);
+      expect(wk).toBeGreaterThanOrEqual(52);
+    });
+
+    it('should return same week for Mon-Sun of same ISO week', () => {
+      const monday = new Date(2026, 2, 23); // Monday
+      const sunday = new Date(2026, 2, 29); // Sunday
+      expect(getWeekNumber(monday)).toBe(getWeekNumber(sunday));
+    });
+  });
+
+  describe('getTotalWidth', () => {
+    it('should sum column widths using default when not set (month view: uniform 28px)', () => {
+      const cols = [
+        { date: new Date(), label: '1', isToday: false, isWeekend: false },
+        { date: new Date(), label: '2', isToday: false, isWeekend: false },
+        { date: new Date(), label: '3', isToday: false, isWeekend: true },
+        { date: new Date(), label: '4', isToday: false, isWeekend: true },
+        { date: new Date(), label: '5', isToday: false, isWeekend: false },
+      ];
+      expect(getTotalWidth(cols, MONTH_COLUMN_WIDTH)).toBe(5 * MONTH_COLUMN_WIDTH);
+    });
+
+    it('should use per-column width when available (quarter/year view)', () => {
+      const cols = [
+        { date: new Date(), label: 'S1', isToday: false, isWeekend: false, width: 80 },
+        { date: new Date(), label: 'S2', isToday: false, isWeekend: false, width: 80 },
+      ];
+      expect(getTotalWidth(cols, 80)).toBe(160);
+    });
+  });
+
+  describe('calculatePixelOffset', () => {
+    it('should return 0 for first column date', () => {
+      const start = new Date(2026, 2, 23);
+      const end = new Date(2026, 2, 27);
+      const cols = generateTimeColumns(start, end, 'month');
+      expect(calculatePixelOffset(start, cols, MONTH_COLUMN_WIDTH)).toBe(0);
+    });
+
+    it('should return correct offset using uniform calendar-day widths', () => {
+      const start = new Date(2026, 2, 23); // Monday
+      const end = new Date(2026, 2, 27); // Friday
+      const cols = generateTimeColumns(start, end, 'month');
+      // Wednesday is 2 calendar days from Monday (Mon + Tue = 2 * 28 = 56)
+      const wed = new Date(2026, 2, 25);
+      expect(calculatePixelOffset(wed, cols, MONTH_COLUMN_WIDTH)).toBe(2 * MONTH_COLUMN_WIDTH);
+    });
+
+    it('should include weekend columns with same width as weekdays', () => {
+      const start = new Date(2026, 2, 27); // Friday
+      const end = new Date(2026, 2, 30); // Monday
+      const cols = generateTimeColumns(start, end, 'month');
+      // Monday (index 3) = Fri(28) + Sat(28) + Sun(28) = 84
+      const monday = new Date(2026, 2, 30);
+      expect(calculatePixelOffset(monday, cols, MONTH_COLUMN_WIDTH)).toBe(3 * MONTH_COLUMN_WIDTH);
     });
   });
 

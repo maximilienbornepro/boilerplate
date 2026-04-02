@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { Task, ViewMode } from '../../types';
+import type { Task, ViewMode, TimeColumn } from '../../types';
 import { useDragTask } from '../../hooks/useDragTask';
 import { useResizeTask } from '../../hooks/useResizeTask';
 import { calculateTaskPosition, parseDate, getColumnWidth } from '../../utils/dateUtils';
@@ -32,9 +32,11 @@ interface TaskBarProps {
   onDragEnd?: () => void;
   readOnly?: boolean;
   isFocused?: boolean;
+  columns?: TimeColumn[];
+  parentColor?: string;
 }
 
-const ROW_HEIGHT = 64;
+const ROW_HEIGHT = 80;
 const INDENT_SIZE = 24;
 
 export function TaskBar({
@@ -42,11 +44,12 @@ export function TaskBar({
   onMove, onResize, onNameChange, onClick, onDelete, onAddChild, onToggleCollapse,
   onStartDependency, onEndDependency, isDrawingDependency,
   onParentChange, onReorder, draggedTaskId, onDragStart, onDragEnd, readOnly, isFocused,
+  columns, parentColor,
 }: TaskBarProps) {
   const columnWidth = getColumnWidth(viewMode);
   const taskStart = parseDate(task.startDate);
   const taskEnd = parseDate(task.endDate);
-  const { left, width } = calculateTaskPosition(taskStart, taskEnd, chartStartDate, columnWidth, viewMode);
+  const { left, width } = calculateTaskPosition(taskStart, taskEnd, chartStartDate, columnWidth, viewMode, columns);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(task.name);
@@ -57,12 +60,12 @@ export function TaskBar({
   const justInteractedRef = useRef(false);
 
   const { taskBarRef, handleMouseDown } = useDragTask({
-    taskId: task.id, startDate: task.startDate, endDate: task.endDate, chartStartDate, viewMode,
+    taskId: task.id, startDate: task.startDate, endDate: task.endDate, chartStartDate, viewMode, columns,
     onMove: (id, s, e) => { justInteractedRef.current = true; onMove(id, s, e); setTimeout(() => { justInteractedRef.current = false; }, 200); },
   });
 
   const { isResizing, leftOffset, widthOffset, handleResizeStart } = useResizeTask({
-    taskId: task.id, startDate: task.startDate, endDate: task.endDate, chartStartDate, viewMode,
+    taskId: task.id, startDate: task.startDate, endDate: task.endDate, chartStartDate, viewMode, columns,
     onResize: (id, s, e) => { justInteractedRef.current = true; onResize(id, s, e); setTimeout(() => { justInteractedRef.current = false; }, 200); },
   });
 
@@ -135,15 +138,15 @@ export function TaskBar({
   const isDragging = draggedTaskId === task.id;
 
   return (
-    <div className={`${styles.taskRow} ${isResizing ? styles.dragging : ''} ${isDragging ? styles.isDragging : ''} ${isFocused ? styles.focused : ''}`} style={{ height: ROW_HEIGHT }} data-task-id={task.id}>
+    <div className={`${styles.taskRow} ${isResizing ? styles.dragging : ''} ${isDragging ? styles.isDragging : ''} ${isFocused ? styles.focused : ''}`} style={{ height: ROW_HEIGHT, borderBottom: `1px solid ${parentColor ?? task.color}40` }} data-task-id={task.id}>
       <div
         className={[styles.taskName, isDragOver && styles.dragOver, dropPosition === 'above' && styles.dropAbove, dropPosition === 'below' && styles.dropBelow, dropPosition === 'child' && styles.dropChild].filter(Boolean).join(' ')}
-        draggable={!isEditing}
-        onDragStart={handleDragStartHierarchy}
-        onDragEnd={handleDragEndHierarchy}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        draggable={!isEditing && !readOnly}
+        onDragStart={readOnly ? undefined : handleDragStartHierarchy}
+        onDragEnd={readOnly ? undefined : handleDragEndHierarchy}
+        onDragOver={readOnly ? undefined : handleDragOver}
+        onDragLeave={readOnly ? undefined : handleDragLeave}
+        onDrop={readOnly ? undefined : handleDrop}
       >
         {level > 0 && (
           <div className={styles.indentGuides} style={{ width: level * INDENT_SIZE }}>
@@ -160,17 +163,17 @@ export function TaskBar({
         )}
 
         {hasChildren && onToggleCollapse ? (
-          <button className={styles.collapseButton} onClick={(e) => { e.stopPropagation(); onToggleCollapse(task.id); }}>
+          <button className={styles.collapseButton} style={{ color: parentColor ?? task.color }} onClick={(e) => { e.stopPropagation(); onToggleCollapse(task.id); }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}><path d="M7 10l5 5 5-5z" /></svg>
           </button>
         ) : (
-          <div className={styles.taskDot} style={{ backgroundColor: task.color }} />
+          <div className={styles.taskDot} style={{ backgroundColor: parentColor ?? task.color }} />
         )}
 
         {isEditing ? (
           <input ref={inputRef} type="text" className={styles.nameInput} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={handleKeyDown} autoFocus />
         ) : (
-          <span className={`${styles.nameText} ${hasChildren ? styles.parentName : ''}`} title="Double-cliquer pour modifier" onDoubleClick={startEditing}>{task.name}</span>
+          <span className={`${styles.nameText} ${level < 2 ? styles.parentName : ''}`} title="Double-cliquer pour modifier" onDoubleClick={startEditing}>{task.name}</span>
         )}
 
         {dropPosition === 'child' && <span className={styles.dropChildLabel}>→ Enfant</span>}
@@ -189,24 +192,31 @@ export function TaskBar({
 
       <div
         ref={taskBarRef}
-        className={`${styles.taskBar} ${isDrawingDependency ? styles.drawingTarget : ''} ${hasChildren ? styles.parentBar : ''}`}
-        style={{ left: 250 + left, width: Math.max(finalWidth, 20), backgroundColor: hasChildren ? 'transparent' : task.color, color: task.color, transform: resizeTranslateX !== 0 ? `translateX(${resizeTranslateX}px)` : 'none' }}
-        onMouseDown={hasChildren ? undefined : handleMouseDown}
+        className={`${styles.taskBar} ${isDrawingDependency ? styles.drawingTarget : ''} ${level === 0 ? styles.parentBar : level === 1 ? styles.subParentBar : styles.childBar}`}
+        style={{
+          left: 250 + left,
+          width: Math.max(finalWidth, 20),
+          backgroundColor: level < 2 ? task.color : 'transparent',
+          borderColor: level < 2 ? 'transparent' : (parentColor ?? task.color),
+          color: level < 2 ? 'white' : (parentColor ?? task.color),
+          transform: resizeTranslateX !== 0 ? `translateX(${resizeTranslateX}px)` : 'none',
+          cursor: readOnly ? 'default' : undefined,
+        }}
+        onMouseDown={readOnly ? undefined : handleMouseDown}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
       >
-        <div className={`${styles.resizeHandle} ${styles.left}`} data-resize-handle onMouseDown={(e) => handleResizeStart(e, 'left')} />
+        {!readOnly && <div className={`${styles.resizeHandle} ${styles.left}`} data-resize-handle onMouseDown={(e) => handleResizeStart(e, 'left')} />}
         <div className={styles.barContent}>
           {task.progress > 0 && <div className={styles.progressBar} style={{ width: `${task.progress}%` }} />}
           {viewMode !== 'quarter' && viewMode !== 'year' && (
             <span className={styles.barLabel}>
-              {parentName && <span className={styles.barParentName}>{parentName} &rsaquo; </span>}
               {task.name}
             </span>
           )}
         </div>
-        <div className={`${styles.resizeHandle} ${styles.right}`} data-resize-handle onMouseDown={(e) => handleResizeStart(e, 'right')} />
-        {onStartDependency && (
+        {!readOnly && <div className={`${styles.resizeHandle} ${styles.right}`} data-resize-handle onMouseDown={(e) => handleResizeStart(e, 'right')} />}
+        {!readOnly && onStartDependency && (
           <div className={styles.dependencyHandle} data-dependency-handle onClick={(e) => { e.stopPropagation(); onStartDependency(task.id); }} title="Créer une dépendance">
             <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
           </div>

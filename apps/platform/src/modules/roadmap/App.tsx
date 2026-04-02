@@ -5,7 +5,7 @@ import * as api from './services/api';
 import { getNextColor } from './utils/taskUtils';
 import { PlanningList } from './components/PlanningList/PlanningList';
 import { PlanningForm } from './components/PlanningList/PlanningForm';
-import { GanttBoard } from './components/GanttBoard/GanttBoard';
+import { GanttBoard, type GanttBoardHandle } from './components/GanttBoard/GanttBoard';
 import { TaskForm } from './components/TaskForm/TaskForm';
 import { ViewSelector } from './components/ViewSelector/ViewSelector';
 import { SubjectsPanel } from './components/SubjectsPanel/SubjectsPanel';
@@ -44,6 +44,7 @@ function EmbedView({ planningId }: { planningId: string }) {
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const ganttEmbedRef = useRef<GanttBoardHandle | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -60,6 +61,13 @@ function EmbedView({ planningId }: { planningId: string }) {
     };
     load();
   }, [planningId]);
+
+  // Scroll to today once GanttBoard is mounted and data is loaded
+  useEffect(() => {
+    if (!loading && planning) {
+      setTimeout(() => ganttEmbedRef.current?.scrollToToday(), 150);
+    }
+  }, [loading, planning]);
 
   const noop = useCallback(() => {}, []);
   const noopTask = useCallback((_id: string, _u: Partial<Task>) => {}, []);
@@ -78,10 +86,11 @@ function EmbedView({ planningId }: { planningId: string }) {
       </div>
       <div className="roadmap-gantt-container">
         <GanttBoard
+          ref={ganttEmbedRef}
           planning={planning} tasks={tasks} dependencies={dependencies} viewMode={viewMode} markers={markers}
           onTaskUpdate={noopTask} onTaskClick={noopClick} onTaskDelete={noopStr}
           onAddTask={noop} onAddChildTask={noopStr} onCreateDependency={noopDep} onDeleteDependency={noopStr}
-          readOnly
+          readOnly autoHeight
         />
       </div>
     </div>
@@ -97,6 +106,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [markers, setMarkers] = useState<Marker[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [yearOffset, setYearOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,6 +117,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showSubjectsPanel, setShowSubjectsPanel] = useState(false);
   const [copiedPreview, setCopiedPreview] = useState(false);
+  const ganttScrollRef = useRef<GanttBoardHandle | null>(null);
   const platformSettings = usePlatformSettings();
   const integrationEnabled = platformSettings['integration_roadmap_suivitess'] ?? false;
 
@@ -345,6 +356,11 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
     setTimeout(() => setCopiedPreview(false), 2000);
   }, [selectedPlanning]);
 
+  const handleTodayClick = useCallback(() => {
+    setYearOffset(0);
+    ganttScrollRef.current?.scrollToToday();
+  }, []);
+
   const handleNavigateHome = useCallback(() => {
     if (onNavigate) onNavigate('/'); else window.location.href = '/';
   }, [onNavigate]);
@@ -369,16 +385,30 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
       {selectedPlanning ? (
         <>
           <ModuleHeader title={selectedPlanning.name} onBack={handleBack}>
-            <ViewSelector viewMode={viewMode} onViewModeChange={setViewMode} />
-            <button className="module-header-btn" onClick={handleCopyPreviewLink}>
-              {copiedPreview ? 'Copie !' : 'Lien'}
+            <button className="module-header-btn" onClick={handleTodayClick}>
+              Aujourd'hui
+            </button>
+            <ViewSelector
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              yearOffset={yearOffset}
+              onYearOffsetChange={setYearOffset}
+              currentYear={new Date().getFullYear() + yearOffset}
+            />
+            <button className="module-header-btn module-header-btn-primary" onClick={handleCopyPreviewLink}>
+              {copiedPreview ? 'Copié !' : 'Partager'}
             </button>
           </ModuleHeader>
 
           <div className={`roadmap-planning-view ${showSubjectsPanel && selectedTask ? 'roadmap-with-panel' : ''}`}>
             <div className="roadmap-gantt-container">
               <GanttBoard
-                planning={selectedPlanning}
+                ref={ganttScrollRef}
+                planning={yearOffset !== 0 ? {
+                  ...selectedPlanning,
+                  startDate: `${new Date(selectedPlanning.startDate).getFullYear() + yearOffset}-${selectedPlanning.startDate.slice(5)}`,
+                  endDate: `${new Date(selectedPlanning.endDate).getFullYear() + yearOffset}-${selectedPlanning.endDate.slice(5)}`,
+                } : selectedPlanning}
                 tasks={tasks}
                 dependencies={dependencies}
                 viewMode={viewMode}

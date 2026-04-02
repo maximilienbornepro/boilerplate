@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
-import type { ViewMode } from '../types';
-import { calculateDateFromPosition, getColumnWidth, parseDate, formatDate, getDaysBetween, getBusinessDaysBetween, addBusinessDays } from '../utils/dateUtils';
+import type { ViewMode, TimeColumn } from '../types';
+import { calculateDateFromPosition, getColumnWidth, parseDate, formatDate, getDaysBetween, calculatePixelOffset, addDays } from '../utils/dateUtils';
 
 interface UseDragTaskOptions {
   taskId: string;
@@ -8,21 +8,21 @@ interface UseDragTaskOptions {
   endDate: string;
   chartStartDate: Date;
   viewMode: ViewMode;
+  columns?: TimeColumn[];
   onMove: (taskId: string, newStart: string, newEnd: string) => void;
 }
 
 const DRAG_THRESHOLD = 5;
 
-export function useDragTask({ taskId, startDate, endDate, chartStartDate, viewMode, onMove }: UseDragTaskOptions) {
+export function useDragTask({ taskId, startDate, endDate, chartStartDate, viewMode, columns, onMove }: UseDragTaskOptions) {
   const taskBarRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
   const hasDraggedRef = useRef(false);
   const isDraggingRef = useRef(false);
 
   const columnWidth = getColumnWidth(viewMode);
-  const taskDuration = viewMode === 'month'
-    ? getBusinessDaysBetween(parseDate(startDate), parseDate(endDate))
-    : getDaysBetween(parseDate(startDate), parseDate(endDate));
+  // Always use calendar days for duration (month view now uses uniform 28px columns like Congés)
+  const taskDuration = getDaysBetween(parseDate(startDate), parseDate(endDate));
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDraggingRef.current || !taskBarRef.current) return;
@@ -36,21 +36,22 @@ export function useDragTask({ taskId, startDate, endDate, chartStartDate, viewMo
 
     const deltaX = e.clientX - startXRef.current;
     const currentStart = parseDate(startDate);
-    let startOffset: number;
+    let startPixel: number;
 
-    if (viewMode === 'month') {
-      startOffset = getBusinessDaysBetween(chartStartDate, currentStart);
+    if ((viewMode === 'month' || viewMode === 'year') && columns && columns.length > 0) {
+      startPixel = calculatePixelOffset(currentStart, columns, columnWidth);
+    } else if (viewMode === 'month') {
+      startPixel = getDaysBetween(chartStartDate, currentStart) * columnWidth;
     } else if (viewMode === 'quarter') {
-      startOffset = getDaysBetween(chartStartDate, currentStart) / 7;
+      startPixel = (getDaysBetween(chartStartDate, currentStart) / 7) * columnWidth;
     } else {
-      startOffset = (currentStart.getFullYear() - chartStartDate.getFullYear()) * 12 +
+      const monthOff = (currentStart.getFullYear() - chartStartDate.getFullYear()) * 12 +
         (currentStart.getMonth() - chartStartDate.getMonth()) + (currentStart.getDate() - 1) / 30;
+      startPixel = monthOff * columnWidth;
     }
 
-    const newStartDate = calculateDateFromPosition(deltaX + (startOffset * columnWidth), chartStartDate, columnWidth, viewMode);
-    const newEndDate = viewMode === 'month'
-      ? addBusinessDays(newStartDate, taskDuration)
-      : new Date(newStartDate.getTime() + taskDuration * 24 * 60 * 60 * 1000);
+    const newStartDate = calculateDateFromPosition(deltaX + startPixel, chartStartDate, columnWidth, viewMode, columns);
+    const newEndDate = addDays(newStartDate, taskDuration);
 
     isDraggingRef.current = false;
     document.removeEventListener('mousemove', handleMouseMove);

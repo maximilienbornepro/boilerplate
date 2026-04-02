@@ -64,7 +64,7 @@
 .roadmap-embed {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: auto;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-family-mono);

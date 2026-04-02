@@ -30,26 +30,15 @@ export function ViewControls({
         </button>
       </div>
 
-      <div className={styles.selector}>
-        <button
-          className={`${styles.button} ${viewMode === 'month' ? styles.active : ''}`}
-          onClick={() => onViewModeChange('month')}
-        >
-          Mois
-        </button>
-        <button
-          className={`${styles.button} ${viewMode === 'quarter' ? styles.active : ''}`}
-          onClick={() => onViewModeChange('quarter')}
-        >
-          Trim.
-        </button>
-        <button
-          className={`${styles.button} ${viewMode === 'year' ? styles.active : ''}`}
-          onClick={() => onViewModeChange('year')}
-        >
-          Année
-        </button>
-      </div>
+      <select
+        className="module-header-btn"
+        value={viewMode}
+        onChange={(e) => onViewModeChange(e.target.value as ViewMode)}
+      >
+        <option value="month">Mois</option>
+        <option value="quarter">Trimestre</option>
+        <option value="year">Année</option>
+      </select>
     </div>
   );
 }

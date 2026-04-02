@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect, useState } from 'react';
+import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import type { Member, Leave, ViewMode } from '../../types';
 import { LeaveBar } from './LeaveBar';
 import { isHoliday, getDateRangeWarnings } from '../../utils/holidays';
@@ -23,7 +23,7 @@ const COLUMN_WIDTHS: Record<string, number> = {
   quarter: 10,
 };
 
-const MONTH_NAMES = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 const ROW_HEIGHT = 72;
 const NAME_COL_WIDTH = 200;
 
@@ -34,12 +34,22 @@ interface DayColumn {
   isWeekend: boolean;
   isHoliday: boolean;
   isToday: boolean;
+  isWeekStart: boolean;
+  weekNumber: number;
 }
 
 interface MonthGroup {
   label: string;
   startIndex: number;
   span: number;
+}
+
+function getWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 }
 
 function generateColumns(start: string, end: string): DayColumn[] {
@@ -64,6 +74,8 @@ function generateColumns(start: string, end: string): DayColumn[] {
       isWeekend: dow === 0 || dow === 6,
       isHoliday: isHoliday(dateStr),
       isToday: dateStr === todayLocal,
+      isWeekStart: dow === 1,
+      weekNumber: getWeekNumber(current),
     });
     current.setDate(current.getDate() + 1);
   }
@@ -226,16 +238,33 @@ export function LeaveCalendar({
     };
   }, [colWidth, resizePreview, onLeaveResize]);
 
-  // Scroll to today on mount + when trigger changes
+  // Helper: pixel offset of the 1st day of the current month
+  const getStartOfMonthOffset = useCallback(() => {
+    const today = new Date();
+    const startOfMonthDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+    const idx = columns.findIndex(c => c.date === startOfMonthDate);
+    return Math.max(0, (idx >= 0 ? idx : Math.max(0, todayIndex)) * colWidth);
+  }, [columns, colWidth, todayIndex]);
+
+  // Initial mount: instant scroll to 1st of current month (no visible jump)
   useEffect(() => {
-    if (todayIndex < 0) return;
+    let raf: number;
+    raf = requestAnimationFrame(() => {
+      const grid = gridScrollRef.current;
+      if (!grid) return;
+      grid.scrollTo({ left: getStartOfMonthOffset(), behavior: 'instant' });
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Aujourd'hui button: smooth scroll to 1st of current month
+  useEffect(() => {
+    if (!scrollToTodayTrigger) return;
     const grid = gridScrollRef.current;
     if (!grid) return;
-
-    const todayOffset = todayIndex * colWidth;
-    const containerWidth = grid.clientWidth;
-    grid.scrollLeft = Math.max(0, todayOffset - containerWidth / 2);
-  }, [todayIndex, colWidth, scrollToTodayTrigger]);
+    grid.scrollTo({ left: getStartOfMonthOffset(), behavior: 'smooth' });
+  }, [scrollToTodayTrigger, getStartOfMonthOffset]);
 
   return (
     <div className={styles.container} ref={containerRef}>
@@ -259,16 +288,27 @@ export function LeaveCalendar({
             {/* Day row */}
             {viewMode !== 'year' && (
               <div className={styles.dayRow}>
-                {columns.map((col, i) => (
-                  <div
-                    key={i}
-                    className={`${styles.dayLabel} ${col.isWeekend ? styles.dayWeekend : ''} ${col.isHoliday ? styles.dayHoliday : ''} ${col.isToday ? styles.dayToday : ''}`}
-                    style={{ left: i * colWidth, width: colWidth }}
-                    title={col.isHoliday ? 'Jour férié' : undefined}
-                  >
-                    {viewMode === 'month' ? col.day : ''}
-                  </div>
-                ))}
+                {viewMode === 'quarter'
+                  ? columns.map((col, i) => col.isWeekStart ? (
+                      <div
+                        key={i}
+                        className={styles.weekLabel}
+                        style={{ left: i * colWidth, width: Math.min(7, columns.length - i) * colWidth }}
+                      >
+                        S{col.weekNumber}
+                      </div>
+                    ) : null)
+                  : columns.map((col, i) => (
+                      <div
+                        key={i}
+                        className={`${styles.dayLabel} ${col.isWeekend ? styles.dayWeekend : ''} ${col.isHoliday ? styles.dayHoliday : ''} ${col.isToday ? styles.dayToday : ''}`}
+                        style={{ left: i * colWidth, width: colWidth }}
+                        title={col.isHoliday ? 'Jour férié' : undefined}
+                      >
+                        {col.day}
+                      </div>
+                    ))
+                }
               </div>
             )}
           </div>
@@ -295,7 +335,7 @@ export function LeaveCalendar({
               {columns.map((col, i) => (
                 <div
                   key={i}
-                  className={`${styles.gridCol} ${col.isWeekend ? styles.weekend : ''} ${col.isHoliday ? styles.holiday : ''}`}
+                  className={`${styles.gridCol} ${viewMode === 'year' ? styles.yearViewCol : ''} ${viewMode === 'quarter' ? styles.quarterViewCol : ''} ${col.isWeekend && viewMode !== 'year' ? styles.weekend : ''} ${col.isHoliday && viewMode !== 'year' ? styles.holiday : ''} ${(col.isWeekStart && viewMode === 'year') || (col.isWeekStart && viewMode === 'quarter') ? styles.weekStart : ''}`}
                   style={{ left: i * colWidth, width: colWidth }}
                 />
               ))}
