@@ -1,0 +1,15 @@
+.shared-dropzone {
+  border: 2px dashed var(--border-color);
+  padding: var(--spacing-xl);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.shared-dropzone:hover { border-color: var(--accent-primary); }
+.shared-dropzone--dragging { border-color: var(--accent-primary); background: var(--accent-light); }
+
+.shared-dropzone-content { display: flex; flex-direction: column; align-items: center; gap: var(--spacing-sm); }
+.shared-dropzone-icon { font-size: var(--font-size-2xl); }
+.shared-dropzone-label { font-size: var(--font-size-sm); color: var(--text-secondary); }
+.shared-dropzone-hint { font-size: var(--font-size-xs); color: var(--text-muted); }
+.shared-dropzone-error { font-size: var(--font-size-xs); color: var(--error); }

@@ -1,11 +1,15 @@
 import { type FormEvent, useCallback } from 'react';
-import type { Project } from '../../types';
 import './ProjectEditor.css';
 
-interface ProjectEditorProps {
+export interface ProjectItem {
+  title: string;
+  description?: string;
+}
+
+export interface ProjectEditorProps {
   label: string;
-  projects: Project[];
-  onChange: (projects: Project[]) => void;
+  projects: ProjectItem[];
+  onChange: (projects: ProjectItem[]) => void;
   placeholder?: string;
 }
 

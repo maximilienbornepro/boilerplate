@@ -1,0 +1,40 @@
+.shared-score-block {
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-md);
+}
+
+.shared-score-header {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--spacing-sm);
+}
+
+.shared-score-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.shared-score-side { text-align: center; }
+.shared-score-label { font-size: var(--font-size-xs); color: var(--text-muted); }
+.shared-score-value { font-size: var(--font-size-2xl); font-weight: var(--font-weight-bold); }
+.shared-score-arrow { color: var(--text-muted); font-size: var(--font-size-lg); }
+.shared-score-delta { font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); }
+.shared-score-delta.positive { color: var(--success); }
+.shared-score-delta.negative { color: var(--error); }
+
+.shared-score--good { color: var(--success); }
+.shared-score--medium { color: var(--warning); }
+.shared-score--bad { color: var(--error); }
+
+.shared-score-metrics { margin-top: var(--spacing-sm); display: flex; flex-direction: column; gap: var(--spacing-xs); }
+.shared-score-metric { display: flex; align-items: center; gap: var(--spacing-sm); }
+.shared-score-metric-label { font-size: var(--font-size-xs); color: var(--text-muted); min-width: 100px; }
+.shared-score-metric-bar { flex: 1; height: 6px; background: var(--bg-hover); overflow: hidden; }
+.shared-score-metric-fill { height: 100%; transition: width 0.3s; }
+.shared-score-metric-value { font-size: var(--font-size-xs); font-family: var(--font-family-mono); min-width: 35px; text-align: right; }
+
+.shared-score-missing { margin-top: var(--spacing-sm); font-size: var(--font-size-xs); color: var(--error); }

@@ -51,5 +51,36 @@ export type { FormFieldProps } from './FormField/FormField.js';
 export { ToggleGroup } from './ToggleGroup/ToggleGroup.js';
 export type { ToggleGroupProps, ToggleOption } from './ToggleGroup/ToggleGroup.js';
 
+// ProjectEditor
+export { ProjectEditor } from './ProjectEditor/ProjectEditor.js';
+export type { ProjectItem, ProjectEditorProps } from './ProjectEditor/ProjectEditor.js';
+
+// MenuDropdown
+export { MenuDropdown } from './MenuDropdown/MenuDropdown.js';
+export type { MenuDropdownItem, MenuDropdownProps } from './MenuDropdown/MenuDropdown.js';
+
+// InlineEdit
+export { InlineEdit } from './InlineEdit/InlineEdit.js';
+export type { InlineEditProps } from './InlineEdit/InlineEdit.js';
+
+// FileDragDropZone
+export { FileDragDropZone } from './FileDragDropZone/FileDragDropZone.js';
+export type { FileDragDropZoneProps } from './FileDragDropZone/FileDragDropZone.js';
+
+// ScoreBlock
+export { ScoreBlock } from './ScoreBlock/ScoreBlock.js';
+export type { ScoreBlockProps, ScoreMetric } from './ScoreBlock/ScoreBlock.js';
+
+// ActionCard
+export { ActionCard } from './ActionCard/ActionCard.js';
+export type { ActionCardProps } from './ActionCard/ActionCard.js';
+
+// RecommendationItem
+export { RecommendationItem } from './RecommendationItem/RecommendationItem.js';
+export type { RecommendationItemProps } from './RecommendationItem/RecommendationItem.js';
+
+// Hooks
+export { useAutoResize, autoResizeElement } from '../hooks/useAutoResize.js';
+
 // Auth hooks
 export { useGatewayAuth, AuthGuard, useGatewayUser, GatewayAuthProvider } from '../hooks/useGatewayAuth.js';
