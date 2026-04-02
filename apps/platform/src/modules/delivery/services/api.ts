@@ -77,6 +77,7 @@ export interface TaskData {
   sprintName: string | null;
   source: 'manual' | 'jira';
   parentTaskId: string | null;
+  description?: string | null;
 }
 
 export async function fetchTasks(incrementId: string): Promise<TaskData[]> {
@@ -95,6 +96,7 @@ export async function createTask(task: {
   incrementId?: string;
   sprintName?: string;
   source?: 'manual' | 'jira';
+  description?: string | null;
 }): Promise<TaskData> {
   const response = await fetch(`${API_BASE}/tasks`, {
     method: 'POST',

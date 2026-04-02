@@ -20,3 +20,12 @@ export function mapIssueType(issueType: string): DeliveryTaskType {
 export function formatJiraTitle(key: string, summary: string): string {
   return `[${key}] ${summary}`;
 }
+
+/**
+ * Strips the Jira key prefix from a title.
+ * ex: "[PROJ-42] Fix login bug" → "Fix login bug"
+ * Returns the original title if no prefix found.
+ */
+export function stripJiraKey(title: string): string {
+  return title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '');
+}

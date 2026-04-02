@@ -21,7 +21,10 @@ import {
   checkJiraConnected,
 } from './services/api';
 import type { Task, IncrementState, HiddenTask } from './types';
-import { transformTask, buildTaskTree, computeContainerRowSpan } from './utils/taskTransform';
+import { transformTask, buildTaskTree } from './utils/taskTransform';
+
+// Containers always occupy 2 rows on the grid (fixed height)
+const CONTAINER_ROW_SPAN = 2;
 import { buildRowTracker } from './utils/taskLoading';
 import './App.css';
 import './index.css';
@@ -259,40 +262,29 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
     const container = tasks.find(t => t.id === containerId);
     if (!container) return;
 
-    // Count current children of this container
-    const currentChildCount = tasks.filter(t => t.parentTaskId === containerId).length;
-    const newChildCount = currentChildCount + 1;
-    const newRowSpan = computeContainerRowSpan(newChildCount);
-
-    // Optimistic update: set parentTaskId + update container rowSpan
+    // Optimistic update
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id === childId) return { ...t, parentTaskId: containerId };
-        if (t.id === containerId) return { ...t, rowSpan: newRowSpan };
+        if (t.id === containerId) return { ...t, rowSpan: CONTAINER_ROW_SPAN };
         return t;
       })
     );
 
     try {
       await nestTaskApi(childId, containerId);
-      // Save new rowSpan for the container position
       await saveTaskPosition({
         taskId: containerId,
         incrementId: selectedIncrement,
         startCol: container.startCol ?? 0,
         endCol: container.endCol ?? 2,
         row: container.row ?? 0,
-        rowSpan: newRowSpan,
+        rowSpan: CONTAINER_ROW_SPAN,
       });
     } catch (err) {
       console.error('Failed to nest task:', err);
-      // Revert
       setTasks((prev) =>
-        prev.map((t) => {
-          if (t.id === childId) return { ...t, parentTaskId: null };
-          if (t.id === containerId) return { ...t, rowSpan: computeContainerRowSpan(currentChildCount) };
-          return t;
-        })
+        prev.map((t) => t.id === childId ? { ...t, parentTaskId: null } : t)
       );
     }
   }, [tasks, selectedIncrement]);
@@ -304,52 +296,29 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
 
     const containerId = child.parentTaskId;
     const container = tasks.find(t => t.id === containerId);
-    const currentChildCount = tasks.filter(t => t.parentTaskId === containerId).length;
-    const newChildCount = Math.max(0, currentChildCount - 1);
-    const newRowSpan = computeContainerRowSpan(newChildCount);
 
-    // Find a free row to place the unnested task
     const maxEndRow = Math.max(0, ...tasks
       .filter(t => !t.parentTaskId)
       .map(t => (t.row ?? 0) + (t.rowSpan ?? 1))
     );
 
-    // Optimistic update
     setTasks((prev) =>
       prev.map((t) => {
-        if (t.id === childId) {
-          return { ...t, parentTaskId: null, startCol: 0, endCol: 2, row: maxEndRow, rowSpan: 1 };
-        }
-        if (t.id === containerId) return { ...t, rowSpan: newRowSpan };
+        if (t.id === childId) return { ...t, parentTaskId: null, startCol: 0, endCol: 2, row: maxEndRow, rowSpan: 1 };
+        if (t.id === containerId) return { ...t, rowSpan: CONTAINER_ROW_SPAN };
         return t;
       })
     );
 
     try {
       await unnestTaskApi(childId);
-      // Save position for the unnested child
-      await saveTaskPosition({
-        taskId: childId,
-        incrementId: selectedIncrement,
-        startCol: 0,
-        endCol: 2,
-        row: maxEndRow,
-        rowSpan: 1,
-      });
-      // Update container rowSpan
+      await saveTaskPosition({ taskId: childId, incrementId: selectedIncrement, startCol: 0, endCol: 2, row: maxEndRow, rowSpan: 1 });
       if (container) {
-        await saveTaskPosition({
-          taskId: containerId,
-          incrementId: selectedIncrement,
-          startCol: container.startCol ?? 0,
-          endCol: container.endCol ?? 2,
-          row: container.row ?? 0,
-          rowSpan: newRowSpan,
-        });
+        await saveTaskPosition({ taskId: containerId, incrementId: selectedIncrement, startCol: container.startCol ?? 0, endCol: container.endCol ?? 2, row: container.row ?? 0, rowSpan: CONTAINER_ROW_SPAN });
       }
     } catch (err) {
       console.error('Failed to unnest task:', err);
-      loadTasks(); // Reload on error to restore consistent state
+      loadTasks();
     }
   }, [tasks, selectedIncrement, loadTasks]);
 
@@ -380,10 +349,11 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
         sprintName: taskData.sprintName,
         source: 'manual',
         parentTaskId: null,
+        description: null,
         startCol: 0,
         endCol: 2,
         row: maxEndRow,
-        rowSpan: 1,
+        rowSpan: CONTAINER_ROW_SPAN,
       };
 
       setTasks((prev) => [...prev, newTask]);
@@ -394,7 +364,7 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
         startCol: 0,
         endCol: 2,
         row: maxEndRow,
-        rowSpan: 1,
+        rowSpan: CONTAINER_ROW_SPAN,
       });
 
       setNewTaskTitle('');

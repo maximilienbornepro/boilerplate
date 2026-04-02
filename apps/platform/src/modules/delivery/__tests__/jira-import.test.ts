@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapIssueType, formatJiraTitle } from '../utils/jiraUtils';
+import { mapIssueType, formatJiraTitle, stripJiraKey } from '../utils/jiraUtils';
 
 describe('Jira Import — utilitaires', () => {
   describe('mapIssueType', () => {
@@ -52,6 +52,30 @@ describe('Jira Import — utilitaires', () => {
       const summary = 'Ajouter la page de profil';
       const title = formatJiraTitle('KEY-99', summary);
       expect(title.endsWith(summary)).toBe(true);
+    });
+  });
+
+  describe('stripJiraKey', () => {
+    it('retire le prefixe [KEY-123]', () => {
+      expect(stripJiraKey('[PROJ-42] Fix login bug')).toBe('Fix login bug');
+    });
+
+    it('retire le prefixe avec underscore dans le projet', () => {
+      expect(stripJiraKey('[MY_PROJECT-1] Task title')).toBe('Task title');
+    });
+
+    it('ne modifie pas un titre sans prefixe', () => {
+      expect(stripJiraKey('Tache manuelle')).toBe('Tache manuelle');
+    });
+
+    it('gere les titres vides', () => {
+      expect(stripJiraKey('')).toBe('');
+    });
+
+    it('roundtrip formatJiraTitle → stripJiraKey retourne le summary', () => {
+      const summary = 'Corriger le bug de login';
+      const title = formatJiraTitle('PROJ-42', summary);
+      expect(stripJiraKey(title)).toBe(summary);
     });
   });
 

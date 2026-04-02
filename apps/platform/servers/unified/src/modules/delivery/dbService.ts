@@ -22,6 +22,7 @@ export interface TaskRow {
   sprintName: string | null;
   source: 'manual' | 'jira';
   parentTaskId: string | null;
+  description: string | null;
 }
 
 function mapTaskRow(row: Record<string, unknown>): TaskRow {
@@ -38,10 +39,11 @@ function mapTaskRow(row: Record<string, unknown>): TaskRow {
     sprintName: row.sprint_name as string | null,
     source: (row.source as 'manual' | 'jira') || 'manual',
     parentTaskId: row.parent_task_id as string | null,
+    description: row.description as string | null,
   };
 }
 
-const TASK_COLUMNS = 'id, title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name, source, parent_task_id';
+const TASK_COLUMNS = 'id, title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name, source, parent_task_id, description';
 
 export async function getAllTasks(incrementId: string): Promise<TaskRow[]> {
   const result = await pool.query(
@@ -62,10 +64,11 @@ export async function createTask(task: {
   incrementId?: string;
   sprintName?: string;
   source?: 'manual' | 'jira';
+  description?: string | null;
 }): Promise<TaskRow> {
   const result = await pool.query(
-    `INSERT INTO delivery_tasks (title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name, source)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO delivery_tasks (title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name, source, description)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING ${TASK_COLUMNS}`,
     [
       task.title,
@@ -78,6 +81,7 @@ export async function createTask(task: {
       task.incrementId || null,
       task.sprintName || null,
       task.source || 'manual',
+      task.description || null,
     ]
   );
   return mapTaskRow(result.rows[0]);
@@ -94,6 +98,7 @@ export async function updateTask(id: string, updates: Partial<{
   incrementId: string;
   sprintName: string;
   parentTaskId: string | null;
+  description: string | null;
 }>): Promise<TaskRow | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -109,6 +114,7 @@ export async function updateTask(id: string, updates: Partial<{
   if (updates.incrementId !== undefined) { fields.push(`increment_id = $${idx++}`); values.push(updates.incrementId); }
   if (updates.sprintName !== undefined) { fields.push(`sprint_name = $${idx++}`); values.push(updates.sprintName); }
   if (updates.parentTaskId !== undefined) { fields.push(`parent_task_id = $${idx++}`); values.push(updates.parentTaskId); }
+  if (updates.description !== undefined) { fields.push(`description = $${idx++}`); values.push(updates.description); }
 
   if (fields.length === 0) return null;
 
@@ -488,6 +494,7 @@ export async function initDeliveryDb(): Promise<void> {
   try {
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS source VARCHAR(10) DEFAULT 'manual'`);
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS parent_task_id UUID REFERENCES delivery_tasks(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS description TEXT`);
     await pool.query(`ALTER TABLE delivery_positions ADD COLUMN IF NOT EXISTS row_span INTEGER NOT NULL DEFAULT 1`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_delivery_tasks_parent ON delivery_tasks(parent_task_id)`);
     // Backfill source for existing Jira tasks

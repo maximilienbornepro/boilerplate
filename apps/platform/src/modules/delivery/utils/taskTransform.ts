@@ -48,6 +48,7 @@ export function transformTask(
     sprintName: taskData.sprintName,
     source: taskData.source || 'manual',
     parentTaskId: taskData.parentTaskId,
+    description: taskData.description ?? null,
   };
 
   if (savedPosition) {

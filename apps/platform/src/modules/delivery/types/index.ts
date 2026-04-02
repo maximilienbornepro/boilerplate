@@ -28,6 +28,7 @@ export interface Task {
   source: TaskSource;
   parentTaskId?: string | null;
   children?: Task[];
+  description?: string | null;
   // Orphan tracking (task not in active sprints)
   isOrphan?: boolean;
 }

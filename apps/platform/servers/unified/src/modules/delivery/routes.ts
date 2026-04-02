@@ -18,7 +18,7 @@ export function createDeliveryRoutes(): Router {
 
   // Create a new task
   router.post('/tasks', asyncHandler(async (req, res) => {
-    const { title, type, status, storyPoints, estimatedDays, assignee, priority, incrementId, sprintName, source } = req.body;
+    const { title, type, status, storyPoints, estimatedDays, assignee, priority, incrementId, sprintName, source, description } = req.body;
 
     if (!title) {
       res.status(400).json({ error: 'title is required' });
@@ -36,6 +36,7 @@ export function createDeliveryRoutes(): Router {
       incrementId,
       sprintName,
       source: source || 'manual',
+      description: description || null,
     });
     res.status(201).json(task);
   }));
