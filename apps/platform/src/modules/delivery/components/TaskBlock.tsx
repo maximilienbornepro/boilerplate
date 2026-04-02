@@ -36,9 +36,14 @@ interface TaskBlockProps {
   onDelete?: (taskId: string) => void;
   onResize?: (taskId: string, newStartCol: number, newEndCol: number) => void;
   onMove?: (taskId: string, newStartCol: number, newRow: number) => void;
+  onNestTask?: (childId: string, containerId: string) => void;
+  onUnnest?: (childId: string) => void;
 }
 
-export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpdate, onDelete, onResize, onMove }: TaskBlockProps) {
+export function TaskBlock({
+  task, totalCols, rowHeight, readOnly = false,
+  onUpdate, onDelete, onResize, onMove, onNestTask, onUnnest,
+}: TaskBlockProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(task.title);
   const [isResizing, setIsResizing] = useState<'left' | 'right' | null>(null);
@@ -52,14 +57,17 @@ export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpda
   const startColRef = useRef({ start: 0, end: 0 });
   const startRowRef = useRef(0);
 
+  const isContainer = task.source === 'manual';
   const startCol = task.startCol ?? 0;
   const endCol = task.endCol ?? startCol + 1;
   const row = task.row ?? 0;
+  const rowSpan = task.rowSpan ?? 1;
   const taskWidth = endCol - startCol;
   // Add horizontal gap between tasks (3px on each side)
   const gap = 3;
   const widthPercent = (taskWidth / totalCols) * 100;
   const leftPercent = (startCol / totalCols) * 100;
+  const children = task.children ?? [];
 
   const statusInfo = getStatusInfo(task.status);
 
@@ -81,7 +89,7 @@ export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpda
 
   const handleTaskDoubleClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('a') || target.closest('input') || target.closest(`.${styles.resizeHandle}`)) {
+    if (target.closest('a') || target.closest('input') || target.closest(`.${styles.resizeHandle}`) || target.closest(`.${styles.childChip}`)) {
       return;
     }
 
@@ -155,10 +163,11 @@ export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpda
   }, [readOnly, startCol, endCol, totalCols, task.id, onResize]);
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
-    if (isEditing || isResizing || readOnly || !onMove) return;
+    if (isEditing || isResizing || readOnly) return;
+    if (!onMove && !onNestTask) return;
 
     const target = e.target as HTMLElement;
-    if (target.closest(`.${styles.resizeHandle}`) || target.closest(`.${styles.deleteBtn}`)) {
+    if (target.closest(`.${styles.resizeHandle}`) || target.closest(`.${styles.deleteBtn}`) || target.closest(`.${styles.childChip}`)) {
       return;
     }
 
@@ -170,19 +179,64 @@ export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpda
     startRowRef.current = row;
     setDragOffset({ x: 0, y: 0 });
 
+    // Track highlighted container during drag (direct DOM manipulation for perf)
+    let currentHighlightEl: Element | null = null;
+
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const deltaX = moveEvent.clientX - startXRef.current;
       const deltaY = moveEvent.clientY - startYRef.current;
       setDragOffset({ x: deltaX, y: deltaY });
+
+      // For Jira tasks: highlight container under cursor during drag
+      if (task.source === 'jira' && onNestTask) {
+        const elements = document.elementsFromPoint(moveEvent.clientX, moveEvent.clientY);
+        let newHighlightEl: Element | null = null;
+        for (const el of elements) {
+          if (blockRef.current?.contains(el) || el === blockRef.current) continue;
+          const container = el.closest('[data-container-id]') as Element | null;
+          if (container) {
+            newHighlightEl = container;
+            break;
+          }
+        }
+        if (newHighlightEl !== currentHighlightEl) {
+          if (currentHighlightEl) currentHighlightEl.removeAttribute('data-drop-active');
+          currentHighlightEl = newHighlightEl;
+          if (currentHighlightEl) currentHighlightEl.setAttribute('data-drop-active', 'true');
+        }
+      }
     };
 
     const handleMouseUp = (upEvent: MouseEvent) => {
+      // Clean up any drop-target highlight
+      if (currentHighlightEl) {
+        currentHighlightEl.removeAttribute('data-drop-active');
+        currentHighlightEl = null;
+      }
+
       setIsDragging(false);
       setDragOffset({ x: 0, y: 0 });
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
 
-      if (!blockRef.current?.parentElement) return;
+      // For Jira tasks: check if dropped on a container
+      if (task.source === 'jira' && onNestTask) {
+        const elements = document.elementsFromPoint(upEvent.clientX, upEvent.clientY);
+        for (const el of elements) {
+          if (blockRef.current?.contains(el) || el === blockRef.current) continue;
+          const container = el.closest('[data-container-id]') as Element | null;
+          if (container) {
+            const containerId = container.getAttribute('data-container-id');
+            if (containerId) {
+              onNestTask(task.id, containerId);
+              return; // Don't call onMove
+            }
+          }
+        }
+      }
+
+      // Normal move
+      if (!blockRef.current?.parentElement || !onMove) return;
 
       const parentWidth = blockRef.current.parentElement.offsetWidth;
       const colWidth = parentWidth / totalCols;
@@ -203,19 +257,33 @@ export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpda
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [isEditing, isResizing, readOnly, startCol, endCol, row, totalCols, rowHeight, task.id, taskWidth, onMove]);
+  }, [isEditing, isResizing, readOnly, startCol, endCol, row, totalCols, rowHeight, task.id, task.source, taskWidth, onMove, onNestTask]);
+
+  const blockStyle: React.CSSProperties = {
+    left: `calc(${leftPercent}% + ${gap}px)`,
+    width: `calc(${widthPercent}% - ${gap * 2}px)`,
+    top: `${20 + row * rowHeight}px`,
+    transform: isDragging ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined,
+  };
+
+  if (isContainer) {
+    blockStyle.height = `${rowSpan * rowHeight}px`;
+    blockStyle.minHeight = `${rowSpan * rowHeight}px`;
+  } else {
+    blockStyle.background = getTaskColor(task);
+  }
 
   return (
     <div
       ref={blockRef}
-      className={`${styles.taskBlock} ${isResizing ? styles.resizing : ''} ${isDragging ? styles.dragging : ''}`}
-      style={{
-        left: `calc(${leftPercent}% + ${gap}px)`,
-        width: `calc(${widthPercent}% - ${gap * 2}px)`,
-        top: `${20 + row * rowHeight}px`,
-        background: getTaskColor(task),
-        transform: isDragging ? `translate(${dragOffset.x}px, ${dragOffset.y}px)` : undefined,
-      }}
+      className={[
+        styles.taskBlock,
+        isContainer ? styles.containerBlock : '',
+        isResizing ? styles.resizing : '',
+        isDragging ? styles.dragging : '',
+      ].filter(Boolean).join(' ')}
+      data-container-id={isContainer ? task.id : undefined}
+      style={blockStyle}
       onMouseLeave={() => setShowMenu(false)}
       onDoubleClick={handleTaskDoubleClick}
       onMouseDown={handleDragStart}
@@ -228,25 +296,71 @@ export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpda
         />
       )}
 
-      {/* Content */}
-      <div className={styles.content}>
-        {/* Estimated Days */}
-        {task.estimatedDays && (
-          <span className={styles.daysBadge}>{task.estimatedDays}j</span>
-        )}
+      {/* Container content (manual tasks) */}
+      {isContainer ? (
+        <div className={styles.containerContent}>
+          <div className={styles.containerHeader}>
+            <span className={styles.containerIcon}>📁</span>
+            {isEditing ? (
+              <input
+                type="text"
+                className={styles.renameInputInline}
+                value={editedTitle}
+                onChange={(e) => setEditedTitle(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onMouseDown={(e) => e.stopPropagation()}
+                autoFocus
+              />
+            ) : (
+              <span className={styles.containerTitle}>{task.title}</span>
+            )}
+          </div>
 
-        {task.type === 'tech' && (
-          <span className={styles.techBadge}>TECH</span>
-        )}
-        {task.type === 'bug' && (
-          <span className={styles.bugBadge}>BUG</span>
-        )}
+          {children.length > 0 ? (
+            <div className={styles.childChipList}>
+              {children.map(child => (
+                <div key={child.id} className={styles.childChip}>
+                  <span className={styles.childChipTitle}>{child.title}</span>
+                  {!readOnly && onUnnest && (
+                    <button
+                      className={styles.childChipRemove}
+                      onClick={(e) => { e.stopPropagation(); onUnnest(child.id); }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      title="Retirer du conteneur"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className={styles.containerEmpty}>
+              Glisser des tickets Jira ici
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Regular task content */
+        <div className={styles.content}>
+          {/* Estimated Days */}
+          {task.estimatedDays && (
+            <span className={styles.daysBadge}>{task.estimatedDays}j</span>
+          )}
 
-        <span className={styles.taskTitle}>{task.title}</span>
-      </div>
+          {task.type === 'tech' && (
+            <span className={styles.techBadge}>TECH</span>
+          )}
+          {task.type === 'bug' && (
+            <span className={styles.bugBadge}>BUG</span>
+          )}
 
-      {/* Status badge - top right */}
-      {statusInfo && (
+          <span className={styles.taskTitle}>{task.title}</span>
+        </div>
+      )}
+
+      {/* Status badge — only for non-container tasks */}
+      {!isContainer && statusInfo && (
         <span
           className={`${styles.statusBadge} ${statusInfo.className}`}
           title={`Statut: ${task.status}`}
@@ -255,8 +369,8 @@ export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpda
         </span>
       )}
 
-      {/* Assignee badge */}
-      {task.assignee && (
+      {/* Assignee badge — only for non-container tasks */}
+      {!isContainer && task.assignee && (
         <span className={styles.assigneeBadge} title={`Assignee: ${task.assignee}`}>
           {task.assignee.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
         </span>
@@ -317,7 +431,7 @@ export function TaskBlock({ task, totalCols, rowHeight, readOnly = false, onUpda
       )}
 
       {/* Rename dialog */}
-      {isEditing && (
+      {isEditing && !isContainer && (
         <div className={styles.confirmOverlay} onClick={(e) => { e.stopPropagation(); setIsEditing(false); }}>
           <div className={styles.renameDialog} onClick={(e) => e.stopPropagation()}>
             <p className={styles.renameTitle}>Renommer la tâche</p>

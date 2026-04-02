@@ -14,6 +14,8 @@ interface BoardRowProps {
   onTaskDelete?: (taskId: string) => void;
   onTaskResize?: (taskId: string, newStartCol: number, newEndCol: number) => void;
   onTaskMove?: (taskId: string, newStartCol: number, newRow: number) => void;
+  onNestTask?: (childId: string, containerId: string) => void;
+  onUnnestTask?: (childId: string) => void;
 }
 
 export function BoardRow({
@@ -27,8 +29,11 @@ export function BoardRow({
   onTaskDelete,
   onTaskResize,
   onTaskMove,
+  onNestTask,
+  onUnnestTask,
 }: BoardRowProps) {
-  const maxRow = Math.max(0, ...tasks.map((t) => t.row ?? 0));
+  // Account for rowSpan when computing the container height
+  const maxRow = Math.max(0, ...tasks.map((t) => (t.row ?? 0) + (t.rowSpan ?? 1) - 1));
   const minHeight = (maxRow + 1) * (rowHeight + 10) + 20;
 
   // Determine which sprint is active (current date is within sprint dates)
@@ -70,6 +75,8 @@ export function BoardRow({
             onDelete={readOnly ? undefined : onTaskDelete}
             onResize={readOnly ? undefined : onTaskResize}
             onMove={readOnly ? undefined : onTaskMove}
+            onNestTask={readOnly ? undefined : onNestTask}
+            onUnnest={readOnly ? undefined : onUnnestTask}
           />
         ))}
 

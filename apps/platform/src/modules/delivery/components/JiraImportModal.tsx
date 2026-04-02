@@ -109,6 +109,7 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
           assignee: issue.assignee,
           sprintName: issue.sprintName,
           incrementId,
+          source: 'jira',
         }).catch(() => { failed++; })
       )
     );

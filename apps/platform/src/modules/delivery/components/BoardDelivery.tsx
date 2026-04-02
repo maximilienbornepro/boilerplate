@@ -16,6 +16,8 @@ interface BoardDeliveryProps {
   onTaskDelete?: (taskId: string) => void;
   onTaskResize?: (taskId: string, newStartCol: number, newEndCol: number) => void;
   onTaskMove?: (taskId: string, newStartCol: number, newRow: number) => void;
+  onNestTask?: (childId: string, containerId: string) => void;
+  onUnnestTask?: (childId: string) => void;
 }
 
 const ROW_HEIGHT = 95;
@@ -32,6 +34,8 @@ export function BoardDelivery({
   onTaskDelete,
   onTaskResize,
   onTaskMove,
+  onNestTask,
+  onUnnestTask,
 }: BoardDeliveryProps) {
   return (
     <div className={styles.board}>
@@ -69,6 +73,8 @@ export function BoardDelivery({
           onTaskDelete={onTaskDelete}
           onTaskResize={onTaskResize}
           onTaskMove={onTaskMove}
+          onNestTask={onNestTask}
+          onUnnestTask={onUnnestTask}
         />
       </div>
     </div>

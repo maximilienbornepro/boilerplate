@@ -9,7 +9,8 @@ import {
   fetchTasks,
   createTask,
   updateTaskApi,
-  deleteTaskApi,
+  nestTaskApi,
+  unnestTaskApi,
   saveTaskPosition,
   getTaskPositions,
   fetchIncrementState,
@@ -20,7 +21,7 @@ import {
   checkJiraConnected,
 } from './services/api';
 import type { Task, IncrementState, HiddenTask } from './types';
-import { transformTask } from './utils/taskTransform';
+import { transformTask, buildTaskTree, computeContainerRowSpan } from './utils/taskTransform';
 import { buildRowTracker } from './utils/taskLoading';
 import './App.css';
 import './index.css';
@@ -109,7 +110,7 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
       const visibleTasks = taskData.filter(t => !hiddenIds.has(t.id));
 
       // Load positions
-      let positions: { taskId: string; startCol: number; endCol: number; row: number }[] = [];
+      let positions: { taskId: string; startCol: number; endCol: number; row: number; rowSpan?: number }[] = [];
       try {
         const posData = await getTaskPositions(selectedIncrement);
         positions = posData.map(p => ({
@@ -117,6 +118,7 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
           startCol: p.startCol,
           endCol: p.endCol,
           row: p.row,
+          rowSpan: p.rowSpan ?? 1,
         }));
       } catch {
         // Ignore position errors
@@ -218,6 +220,7 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
         startCol: newStartCol,
         endCol: newEndCol,
         row: task?.row ?? 0,
+        rowSpan: task?.rowSpan ?? 1,
       });
     } catch (err) {
       console.error('Failed to save position:', err);
@@ -244,13 +247,113 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
         startCol: newStartCol,
         endCol: newEndCol,
         row: newRow,
+        rowSpan: task.rowSpan ?? 1,
       });
     } catch (err) {
       console.error('Failed to save position:', err);
     }
   };
 
-  // Add new task
+  // Nest a Jira task inside a container task
+  const handleNestTask = useCallback(async (childId: string, containerId: string) => {
+    const container = tasks.find(t => t.id === containerId);
+    if (!container) return;
+
+    // Count current children of this container
+    const currentChildCount = tasks.filter(t => t.parentTaskId === containerId).length;
+    const newChildCount = currentChildCount + 1;
+    const newRowSpan = computeContainerRowSpan(newChildCount);
+
+    // Optimistic update: set parentTaskId + update container rowSpan
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === childId) return { ...t, parentTaskId: containerId };
+        if (t.id === containerId) return { ...t, rowSpan: newRowSpan };
+        return t;
+      })
+    );
+
+    try {
+      await nestTaskApi(childId, containerId);
+      // Save new rowSpan for the container position
+      await saveTaskPosition({
+        taskId: containerId,
+        incrementId: selectedIncrement,
+        startCol: container.startCol ?? 0,
+        endCol: container.endCol ?? 2,
+        row: container.row ?? 0,
+        rowSpan: newRowSpan,
+      });
+    } catch (err) {
+      console.error('Failed to nest task:', err);
+      // Revert
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id === childId) return { ...t, parentTaskId: null };
+          if (t.id === containerId) return { ...t, rowSpan: computeContainerRowSpan(currentChildCount) };
+          return t;
+        })
+      );
+    }
+  }, [tasks, selectedIncrement]);
+
+  // Unnest a child task from its container
+  const handleUnnestTask = useCallback(async (childId: string) => {
+    const child = tasks.find(t => t.id === childId);
+    if (!child?.parentTaskId) return;
+
+    const containerId = child.parentTaskId;
+    const container = tasks.find(t => t.id === containerId);
+    const currentChildCount = tasks.filter(t => t.parentTaskId === containerId).length;
+    const newChildCount = Math.max(0, currentChildCount - 1);
+    const newRowSpan = computeContainerRowSpan(newChildCount);
+
+    // Find a free row to place the unnested task
+    const maxEndRow = Math.max(0, ...tasks
+      .filter(t => !t.parentTaskId)
+      .map(t => (t.row ?? 0) + (t.rowSpan ?? 1))
+    );
+
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === childId) {
+          return { ...t, parentTaskId: null, startCol: 0, endCol: 2, row: maxEndRow, rowSpan: 1 };
+        }
+        if (t.id === containerId) return { ...t, rowSpan: newRowSpan };
+        return t;
+      })
+    );
+
+    try {
+      await unnestTaskApi(childId);
+      // Save position for the unnested child
+      await saveTaskPosition({
+        taskId: childId,
+        incrementId: selectedIncrement,
+        startCol: 0,
+        endCol: 2,
+        row: maxEndRow,
+        rowSpan: 1,
+      });
+      // Update container rowSpan
+      if (container) {
+        await saveTaskPosition({
+          taskId: containerId,
+          incrementId: selectedIncrement,
+          startCol: container.startCol ?? 0,
+          endCol: container.endCol ?? 2,
+          row: container.row ?? 0,
+          rowSpan: newRowSpan,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to unnest task:', err);
+      loadTasks(); // Reload on error to restore consistent state
+    }
+  }, [tasks, selectedIncrement, loadTasks]);
+
+  // Add new task (always manual = container)
   const handleAddTask = async () => {
     if (!newTaskTitle.trim()) return;
 
@@ -260,9 +363,10 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
         incrementId: selectedIncrement,
         type: 'feature',
         status: 'todo',
+        source: 'manual',
       });
 
-      const maxRow = Math.max(0, ...tasks.map(t => t.row ?? 0));
+      const maxEndRow = Math.max(0, ...tasks.map(t => (t.row ?? 0) + (t.rowSpan ?? 1)));
       const newTask: Task = {
         id: taskData.id,
         title: taskData.title,
@@ -274,9 +378,12 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
         priority: taskData.priority,
         incrementId: taskData.incrementId ?? undefined,
         sprintName: taskData.sprintName,
+        source: 'manual',
+        parentTaskId: null,
         startCol: 0,
         endCol: 2,
-        row: maxRow + 1,
+        row: maxEndRow,
+        rowSpan: 1,
       };
 
       setTasks((prev) => [...prev, newTask]);
@@ -286,7 +393,8 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
         incrementId: selectedIncrement,
         startCol: 0,
         endCol: 2,
-        row: maxRow + 1,
+        row: maxEndRow,
+        rowSpan: 1,
       });
 
       setNewTaskTitle('');
@@ -295,6 +403,9 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
       console.error('Failed to create task:', err);
     }
   };
+
+  // Build task tree (containers with children embedded) for rendering
+  const displayTasks = useMemo(() => buildTaskTree(tasks), [tasks]);
 
   const hiddenTaskCount = incrementState?.hiddenTasks?.length || 0;
 
@@ -393,7 +504,7 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
               <div className="board-section">
                 <BoardDelivery
                   sprints={currentSprints}
-                  tasks={tasks}
+                  tasks={displayTasks}
                   releases={[]}
                   boardLabel={currentIncrementName}
                   readOnly={incrementState?.isFrozen}
@@ -401,6 +512,8 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
                   onTaskDelete={handleTaskDelete}
                   onTaskResize={handleTaskResize}
                   onTaskMove={handleTaskMove}
+                  onNestTask={handleNestTask}
+                  onUnnestTask={handleUnnestTask}
                 />
               </div>
             </div>

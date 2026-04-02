@@ -94,6 +94,7 @@ export async function createTask(task: {
   priority?: string;
   incrementId?: string;
   sprintName?: string;
+  source?: 'manual' | 'jira';
 }): Promise<TaskData> {
   const response = await fetch(`${API_BASE}/tasks`, {
     method: 'POST',
