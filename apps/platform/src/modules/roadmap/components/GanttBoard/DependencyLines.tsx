@@ -16,7 +16,7 @@ interface DependencyLinesProps {
   mousePosition?: { x: number; y: number } | null;
 }
 
-const ROW_HEIGHT = 64;
+const ROW_HEIGHT = 80;
 const BAR_HEIGHT = 48;
 
 export function DependencyLines({

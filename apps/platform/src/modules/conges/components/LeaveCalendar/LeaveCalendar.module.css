@@ -59,6 +59,7 @@
   justify-content: center;
   font-size: var(--font-size-xs);
   font-weight: 600;
+  line-height: 1;
   color: var(--text-secondary);
   border-right: 1px solid var(--border-light);
   white-space: nowrap;
@@ -194,6 +195,30 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
+/* Year view: no per-day borders, no shading, only week separators */
+.yearViewCol { border-right: none; background: transparent !important; }
+
+/* Quarter view: no per-day borders, only week separators */
+.quarterViewCol { border-right: none; }
+
+.weekStart { border-left: 1px solid rgba(255, 255, 255, 0.08); }
+
+/* Week number label in quarter view header */
+.weekLabel {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border-light);
+  overflow: hidden;
+}
+
 /* Today marker */
 .todayMarker {
   position: absolute;
@@ -222,6 +247,10 @@
 /* ==================== Light theme ==================== */
 :global(:root:not([data-theme="dark"])) .weekend {
   background: rgba(0, 0, 0, 0.02);
+}
+
+:global(:root:not([data-theme="dark"])) .weekStart {
+  border-left-color: rgba(0, 0, 0, 0.08);
 }
 
 :global(:root:not([data-theme="dark"])) .dayWeekend {

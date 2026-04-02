@@ -2,7 +2,6 @@
   display: flex;
   align-items: center;
   position: relative;
-  border-bottom: 1px solid var(--bg-secondary);
   font-family: var(--font-family-mono);
 }
 
@@ -143,7 +142,8 @@
 
 .taskBar {
   position: absolute;
-  height: 48px;
+  top: 10px; /* (80 - 60) / 2 — centered in 80px row */
+  height: 60px;
   border-radius: var(--radius-md);
   cursor: grab;
   display: flex;
@@ -193,18 +193,47 @@
 .dependencyHandle:hover { transform: translateY(-50%) scale(1.2); background: var(--accent-secondary); }
 .dependencyHandle svg { color: var(--text-inverse); }
 
+/* Parent task — fond plein couleur, barre haute */
 .taskBar.parentBar {
-  background: transparent !important;
-  border: 2px dashed currentColor;
-  opacity: 0.6;
-  cursor: default;
-  height: 36px;
+  top: 18px; /* (80 - 44) / 2 — centered in 80px row */
+  height: 44px;
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  border: none;
+  opacity: 1;
 }
 
-.taskBar.parentBar .barLabel { color: currentColor; font-weight: var(--font-weight-semibold); }
+.taskBar.parentBar .barLabel { color: white; font-weight: var(--font-weight-semibold); }
 .taskBar.parentBar .resizeHandle { display: none; }
 .taskBar.parentBar .dependencyHandle { display: none; }
-.taskBar.parentBar:hover { box-shadow: none; }
+.taskBar.parentBar:hover { filter: brightness(1.1); box-shadow: var(--shadow-sm); }
+
+/* Sub-parent (level 1) — fond plein comme parent, légèrement plus petite + opacité */
+.taskBar.subParentBar {
+  top: 22px; /* (80 - 36) / 2 — centered in 80px row */
+  height: 36px;
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  border: none;
+  opacity: 0.8;
+}
+
+.taskBar.subParentBar .barLabel { color: white; font-weight: var(--font-weight-medium); }
+.taskBar.subParentBar:hover { filter: brightness(1.1); box-shadow: var(--shadow-sm); opacity: 0.9; }
+
+/* Child/leaf task — fond transparent + bordure pointillée couleur parente */
+.taskBar.childBar {
+  top: 22px; /* (80 - 36) / 2 — centered in 80px row */
+  background: transparent !important;
+  border: 1.5px dashed currentColor;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  opacity: 0.85;
+}
+
+.taskBar.childBar .barLabel { color: currentColor; font-weight: var(--font-weight-medium); }
+.taskBar.childBar .progressBar { background: currentColor; opacity: 0.15; }
+.taskBar.childBar:hover { opacity: 1; box-shadow: 0 0 0 1px currentColor; }
 
 .contextMenu {
   position: absolute;

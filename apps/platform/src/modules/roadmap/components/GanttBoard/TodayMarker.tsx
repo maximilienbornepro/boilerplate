@@ -1,19 +1,26 @@
 import { useMemo } from 'react';
-import type { ViewMode } from '../../types';
-import { getColumnWidth, getDaysBetween, getBusinessDaysBetween, isSameDay } from '../../utils/dateUtils';
+import type { ViewMode, TimeColumn } from '../../types';
+import { getColumnWidth, getDaysBetween, getBusinessDaysBetween, calculatePixelOffset } from '../../utils/dateUtils';
 
 interface TodayMarkerProps {
   chartStartDate: Date;
+  chartEndDate?: Date;
   viewMode: ViewMode;
-  totalHeight: number;
+  totalHeight?: number;
+  columns?: TimeColumn[];
 }
 
-export function TodayMarker({ chartStartDate, viewMode, totalHeight }: TodayMarkerProps) {
+export function TodayMarker({ chartStartDate, viewMode, columns }: TodayMarkerProps) {
   const columnWidth = getColumnWidth(viewMode);
 
   const leftPosition = useMemo(() => {
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     if (today < chartStartDate) return null;
+
+    if (viewMode === 'month' && columns && columns.length > 0) {
+      return calculatePixelOffset(today, columns, columnWidth);
+    }
 
     let offset: number;
     if (viewMode === 'month') {
@@ -27,7 +34,7 @@ export function TodayMarker({ chartStartDate, viewMode, totalHeight }: TodayMark
     }
 
     return offset * columnWidth;
-  }, [chartStartDate, viewMode, columnWidth]);
+  }, [chartStartDate, viewMode, columnWidth, columns]);
 
   if (leftPosition === null) return null;
 
@@ -36,9 +43,9 @@ export function TodayMarker({ chartStartDate, viewMode, totalHeight }: TodayMark
       style={{
         position: 'absolute',
         top: 0,
-        left: leftPosition,
+        left: 250 + leftPosition,
         width: 2,
-        height: totalHeight,
+        height: '100%',
         background: 'var(--accent-primary)',
         opacity: 0.7,
         transform: 'translateX(-1px)',

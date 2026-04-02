@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { ViewMode } from '../types';
-import { calculateDateFromPosition, getColumnWidth, parseDate, formatDate, getDaysBetween, getBusinessDaysBetween } from '../utils/dateUtils';
+import type { ViewMode, TimeColumn } from '../types';
+import { calculateDateFromPosition, getColumnWidth, parseDate, formatDate, getDaysBetween, calculatePixelOffset } from '../utils/dateUtils';
 
 type ResizeDirection = 'left' | 'right';
 
@@ -10,10 +10,11 @@ interface UseResizeTaskOptions {
   endDate: string;
   chartStartDate: Date;
   viewMode: ViewMode;
+  columns?: TimeColumn[];
   onResize: (taskId: string, newStart: string, newEnd: string) => void;
 }
 
-export function useResizeTask({ taskId, startDate, endDate, chartStartDate, viewMode, onResize }: UseResizeTaskOptions) {
+export function useResizeTask({ taskId, startDate, endDate, chartStartDate, viewMode, columns, onResize }: UseResizeTaskOptions) {
   const [isResizing, setIsResizing] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<ResizeDirection | null>(null);
   const [leftOffset, setLeftOffset] = useState(0);
@@ -49,20 +50,24 @@ export function useResizeTask({ taskId, startDate, endDate, chartStartDate, view
     let newStartDate = taskStart;
     let newEndDate = taskEnd;
 
-    const getOffset = (date: Date): number => {
-      if (viewMode === 'month') return getBusinessDaysBetween(chartStartDate, date);
-      if (viewMode === 'quarter') return getDaysBetween(chartStartDate, date) / 7;
-      return (date.getFullYear() - chartStartDate.getFullYear()) * 12 +
+    const getPixelOffset = (date: Date): number => {
+      if ((viewMode === 'month' || viewMode === 'year') && columns && columns.length > 0) {
+        return calculatePixelOffset(date, columns, columnWidth);
+      }
+      if (viewMode === 'month') return getDaysBetween(chartStartDate, date) * columnWidth;
+      if (viewMode === 'quarter') return (getDaysBetween(chartStartDate, date) / 7) * columnWidth;
+      const monthOff = (date.getFullYear() - chartStartDate.getFullYear()) * 12 +
         (date.getMonth() - chartStartDate.getMonth()) + (date.getDate() - 1) / 30;
+      return monthOff * columnWidth;
     };
 
     if (resizeDirection === 'left') {
-      const startOff = getOffset(taskStart);
-      newStartDate = calculateDateFromPosition((startOff * columnWidth) + leftOffset, chartStartDate, columnWidth, viewMode);
+      const startPx = getPixelOffset(taskStart);
+      newStartDate = calculateDateFromPosition(startPx + leftOffset, chartStartDate, columnWidth, viewMode, columns);
       if (newStartDate >= taskEnd) { newStartDate = new Date(taskEnd); newStartDate.setDate(newStartDate.getDate() - 1); }
     } else {
-      const endOff = getOffset(taskEnd);
-      newEndDate = calculateDateFromPosition((endOff * columnWidth) + widthOffset, chartStartDate, columnWidth, viewMode);
+      const endPx = getPixelOffset(taskEnd);
+      newEndDate = calculateDateFromPosition(endPx + widthOffset, chartStartDate, columnWidth, viewMode, columns);
       if (newEndDate <= taskStart) { newEndDate = new Date(taskStart); newEndDate.setDate(newEndDate.getDate() + 1); }
     }
 
@@ -71,7 +76,7 @@ export function useResizeTask({ taskId, startDate, endDate, chartStartDate, view
     setResizeDirection(null);
     setLeftOffset(0);
     setWidthOffset(0);
-  }, [isResizing, resizeDirection, taskId, startDate, endDate, chartStartDate, columnWidth, viewMode, leftOffset, widthOffset, onResize]);
+  }, [isResizing, resizeDirection, taskId, startDate, endDate, chartStartDate, columnWidth, viewMode, columns, leftOffset, widthOffset, onResize]);
 
   useEffect(() => {
     if (isResizing) {

@@ -1,6 +1,6 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react';
 import type { Task, Dependency, ViewMode, Planning, Marker } from '../../types';
-import { generateTimeColumns, getColumnWidth, parseDate, getExtendedDateRange, calculateTaskPosition, getMonthGroups } from '../../utils/dateUtils';
+import { generateTimeColumns, getColumnWidth, parseDate, getExtendedDateRange, calculateTaskPosition, getMonthGroups, getTotalWidth, calculatePixelOffset } from '../../utils/dateUtils';
 import { buildTaskHierarchy, flattenHierarchy, hasParentChildRelationship } from '../../utils/taskUtils';
 import { TaskBar } from './TaskBar';
 import { TodayMarker } from './TodayMarker';
@@ -26,12 +26,18 @@ interface GanttBoardProps {
   onMarkerDelete?: (markerId: string) => void;
   onAddMarker?: () => void;
   readOnly?: boolean;
+  autoHeight?: boolean;
   focusedTaskId?: string | null;
+  scrollToTodayTrigger?: number;
 }
 
-const ROW_HEIGHT = 64;
+export interface GanttBoardHandle {
+  scrollToToday: () => void;
+}
 
-export function GanttBoard({
+const ROW_HEIGHT = 80;
+
+export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function GanttBoard({
   planning,
   tasks,
   dependencies,
@@ -48,12 +54,14 @@ export function GanttBoard({
   onMarkerDelete,
   onAddMarker,
   readOnly,
+  autoHeight,
   focusedTaskId,
-}: GanttBoardProps) {
+}: GanttBoardProps, ref) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [scrollOffset, setScrollOffset] = useState(0);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [contentAreaWidth, setContentAreaWidth] = useState(0);
 
   useEffect(() => {
     const content = contentRef.current;
@@ -61,6 +69,17 @@ export function GanttBoard({
     const handleScroll = () => setScrollOffset(content.scrollLeft);
     content.addEventListener('scroll', handleScroll);
     return () => content.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Measure scroll-area width for year-view dynamic column sizing
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(entries => {
+      setContentAreaWidth(entries[0].contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   const { chartStartDate, chartEndDate } = useMemo(() => {
@@ -71,9 +90,47 @@ export function GanttBoard({
   }, [planning.startDate, planning.endDate, viewMode]);
 
   const columns = useMemo(() => generateTimeColumns(chartStartDate, chartEndDate, viewMode), [chartStartDate, chartEndDate, viewMode]);
-  const monthGroups = useMemo(() => getMonthGroups(columns, viewMode), [columns, viewMode]);
   const columnWidth = getColumnWidth(viewMode);
-  const totalWidth = columns.length * columnWidth;
+
+  // Year view: size each day to fill the available width exactly (no horizontal scroll)
+  const yearDayWidth = useMemo(() => {
+    if (viewMode !== 'year' || columns.length === 0 || contentAreaWidth <= 250) return columnWidth;
+    return Math.max(1, (contentAreaWidth - 250) / columns.length);
+  }, [viewMode, columns.length, contentAreaWidth, columnWidth]);
+
+  const effectiveColumnWidth = viewMode === 'year' ? yearDayWidth : columnWidth;
+
+  // For year view, stamp each column with its dynamic width so all downstream functions use it
+  const effectiveColumns = useMemo(() => {
+    if (viewMode !== 'year') return columns;
+    return columns.map(col => ({ ...col, width: yearDayWidth }));
+  }, [columns, viewMode, yearDayWidth]);
+
+  const monthGroups = useMemo(() => getMonthGroups(effectiveColumns, viewMode), [effectiveColumns, viewMode]);
+  const totalWidth = viewMode === 'year' && contentAreaWidth > 250
+    ? contentAreaWidth - 250
+    : getTotalWidth(columns, columnWidth);
+
+  const scrollToTodayFn = useCallback((smooth = true) => {
+    const content = contentRef.current;
+    if (!content) return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const left = calculatePixelOffset(startOfMonth, effectiveColumns, effectiveColumnWidth);
+    content.scrollTo({ left: Math.max(0, left), behavior: smooth ? 'smooth' : 'instant' });
+  }, [effectiveColumns, effectiveColumnWidth]);
+
+  useImperativeHandle(ref, () => ({ scrollToToday: scrollToTodayFn }), [scrollToTodayFn]);
+
+  // Scroll to start of current month on initial mount — instant, no visible jump
+  useEffect(() => {
+    let raf: number;
+    const run = () => { raf = requestAnimationFrame(() => scrollToTodayFn(false)); };
+    run();
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const hierarchy = useMemo(() => buildTaskHierarchy(tasks), [tasks]);
   const flatTasks = useMemo(() => flattenHierarchy(hierarchy, collapsedIds), [hierarchy, collapsedIds]);
@@ -116,7 +173,7 @@ export function GanttBoard({
           if (taskRow) {
             taskRow.scrollIntoView({ block: 'center', behavior: 'auto' });
             const taskStart = parseDate(focusedTask.startDate);
-            const { left } = calculateTaskPosition(taskStart, taskStart, chartStartDate, columnWidth, viewMode);
+            const { left } = calculateTaskPosition(taskStart, taskStart, chartStartDate, effectiveColumnWidth, viewMode, effectiveColumns);
             content.scrollLeft = Math.max(0, left + 250 - content.clientWidth / 2);
           }
         }, 100);
@@ -132,9 +189,9 @@ export function GanttBoard({
     if (today < chartStartDate || today > chartEndDate) return;
     const todayStr = today.toISOString().split('T')[0];
     const todayDate = parseDate(todayStr);
-    const { left } = calculateTaskPosition(todayDate, todayDate, chartStartDate, columnWidth, viewMode);
+    const left = calculatePixelOffset(todayDate, effectiveColumns, effectiveColumnWidth);
     content.scrollLeft = Math.max(0, left + 250 - content.clientWidth / 2);
-  }, [chartStartDate, chartEndDate, viewMode, columnWidth, focusedTaskId, tasks, flatTasks]);
+  }, [chartStartDate, chartEndDate, viewMode, effectiveColumnWidth, focusedTaskId, tasks, flatTasks, effectiveColumns]);
 
   const taskIndexMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -190,44 +247,108 @@ export function GanttBoard({
   const handleTaskMove = (taskId: string, newStart: string, newEnd: string) => { onTaskUpdate(taskId, { startDate: newStart, endDate: newEnd }); };
   const handleTaskResize = (taskId: string, newStart: string, newEnd: string) => { onTaskUpdate(taskId, { startDate: newStart, endDate: newEnd }); };
   const handleNameChange = (taskId: string, name: string) => { onTaskUpdate(taskId, { name }); };
-  const handleParentChange = (taskId: string, newParentId: string | null) => { onTaskUpdate(taskId, { parentId: newParentId }); };
 
-  const handleReorder = (taskId: string, targetTaskId: string, position: 'above' | 'below') => {
+  // Find the root ancestor's color for a given task/parent
+  const getRootColor = useCallback((taskId: string): string => {
+    let current = tasks.find(t => t.id === taskId);
+    while (current?.parentId) {
+      current = tasks.find(t => t.id === current!.parentId);
+    }
+    return current?.color ?? '';
+  }, [tasks]);
+
+  const getDescIds = useCallback((parentId: string): string[] => {
+    const children = tasks.filter(t => t.parentId === parentId);
+    return children.flatMap(c => [c.id, ...getDescIds(c.id)]);
+  }, [tasks]);
+
+  const handleParentChange = useCallback((taskId: string, newParentId: string | null) => {
+    const movedTask = tasks.find(t => t.id === taskId);
+    if (!movedTask) return;
+
+    const updates: Partial<Task> = { parentId: newParentId };
+
+    if (newParentId !== null) {
+      // Becoming a child: inherit root ancestor's color
+      const rootColor = getRootColor(newParentId);
+      if (rootColor && rootColor !== movedTask.color) {
+        updates.color = rootColor;
+      }
+    }
+
+    onTaskUpdate(taskId, updates);
+
+    // Cascade color to all descendants
+    if (updates.color) {
+      getDescIds(taskId).forEach(id => onTaskUpdate(id, { color: updates.color! }));
+    }
+  }, [tasks, onTaskUpdate, getRootColor, getDescIds]);
+
+  const handleReorder = useCallback((taskId: string, targetTaskId: string, position: 'above' | 'below') => {
     const targetTask = tasks.find(t => t.id === targetTaskId);
     if (!targetTask) return;
+    const movedTask = tasks.find(t => t.id === taskId);
+    if (!movedTask) return;
+
     const newParentId = targetTask.parentId || null;
     const siblings = tasks.filter(t => (t.parentId || null) === newParentId && t.id !== taskId).sort((a, b) => a.sortOrder - b.sortOrder);
     const targetIndex = siblings.findIndex(t => t.id === targetTaskId);
     if (targetIndex === -1) return;
     const insertIndex = position === 'above' ? targetIndex : targetIndex + 1;
-    siblings.splice(insertIndex, 0, tasks.find(t => t.id === taskId)!);
+    siblings.splice(insertIndex, 0, movedTask);
+
+    // Determine if parent changed and if we need a color sync
+    const parentChanged = (movedTask.parentId || null) !== newParentId;
+    let newColor: string | undefined;
+    if (parentChanged && newParentId !== null) {
+      const rootColor = getRootColor(newParentId);
+      if (rootColor && rootColor !== movedTask.color) newColor = rootColor;
+    }
+
     siblings.forEach((t, i) => {
-      if (t.id === taskId) onTaskUpdate(taskId, { parentId: newParentId, sortOrder: i });
-      else if (t.sortOrder !== i) onTaskUpdate(t.id, { sortOrder: i });
+      if (t.id === taskId) {
+        const updates: Partial<Task> = { parentId: newParentId, sortOrder: i };
+        if (newColor) updates.color = newColor;
+        onTaskUpdate(taskId, updates);
+      } else if (t.sortOrder !== i) {
+        onTaskUpdate(t.id, { sortOrder: i });
+      }
     });
-  };
+
+    // Cascade color to descendants of moved task
+    if (newColor) {
+      const color = newColor;
+      getDescIds(taskId).forEach(id => onTaskUpdate(id, { color }));
+    }
+  }, [tasks, onTaskUpdate, getRootColor, getDescIds]);
 
   return (
-    <div className={styles.container}>
-      <div ref={contentRef} className={styles.content} onClick={() => { if (isDrawing) endDrawing(null); }}>
+    <div className={`${styles.container} ${autoHeight ? styles.autoHeight : ''}`}>
+      <div ref={contentRef} className={`${styles.content} ${autoHeight ? styles.autoHeight : ''}`} onClick={() => { if (isDrawing) endDrawing(null); }}>
         {/* Header inside scroll container — taskNameHeader is sticky */}
-        <div className={styles.header} style={{ width: totalWidth + 250, minWidth: totalWidth + 250 }}>
+        <div className={`${styles.header} ${viewMode === 'year' ? styles.yearView : ''}`} style={{ width: totalWidth + 250, minWidth: totalWidth + 250 }}>
           <div className={styles.taskNameHeader}>Taches</div>
           <div className={styles.timelineHeader}>
-            <div className={styles.monthRow}>
-              {monthGroups.map((g, i) => (
-                <div key={i} className={styles.monthCell} style={{ width: g.colSpan * columnWidth }}>
-                  {g.label}
-                </div>
-              ))}
+            <div className={`${styles.monthRow} ${viewMode === 'year' ? styles.yearView : ''}`}>
+              {monthGroups.map((g, i) => {
+                const cellWidth = g.width ?? g.colSpan * effectiveColumnWidth;
+                return (
+                  <div key={i} className={styles.monthCell} style={{ width: cellWidth, minWidth: cellWidth }}>
+                    {g.label}
+                  </div>
+                );
+              })}
             </div>
             {viewMode !== 'year' && (
               <div className={styles.dayRow}>
-                {columns.map((col, i) => (
-                  <div key={i} className={`${styles.dayCell} ${col.isWeekend ? styles.weekend : ''} ${col.isToday ? styles.today : ''} ${col.isWeekStart ? styles.weekStart : ''}`} style={{ width: columnWidth }}>
-                    {col.label}
-                  </div>
-                ))}
+                {effectiveColumns.map((col, i) => {
+                  const colW = col.width ?? effectiveColumnWidth;
+                  return (
+                    <div key={i} className={`${styles.dayCell} ${col.isWeekend ? styles.weekend : ''} ${col.isHoliday ? styles.holiday : ''} ${col.isToday ? styles.today : ''} ${col.isWeekStart && viewMode !== 'month' ? styles.weekStart : ''}`} style={{ width: colW, minWidth: colW }}>
+                      {col.label}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -236,9 +357,17 @@ export function GanttBoard({
         <div className={styles.contentInner} style={{ width: totalWidth + 250, minWidth: totalWidth + 250 }}>
           <div className={styles.grid}>
             <div className={styles.taskNameColumn} />
-            {columns.map((col, index) => (
-              <div key={index} className={`${styles.gridColumn} ${col.isWeekend ? styles.weekend : ''} ${col.isToday ? styles.today : ''} ${col.isWeekStart ? styles.weekStart : ''}`} style={{ left: 250 + index * columnWidth, width: columnWidth }} />
-            ))}
+            {(() => {
+              let pixelLeft = 0;
+              return effectiveColumns.map((col, index) => {
+                const colW = col.width ?? effectiveColumnWidth;
+                const left = pixelLeft;
+                pixelLeft += colW;
+                return (
+                  <div key={index} className={`${styles.gridColumn} ${viewMode === 'year' ? styles.yearViewCol : ''} ${col.isWeekend ? styles.weekend : ''} ${col.isHoliday ? styles.holiday : ''} ${col.isToday ? styles.today : ''} ${col.isWeekStart && viewMode !== 'month' ? styles.weekStart : ''}`} style={{ left: 250 + left, width: colW }} />
+                );
+              });
+            })()}
           </div>
 
           <div className={styles.tasks}>
@@ -249,6 +378,7 @@ export function GanttBoard({
             )}
             {flatTasks.map(({ task, level, ancestorIsLast }) => {
               const parentTask = task.parentId ? tasks.find(t => t.id === task.parentId) : null;
+              const rootColor = task.parentId ? getRootColor(task.parentId) : undefined;
               return (
                 <TaskBar
                   key={task.id}
@@ -256,8 +386,10 @@ export function GanttBoard({
                   level={level}
                   ancestorIsLast={ancestorIsLast}
                   parentName={parentTask?.name}
+                  parentColor={rootColor || parentTask?.color}
                   chartStartDate={chartStartDate}
                   viewMode={viewMode}
+                  columns={effectiveColumns}
                   hasChildren={!!(task.children && task.children.length > 0)}
                   isCollapsed={collapsedIds.has(task.id)}
                   onMove={handleTaskMove}
@@ -267,8 +399,8 @@ export function GanttBoard({
                   onDelete={onTaskDelete}
                   onAddChild={onAddChildTask}
                   onToggleCollapse={handleToggleCollapse}
-                  onStartDependency={startDrawing}
-                  onEndDependency={endDrawing}
+                  onStartDependency={readOnly ? undefined : startDrawing}
+                  onEndDependency={readOnly ? undefined : endDrawing}
                   isDrawingDependency={isDrawing}
                   onParentChange={handleParentChange}
                   onReorder={handleReorder}
@@ -283,14 +415,14 @@ export function GanttBoard({
 
             {!readOnly && (
               <>
-                <div className={styles.addTaskRow} style={{ height: ROW_HEIGHT }}>
+                <div className={styles.addTaskRow}>
                   <button className={styles.addTaskButton} onClick={onAddTask}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                     Ajouter une tâche
                   </button>
                 </div>
                 {onAddMarker && (
-                  <div className={styles.addTaskRow} style={{ height: ROW_HEIGHT }}>
+                  <div className={styles.addTaskRow}>
                     <button className={styles.addFaiButton} onClick={onAddMarker}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                       Marqueur
@@ -313,7 +445,7 @@ export function GanttBoard({
             mousePosition={mousePosition}
           />
 
-          <TodayMarker chartStartDate={chartStartDate} chartEndDate={chartEndDate} viewMode={viewMode} />
+          <TodayMarker chartStartDate={chartStartDate} chartEndDate={chartEndDate} viewMode={viewMode} columns={effectiveColumns} />
 
           {/* Markers */}
           {markers?.map(m => (
@@ -340,4 +472,4 @@ export function GanttBoard({
       )}
     </div>
   );
-}
+});

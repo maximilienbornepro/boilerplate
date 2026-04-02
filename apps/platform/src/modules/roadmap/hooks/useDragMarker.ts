@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import type { Task, ViewMode } from '../types';
-import { calculateDateFromPosition, getColumnWidth, parseDate, formatDate, getDaysBetween, getBusinessDaysBetween } from '../utils/dateUtils';
+import { calculateDateFromPosition, getColumnWidth, parseDate, formatDate, getDaysBetween } from '../utils/dateUtils';
 
 interface TopLevelTaskRow {
   task: Task;
@@ -82,7 +82,7 @@ export function useDragMarker({ markerId, markerDate, chartStartDate, viewMode, 
     const deltaX = e.clientX - startXRef.current;
     const currentDate = parseDate(markerDate);
     let startOffset: number;
-    if (viewMode === 'month') startOffset = getBusinessDaysBetween(chartStartDate, currentDate);
+    if (viewMode === 'month') startOffset = getDaysBetween(chartStartDate, currentDate);
     else if (viewMode === 'quarter') startOffset = getDaysBetween(chartStartDate, currentDate) / 7;
     else startOffset = (currentDate.getFullYear() - chartStartDate.getFullYear()) * 12 + (currentDate.getMonth() - chartStartDate.getMonth()) + (currentDate.getDate() - 1) / 30;
 

@@ -48,7 +48,9 @@ export interface TimeColumn {
   label: string;
   isToday: boolean;
   isWeekend: boolean;
+  isHoliday?: boolean;
   isWeekStart?: boolean;
+  width?: number;
 }
 
 export interface Marker {
