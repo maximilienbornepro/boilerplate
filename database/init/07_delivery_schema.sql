@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS delivery_tasks (
     priority VARCHAR(20) DEFAULT 'medium',
     increment_id VARCHAR(50),
     sprint_name VARCHAR(100),
+    source VARCHAR(10) DEFAULT 'manual',
+    parent_task_id UUID REFERENCES delivery_tasks(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -24,6 +26,7 @@ CREATE TABLE IF NOT EXISTS delivery_positions (
     start_col INTEGER NOT NULL DEFAULT 0,
     end_col INTEGER NOT NULL DEFAULT 1,
     row INTEGER NOT NULL DEFAULT 0,
+    row_span INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(task_id, increment_id)
@@ -74,5 +77,9 @@ CREATE TABLE IF NOT EXISTS delivery_snapshots (
 );
 
 CREATE INDEX IF NOT EXISTS idx_delivery_tasks_increment ON delivery_tasks(increment_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_tasks_parent ON delivery_tasks(parent_task_id);
 CREATE INDEX IF NOT EXISTS idx_delivery_positions_increment ON delivery_positions(increment_id);
 CREATE INDEX IF NOT EXISTS idx_delivery_snapshots_increment ON delivery_snapshots(increment_id);
+
+-- Backfill source: tasks with sprint_name are from Jira
+UPDATE delivery_tasks SET source = 'jira' WHERE sprint_name IS NOT NULL AND source = 'manual';

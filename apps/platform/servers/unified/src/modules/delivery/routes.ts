@@ -18,7 +18,7 @@ export function createDeliveryRoutes(): Router {
 
   // Create a new task
   router.post('/tasks', asyncHandler(async (req, res) => {
-    const { title, type, status, storyPoints, estimatedDays, assignee, priority, incrementId, sprintName } = req.body;
+    const { title, type, status, storyPoints, estimatedDays, assignee, priority, incrementId, sprintName, source } = req.body;
 
     if (!title) {
       res.status(400).json({ error: 'title is required' });
@@ -35,6 +35,7 @@ export function createDeliveryRoutes(): Router {
       priority,
       incrementId,
       sprintName,
+      source: source || 'manual',
     });
     res.status(201).json(task);
   }));
@@ -57,6 +58,37 @@ export function createDeliveryRoutes(): Router {
       return;
     }
     res.json({ success: true });
+  }));
+
+  // Nest a task inside a container (manual task)
+  router.post('/tasks/:id/nest', asyncHandler(async (req, res) => {
+    const { parentId } = req.body;
+    if (!parentId) {
+      res.status(400).json({ error: 'parentId is required' });
+      return;
+    }
+    const task = await db.nestTask(req.params.id, parentId);
+    if (!task) {
+      res.status(400).json({ error: 'Cannot nest: parent must be manual, child must not have children' });
+      return;
+    }
+    res.json(task);
+  }));
+
+  // Unnest a task from its container
+  router.post('/tasks/:id/unnest', asyncHandler(async (req, res) => {
+    const task = await db.unnestTask(req.params.id);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+    res.json(task);
+  }));
+
+  // Get children of a container task
+  router.get('/tasks/:id/children', asyncHandler(async (req, res) => {
+    const children = await db.getChildTasks(req.params.id);
+    res.json(children);
   }));
 
   // ============ Positions ============
@@ -165,7 +197,7 @@ export function createDeliveryRoutes(): Router {
     res.json({ connected: ctx !== null });
   }));
 
-  // List Jira projects
+  // List Jira projects (paginated — fetches all pages)
   router.get('/jira/projects', asyncHandler(async (req, res) => {
     const ctx = await getJiraContext(req.user!.id);
     if (!ctx) {
@@ -173,22 +205,29 @@ export function createDeliveryRoutes(): Router {
       return;
     }
 
-    const url = `${ctx.baseUrl}/rest/api/3/project/search?maxResults=50&orderBy=name`;
-    const response = await fetch(url, { headers: ctx.headers });
-    if (!response.ok) {
-      const text = await response.text();
-      res.status(response.status).json({ error: `Jira API error: ${text}` });
-      return;
+    const allProjects: Array<{ id: string; key: string; name: string; avatarUrl?: string }> = [];
+    let startAt = 0;
+    const maxResults = 50;
+
+    while (true) {
+      const url = `${ctx.baseUrl}/rest/api/3/project/search?maxResults=${maxResults}&startAt=${startAt}&orderBy=name`;
+      const response = await fetch(url, { headers: ctx.headers });
+      if (!response.ok) {
+        const text = await response.text();
+        res.status(response.status).json({ error: `Jira API error: ${text}` });
+        return;
+      }
+
+      const data = await response.json() as { values: Array<{ id: string; key: string; name: string; avatarUrls?: Record<string, string> }>; total: number; isLast?: boolean };
+      for (const p of data.values || []) {
+        allProjects.push({ id: p.id, key: p.key, name: p.name, avatarUrl: p.avatarUrls?.['24x24'] });
+      }
+
+      if (data.isLast || (data.values || []).length < maxResults) break;
+      startAt += maxResults;
     }
 
-    const data = await response.json() as { values: Array<{ id: string; key: string; name: string; avatarUrls?: Record<string, string> }> };
-    const projects = (data.values || []).map(p => ({
-      id: p.id,
-      key: p.key,
-      name: p.name,
-      avatarUrl: p.avatarUrls?.['24x24'],
-    }));
-    res.json(projects);
+    res.json(allProjects);
   }));
 
   // List sprints for a project (via JQL — no Agile API scope needed)

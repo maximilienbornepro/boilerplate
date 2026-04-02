@@ -75,6 +75,8 @@ export interface TaskData {
   priority: string;
   incrementId: string | null;
   sprintName: string | null;
+  source: 'manual' | 'jira';
+  parentTaskId: string | null;
 }
 
 export async function fetchTasks(incrementId: string): Promise<TaskData[]> {
@@ -123,6 +125,26 @@ export async function deleteTaskApi(id: string): Promise<void> {
   }
 }
 
+// ============ Nesting ============
+
+export async function nestTaskApi(childId: string, parentId: string): Promise<TaskData> {
+  const response = await fetch(`${API_BASE}/tasks/${childId}/nest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ parentId }),
+  });
+  return handleResponse<TaskData>(response);
+}
+
+export async function unnestTaskApi(childId: string): Promise<TaskData> {
+  const response = await fetch(`${API_BASE}/tasks/${childId}/unnest`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse<TaskData>(response);
+}
+
 // ============ Positions ============
 
 export interface TaskPosition {
@@ -131,6 +153,7 @@ export interface TaskPosition {
   startCol: number;
   endCol: number;
   row: number;
+  rowSpan?: number;
 }
 
 export async function saveTaskPosition(position: TaskPosition): Promise<void> {

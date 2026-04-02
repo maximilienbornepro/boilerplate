@@ -8,6 +8,8 @@ export interface Sprint {
   endDate: string;
 }
 
+export type TaskSource = 'manual' | 'jira';
+
 export interface Task {
   id: string;
   title: string;
@@ -16,12 +18,16 @@ export interface Task {
   startCol?: number;
   endCol?: number;
   row?: number;
+  rowSpan?: number;
   storyPoints?: number;
   estimatedDays?: number | null;
   assignee?: string | null;
   priority?: string;
   incrementId?: string;
   sprintName?: string | null;
+  source: TaskSource;
+  parentTaskId?: string | null;
+  children?: Task[];
   // Orphan tracking (task not in active sprints)
   isOrphan?: boolean;
 }

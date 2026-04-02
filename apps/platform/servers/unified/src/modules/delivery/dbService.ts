@@ -20,26 +20,35 @@ export interface TaskRow {
   priority: string;
   incrementId: string | null;
   sprintName: string | null;
+  source: 'manual' | 'jira';
+  parentTaskId: string | null;
 }
+
+function mapTaskRow(row: Record<string, unknown>): TaskRow {
+  return {
+    id: row.id as string,
+    title: row.title as string,
+    type: row.type as string,
+    status: row.status as string,
+    storyPoints: row.story_points ? parseFloat(row.story_points as string) : null,
+    estimatedDays: row.estimated_days ? parseFloat(row.estimated_days as string) : null,
+    assignee: row.assignee as string | null,
+    priority: row.priority as string,
+    incrementId: row.increment_id as string | null,
+    sprintName: row.sprint_name as string | null,
+    source: (row.source as 'manual' | 'jira') || 'manual',
+    parentTaskId: row.parent_task_id as string | null,
+  };
+}
+
+const TASK_COLUMNS = 'id, title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name, source, parent_task_id';
 
 export async function getAllTasks(incrementId: string): Promise<TaskRow[]> {
   const result = await pool.query(
-    `SELECT id, title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name
-     FROM delivery_tasks WHERE increment_id = $1 ORDER BY created_at`,
+    `SELECT ${TASK_COLUMNS} FROM delivery_tasks WHERE increment_id = $1 ORDER BY created_at`,
     [incrementId]
   );
-  return result.rows.map(row => ({
-    id: row.id,
-    title: row.title,
-    type: row.type,
-    status: row.status,
-    storyPoints: row.story_points ? parseFloat(row.story_points) : null,
-    estimatedDays: row.estimated_days ? parseFloat(row.estimated_days) : null,
-    assignee: row.assignee,
-    priority: row.priority,
-    incrementId: row.increment_id,
-    sprintName: row.sprint_name,
-  }));
+  return result.rows.map(mapTaskRow);
 }
 
 export async function createTask(task: {
@@ -52,11 +61,12 @@ export async function createTask(task: {
   priority?: string;
   incrementId?: string;
   sprintName?: string;
+  source?: 'manual' | 'jira';
 }): Promise<TaskRow> {
   const result = await pool.query(
-    `INSERT INTO delivery_tasks (title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING id, title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name`,
+    `INSERT INTO delivery_tasks (title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING ${TASK_COLUMNS}`,
     [
       task.title,
       task.type || 'feature',
@@ -67,21 +77,10 @@ export async function createTask(task: {
       task.priority || 'medium',
       task.incrementId || null,
       task.sprintName || null,
+      task.source || 'manual',
     ]
   );
-  const row = result.rows[0];
-  return {
-    id: row.id,
-    title: row.title,
-    type: row.type,
-    status: row.status,
-    storyPoints: row.story_points ? parseFloat(row.story_points) : null,
-    estimatedDays: row.estimated_days ? parseFloat(row.estimated_days) : null,
-    assignee: row.assignee,
-    priority: row.priority,
-    incrementId: row.increment_id,
-    sprintName: row.sprint_name,
-  };
+  return mapTaskRow(result.rows[0]);
 }
 
 export async function updateTask(id: string, updates: Partial<{
@@ -94,6 +93,7 @@ export async function updateTask(id: string, updates: Partial<{
   priority: string;
   incrementId: string;
   sprintName: string;
+  parentTaskId: string | null;
 }>): Promise<TaskRow | null> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -108,6 +108,7 @@ export async function updateTask(id: string, updates: Partial<{
   if (updates.priority !== undefined) { fields.push(`priority = $${idx++}`); values.push(updates.priority); }
   if (updates.incrementId !== undefined) { fields.push(`increment_id = $${idx++}`); values.push(updates.incrementId); }
   if (updates.sprintName !== undefined) { fields.push(`sprint_name = $${idx++}`); values.push(updates.sprintName); }
+  if (updates.parentTaskId !== undefined) { fields.push(`parent_task_id = $${idx++}`); values.push(updates.parentTaskId); }
 
   if (fields.length === 0) return null;
 
@@ -116,24 +117,43 @@ export async function updateTask(id: string, updates: Partial<{
 
   const result = await pool.query(
     `UPDATE delivery_tasks SET ${fields.join(', ')} WHERE id = $${idx}
-     RETURNING id, title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name`,
+     RETURNING ${TASK_COLUMNS}`,
     values
   );
 
   if (result.rows.length === 0) return null;
-  const row = result.rows[0];
-  return {
-    id: row.id,
-    title: row.title,
-    type: row.type,
-    status: row.status,
-    storyPoints: row.story_points ? parseFloat(row.story_points) : null,
-    estimatedDays: row.estimated_days ? parseFloat(row.estimated_days) : null,
-    assignee: row.assignee,
-    priority: row.priority,
-    incrementId: row.increment_id,
-    sprintName: row.sprint_name,
-  };
+  return mapTaskRow(result.rows[0]);
+}
+
+export async function nestTask(childId: string, parentId: string): Promise<TaskRow | null> {
+  // Validate: parent must be manual, child must be jira, child must not have children
+  const parent = await pool.query('SELECT source FROM delivery_tasks WHERE id = $1', [parentId]);
+  if (parent.rows.length === 0 || parent.rows[0].source !== 'manual') return null;
+
+  const childChildren = await pool.query('SELECT id FROM delivery_tasks WHERE parent_task_id = $1 LIMIT 1', [childId]);
+  if (childChildren.rows.length > 0) return null; // no multi-level nesting
+
+  const result = await pool.query(
+    `UPDATE delivery_tasks SET parent_task_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING ${TASK_COLUMNS}`,
+    [parentId, childId]
+  );
+  return result.rows.length > 0 ? mapTaskRow(result.rows[0]) : null;
+}
+
+export async function unnestTask(childId: string): Promise<TaskRow | null> {
+  const result = await pool.query(
+    `UPDATE delivery_tasks SET parent_task_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING ${TASK_COLUMNS}`,
+    [childId]
+  );
+  return result.rows.length > 0 ? mapTaskRow(result.rows[0]) : null;
+}
+
+export async function getChildTasks(parentId: string): Promise<TaskRow[]> {
+  const result = await pool.query(
+    `SELECT ${TASK_COLUMNS} FROM delivery_tasks WHERE parent_task_id = $1 ORDER BY created_at`,
+    [parentId]
+  );
+  return result.rows.map(mapTaskRow);
 }
 
 export async function deleteTask(id: string): Promise<boolean> {
@@ -149,25 +169,27 @@ export interface TaskPosition {
   startCol: number;
   endCol: number;
   row: number;
+  rowSpan: number;
 }
 
 export async function saveTaskPosition(position: TaskPosition): Promise<void> {
   await pool.query(
-    `INSERT INTO delivery_positions (task_id, increment_id, start_col, end_col, row, updated_at)
-     VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+    `INSERT INTO delivery_positions (task_id, increment_id, start_col, end_col, row, row_span, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
      ON CONFLICT (task_id, increment_id)
      DO UPDATE SET
        start_col = EXCLUDED.start_col,
        end_col = EXCLUDED.end_col,
        row = EXCLUDED.row,
+       row_span = EXCLUDED.row_span,
        updated_at = CURRENT_TIMESTAMP`,
-    [position.taskId, position.incrementId, position.startCol, position.endCol, position.row]
+    [position.taskId, position.incrementId, position.startCol, position.endCol, position.row, position.rowSpan || 1]
   );
 }
 
 export async function getTaskPositions(incrementId: string): Promise<TaskPosition[]> {
   const result = await pool.query(
-    'SELECT task_id, increment_id, start_col, end_col, row FROM delivery_positions WHERE increment_id = $1',
+    'SELECT task_id, increment_id, start_col, end_col, row, row_span FROM delivery_positions WHERE increment_id = $1',
     [incrementId]
   );
   return result.rows.map(row => ({
@@ -176,6 +198,7 @@ export async function getTaskPositions(incrementId: string): Promise<TaskPositio
     startCol: row.start_col,
     endCol: row.end_col,
     row: row.row,
+    rowSpan: row.row_span || 1,
   }));
 }
 
@@ -461,6 +484,17 @@ export async function ensureDailySnapshot(incrementId: string): Promise<boolean>
 // ============ Init ============
 
 export async function initDeliveryDb(): Promise<void> {
-  // Tables are created by the SQL schema file; this is a no-op safety check
+  // Auto-migration: add new columns if they don't exist (for existing DBs)
+  try {
+    await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS source VARCHAR(10) DEFAULT 'manual'`);
+    await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS parent_task_id UUID REFERENCES delivery_tasks(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE delivery_positions ADD COLUMN IF NOT EXISTS row_span INTEGER NOT NULL DEFAULT 1`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_delivery_tasks_parent ON delivery_tasks(parent_task_id)`);
+    // Backfill source for existing Jira tasks
+    await pool.query(`UPDATE delivery_tasks SET source = 'jira' WHERE sprint_name IS NOT NULL AND source = 'manual'`);
+  } catch (err) {
+    // Columns may already exist — ignore errors
+    console.warn('[Delivery] Migration note:', (err as Error).message);
+  }
   console.log('[Delivery] Database service initialized');
 }
