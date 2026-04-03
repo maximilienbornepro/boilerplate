@@ -487,6 +487,73 @@ export async function ensureDailySnapshot(incrementId: string): Promise<boolean>
   return false;
 }
 
+// ============ Boards CRUD ============
+
+export interface BoardRow {
+  id: string;
+  userId: number;
+  name: string;
+  type: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapBoardRow(row: Record<string, unknown>): BoardRow {
+  return {
+    id: row.id as string,
+    userId: row.user_id as number,
+    name: row.name as string,
+    type: row.type as string,
+    createdAt: (row.created_at as Date).toISOString(),
+    updatedAt: (row.updated_at as Date).toISOString(),
+  };
+}
+
+export async function getAllBoards(userId: number): Promise<BoardRow[]> {
+  const result = await pool.query(
+    'SELECT * FROM delivery_boards WHERE user_id = $1 ORDER BY created_at DESC',
+    [userId]
+  );
+  return result.rows.map(mapBoardRow);
+}
+
+export async function getBoardById(id: string): Promise<BoardRow | null> {
+  const result = await pool.query('SELECT * FROM delivery_boards WHERE id = $1', [id]);
+  if (result.rows.length === 0) return null;
+  return mapBoardRow(result.rows[0]);
+}
+
+export async function createBoard(userId: number, name: string): Promise<BoardRow> {
+  const result = await pool.query(
+    `INSERT INTO delivery_boards (user_id, name)
+     VALUES ($1, $2)
+     RETURNING *`,
+    [userId, name]
+  );
+  return mapBoardRow(result.rows[0]);
+}
+
+export async function updateBoard(id: string, data: { name?: string }): Promise<BoardRow> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let idx = 1;
+
+  if (data.name !== undefined) { fields.push(`name = $${idx++}`); values.push(data.name); }
+  fields.push(`updated_at = CURRENT_TIMESTAMP`);
+  values.push(id);
+
+  const result = await pool.query(
+    `UPDATE delivery_boards SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+    values
+  );
+  if (result.rows.length === 0) throw new Error('Board not found');
+  return mapBoardRow(result.rows[0]);
+}
+
+export async function deleteBoard(id: string): Promise<void> {
+  await pool.query('DELETE FROM delivery_boards WHERE id = $1', [id]);
+}
+
 // ============ Init ============
 
 export async function initDeliveryDb(): Promise<void> {

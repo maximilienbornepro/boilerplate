@@ -1,6 +1,15 @@
 ---
 name: page-composer
 description: Compose and modify module pages visually using the boilerplate design system, with visual validation before each element
+autoSuggest: true
+triggers:
+  - nouvelle page
+  - modifier la page
+  - refonte
+  - page liste
+  - ajouter une page
+  - design de page
+  - construire la page
 ---
 
 # /page-composer

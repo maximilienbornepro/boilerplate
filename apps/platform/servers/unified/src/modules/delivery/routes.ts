@@ -8,6 +8,30 @@ export function createDeliveryRoutes(): Router {
   const router = Router();
   router.use(authMiddleware);
 
+  // ============ Boards CRUD ============
+
+  router.get('/boards', asyncHandler(async (req, res) => {
+    const boards = await db.getAllBoards(req.user!.id);
+    res.json(boards);
+  }));
+
+  router.post('/boards', asyncHandler(async (req, res) => {
+    const { name } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Le nom est obligatoire' });
+    const board = await db.createBoard(req.user!.id, name.trim());
+    res.status(201).json(board);
+  }));
+
+  router.put('/boards/:id', asyncHandler(async (req, res) => {
+    const board = await db.updateBoard(req.params.id, req.body);
+    res.json(board);
+  }));
+
+  router.delete('/boards/:id', asyncHandler(async (req, res) => {
+    await db.deleteBoard(req.params.id);
+    res.json({ ok: true });
+  }));
+
   // ============ Tasks CRUD ============
 
   // Get all tasks for an increment (syncs Jira statuses on the fly)

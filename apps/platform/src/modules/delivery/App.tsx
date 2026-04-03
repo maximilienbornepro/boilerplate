@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BoardDelivery } from './components/BoardDelivery';
+import { BoardList } from './components/BoardList/BoardList';
 import { RestoreModal } from './components/RestoreModal';
 import { SnapshotModal } from './components/SnapshotModal';
 import { ImportModal } from './components/ImportModal';
 import { generateIncrements2026 } from './components/BurgerMenu';
 import { Layout, ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
+import type { Board } from './services/api';
 import {
   fetchTasks,
   createTask,
@@ -31,6 +33,22 @@ import './App.css';
 import './index.css';
 
 function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
+
+  if (!selectedBoard) {
+    return (
+      <Layout appId="delivery" variant="full-width" onNavigate={onNavigate}>
+        <BoardList onSelect={setSelectedBoard} onNavigate={onNavigate} />
+      </Layout>
+    );
+  }
+
+  return (
+    <BoardView board={selectedBoard} onBack={() => setSelectedBoard(null)} onNavigate={onNavigate} />
+  );
+}
+
+function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => void; onNavigate?: (path: string) => void }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -387,8 +405,8 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
       <div className="scope-delivery">
         <div className="app">
           <ModuleHeader
-            title="Delivery Board"
-            onBack={() => onNavigate?.('/')}
+            title={board.name}
+            onBack={onBack}
           >
             <select
               className="module-header-btn increment-select"

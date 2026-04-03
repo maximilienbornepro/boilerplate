@@ -322,3 +322,50 @@ export async function ensureDailySnapshot(incrementId: string): Promise<{ create
   });
   return handleResponse<{ created: boolean; date: string }>(response);
 }
+
+// ============ Boards ============
+
+export interface Board {
+  id: string;
+  userId: number;
+  name: string;
+  type: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchBoards(): Promise<Board[]> {
+  const res = await fetch(`${API_BASE}/boards`, { credentials: 'include' });
+  return handleResponse<Board[]>(res);
+}
+
+export async function createBoard(name: string): Promise<Board> {
+  const res = await fetch(`${API_BASE}/boards`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ name }),
+  });
+  return handleResponse<Board>(res);
+}
+
+export async function updateBoardApi(id: string, data: { name?: string }): Promise<Board> {
+  const res = await fetch(`${API_BASE}/boards/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  return handleResponse<Board>(res);
+}
+
+export async function deleteBoardApi(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/boards/${id}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.error || 'Erreur lors de la suppression');
+  }
+}
