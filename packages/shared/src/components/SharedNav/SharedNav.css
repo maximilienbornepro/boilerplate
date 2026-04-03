@@ -8,6 +8,7 @@
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 var(--spacing-5);
   z-index: 99999;
   font-family: var(--font-family-system);
@@ -24,14 +25,21 @@
   box-sizing: border-box;
 }
 
-/* Menu container */
-.shared-nav .shared-nav-menu-container {
-  position: relative;
+/* Left section: logo + brand */
+.shared-nav .shared-nav-left {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
 }
 
+/* Right section: burger menu */
+.shared-nav .shared-nav-right {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Menu toggle button */
 .shared-nav .shared-nav-menu-toggle {
   display: flex;
   align-items: center;
@@ -63,6 +71,7 @@
   color: var(--text-inverse);
 }
 
+/* Brand */
 .shared-nav .shared-nav-brand {
   display: flex;
   align-items: center;
@@ -103,11 +112,11 @@
   transform: scale(1.05);
 }
 
-/* Dropdown menu */
+/* Dropdown menu — opens from right */
 .shared-nav .shared-nav-dropdown {
   position: fixed;
   top: 58px;
-  left: var(--spacing-5);
+  right: var(--spacing-5);
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
@@ -138,6 +147,7 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* Dropdown items */
 .shared-nav .shared-nav-dropdown-item {
   display: flex;
   align-items: center;
@@ -175,19 +185,18 @@
   flex-shrink: 0;
 }
 
+.shared-nav .shared-nav-dropdown-icon {
+  font-size: var(--font-size-sm);
+  width: var(--spacing-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .shared-nav .shared-nav-dropdown-name {
   font-weight: 500;
   font-size: var(--font-size-base);
-}
-
-.shared-nav .shared-nav-dropdown-separator {
-  height: 1px;
-  background: var(--border-light);
-  margin: var(--spacing-sm) 0;
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-dropdown-separator {
-  background: var(--border-light);
 }
 
 /* Category separator */
@@ -219,6 +228,7 @@
   border-top-color: var(--border-light);
 }
 
+/* Home link */
 .shared-nav .shared-nav-dropdown-home {
   display: flex;
   align-items: center;
@@ -247,182 +257,32 @@
   color: var(--text-primary);
 }
 
-/* Nav actions */
-.shared-nav .shared-nav-actions {
-  margin-left: auto;
+/* Divider */
+.shared-nav .shared-nav-dropdown-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: var(--spacing-sm) 0;
+}
+
+/* Logout in dropdown */
+.shared-nav .shared-nav-dropdown-logout {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.shared-nav .shared-nav-app-slot {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.shared-nav .shared-nav-app-slot .shared-nav-action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border-radius: var(--radius-md);
-  border: none;
-  background: var(--bg-hover);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  font-family: var(--font-family-system);
-  font-size: 16px;
-}
-
-.shared-nav .shared-nav-app-slot .shared-nav-action-btn:hover {
-  background: var(--border-color);
-  color: var(--text-primary);
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-app-slot .shared-nav-action-btn {
-  background: var(--bg-hover);
-  color: var(--text-light);
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-app-slot .shared-nav-action-btn:hover {
-  background: var(--border-color);
-  color: var(--text-inverse);
-}
-
-/* Text buttons (with label) in app slot */
-.shared-nav .shared-nav-app-slot .shared-nav-text-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-1);
-  height: 32px;
-  padding: 0 var(--spacing-3);
-  border-radius: var(--radius-md);
-  border: none;
-  background: var(--bg-hover);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  font-size: var(--font-size-base);
-  font-weight: 500;
-  font-family: var(--font-family-system);
-  white-space: nowrap;
-}
-
-.shared-nav .shared-nav-app-slot .shared-nav-text-btn:hover {
-  background: var(--border-color);
-  color: var(--text-primary);
-}
-
-.shared-nav .shared-nav-app-slot .shared-nav-text-btn.primary {
-  background: var(--accent-primary);
-  color: var(--text-inverse);
-}
-
-.shared-nav .shared-nav-app-slot .shared-nav-text-btn.primary:hover {
-  background: var(--accent-primary-hover);
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-app-slot .shared-nav-text-btn {
-  background: var(--bg-hover);
-  color: var(--text-light);
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-app-slot .shared-nav-text-btn:hover {
-  background: var(--border-color);
-  color: var(--text-inverse);
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-app-slot .shared-nav-text-btn.primary {
-  background: var(--accent-primary);
-  color: var(--text-inverse);
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-app-slot .shared-nav-text-btn.primary:hover {
-  background: var(--accent-primary-hover);
-}
-
-/* Settings section in dropdown */
-.shared-nav .shared-nav-dropdown-settings {
+  gap: var(--spacing-3);
   padding: var(--spacing-2) var(--spacing-4);
-}
-
-.shared-nav .shared-nav-dropdown-settings .shared-nav-theme-switcher {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.shared-nav .shared-nav-dropdown-settings .shared-nav-theme-switcher button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
   border-radius: var(--radius-md);
-  border: none;
-  background: var(--bg-hover);
-  color: var(--text-muted);
   cursor: pointer;
-  transition: all var(--transition-normal);
+  transition: all var(--transition-fast);
+  color: var(--text-muted);
   font-family: var(--font-family-system);
-  font-size: inherit;
-}
-
-.shared-nav .shared-nav-dropdown-settings .shared-nav-theme-switcher button:hover {
-  background: var(--border-color);
-  color: var(--text-primary);
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-dropdown-settings .shared-nav-theme-switcher button {
-  background: var(--bg-hover);
-  color: var(--text-muted);
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-dropdown-settings .shared-nav-theme-switcher button:hover {
-  background: var(--border-color);
-  color: var(--text-inverse);
-}
-
-.shared-nav .shared-nav-theme-label {
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
-  user-select: none;
-}
-
-/* Logout button */
-.shared-nav .shared-nav-logout {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
   border: none;
-  background: var(--bg-hover);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  font-family: var(--font-family-system);
-  font-size: inherit;
+  background: transparent;
+  width: 100%;
+  text-align: left;
 }
 
-.shared-nav .shared-nav-logout:hover {
-  background: var(--error-bg);
-  color: var(--error);
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-logout {
-  background: var(--bg-hover);
-  color: var(--text-light);
-}
-
-[data-theme="dark"] .shared-nav .shared-nav-logout:hover {
+.shared-nav .shared-nav-dropdown-logout:hover {
   background: var(--error-bg);
   color: var(--error);
 }

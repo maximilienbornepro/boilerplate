@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { APPS, CATEGORIES } from './constants.js';
 import type { AppInfo } from './constants.js';
-import { MenuIcon, HomeIcon, SunIcon, MoonIcon, LogoutIcon } from './icons.js';
-import { useSharedTheme } from './useSharedTheme.js';
+import { MenuIcon, HomeIcon, LogoutIcon } from './icons.js';
 import './SharedNav.css';
 
 export interface SharedNavProps {
@@ -22,7 +21,6 @@ export function SharedNav({
 }: SharedNavProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
-  const { theme, toggleTheme } = useSharedTheme();
 
   const currentAppInfo: AppInfo | undefined = currentApp
     ? APPS.find(app => app.id === currentApp)
@@ -85,16 +83,8 @@ export function SharedNav({
 
   return (
     <nav className="shared-nav">
-      <div className="shared-nav-menu-container" ref={menuContainerRef}>
-        <button
-          className="shared-nav-menu-toggle"
-          onClick={() => setDropdownOpen(prev => !prev)}
-          type="button"
-          title="Menu"
-        >
-          <MenuIcon />
-        </button>
-
+      {/* Left: logo + brand */}
+      <div className="shared-nav-left">
         <a
           className="shared-nav-logo-link"
           href="/"
@@ -129,6 +119,18 @@ export function SharedNav({
             Boilerplate
           </a>
         )}
+      </div>
+
+      {/* Right: burger menu */}
+      <div className="shared-nav-right" ref={menuContainerRef}>
+        <button
+          className="shared-nav-menu-toggle"
+          onClick={() => setDropdownOpen(prev => !prev)}
+          type="button"
+          title="Menu"
+        >
+          <MenuIcon />
+        </button>
 
         <div className={`shared-nav-dropdown${dropdownOpen ? ' open' : ''}`}>
           <a
@@ -172,33 +174,27 @@ export function SharedNav({
             );
           })}
 
-          {/* Settings section */}
-          <div className="shared-nav-dropdown-category">
-            <span className="shared-nav-dropdown-category-icon">&#x2699;&#xFE0F;</span>
-            <span>Paramètres</span>
-          </div>
-          <div className="shared-nav-dropdown-settings">
-            <div className="shared-nav-theme-switcher">
-              <button onClick={toggleTheme} type="button" title={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}>
-                {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-              </button>
-              <span className="shared-nav-theme-label">{theme === 'dark' ? 'Sombre' : 'Clair'}</span>
-            </div>
-          </div>
+          {/* Settings + Logout */}
+          <div className="shared-nav-dropdown-divider" />
+
+          <a
+            className="shared-nav-dropdown-item"
+            href="/reglages"
+            onClick={(e) => handleNavClick(e, '/reglages')}
+          >
+            <span className="shared-nav-dropdown-icon">&#x2699;&#xFE0F;</span>
+            <span className="shared-nav-dropdown-name">Réglages</span>
+          </a>
+
+          <button
+            className="shared-nav-dropdown-logout"
+            onClick={handleLogout}
+            type="button"
+          >
+            <LogoutIcon />
+            <span>Déconnexion</span>
+          </button>
         </div>
-      </div>
-
-      <div className="shared-nav-actions">
-        <div className="shared-nav-app-slot">{children}</div>
-
-        <button
-          className="shared-nav-logout"
-          onClick={handleLogout}
-          type="button"
-          title="Déconnexion"
-        >
-          <LogoutIcon />
-        </button>
       </div>
     </nav>
   );

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
-import { Layout, LoadingSpinner, ModuleHeader } from '@boilerplate/shared/components';
+import { Layout, LoadingSpinner, ModuleHeader, ConfirmModal } from '@boilerplate/shared/components';
 import type { Planning, Task, Dependency, ViewMode, Marker, PlanningFormData } from './types';
 import * as api from './services/api';
 import { getNextColor } from './utils/taskUtils';
@@ -115,6 +115,7 @@ function PlanningListView({ onNavigate }: { onNavigate?: (path: string) => void 
   const [loading, setLoading] = useState(true);
   const [showPlanningForm, setShowPlanningForm] = useState(false);
   const [editingPlanningForForm, setEditingPlanningForForm] = useState<Planning | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Planning | null>(null);
 
   useEffect(() => {
     api.fetchPlannings()
@@ -137,10 +138,12 @@ function PlanningListView({ onNavigate }: { onNavigate?: (path: string) => void 
     } catch {}
   };
 
-  const handleDeletePlanning = async (id: string) => {
+  const handleDeletePlanning = async () => {
+    if (!confirmDelete) return;
     try {
-      await api.deletePlanning(id);
-      setPlannings(prev => prev.filter(p => p.id !== id));
+      await api.deletePlanning(confirmDelete.id);
+      setPlannings(prev => prev.filter(p => p.id !== confirmDelete.id));
+      setConfirmDelete(null);
     } catch {}
   };
 
@@ -163,7 +166,7 @@ function PlanningListView({ onNavigate }: { onNavigate?: (path: string) => void 
         activePlanningId={null}
         onSelect={(p) => navigate(`/roadmap/${p.id}`)}
         onEdit={(p) => { setEditingPlanningForForm(p); setShowPlanningForm(true); }}
-        onDelete={handleDeletePlanning}
+        onDelete={(id) => { const p = plannings.find(pl => pl.id === id); if (p) setConfirmDelete(p); }}
         onAdd={() => { setEditingPlanningForForm(null); setShowPlanningForm(true); }}
       />
       {showPlanningForm && (
@@ -179,6 +182,16 @@ function PlanningListView({ onNavigate }: { onNavigate?: (path: string) => void 
             setEditingPlanningForForm(null);
           }}
           onClose={() => { setShowPlanningForm(false); setEditingPlanningForForm(null); }}
+        />
+      )}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Supprimer le planning"
+          message={`Êtes-vous sûr de vouloir supprimer "${confirmDelete.name}" ? Toutes les tâches et dépendances seront supprimées.`}
+          onConfirm={handleDeletePlanning}
+          onCancel={() => setConfirmDelete(null)}
+          confirmLabel="Supprimer"
+          danger
         />
       )}
     </>

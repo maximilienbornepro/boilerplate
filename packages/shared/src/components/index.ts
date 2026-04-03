@@ -87,6 +87,14 @@ export type { ActionCardProps } from './ActionCard/ActionCard.js';
 export { RecommendationItem } from './RecommendationItem/RecommendationItem.js';
 export type { RecommendationItemProps } from './RecommendationItem/RecommendationItem.js';
 
+// SectionTitle
+export { SectionTitle } from './SectionTitle/SectionTitle.js';
+export type { SectionTitleProps } from './SectionTitle/SectionTitle.js';
+
+// Tabs
+export { Tabs } from './Tabs/Tabs.js';
+export type { TabsProps, TabItem } from './Tabs/Tabs.js';
+
 // Hooks
 export { useAutoResize, autoResizeElement } from '../hooks/useAutoResize.js';
 

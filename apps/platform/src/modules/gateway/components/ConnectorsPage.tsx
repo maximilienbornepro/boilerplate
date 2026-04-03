@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { ModuleHeader, Tabs } from '@boilerplate/shared/components';
 import './ConnectorsPage.css';
 
 // ==================== Types ====================
@@ -544,20 +545,14 @@ function JiraCard({
       {expanded && (
         <>
           {oauthAvailable && (
-            <div className="connector-tabs">
-              <button
-                className={`connector-tab${activeTab === 'oauth' ? ' active' : ''}`}
-                onClick={() => setActiveTab('oauth')}
-              >
-                OAuth
-              </button>
-              <button
-                className={`connector-tab${activeTab === 'token' ? ' active' : ''}`}
-                onClick={() => setActiveTab('token')}
-              >
-                Token API
-              </button>
-            </div>
+            <Tabs
+              tabs={[
+                { value: 'oauth', label: 'OAuth' },
+                { value: 'token', label: 'Token API' },
+              ]}
+              value={activeTab}
+              onChange={(v) => setActiveTab(v as 'oauth' | 'token')}
+            />
           )}
 
           {activeTab === 'oauth' && oauthAvailable ? (
@@ -647,13 +642,9 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
   }
 
   return (
-    <div className="connectors-page">
-      <div className="connectors-header">
-        <button className="connectors-back" onClick={onBack}>
-          &#x2190; Retour
-        </button>
-        <h1 className="connectors-title">Connecteurs</h1>
-      </div>
+    <>
+      <ModuleHeader title="Connecteurs" onBack={onBack} />
+      <div className="connectors-page">
 
       <p className="connectors-subtitle">
         Configurez vos connexions aux services externes. Les identifiants sont stockes par utilisateur.
@@ -672,6 +663,7 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
           <ConnectorCard key={service.id} service={service} />
         ))}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
