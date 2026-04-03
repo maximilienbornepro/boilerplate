@@ -68,6 +68,7 @@ export interface CVData {
   // Basic info
   name?: string;
   title?: string;
+  alternativeTitles?: string[]; // Previous/alternative job titles
   summary?: string;
   profilePhoto?: string; // base64
 
