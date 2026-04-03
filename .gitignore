@@ -68,3 +68,4 @@ sync-boilerplate.sh
 *.local
 .modules
 .claude/worktrees/
+.claire/
