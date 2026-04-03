@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '@boilerplate/shared/components';
 import { CVListPage } from './components/CVListPage/CVListPage';
 import { MyProfilePage } from './components/MyProfilePage';
@@ -11,165 +12,106 @@ import { createEmptyCV } from './types';
 import * as api from './services/api';
 import './index.css';
 
-type View =
-  | 'cv-list'
-  | 'profile'
-  | 'adapt'
-  | 'adaptations-list'
-  | 'adaptation-detail';
-
 interface MonCvAppProps {
   onNavigate?: (path: string) => void;
   embedMode?: boolean;
   embedId?: string;
 }
 
-// Inner component — always mounts with hooks (no conditional early return)
-function MonCvMain({ onNavigate }: { onNavigate?: (path: string) => void }) {
-  // Default landing is the CV list
-  const [view, setView] = useState<View>('cv-list');
-  const [cv, setCv] = useState<CV | null>(null);
-  const [selectedCvId, setSelectedCvId] = useState<number | null>(null);
-  const [selectedAdaptationId, setSelectedAdaptationId] = useState<number | null>(null);
-
-  // Handle internal navigation
-  const handleNavigate = useCallback((path: string) => {
-    if (path === '/mon-cv' || path === '/mon-cv/') {
-      setView('cv-list');
-    } else if (path.startsWith('/mon-cv/profile/')) {
-      const cvId = parseInt(path.split('/').pop() || '0', 10);
-      if (cvId) { setSelectedCvId(cvId); setView('profile'); }
-    } else if (path === '/mon-cv/adapt') {
-      setView('adapt');
-    } else if (path.startsWith('/mon-cv/adaptations/detail/')) {
-      const id = parseInt(path.split('/').pop() || '0', 10);
-      if (id) { setSelectedAdaptationId(id); setView('adaptation-detail'); }
-    } else if (path.startsWith('/mon-cv/adaptations/')) {
-      const cvId = parseInt(path.split('/').pop() || '0', 10);
-      if (cvId) { setSelectedCvId(cvId); setView('adaptations-list'); }
-    } else if (onNavigate) {
-      onNavigate(path);
-    }
-  }, [onNavigate]);
-
-  // Load the selected CV when entering adapt view
-  useEffect(() => {
-    if (view === 'adapt') {
-      const loader = selectedCvId ? api.fetchCV(selectedCvId) : api.fetchDefaultCV();
-      loader.then(setCv).catch(console.error);
-    }
-  }, [view, selectedCvId]);
-
-  // Navigate to edit a specific CV
-  const handleEditCv = useCallback((cvId: number) => {
-    setSelectedCvId(cvId);
-    setView('profile');
-  }, []);
-
-  // Navigate to adapt a specific CV
-  const handleAdaptCv = useCallback((cvId: number) => {
-    setSelectedCvId(cvId);
-    setView('adapt');
-  }, []);
-
-  // Navigate to adaptations list for a CV
-  const handleAdaptationsCv = useCallback((cvId: number) => {
-    setSelectedCvId(cvId);
-    setView('adaptations-list');
-  }, []);
-
-  // Called when adaptation is saved — go to detail
-  const handleAdaptationSaved = useCallback((adaptationId: number) => {
-    setSelectedAdaptationId(adaptationId);
-    setView('adaptation-detail');
-  }, []);
-
-  // Render based on current view
-  const renderContent = () => {
-    switch (view) {
-      case 'cv-list':
-        return (
-          <CVListPage
-            onEdit={handleEditCv}
-            onAdapt={handleAdaptCv}
-            onAdaptations={handleAdaptationsCv}
-            onBack={() => onNavigate?.('/')}
-          />
-        );
-
-      case 'profile':
-        return (
-          <MyProfilePage
-            cvId={selectedCvId ?? undefined}
-            onNavigate={handleNavigate}
-          />
-        );
-
-      case 'adapt':
-        return (
-          <AdaptCVPage
-            cvId={selectedCvId ?? (cv?.id ?? 0)}
-            cvData={cv?.cvData || createEmptyCV()}
-            onSaved={handleAdaptationSaved}
-            onCancel={() => setView(selectedCvId ? 'profile' : 'cv-list')}
-          />
-        );
-
-      case 'adaptations-list':
-        return (
-          <AdaptationsListPage
-            cvId={selectedCvId ?? 0}
-            cvName={cv?.name || 'CV'}
-            onAdapt={() => {
-              if (selectedCvId) {
-                api.fetchCV(selectedCvId)
-                  .then(loadedCv => { setCv(loadedCv); setView('adapt'); })
-                  .catch(console.error);
-              }
-            }}
-            onView={adaptationId => {
-              setSelectedAdaptationId(adaptationId);
-              setView('adaptation-detail');
-            }}
-            onBack={() => setView('cv-list')}
-          />
-        );
-
-      case 'adaptation-detail':
-        return (
-          <AdaptationDetailPage
-            adaptationId={selectedAdaptationId ?? 0}
-            onBack={() => {
-              if (selectedCvId) setView('adaptations-list');
-              else setView('cv-list');
-            }}
-          />
-        );
-
-      default:
-        return (
-          <CVListPage
-            onEdit={handleEditCv}
-            onAdapt={handleAdaptCv}
-            onAdaptations={handleAdaptationsCv}
-            onBack={() => onNavigate?.('/')}
-          />
-        );
-    }
-  };
-
+export default function MonCvApp({ onNavigate, embedMode, embedId }: MonCvAppProps) {
+  if (embedMode && embedId) {
+    return <EmbedView itemId={embedId} />;
+  }
   return (
-    <Layout appId="mon-cv" variant="full-width" onNavigate={handleNavigate}>
-      {renderContent()}
+    <Layout appId="mon-cv" variant="full-width" onNavigate={onNavigate}>
+      <Routes>
+        <Route path="/:cvId/adaptations/:adaptationId" element={<AdaptationDetailRoute onNavigate={onNavigate} />} />
+        <Route path="/:cvId/adaptations" element={<AdaptationsListRoute onNavigate={onNavigate} />} />
+        <Route path="/:cvId/adapt" element={<AdaptCVRoute onNavigate={onNavigate} />} />
+        <Route path="/:cvId" element={<CVEditRoute onNavigate={onNavigate} />} />
+        <Route path="/" element={<CVListRoute onNavigate={onNavigate} />} />
+      </Routes>
     </Layout>
   );
 }
 
-export default function MonCvApp({ onNavigate, embedMode, embedId }: MonCvAppProps) {
-  // Embed mode: render minimal view (no hooks needed)
-  if (embedMode && embedId) {
-    return <EmbedView itemId={embedId} />;
-  }
-  // Normal mode: delegate to inner component that manages all hooks
-  return <MonCvMain onNavigate={onNavigate} />;
+function CVListRoute({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const navigate = useNavigate();
+  return (
+    <CVListPage
+      onEdit={(cvId) => navigate(`/mon-cv/${cvId}`)}
+      onAdapt={(cvId) => navigate(`/mon-cv/${cvId}/adapt`)}
+      onAdaptations={(cvId) => navigate(`/mon-cv/${cvId}/adaptations`)}
+      onBack={() => onNavigate?.('/')}
+    />
+  );
+}
+
+function CVEditRoute({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const { cvId } = useParams<{ cvId: string }>();
+  const navigate = useNavigate();
+  return (
+    <MyProfilePage
+      cvId={cvId ? parseInt(cvId, 10) : undefined}
+      onNavigate={(path) => {
+        if (path.startsWith('/mon-cv')) navigate(path);
+        else if (onNavigate) onNavigate(path);
+        else navigate(path);
+      }}
+    />
+  );
+}
+
+function AdaptCVRoute({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const { cvId } = useParams<{ cvId: string }>();
+  const navigate = useNavigate();
+  const [cv, setCv] = useState<CV | null>(null);
+
+  useEffect(() => {
+    if (!cvId) return;
+    api.fetchCV(parseInt(cvId, 10)).then(setCv).catch(() => navigate('/mon-cv'));
+  }, [cvId]);
+
+  if (!cv) return null;
+
+  return (
+    <AdaptCVPage
+      cvId={cv.id}
+      cvData={cv.cvData || createEmptyCV()}
+      onSaved={(adaptationId) => navigate(`/mon-cv/${cvId}/adaptations/${adaptationId}`)}
+      onCancel={() => navigate(`/mon-cv/${cvId}`)}
+    />
+  );
+}
+
+function AdaptationsListRoute({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const { cvId } = useParams<{ cvId: string }>();
+  const navigate = useNavigate();
+  const [cvName, setCvName] = useState('CV');
+
+  useEffect(() => {
+    if (!cvId) return;
+    api.fetchCV(parseInt(cvId, 10)).then(cv => setCvName(cv.name)).catch(() => {});
+  }, [cvId]);
+
+  return (
+    <AdaptationsListPage
+      cvId={parseInt(cvId || '0', 10)}
+      cvName={cvName}
+      onAdapt={() => navigate(`/mon-cv/${cvId}/adapt`)}
+      onView={(adaptationId) => navigate(`/mon-cv/${cvId}/adaptations/${adaptationId}`)}
+      onBack={() => navigate('/mon-cv')}
+    />
+  );
+}
+
+function AdaptationDetailRoute({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const { cvId, adaptationId } = useParams<{ cvId: string; adaptationId: string }>();
+  const navigate = useNavigate();
+  return (
+    <AdaptationDetailPage
+      adaptationId={parseInt(adaptationId || '0', 10)}
+      onBack={() => navigate(`/mon-cv/${cvId}/adaptations`)}
+    />
+  );
 }

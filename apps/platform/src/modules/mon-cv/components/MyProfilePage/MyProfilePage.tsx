@@ -274,14 +274,14 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
         </button>
         <button
           className="module-header-btn"
-          onClick={() => cv && onNavigate?.(`/mon-cv/adaptations/${cv.id}`)}
+          onClick={() => cv && onNavigate?.(`/mon-cv/${cv.id}/adaptations`)}
           title="Voir les adaptations de ce CV"
         >
           Adaptations
         </button>
         <button
           className="module-header-btn module-header-btn-primary"
-          onClick={() => onNavigate?.('/mon-cv/adapt')}
+          onClick={() => cv && onNavigate?.(`/mon-cv/${cv.id}/adapt`)}
         >
           Analyser une offre
         </button>

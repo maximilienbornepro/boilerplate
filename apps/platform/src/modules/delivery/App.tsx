@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import { BoardDelivery } from './components/BoardDelivery';
 import { BoardList } from './components/BoardList/BoardList';
 import { RestoreModal } from './components/RestoreModal';
@@ -7,6 +8,7 @@ import { ImportModal } from './components/ImportModal';
 import { generateIncrements2026 } from './components/BurgerMenu';
 import { Layout, ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import type { Board } from './services/api';
+import { fetchBoard } from './services/api';
 import {
   fetchTasks,
   createTask,
@@ -32,19 +34,57 @@ import { buildRowTracker } from './utils/taskLoading';
 import './App.css';
 import './index.css';
 
-function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
-  const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
+function BoardListPage({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const navigate = useNavigate();
 
-  if (!selectedBoard) {
+  return (
+    <Layout appId="delivery" variant="full-width" onNavigate={onNavigate}>
+      <BoardList
+        onSelect={(board) => navigate(`/delivery/${board.id}`)}
+        onNavigate={onNavigate}
+      />
+    </Layout>
+  );
+}
+
+function BoardDetailPage({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const { boardId } = useParams<{ boardId: string }>();
+  const navigate = useNavigate();
+  const [board, setBoard] = useState<Board | null>(null);
+  const [loadingBoard, setLoadingBoard] = useState(true);
+
+  useEffect(() => {
+    if (!boardId) return;
+    setLoadingBoard(true);
+    fetchBoard(boardId)
+      .then(setBoard)
+      .catch(() => navigate('/delivery'))
+      .finally(() => setLoadingBoard(false));
+  }, [boardId]);
+
+  if (loadingBoard || !board) {
     return (
       <Layout appId="delivery" variant="full-width" onNavigate={onNavigate}>
-        <BoardList onSelect={setSelectedBoard} onNavigate={onNavigate} />
+        <LoadingSpinner message="Chargement du board..." />
       </Layout>
     );
   }
 
   return (
-    <BoardView board={selectedBoard} onBack={() => setSelectedBoard(null)} onNavigate={onNavigate} />
+    <BoardView
+      board={board}
+      onBack={() => navigate('/delivery')}
+      onNavigate={onNavigate}
+    />
+  );
+}
+
+function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  return (
+    <Routes>
+      <Route path="/:boardId" element={<BoardDetailPage onNavigate={onNavigate} />} />
+      <Route path="/" element={<BoardListPage onNavigate={onNavigate} />} />
+    </Routes>
   );
 }
 

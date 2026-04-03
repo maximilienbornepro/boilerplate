@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import { Layout, LoadingSpinner, ModuleHeader } from '@boilerplate/shared/components';
 import type { Planning, Task, Dependency, ViewMode, Marker, PlanningFormData } from './types';
 import * as api from './services/api';
@@ -20,17 +21,26 @@ function getEmbedPlanningId(): string | null {
   return new URLSearchParams(window.location.search).get('embed');
 }
 
-export default function RoadmapApp({ onNavigate }: { onNavigate?: (path: string) => void }) {
-  const embedPlanningId = getEmbedPlanningId();
+export default function RoadmapApp({ onNavigate, embedMode, embedId }: { onNavigate?: (path: string) => void; embedMode?: boolean; embedId?: string }) {
+  const embedPlanningId = getEmbedPlanningId() || (embedMode ? embedId : null);
 
   if (embedPlanningId) {
     return <EmbedView planningId={embedPlanningId} />;
   }
 
   return (
-    <Layout appId="roadmap" variant="full-width" onNavigate={onNavigate}>
-      <AppContentInner onNavigate={onNavigate} />
-    </Layout>
+    <Routes>
+      <Route path="/:planningId" element={
+        <Layout appId="roadmap" variant="full-width" onNavigate={onNavigate}>
+          <PlanningDetailView onNavigate={onNavigate} />
+        </Layout>
+      } />
+      <Route path="/" element={
+        <Layout appId="roadmap" variant="full-width" onNavigate={onNavigate}>
+          <PlanningListView onNavigate={onNavigate} />
+        </Layout>
+      } />
+    </Routes>
   );
 }
 
@@ -99,8 +109,85 @@ function EmbedView({ planningId }: { planningId: string }) {
 
 // ==================== MAIN APP ====================
 
-function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }) {
+function PlanningListView({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const navigate = useNavigate();
   const [plannings, setPlannings] = useState<Planning[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showPlanningForm, setShowPlanningForm] = useState(false);
+  const [editingPlanningForForm, setEditingPlanningForForm] = useState<Planning | null>(null);
+
+  useEffect(() => {
+    api.fetchPlannings()
+      .then(setPlannings)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleCreatePlanningFromForm = async (data: PlanningFormData) => {
+    try {
+      const planning = await api.createPlanning(data);
+      navigate(`/roadmap/${planning.id}`);
+    } catch {}
+  };
+
+  const handleEditPlanning = async (id: string, data: Partial<Planning>) => {
+    try {
+      const updated = await api.updatePlanning(id, data);
+      setPlannings(prev => prev.map(p => p.id === id ? updated : p));
+    } catch {}
+  };
+
+  const handleDeletePlanning = async (id: string) => {
+    try {
+      await api.deletePlanning(id);
+      setPlannings(prev => prev.filter(p => p.id !== id));
+    } catch {}
+  };
+
+  if (loading && plannings.length === 0) {
+    return <LoadingSpinner message="Chargement..." />;
+  }
+
+  return (
+    <>
+      <ModuleHeader title="Roadmap" onBack={() => onNavigate ? onNavigate('/') : (window.location.href = '/')}>
+        <button
+          className="module-header-btn module-header-btn-primary"
+          onClick={() => { setEditingPlanningForForm(null); setShowPlanningForm(true); }}
+        >
+          + Nouveau planning
+        </button>
+      </ModuleHeader>
+      <PlanningList
+        plannings={plannings}
+        activePlanningId={null}
+        onSelect={(p) => navigate(`/roadmap/${p.id}`)}
+        onEdit={(p) => { setEditingPlanningForForm(p); setShowPlanningForm(true); }}
+        onDelete={handleDeletePlanning}
+        onAdd={() => { setEditingPlanningForForm(null); setShowPlanningForm(true); }}
+      />
+      {showPlanningForm && (
+        <PlanningForm
+          planning={editingPlanningForForm}
+          onSubmit={async (data) => {
+            if (editingPlanningForForm) {
+              await handleEditPlanning(editingPlanningForForm.id, data);
+            } else {
+              await handleCreatePlanningFromForm(data);
+            }
+            setShowPlanningForm(false);
+            setEditingPlanningForForm(null);
+          }}
+          onClose={() => { setShowPlanningForm(false); setEditingPlanningForForm(null); }}
+        />
+      )}
+    </>
+  );
+}
+
+function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => void }) {
+  const { planningId } = useParams<{ planningId: string }>();
+  const navigate = useNavigate();
   const [selectedPlanning, setSelectedPlanning] = useState<Planning | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
@@ -121,39 +208,23 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
   const platformSettings = usePlatformSettings();
   const integrationEnabled = platformSettings['integration_roadmap_suivitess'] ?? false;
 
-  useEffect(() => { loadPlannings(); }, []);
-
-  const hasRestoredFromUrl = useRef(false);
-
   useEffect(() => {
-    const urlId = getUrlPlanningId();
-    if (urlId && plannings.length > 0 && !selectedPlanning) {
-      const found = plannings.find(p => p.id === urlId);
-      if (found) setSelectedPlanning(found);
-    }
-    if (plannings.length > 0) hasRestoredFromUrl.current = true;
-  }, [plannings]);
-
-  useEffect(() => {
-    if (!hasRestoredFromUrl.current) return;
-    const url = new URL(window.location.href);
-    if (selectedPlanning) url.searchParams.set('id', selectedPlanning.id);
-    else url.searchParams.delete('id');
-    history.replaceState(null, '', url.toString());
-  }, [selectedPlanning]);
+    if (!planningId) return;
+    // Load the planning details
+    api.fetchPlannings().then(plannings => {
+      const found = plannings.find(p => p.id === planningId);
+      if (found) {
+        setSelectedPlanning(found);
+      } else {
+        navigate('/roadmap');
+      }
+    }).catch(() => navigate('/roadmap'))
+    .finally(() => setLoading(false));
+  }, [planningId]);
 
   useEffect(() => {
     if (selectedPlanning) loadPlanningData(selectedPlanning.id);
   }, [selectedPlanning]);
-
-  const loadPlannings = async () => {
-    try {
-      setLoading(true);
-      const data = await api.fetchPlannings();
-      setPlannings(data);
-    } catch { setError('Erreur lors du chargement des plannings'); }
-    finally { setLoading(false); }
-  };
 
   const loadPlanningData = async (planningId: string) => {
     try {
@@ -365,11 +436,7 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
     if (onNavigate) onNavigate('/'); else window.location.href = '/';
   }, [onNavigate]);
 
-  const handleBack = () => {
-    setSelectedPlanning(null); setTasks([]); setDependencies([]); setMarkers([]);
-  };
-
-  if (loading && !selectedPlanning && plannings.length === 0) {
+  if (loading || !selectedPlanning) {
     return <LoadingSpinner message="Chargement..." />;
   }
 
@@ -382,106 +449,68 @@ function AppContentInner({ onNavigate }: { onNavigate?: (path: string) => void }
         </div>
       )}
 
-      {selectedPlanning ? (
-        <>
-          <ModuleHeader title={selectedPlanning.name} onBack={handleBack}>
-            <button className="module-header-btn" onClick={handleTodayClick}>
-              Aujourd'hui
-            </button>
-            <ViewSelector
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              yearOffset={yearOffset}
-              onYearOffsetChange={setYearOffset}
-              currentYear={new Date().getFullYear() + yearOffset}
-            />
-            <button className="module-header-btn module-header-btn-primary" onClick={handleCopyPreviewLink}>
-              {copiedPreview ? 'Copié !' : 'Partager'}
-            </button>
-          </ModuleHeader>
+      <ModuleHeader title={selectedPlanning.name} onBack={() => navigate('/roadmap')}>
+        <button className="module-header-btn" onClick={handleTodayClick}>
+          Aujourd'hui
+        </button>
+        <ViewSelector
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          yearOffset={yearOffset}
+          onYearOffsetChange={setYearOffset}
+          currentYear={new Date().getFullYear() + yearOffset}
+        />
+        <button className="module-header-btn module-header-btn-primary" onClick={handleCopyPreviewLink}>
+          {copiedPreview ? 'Copié !' : 'Partager'}
+        </button>
+      </ModuleHeader>
 
-          <div className={`roadmap-planning-view ${showSubjectsPanel && selectedTask ? 'roadmap-with-panel' : ''}`}>
-            <div className="roadmap-gantt-container">
-              <GanttBoard
-                ref={ganttScrollRef}
-                planning={yearOffset !== 0 ? {
-                  ...selectedPlanning,
-                  startDate: `${new Date(selectedPlanning.startDate).getFullYear() + yearOffset}-${selectedPlanning.startDate.slice(5)}`,
-                  endDate: `${new Date(selectedPlanning.endDate).getFullYear() + yearOffset}-${selectedPlanning.endDate.slice(5)}`,
-                } : selectedPlanning}
-                tasks={tasks}
-                dependencies={dependencies}
-                viewMode={viewMode}
-                markers={markers}
-                onTaskUpdate={handleTaskUpdate}
-                onTaskClick={handleTaskClick}
-                onTaskDelete={handleTaskDeleteDirect}
-                onAddTask={handleAddTask}
-                onAddChildTask={handleAddChildTask}
-                onCreateDependency={handleCreateDependency}
-                onDeleteDependency={handleDeleteDependency}
-                onMarkerUpdate={handleUpdateMarker}
-                onMarkerDelete={handleDeleteMarker}
-                onAddMarker={handleCreateMarker}
-              />
-            </div>
-
-            {showSubjectsPanel && selectedTask && (
-              <SubjectsPanel
-                task={selectedTask}
-                planningId={selectedPlanning?.id}
-                onClose={() => setShowSubjectsPanel(false)}
-                onTaskUpdate={handleTaskUpdate}
-                onTaskDelete={handleTaskDeleteDirect}
-                onNavigateToSuiviTess={onNavigate ? (docId, sectionId) => onNavigate(`/suivitess/${docId}${sectionId ? `?section=${sectionId}` : ''}`) : undefined}
-              />
-            )}
-
-            {showTaskForm && !editingTask && (
-              <TaskForm
-                task={null}
-                planningId={selectedPlanning.id}
-                onSubmit={handleTaskFormSubmit}
-                onCancel={() => { setShowTaskForm(false); setEditingTask(null); }}
-              />
-            )}
-          </div>
-        </>
-      ) : (
-        <>
-          <ModuleHeader title="Roadmap" onBack={handleNavigateHome}>
-            <button
-              className="module-header-btn module-header-btn-primary"
-              onClick={() => { setEditingPlanningForForm(null); setShowPlanningForm(true); }}
-            >
-              + Nouveau planning
-            </button>
-          </ModuleHeader>
-          <PlanningList
-            plannings={plannings}
-            activePlanningId={selectedPlanning?.id ?? null}
-            onSelect={setSelectedPlanning}
-            onEdit={(p) => { setEditingPlanningForForm(p); setShowPlanningForm(true); }}
-            onDelete={handleDeletePlanning}
-            onAdd={() => { setEditingPlanningForForm(null); setShowPlanningForm(true); }}
+      <div className={`roadmap-planning-view ${showSubjectsPanel && selectedTask ? 'roadmap-with-panel' : ''}`}>
+        <div className="roadmap-gantt-container">
+          <GanttBoard
+            ref={ganttScrollRef}
+            planning={yearOffset !== 0 ? {
+              ...selectedPlanning,
+              startDate: `${new Date(selectedPlanning.startDate).getFullYear() + yearOffset}-${selectedPlanning.startDate.slice(5)}`,
+              endDate: `${new Date(selectedPlanning.endDate).getFullYear() + yearOffset}-${selectedPlanning.endDate.slice(5)}`,
+            } : selectedPlanning}
+            tasks={tasks}
+            dependencies={dependencies}
+            viewMode={viewMode}
+            markers={markers}
+            onTaskUpdate={handleTaskUpdate}
+            onTaskClick={handleTaskClick}
+            onTaskDelete={handleTaskDeleteDirect}
+            onAddTask={handleAddTask}
+            onAddChildTask={handleAddChildTask}
+            onCreateDependency={handleCreateDependency}
+            onDeleteDependency={handleDeleteDependency}
+            onMarkerUpdate={handleUpdateMarker}
+            onMarkerDelete={handleDeleteMarker}
+            onAddMarker={handleCreateMarker}
           />
-          {showPlanningForm && (
-            <PlanningForm
-              planning={editingPlanningForForm}
-              onSubmit={async (data) => {
-                if (editingPlanningForForm) {
-                  await handleEditPlanning(editingPlanningForForm.id, data);
-                } else {
-                  await handleCreatePlanningFromForm(data);
-                }
-                setShowPlanningForm(false);
-                setEditingPlanningForForm(null);
-              }}
-              onClose={() => { setShowPlanningForm(false); setEditingPlanningForForm(null); }}
-            />
-          )}
-        </>
-      )}
+        </div>
+
+        {showSubjectsPanel && selectedTask && (
+          <SubjectsPanel
+            task={selectedTask}
+            planningId={selectedPlanning?.id}
+            onClose={() => setShowSubjectsPanel(false)}
+            onTaskUpdate={handleTaskUpdate}
+            onTaskDelete={handleTaskDeleteDirect}
+            onNavigateToSuiviTess={onNavigate ? (docId, sectionId) => onNavigate(`/suivitess/${docId}${sectionId ? `?section=${sectionId}` : ''}`) : undefined}
+          />
+        )}
+
+        {showTaskForm && !editingTask && (
+          <TaskForm
+            task={null}
+            planningId={selectedPlanning.id}
+            onSubmit={handleTaskFormSubmit}
+            onCancel={() => { setShowTaskForm(false); setEditingTask(null); }}
+          />
+        )}
+      </div>
     </>
   );
 }

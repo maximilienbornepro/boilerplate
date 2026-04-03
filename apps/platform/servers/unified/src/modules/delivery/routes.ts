@@ -15,6 +15,12 @@ export function createDeliveryRoutes(): Router {
     res.json(boards);
   }));
 
+  router.get('/boards/:id', asyncHandler(async (req, res) => {
+    const board = await db.getBoardById(req.params.id);
+    if (!board) return res.status(404).json({ error: 'Board non trouvé' });
+    res.json(board);
+  }));
+
   router.post('/boards', asyncHandler(async (req, res) => {
     const { name } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Le nom est obligatoire' });

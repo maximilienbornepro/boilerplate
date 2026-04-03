@@ -339,6 +339,11 @@ export async function fetchBoards(): Promise<Board[]> {
   return handleResponse<Board[]>(res);
 }
 
+export async function fetchBoard(id: string): Promise<Board> {
+  const res = await fetch(`${API_BASE}/boards/${id}`, { credentials: 'include' });
+  return handleResponse<Board>(res);
+}
+
 export async function createBoard(name: string): Promise<Board> {
   const res = await fetch(`${API_BASE}/boards`, {
     method: 'POST',
