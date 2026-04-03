@@ -92,7 +92,9 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIncrement, setSelectedIncrement] = useState('inc1');
+  const [selectedIncrementBase, setSelectedIncrementBase] = useState('inc1');
+  // Prefix increment with board ID to isolate data per board
+  const selectedIncrement = `${board.id}_${selectedIncrementBase}`;
   const [incrementState, setIncrementState] = useState<IncrementState | null>(null);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
@@ -105,14 +107,14 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const incrementList = useMemo(() => generateIncrements2026(), []);
 
   const currentIncrementName = useMemo(() => {
-    const inc = incrementList.find((i) => i.id === selectedIncrement);
-    return inc?.name || selectedIncrement;
-  }, [incrementList, selectedIncrement]);
+    const inc = incrementList.find((i) => i.id === selectedIncrementBase);
+    return inc?.name || selectedIncrementBase;
+  }, [incrementList, selectedIncrementBase]);
 
   const currentSprints = useMemo(() => {
-    const inc = incrementList.find((i) => i.id === selectedIncrement);
+    const inc = incrementList.find((i) => i.id === selectedIncrementBase);
     return inc?.sprints || [];
-  }, [incrementList, selectedIncrement]);
+  }, [incrementList, selectedIncrementBase]);
 
   // Load active connectors + Jira site URL on mount
   useEffect(() => {
@@ -450,8 +452,8 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
           >
             <select
               className="module-header-btn increment-select"
-              value={selectedIncrement}
-              onChange={(e) => setSelectedIncrement(e.target.value)}
+              value={selectedIncrementBase}
+              onChange={(e) => setSelectedIncrementBase(e.target.value)}
             >
               {incrementList.map((inc) => (
                 <option key={inc.id} value={inc.id}>
