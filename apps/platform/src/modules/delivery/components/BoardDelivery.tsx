@@ -18,6 +18,7 @@ interface BoardDeliveryProps {
   onTaskMove?: (taskId: string, newStartCol: number, newRow: number) => void;
   onNestTask?: (childId: string, containerId: string) => void;
   onUnnestTask?: (childId: string) => void;
+  jiraBaseUrl?: string | null;
 }
 
 const ROW_HEIGHT = 95;
@@ -36,6 +37,7 @@ export function BoardDelivery({
   onTaskMove,
   onNestTask,
   onUnnestTask,
+  jiraBaseUrl,
 }: BoardDeliveryProps) {
   return (
     <div className={styles.board}>
@@ -75,6 +77,7 @@ export function BoardDelivery({
           onTaskMove={onTaskMove}
           onNestTask={onNestTask}
           onUnnestTask={onUnnestTask}
+          jiraBaseUrl={jiraBaseUrl}
         />
       </div>
     </div>

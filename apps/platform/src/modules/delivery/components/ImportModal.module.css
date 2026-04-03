@@ -1,0 +1,12 @@
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); width: 600px; max-width: 95vw; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
+.header { display: flex; align-items: center; justify-content: space-between; padding: var(--spacing-md) var(--spacing-lg); border-bottom: 1px solid var(--border-color); }
+.title { font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); color: var(--text-primary); font-family: var(--font-family-mono); margin: 0; }
+.closeBtn { background: none; border: none; font-size: var(--font-size-xl); color: var(--text-muted); cursor: pointer; line-height: 1; padding: 0; }
+.closeBtn:hover { color: var(--text-primary); }
+.connectorList { display: flex; flex-direction: column; gap: var(--spacing-sm); padding: var(--spacing-lg); }
+.connectorItem { display: flex; align-items: center; gap: var(--spacing-md); padding: var(--spacing-md); border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-tertiary); cursor: pointer; transition: background var(--transition-fast), border-color var(--transition-fast); }
+.connectorItem:hover { background: var(--bg-hover); border-color: var(--accent-primary); }
+.connectorIcon { width: 32px; height: 32px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
+.connectorIcon svg { width: 20px; height: 20px; }
+.connectorName { font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); color: var(--text-primary); font-family: var(--font-family-mono); }

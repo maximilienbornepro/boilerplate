@@ -28,6 +28,29 @@ export interface JiraIssue {
   sprintName?: string;
 }
 
+export interface ActiveConnector {
+  service: string;
+  baseUrl?: string;
+}
+
+export async function fetchActiveConnectors(): Promise<ActiveConnector[]> {
+  try {
+    const response = await fetch('/api/connectors', { credentials: 'include' });
+    if (!response.ok) return [];
+    const connectors = await response.json() as { service: string; isActive: boolean; config: Record<string, string> }[];
+    return connectors.filter(c => c.isActive).map(c => ({ service: c.service, baseUrl: c.config?.baseUrl }));
+  } catch { return []; }
+}
+
+export async function fetchJiraSiteUrl(): Promise<string | null> {
+  try {
+    const response = await fetch(`${API_BASE}/jira/check`, { credentials: 'include' });
+    if (!response.ok) return null;
+    const data = await response.json() as { connected: boolean; siteUrl: string | null };
+    return data.siteUrl ?? null;
+  } catch { return null; }
+}
+
 export async function checkJiraConnected(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE}/jira/check`, { credentials: 'include' });

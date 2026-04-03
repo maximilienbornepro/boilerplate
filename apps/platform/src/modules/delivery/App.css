@@ -70,26 +70,6 @@
     min-width: 0;
   }
 
-  /* Freeze button */
-  .freeze-btn {
-    border: 1px solid var(--border-color);
-  }
-
-  .freeze-btn:hover {
-    background: rgba(0, 0, 0, 0.1);
-  }
-
-  .freeze-btn.frozen {
-    background: var(--info) !important;
-    border-color: transparent !important;
-    color: var(--text-inverse);
-    box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
-  }
-
-  .freeze-btn.frozen:hover {
-    background: var(--blue-600) !important;
-  }
-
   /* Add task form */
   .add-task-input {
     flex: 1;
@@ -149,16 +129,3 @@
   color: var(--text-secondary);
 }
 
-[data-theme="dark"] .scope-delivery .freeze-btn {
-  border-color: var(--border-color);
-}
-
-[data-theme="dark"] .scope-delivery .freeze-btn:hover {
-  background: var(--bg-hover);
-}
-
-[data-theme="dark"] .scope-delivery .freeze-btn.frozen {
-  background: var(--info);
-  border-color: transparent;
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
-}

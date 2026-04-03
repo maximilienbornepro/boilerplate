@@ -104,7 +104,7 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
         createTask({
           title: formatJiraTitle(issue.key, issue.summary),
           type: mapIssueType(issue.issueType),
-          status: 'todo',
+          status: issue.status,
           storyPoints: issue.storyPoints,
           assignee: issue.assignee,
           sprintName: issue.sprintName,

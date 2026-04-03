@@ -1,7 +1,14 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Task } from '../types';
-import { stripJiraKey } from '../utils/jiraUtils';
+import { stripJiraKey, mapSimpleStatus, extractJiraKey, buildJiraUrl } from '../utils/jiraUtils';
+import type { SimpleStatus } from '../utils/jiraUtils';
 import styles from './TaskBlock.module.css';
+
+const STATUS_DOT_COLORS: Record<SimpleStatus, string> = {
+  todo: 'var(--gray-500)',
+  in_progress: 'var(--info)',
+  done: 'var(--success)',
+};
 
 // Max chips visible in a container before showing the "+N" indicator
 const MAX_VISIBLE_CHIPS = 3;
@@ -37,11 +44,12 @@ interface TaskBlockProps {
   onMove?: (taskId: string, newStartCol: number, newRow: number) => void;
   onNestTask?: (childId: string, containerId: string) => void;
   onUnnest?: (childId: string) => void;
+  jiraBaseUrl?: string | null;
 }
 
 export function TaskBlock({
   task, totalCols, rowHeight, readOnly = false,
-  onUpdate, onDelete, onResize, onMove, onNestTask, onUnnest,
+  onUpdate, onDelete, onResize, onMove, onNestTask, onUnnest, jiraBaseUrl,
 }: TaskBlockProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(task.title);
@@ -51,6 +59,7 @@ export function TaskBlock({
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [showMenu, setShowMenu] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showHiddenChips, setShowHiddenChips] = useState(false);
   const blockRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
@@ -155,17 +164,26 @@ export function TaskBlock({
     const target = e.target as HTMLElement;
     if (target.closest(`.${styles.resizeHandle}`) || target.closest(`.${styles.deleteBtn}`) || target.closest(`.${styles.childChip}`)) return;
 
-    e.preventDefault();
-    setIsDragging(true);
     startXRef.current = e.clientX;
     startYRef.current = e.clientY;
     startColRef.current = { start: startCol, end: endCol };
     startRowRef.current = row;
-    setDragOffset({ x: 0, y: 0 });
 
+    let dragStarted = false;
     let currentHighlightEl: Element | null = null;
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
+      const dx = moveEvent.clientX - startXRef.current;
+      const dy = moveEvent.clientY - startYRef.current;
+
+      if (!dragStarted) {
+        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+        dragStarted = true;
+        moveEvent.preventDefault();
+        setIsDragging(true);
+        setDragOffset({ x: 0, y: 0 });
+      }
+
       setDragOffset({ x: moveEvent.clientX - startXRef.current, y: moveEvent.clientY - startYRef.current });
 
       if (task.source === 'jira' && onNestTask) {
@@ -186,10 +204,13 @@ export function TaskBlock({
 
     const handleMouseUp = (upEvent: MouseEvent) => {
       if (currentHighlightEl) { currentHighlightEl.removeAttribute('data-drop-active'); currentHighlightEl = null; }
-      setIsDragging(false);
-      setDragOffset({ x: 0, y: 0 });
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+
+      if (!dragStarted) return;
+
+      setIsDragging(false);
+      setDragOffset({ x: 0, y: 0 });
 
       // Check for container drop (Jira tasks only)
       if (task.source === 'jira' && onNestTask) {
@@ -267,23 +288,57 @@ export function TaskBlock({
 
           {children.length > 0 ? (
             <div className={styles.childChipList}>
-              {visibleChips.map(child => (
-                <div key={child.id} className={styles.childChip}>
-                  <span className={styles.childChipTitle}>{stripJiraKey(child.title)}</span>
-                  {!readOnly && onUnnest && (
-                    <button
-                      className={styles.childChipRemove}
-                      onClick={(e) => { e.stopPropagation(); onUnnest(child.id); }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      title="Retirer du conteneur"
-                    >×</button>
-                  )}
-                </div>
-              ))}
+              {visibleChips.map(child => {
+                const jiraKey = extractJiraKey(child.title);
+                const chipUrl = jiraKey && jiraBaseUrl ? buildJiraUrl(jiraBaseUrl, jiraKey) : null;
+                return (
+                  <div key={child.id} className={styles.childChip}>
+                    <span className={styles.statusDot} style={{ background: STATUS_DOT_COLORS[mapSimpleStatus(child.status)] }} title={child.status ?? ''} />
+                    {chipUrl ? (
+                      <a href={chipUrl} target="_blank" rel="noopener noreferrer" className={styles.childChipLink} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                        {stripJiraKey(child.title)}
+                      </a>
+                    ) : (
+                      <span className={styles.childChipTitle}>{stripJiraKey(child.title)}</span>
+                    )}
+                    {!readOnly && onUnnest && (
+                      <button className={styles.childChipRemove} onClick={(e) => { e.stopPropagation(); onUnnest(child.id); }} onMouseDown={(e) => e.stopPropagation()} title="Retirer du conteneur">×</button>
+                    )}
+                    {child.storyPoints != null && (
+                      <span className={styles.chipPoints}>{child.storyPoints}</span>
+                    )}
+                  </div>
+                );
+              })}
               {hiddenCount > 0 && (
-                <div className={styles.moreChipsIndicator}>
+                <div className={styles.moreChipsIndicator} onMouseEnter={() => setShowHiddenChips(true)} onMouseLeave={() => setShowHiddenChips(false)} onMouseDown={(e) => e.stopPropagation()}>
                   <span>•••</span>
                   <span className={styles.moreChipsCount}>+{hiddenCount}</span>
+                  {showHiddenChips && (
+                    <div className={styles.hiddenChipsTooltip} onMouseEnter={() => setShowHiddenChips(true)} onMouseLeave={() => setShowHiddenChips(false)} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                      <div className={styles.hiddenChipsTooltipInner}>
+                        {children.slice(MAX_VISIBLE_CHIPS).map(child => {
+                          const jiraKey = extractJiraKey(child.title);
+                          const chipUrl = jiraKey && jiraBaseUrl ? buildJiraUrl(jiraBaseUrl, jiraKey) : null;
+                          return (
+                            <div key={child.id} className={styles.tooltipChip}>
+                              <span className={styles.statusDot} style={{ background: STATUS_DOT_COLORS[mapSimpleStatus(child.status)] }} />
+                              {chipUrl ? (
+                                <a href={chipUrl} target="_blank" rel="noopener noreferrer" className={styles.tooltipChipLink} onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                                  {stripJiraKey(child.title)}
+                                </a>
+                              ) : (
+                                <span className={styles.tooltipChipTitle}>{stripJiraKey(child.title)}</span>
+                              )}
+                              {child.storyPoints != null && (
+                                <span className={styles.chipPoints}>{child.storyPoints}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

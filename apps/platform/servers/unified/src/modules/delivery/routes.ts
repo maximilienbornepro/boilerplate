@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../../middleware/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
-import { getJiraContext } from '../jiraAuth.js';
+import { getJiraContext, getUserJiraToken } from '../jiraAuth.js';
 
 export function createDeliveryRoutes(): Router {
   const router = Router();
@@ -10,9 +10,48 @@ export function createDeliveryRoutes(): Router {
 
   // ============ Tasks CRUD ============
 
-  // Get all tasks for an increment
+  // Get all tasks for an increment (syncs Jira statuses on the fly)
   router.get('/tasks/:incrementId', asyncHandler(async (req, res) => {
     const tasks = await db.getAllTasks(req.params.incrementId);
+
+    // Sync Jira statuses for jira-sourced tasks
+    const jiraTasks = tasks.filter(t => t.source === 'jira');
+    if (jiraTasks.length > 0) {
+      const ctx = await getJiraContext(req.user!.id);
+      if (ctx) {
+        const keyMap = new Map<string, db.TaskRow>();
+        for (const t of jiraTasks) {
+          const match = t.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+          if (match) keyMap.set(match[1], t);
+        }
+        if (keyMap.size > 0) {
+          try {
+            const keys = Array.from(keyMap.keys());
+            const jql = `key in (${keys.join(',')})`;
+            const params = new URLSearchParams({ jql, maxResults: String(keys.length), fields: 'status,customfield_10016,assignee' });
+            const searchUrl = `${ctx.baseUrl}/rest/api/3/search/jql?${params}`;
+            const searchResp = await fetch(searchUrl, { headers: ctx.headers });
+            if (searchResp.ok) {
+              const data = await searchResp.json() as { issues: Array<{ key: string; fields: { status: { name: string }; customfield_10016?: number; assignee?: { displayName: string } } }> };
+              for (const issue of data.issues || []) {
+                const task = keyMap.get(issue.key);
+                if (!task) continue;
+                const newStatus = issue.fields.status?.name;
+                const newPoints = issue.fields.customfield_10016 ?? null;
+                const newAssignee = issue.fields.assignee?.displayName ?? null;
+                if (newStatus && newStatus !== task.status) task.status = newStatus;
+                if (newPoints !== null && newPoints !== task.storyPoints) task.storyPoints = newPoints;
+                if (newAssignee !== task.assignee) task.assignee = newAssignee;
+                db.updateTask(task.id, { status: newStatus || task.status, storyPoints: newPoints ?? undefined, assignee: newAssignee ?? undefined }).catch(() => {});
+              }
+            }
+          } catch (err) {
+            console.warn('[Delivery] Jira status sync failed:', (err as Error).message);
+          }
+        }
+      }
+    }
+
     res.json(tasks);
   }));
 
@@ -192,10 +231,19 @@ export function createDeliveryRoutes(): Router {
 
   // ============ Jira Proxy ============
 
-  // Check if Jira is connected for current user (OAuth or Basic)
+  // Check if Jira is connected + return siteUrl for browse links
   router.get('/jira/check', asyncHandler(async (req, res) => {
-    const ctx = await getJiraContext(req.user!.id);
-    res.json({ connected: ctx !== null });
+    const userId = req.user!.id;
+    const ctx = await getJiraContext(userId);
+    if (!ctx) { res.json({ connected: false, siteUrl: null }); return; }
+    let siteUrl: string | null = null;
+    if (ctx.isOAuth) {
+      const token = await getUserJiraToken(userId);
+      siteUrl = token?.site_url ?? null;
+    } else {
+      siteUrl = ctx.baseUrl;
+    }
+    res.json({ connected: true, siteUrl });
   }));
 
   // List Jira projects (paginated — fetches all pages)

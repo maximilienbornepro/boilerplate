@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BoardDelivery } from './components/BoardDelivery';
 import { RestoreModal } from './components/RestoreModal';
 import { SnapshotModal } from './components/SnapshotModal';
-import { JiraImportModal } from './components/JiraImportModal';
+import { ImportModal } from './components/ImportModal';
 import { generateIncrements2026 } from './components/BurgerMenu';
 import { Layout, ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import {
@@ -14,12 +14,13 @@ import {
   saveTaskPosition,
   getTaskPositions,
   fetchIncrementState,
-  toggleFreeze,
   hideTask,
   restoreTasks,
   ensureDailySnapshot,
-  checkJiraConnected,
+  fetchActiveConnectors,
+  fetchJiraSiteUrl,
 } from './services/api';
+import type { ActiveConnector } from './services/api';
 import type { Task, IncrementState, HiddenTask } from './types';
 import { transformTask, buildTaskTree } from './utils/taskTransform';
 
@@ -37,8 +38,9 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
   const [incrementState, setIncrementState] = useState<IncrementState | null>(null);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
-  const [showJiraImport, setShowJiraImport] = useState(false);
-  const [jiraConnected, setJiraConnected] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [activeConnectors, setActiveConnectors] = useState<ActiveConnector[]>([]);
+  const [jiraSiteUrl, setJiraSiteUrl] = useState<string | null>(null);
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
 
@@ -54,9 +56,20 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
     return inc?.sprints || [];
   }, [incrementList, selectedIncrement]);
 
-  // Check Jira connection on mount
+  // Load active connectors + Jira site URL on mount
   useEffect(() => {
-    checkJiraConnected().then(setJiraConnected);
+    const load = async () => {
+      const [connectors, siteUrl] = await Promise.all([
+        fetchActiveConnectors(),
+        fetchJiraSiteUrl(),
+      ]);
+      if (siteUrl && !connectors.some(c => c.service === 'jira')) {
+        connectors.push({ service: 'jira' });
+      }
+      setActiveConnectors(connectors);
+      setJiraSiteUrl(siteUrl);
+    };
+    load();
   }, []);
 
   // Load increment state
@@ -152,16 +165,6 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
-
-  // Handle freeze toggle
-  const handleToggleFreeze = useCallback(async () => {
-    try {
-      const newState = await toggleFreeze(selectedIncrement);
-      setIncrementState(newState);
-    } catch (err) {
-      console.error('Failed to toggle freeze:', err);
-    }
-  }, [selectedIncrement]);
 
   // Task handlers
   const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
@@ -399,20 +402,12 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
               ))}
             </select>
 
-            <button
-              className={`module-header-btn freeze-btn ${incrementState?.isFrozen ? 'frozen' : ''}`}
-              onClick={handleToggleFreeze}
-              title={incrementState?.isFrozen ? 'Defiger l\'increment' : 'Figer l\'increment'}
-            >
-              {incrementState?.isFrozen ? 'Defiger' : 'Figer'}
-            </button>
-
-            {jiraConnected && (
+            {activeConnectors.length > 0 && (
               <button
                 className="module-header-btn"
-                onClick={() => setShowJiraImport(true)}
+                onClick={() => setShowImportModal(true)}
               >
-                Importer depuis Jira
+                Importer taches
               </button>
             )}
 
@@ -477,7 +472,8 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
                   tasks={displayTasks}
                   releases={[]}
                   boardLabel={currentIncrementName}
-                  readOnly={incrementState?.isFrozen}
+                  readOnly={false}
+                  jiraBaseUrl={jiraSiteUrl}
                   onTaskUpdate={handleTaskUpdate}
                   onTaskDelete={handleTaskDelete}
                   onTaskResize={handleTaskResize}
@@ -509,11 +505,12 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
             />
           )}
 
-          {showJiraImport && (
-            <JiraImportModal
+          {showImportModal && (
+            <ImportModal
               incrementId={selectedIncrement}
+              activeConnectors={activeConnectors}
               onImported={loadTasks}
-              onClose={() => setShowJiraImport(false)}
+              onClose={() => setShowImportModal(false)}
             />
           )}
         </div>

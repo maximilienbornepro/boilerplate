@@ -8,9 +8,8 @@
 
 Avant d'utiliser les outils `Write` ou `Edit` sur du code applicatif :
 
-1. **VÉRIFIER** qu'un dossier de spec existe (l'un ou l'autre) :
+1. **VÉRIFIER** qu'un dossier de spec existe :
    - `plans/<feature>/` avec `proposal.md`, `design.md`, `tasks.md`, `progress.md`
-   - OU `openspec/changes/<feature>/` avec les mêmes fichiers
 
 2. **VÉRIFIER** qu'on est sur une branche `feat/<feature>` (pas sur `main`)
 
@@ -29,12 +28,13 @@ Avant d'utiliser les outils `Write` ou `Edit` sur du code applicatif :
             Utilise /spec:propose 'Page detail produit' pour commencer."
 ```
 
-**Deux systèmes de spec disponibles :**
+**Commande pour créer une spec :**
 
-| Commande | Système | Répertoire |
-|----------|---------|------------|
-| `/spec:propose "desc"` | Natif Claude Code (recommandé) | `plans/<slug>/` |
-| `/opsx:propose "desc"` | OpenSpec CLI | `openspec/changes/<slug>/` |
+```
+/spec:propose "description de la fonctionnalité"
+```
+
+Cela crée un dossier `plans/<slug>/` avec proposal.md, design.md, tasks.md, progress.md.
 
 **Exceptions (pas besoin de spec)** :
 - Corrections de typos
@@ -187,103 +187,6 @@ Quand tu demandes un commit, Claude doit :
 Cette règle garantit que les projets dérivés restent synchronisés avec les améliorations du boilerplate.
 
 ---
-
-## Mode OpenSpec (désactivable)
-
-> **Par défaut : ACTIVÉ.** Pour désactiver, mettre `OPENSPEC_MODE=off` dans `.claude/config`.
-
-Ce projet utilise **[@fission-ai/openspec](https://github.com/Fission-AI/OpenSpec)** pour le développement spec-first.
-
-### ⚠️ RÈGLE DE BLOCAGE
-
-**Quand OpenSpec est activé, Claude DOIT :**
-
-1. **AVANT toute demande de modification fonctionnelle** : Vérifier s'il existe un dossier `openspec/changes/` en cours
-2. **Si NON** : Refuser d'écrire du code et demander à l'utilisateur d'utiliser `/opsx:propose`
-3. **Si OUI** : Vérifier que la phase est `implementation` avant d'écrire du code
-
-```bash
-# Vérification automatique à faire par Claude
-ls openspec/changes/*/progress.md 2>/dev/null || echo "Aucune spec en cours"
-```
-
-### Installation (faite automatiquement par `./init.sh`)
-
-```bash
-npm install -g @fission-ai/openspec@latest
-openspec init
-```
-
-### Workflow OpenSpec
-
-Quand le mode OpenSpec est activé, toute modification fonctionnelle **DOIT** :
-
-1. **Proposer une spec avant l'implémentation**
-   ```
-   /opsx:propose "description de la fonctionnalité"
-   ```
-   Cela :
-   - Crée automatiquement une branche `feat/<feature-slug>`
-   - Crée un dossier `openspec/changes/<feature>/` avec proposal.md, specs/, design.md, tasks.md
-   - Initialise `progress.md` pour persister l'état
-
-2. **Implémenter via OpenSpec**
-   ```
-   /opsx:apply
-   ```
-
-3. **Vérifier l'implémentation**
-   ```
-   /opsx:verify
-   ```
-
-4. **Inclure les tests unitaires** correspondants (voir section Tests)
-
-5. **Archiver une fois terminé**
-   ```
-   /opsx:archive
-   ```
-
-### Persistance de l'état (progress.md)
-
-Le fichier `openspec/changes/<feature>/progress.md` stocke :
-- La branche associée
-- La phase courante (proposal, design, implementation, verification, archive)
-- Les tâches complétées/restantes
-- L'historique des actions
-
-**Ce fichier survit à la compaction de conversation.** Utiliser `/opsx:continue` pour reprendre le travail.
-
-### Commandes OpenSpec
-
-| Commande | Description |
-|----------|-------------|
-| `/opsx:propose "desc"` | Créer une spec avant implémentation |
-| `/opsx:apply` | Implémenter les tâches définies |
-| `/opsx:verify` | Vérifier la conformité |
-| `/opsx:archive` | Archiver le travail terminé |
-| `/opsx:continue` | Reprendre le travail en cours |
-| `/opsx:sync` | Synchroniser specs et code |
-
-### Mode désactivé
-
-Quand le mode OpenSpec est **DÉSACTIVÉ** :
-- Modifications directes sur `main` autorisées
-- Pas besoin de fichier spec
-- Les tests restent obligatoires pour tout nouveau module
-
-### Configuration du mode
-
-```bash
-# Vérifier le mode actuel
-cat .claude/config 2>/dev/null | grep OPENSPEC_MODE || echo "OPENSPEC_MODE=on (défaut)"
-
-# Désactiver temporairement
-mkdir -p .claude && echo "OPENSPEC_MODE=off" > .claude/config
-
-# Réactiver
-mkdir -p .claude && echo "OPENSPEC_MODE=on" > .claude/config
-```
 
 ## Architecture
 
@@ -692,4 +595,4 @@ Le mot de passe du second compte est **synchronisé** à chaque démarrage.
 | `.env.prod` | Config production (sur le serveur) | Ignoré |
 | `.deploy.env` | Config SSH pour deploy-remote.sh | Ignoré |
 | `.deploy.env.example` | Template pour `.deploy.env` | Commité |
-| `.claude/config` | Config Claude (OPENSPEC_MODE) | Ignoré |
+| `.claude/config` | Config Claude | Ignoré |

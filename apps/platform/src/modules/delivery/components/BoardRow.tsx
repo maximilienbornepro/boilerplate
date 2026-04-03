@@ -16,6 +16,7 @@ interface BoardRowProps {
   onTaskMove?: (taskId: string, newStartCol: number, newRow: number) => void;
   onNestTask?: (childId: string, containerId: string) => void;
   onUnnestTask?: (childId: string) => void;
+  jiraBaseUrl?: string | null;
 }
 
 export function BoardRow({
@@ -31,6 +32,7 @@ export function BoardRow({
   onTaskMove,
   onNestTask,
   onUnnestTask,
+  jiraBaseUrl,
 }: BoardRowProps) {
   // Account for rowSpan when computing the container height
   const maxRow = Math.max(0, ...tasks.map((t) => (t.row ?? 0) + (t.rowSpan ?? 1) - 1));
@@ -77,6 +79,7 @@ export function BoardRow({
             onMove={readOnly ? undefined : onTaskMove}
             onNestTask={readOnly ? undefined : onNestTask}
             onUnnest={readOnly ? undefined : onUnnestTask}
+            jiraBaseUrl={jiraBaseUrl}
           />
         ))}
 
