@@ -3,6 +3,8 @@ import {
   Layout, ModuleHeader, Modal, ConfirmModal, LoadingSpinner,
   Toast, ToastContainer, ListEditor, TagEditor, ExpandableSection,
   ImageUploader, Card, FormField, ToggleGroup,
+  Badge, Button, MenuDropdown, InlineEdit, FileDragDropZone,
+  ScoreBlock, ActionCard,
 } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import { GanttBoard } from '../roadmap/components/GanttBoard/GanttBoard';
@@ -257,28 +259,28 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
             COMPOSANTS SHARED
             ══════════════════════════════════════════════════════════════════ */}
 
-        {/* ── Buttons & Badges ── */}
+        {/* ── Button ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">Boutons et Badges</h2>
-
-          <div className="ds-comp-group">
-            <h3 className="ds-group-label">Buttons</h3>
-            <div className="ds-comp-row">
-              <button className="module-header-btn module-header-btn-primary">Primary</button>
-              <button className="module-header-btn">Secondary</button>
-              <button className="module-header-btn" disabled>Disabled</button>
-            </div>
+          <h2 className="ds-section-title">Button</h2>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; Button</p>
+          <div className="ds-comp-row">
+            <Button variant="primary">Primary</Button>
+            <Button variant="secondary">Secondary</Button>
+            <Button variant="danger">Danger</Button>
+            <Button variant="primary" disabled>Disabled</Button>
           </div>
+        </section>
 
-          <div className="ds-comp-group">
-            <h3 className="ds-group-label">Status badges</h3>
-            <div className="ds-comp-row">
-              <span className="ds-badge ds-badge--success">Success</span>
-              <span className="ds-badge ds-badge--warning">Warning</span>
-              <span className="ds-badge ds-badge--error">Error</span>
-              <span className="ds-badge ds-badge--info">Info</span>
-              <span className="ds-badge ds-badge--accent">Accent</span>
-            </div>
+        {/* ── Badge ── */}
+        <section className="ds-section">
+          <h2 className="ds-section-title">Badge</h2>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; Badge</p>
+          <div className="ds-comp-row">
+            <Badge type="success">Success</Badge>
+            <Badge type="warning">Warning</Badge>
+            <Badge type="error">Error</Badge>
+            <Badge type="info">Info</Badge>
+            <Badge type="accent">Accent</Badge>
           </div>
         </section>
 
@@ -461,6 +463,80 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
             </ModuleHeader>
           </div>
         </section>
+
+        {/* ── MenuDropdown ── */}
+        <section className="ds-section">
+          <h2 className="ds-section-title">MenuDropdown</h2>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; MenuDropdown</p>
+          <div className="ds-comp-row">
+            <MenuDropdown items={[
+              { label: 'Editer', onClick: () => addToast({ type: 'info', message: 'Editer clique' }) },
+              { label: 'Dupliquer', onClick: () => addToast({ type: 'info', message: 'Dupliquer clique' }) },
+              { label: 'Supprimer', onClick: () => addToast({ type: 'error', message: 'Supprimer clique' }), danger: true },
+            ]} />
+          </div>
+        </section>
+
+        {/* ── InlineEdit ── */}
+        <section className="ds-section">
+          <h2 className="ds-section-title">InlineEdit</h2>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; InlineEdit</p>
+          <div className="ds-comp-constrained">
+            <InlineEdit
+              value="Cliquez pour editer ce texte"
+              onSave={(val) => addToast({ type: 'success', message: `Sauvegarde : ${val}` })}
+            />
+          </div>
+        </section>
+
+        {/* ── FileDragDropZone ── */}
+        <section className="ds-section">
+          <h2 className="ds-section-title">FileDragDropZone</h2>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; FileDragDropZone</p>
+          <div className="ds-comp-constrained">
+            <FileDragDropZone
+              onFiles={(files) => addToast({ type: 'info', message: `${files.length} fichier(s) selectionne(s)` })}
+              accept=".pdf,.txt,.md"
+              label="Glissez vos fichiers ici (PDF, TXT, MD)"
+            />
+          </div>
+        </section>
+
+        {/* ── ScoreBlock ── */}
+        <section className="ds-section">
+          <h2 className="ds-section-title">ScoreBlock</h2>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; ScoreBlock</p>
+          <div className="ds-comp-constrained">
+            <ScoreBlock
+              title="Score ATS"
+              before={45}
+              after={82}
+              metrics={[
+                { label: 'Keywords', value: 12, max: 15 },
+                { label: 'Experience', value: 90, max: 100 },
+              ]}
+            />
+          </div>
+        </section>
+
+        {/* ── ActionCard ── */}
+        <section className="ds-section">
+          <h2 className="ds-section-title">ActionCard</h2>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; ActionCard</p>
+          <div className="ds-comp-constrained">
+            <ActionCard onToggle={() => {}} selected={false} impact="critical">
+              <strong>Action critique</strong>
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Description de l'action</p>
+            </ActionCard>
+            <ActionCard onToggle={() => {}} selected impact="important">
+              <strong>Action selectionnee</strong>
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Cette action est selectionnee</p>
+            </ActionCard>
+          </div>
+        </section>
+
+        {/* RecommendationItem et ProjectEditor sont des composants specifiques au module mon-cv,
+            ils ne sont pas demontres ici car leurs props sont specialisees. */}
 
         {/* ══════════════════════════════════════════════════════════════════
             COMPOSANTS MODULES (demos avec mock data)
