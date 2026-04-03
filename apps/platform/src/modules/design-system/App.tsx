@@ -4,7 +4,8 @@ import {
   Toast, ToastContainer, ListEditor, TagEditor, ExpandableSection,
   ImageUploader, Card, FormField, ToggleGroup,
   Badge, Button, MenuDropdown, InlineEdit, FileDragDropZone,
-  ScoreBlock, ActionCard,
+  ScoreBlock, ActionCard, RecommendationItem, ProjectEditor,
+  SectionTitle, Tabs,
 } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import { GanttBoard } from '../roadmap/components/GanttBoard/GanttBoard';
@@ -130,18 +131,12 @@ const mockReleases: Release[] = [
   { id: 'r1', date: '2026-04-25', version: 'v1.5' },
 ];
 
-function getComputedToken(name: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
-
 function ColorSwatch({ name, desc }: { name: string; desc: string }) {
-  const value = getComputedToken(name);
   return (
     <div className="ds-swatch">
       <div className="ds-swatch-color" style={{ background: `var(${name})` }} />
       <div className="ds-swatch-info">
         <span className="ds-swatch-name">{name}</span>
-        <span className="ds-swatch-value">{value}</span>
         <span className="ds-swatch-desc">{desc}</span>
       </div>
     </div>
@@ -166,24 +161,31 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
   const [tags, setTags] = useState(['React', 'TypeScript', 'Node.js', 'PostgreSQL']);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [toggleValue, setToggleValue] = useState('month');
+  const [tabValue, setTabValue] = useState('tab1');
   const [formName, setFormName] = useState('');
   const [formError, setFormError] = useState('');
+  const [projects, setProjects] = useState([
+    { title: 'Projet Alpha', description: 'Refonte du design system' },
+    { title: 'Projet Beta', description: 'Migration API v2' },
+  ]);
 
   return (
     <Layout appId="design-system" variant="full-width" onNavigate={onNavigate}>
-      <ModuleHeader title="Design System" />
+      <ModuleHeader title="Design System" onBack={() => onNavigate?.('/')} />
       <div className="ds-page">
+
+        {/* ══════════════════════════════════════════════════════════════════
+            TOKENS
+            ══════════════════════════════════════════════════════════════════ */}
 
         {/* ── Colors ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">Couleurs</h2>
+          <SectionTitle>Couleurs</SectionTitle>
           {COLORS.map(group => (
             <div key={group.label} className="ds-color-group">
               <h3 className="ds-group-label">{group.label}</h3>
               <div className="ds-swatches">
-                {group.tokens.map(t => (
-                  <ColorSwatch key={t.name} name={t.name} desc={t.desc} />
-                ))}
+                {group.tokens.map(t => <ColorSwatch key={t.name} name={t.name} desc={t.desc} />)}
               </div>
             </div>
           ))}
@@ -191,31 +193,20 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── Typography ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">Typographie</h2>
-          <div className="ds-typo-info">
-            <span className="ds-token">--font-family-mono</span>
-            <span className="ds-value">SF Mono, Fira Code, Cascadia Code, JetBrains Mono, Consolas</span>
-          </div>
+          <SectionTitle>Typographie</SectionTitle>
           <div className="ds-typo-samples">
             {FONT_SIZES.map(fs => (
               <div key={fs.name} className="ds-typo-row" style={{ fontSize: `var(${fs.name})` }}>
                 <span className="ds-typo-label">{fs.label} ({fs.px})</span>
                 <span className="ds-typo-sample">The quick brown fox jumps over the lazy dog</span>
-                <span className="ds-typo-token">{fs.name}</span>
               </div>
             ))}
-          </div>
-          <div className="ds-typo-weights">
-            <span style={{ fontWeight: 400 }}>Normal (400)</span>
-            <span style={{ fontWeight: 500 }}>Medium (500)</span>
-            <span style={{ fontWeight: 600 }}>Semibold (600)</span>
-            <span style={{ fontWeight: 700 }}>Bold (700)</span>
           </div>
         </section>
 
         {/* ── Spacing ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">Spacing</h2>
+          <SectionTitle>Spacing</SectionTitle>
           <div className="ds-spacing-rows">
             {SPACINGS.map(sp => (
               <div key={sp.name} className="ds-spacing-row">
@@ -229,13 +220,12 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── Radius ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">Border Radius</h2>
+          <SectionTitle>Border Radius</SectionTitle>
           <div className="ds-radius-row">
             {RADII.map(r => (
               <div key={r.name} className="ds-radius-item">
                 <div className="ds-radius-box" style={{ borderRadius: `var(${r.name})` }} />
                 <span className="ds-radius-label">{r.label} ({r.px})</span>
-                <span className="ds-radius-token">{r.name}</span>
               </div>
             ))}
           </div>
@@ -243,13 +233,12 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── Shadows ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">Shadows</h2>
+          <SectionTitle>Shadows</SectionTitle>
           <div className="ds-shadow-row">
             {SHADOWS.map(s => (
               <div key={s.name} className="ds-shadow-item">
                 <div className="ds-shadow-box" style={{ boxShadow: `var(${s.name})` }} />
                 <span className="ds-shadow-label">{s.label}</span>
-                <span className="ds-shadow-token">{s.name}</span>
               </div>
             ))}
           </div>
@@ -261,7 +250,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── Button ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">Button</h2>
+          <SectionTitle>Button</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; Button</p>
           <div className="ds-comp-row">
             <Button variant="primary">Primary</Button>
@@ -273,7 +262,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── Badge ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">Badge</h2>
+          <SectionTitle>Badge</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; Badge</p>
           <div className="ds-comp-row">
             <Badge type="success">Success</Badge>
@@ -284,9 +273,32 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
           </div>
         </section>
 
+        {/* ── SectionTitle ── */}
+        <section className="ds-section">
+          <SectionTitle>SectionTitle</SectionTitle>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; SectionTitle</p>
+          <SectionTitle>Exemple de titre de section</SectionTitle>
+        </section>
+
+        {/* ── Tabs ── */}
+        <section className="ds-section">
+          <SectionTitle>Tabs</SectionTitle>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; Tabs</p>
+          <Tabs
+            tabs={[
+              { value: 'tab1', label: 'Onglet 1' },
+              { value: 'tab2', label: 'Onglet 2' },
+              { value: 'tab3', label: 'Onglet 3' },
+            ]}
+            value={tabValue}
+            onChange={setTabValue}
+          />
+          <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)', marginTop: 'var(--spacing-sm)' }}>Onglet actif : {tabValue}</p>
+        </section>
+
         {/* ── Card ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">Card</h2>
+          <SectionTitle>Card</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; Card</p>
           <div className="ds-comp-grid">
             <Card>
@@ -308,7 +320,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── FormField ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">FormField</h2>
+          <SectionTitle>FormField</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; FormField</p>
           <div className="ds-form-demo">
             <FormField label="Nom" required>
@@ -322,17 +334,6 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
             <FormField label="Email">
               <input type="email" placeholder="email@exemple.com" />
             </FormField>
-            <FormField label="Description">
-              <textarea rows={3} placeholder="Description optionnelle..." />
-            </FormField>
-            <FormField label="Categorie">
-              <select>
-                <option>Selectionnez...</option>
-                <option>Frontend</option>
-                <option>Backend</option>
-                <option>DevOps</option>
-              </select>
-            </FormField>
             {formError && (
               <FormField label="Avec erreur" error={formError}>
                 <input type="text" value={formName} readOnly />
@@ -343,54 +344,77 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── ToggleGroup ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">ToggleGroup</h2>
+          <SectionTitle>ToggleGroup</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; ToggleGroup</p>
-          <div className="ds-comp-group">
-            <h3 className="ds-group-label">View mode</h3>
-            <ToggleGroup
-              options={[
-                { value: 'month', label: 'Mois' },
-                { value: 'quarter', label: 'Trimestre' },
-                { value: 'year', label: 'Annee' },
-              ]}
-              value={toggleValue}
-              onChange={setToggleValue}
+          <ToggleGroup
+            options={[
+              { value: 'month', label: 'Mois' },
+              { value: 'quarter', label: 'Trimestre' },
+              { value: 'year', label: 'Annee' },
+            ]}
+            value={toggleValue}
+            onChange={setToggleValue}
+          />
+        </section>
+
+        {/* ── MenuDropdown ── */}
+        <section className="ds-section">
+          <SectionTitle>MenuDropdown</SectionTitle>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; MenuDropdown</p>
+          <MenuDropdown items={[
+            { label: 'Editer', onClick: () => addToast({ type: 'info', message: 'Editer' }) },
+            { label: 'Dupliquer', onClick: () => addToast({ type: 'info', message: 'Dupliquer' }) },
+            { label: 'Supprimer', onClick: () => addToast({ type: 'error', message: 'Supprimer' }), danger: true },
+          ]} />
+        </section>
+
+        {/* ── InlineEdit ── */}
+        <section className="ds-section">
+          <SectionTitle>InlineEdit</SectionTitle>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; InlineEdit</p>
+          <div className="ds-comp-constrained">
+            <InlineEdit
+              value="Cliquez pour editer ce texte"
+              onSave={(val) => addToast({ type: 'success', message: `Sauvegarde : ${val}` })}
             />
-            <span className="ds-demo-value">Valeur : {toggleValue}</span>
           </div>
         </section>
 
         {/* ── ListEditor ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">ListEditor</h2>
+          <SectionTitle>ListEditor</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; ListEditor</p>
           <div className="ds-comp-constrained">
-            <ListEditor
-              items={listItems}
-              onChange={setListItems}
-              label="Missions"
-              placeholder="Ajouter une mission..."
-            />
+            <ListEditor items={listItems} onChange={setListItems} label="Missions" placeholder="Ajouter une mission..." />
           </div>
         </section>
 
         {/* ── TagEditor ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">TagEditor</h2>
+          <SectionTitle>TagEditor</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; TagEditor</p>
           <div className="ds-comp-constrained">
-            <TagEditor
-              tags={tags}
-              onChange={setTags}
-              label="Technologies"
-              placeholder="Ajouter un tag..."
+            <TagEditor tags={tags} onChange={setTags} label="Technologies" placeholder="Ajouter un tag..." />
+          </div>
+        </section>
+
+        {/* ── ProjectEditor ── */}
+        <section className="ds-section">
+          <SectionTitle>ProjectEditor</SectionTitle>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; ProjectEditor</p>
+          <div className="ds-comp-constrained">
+            <ProjectEditor
+              label="Projets"
+              projects={projects}
+              onChange={setProjects}
+              placeholder="Titre du projet"
             />
           </div>
         </section>
 
         {/* ── ExpandableSection ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">ExpandableSection</h2>
+          <SectionTitle>ExpandableSection</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; ExpandableSection</p>
           <div className="ds-comp-constrained">
             <ExpandableSection title="Section depliable" defaultExpanded badge={3}>
@@ -408,94 +432,20 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── ImageUploader ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">ImageUploader</h2>
+          <SectionTitle>ImageUploader</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; ImageUploader</p>
           <div className="ds-comp-constrained">
-            <ImageUploader
-              image={profileImage || undefined}
-              onChange={(img) => setProfileImage(img)}
-              label="Photo de profil"
-              size="medium"
-            />
-          </div>
-        </section>
-
-        {/* ── LoadingSpinner ── */}
-        <section className="ds-section">
-          <h2 className="ds-section-title">LoadingSpinner</h2>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; LoadingSpinner</p>
-          <div className="ds-comp-row">
-            <LoadingSpinner size="small" />
-            <LoadingSpinner />
-          </div>
-        </section>
-
-        {/* ── Modal ── */}
-        <section className="ds-section">
-          <h2 className="ds-section-title">Modal / ConfirmModal</h2>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; Modal, ConfirmModal</p>
-          <div className="ds-comp-row">
-            <button className="module-header-btn" onClick={() => setShowModal(true)}>Ouvrir Modal</button>
-            <button className="module-header-btn" onClick={() => setShowConfirm(true)}>Ouvrir ConfirmModal</button>
-          </div>
-        </section>
-
-        {/* ── Toast ── */}
-        <section className="ds-section">
-          <h2 className="ds-section-title">Toast</h2>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; Toast, ToastContainer</p>
-          <div className="ds-comp-row">
-            <button className="module-header-btn" onClick={() => addToast({ type: 'success', message: 'Action reussie !' })}>Success</button>
-            <button className="module-header-btn" onClick={() => addToast({ type: 'error', message: 'Une erreur est survenue' })}>Error</button>
-            <button className="module-header-btn" onClick={() => addToast({ type: 'info', message: 'Information utile' })}>Info</button>
-            <button className="module-header-btn" onClick={() => addToast({ type: 'warning', message: 'Attention requise' })}>Warning</button>
-          </div>
-        </section>
-
-        {/* ── ModuleHeader ── */}
-        <section className="ds-section">
-          <h2 className="ds-section-title">ModuleHeader</h2>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; ModuleHeader</p>
-          <div className="ds-comp-constrained" style={{ border: '1px solid var(--border-color)' }}>
-            <ModuleHeader title="Titre du module" onBack={() => addToast({ type: 'info', message: 'Retour clique' })}>
-              <button className="module-header-btn">Action 1</button>
-              <button className="module-header-btn module-header-btn-primary">Action 2</button>
-            </ModuleHeader>
-          </div>
-        </section>
-
-        {/* ── MenuDropdown ── */}
-        <section className="ds-section">
-          <h2 className="ds-section-title">MenuDropdown</h2>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; MenuDropdown</p>
-          <div className="ds-comp-row">
-            <MenuDropdown items={[
-              { label: 'Editer', onClick: () => addToast({ type: 'info', message: 'Editer clique' }) },
-              { label: 'Dupliquer', onClick: () => addToast({ type: 'info', message: 'Dupliquer clique' }) },
-              { label: 'Supprimer', onClick: () => addToast({ type: 'error', message: 'Supprimer clique' }), danger: true },
-            ]} />
-          </div>
-        </section>
-
-        {/* ── InlineEdit ── */}
-        <section className="ds-section">
-          <h2 className="ds-section-title">InlineEdit</h2>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; InlineEdit</p>
-          <div className="ds-comp-constrained">
-            <InlineEdit
-              value="Cliquez pour editer ce texte"
-              onSave={(val) => addToast({ type: 'success', message: `Sauvegarde : ${val}` })}
-            />
+            <ImageUploader image={profileImage || undefined} onChange={setProfileImage} label="Photo de profil" size="medium" />
           </div>
         </section>
 
         {/* ── FileDragDropZone ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">FileDragDropZone</h2>
+          <SectionTitle>FileDragDropZone</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; FileDragDropZone</p>
           <div className="ds-comp-constrained">
             <FileDragDropZone
-              onFiles={(files) => addToast({ type: 'info', message: `${files.length} fichier(s) selectionne(s)` })}
+              onFiles={(files) => addToast({ type: 'info', message: `${files.length} fichier(s)` })}
               accept=".pdf,.txt,.md"
               label="Glissez vos fichiers ici (PDF, TXT, MD)"
             />
@@ -504,7 +454,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── ScoreBlock ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">ScoreBlock</h2>
+          <SectionTitle>ScoreBlock</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; ScoreBlock</p>
           <div className="ds-comp-constrained">
             <ScoreBlock
@@ -521,12 +471,12 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── ActionCard ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">ActionCard</h2>
+          <SectionTitle>ActionCard</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; ActionCard</p>
           <div className="ds-comp-constrained">
             <ActionCard onToggle={() => {}} selected={false} impact="critical">
               <strong>Action critique</strong>
-              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Description de l'action</p>
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Description de l'action critique</p>
             </ActionCard>
             <ActionCard onToggle={() => {}} selected impact="important">
               <strong>Action selectionnee</strong>
@@ -535,8 +485,71 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
           </div>
         </section>
 
-        {/* RecommendationItem et ProjectEditor sont des composants specifiques au module mon-cv,
-            ils ne sont pas demontres ici car leurs props sont specialisees. */}
+        {/* ── RecommendationItem ── */}
+        <section className="ds-section">
+          <SectionTitle>RecommendationItem</SectionTitle>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; RecommendationItem</p>
+          <div className="ds-comp-constrained">
+            <RecommendationItem
+              priority="critique"
+              type="add"
+              action="Ajouter des mots-cles pertinents"
+              example="Ex: React, TypeScript, Node.js"
+              keywords={['React', 'TypeScript']}
+              onApply={() => addToast({ type: 'success', message: 'Recommandation appliquee' })}
+            />
+            <RecommendationItem
+              priority="important"
+              type="replace"
+              action="Remplacer les termes generiques"
+              example="Remplacer 'developpeur' par 'ingenieur logiciel'"
+            />
+          </div>
+        </section>
+
+        {/* ── LoadingSpinner ── */}
+        <section className="ds-section">
+          <SectionTitle>LoadingSpinner</SectionTitle>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; LoadingSpinner</p>
+          <div className="ds-comp-row">
+            <LoadingSpinner size="small" />
+            <LoadingSpinner />
+          </div>
+        </section>
+
+        {/* ── Modal / ConfirmModal ── */}
+        <section className="ds-section">
+          <SectionTitle>Modal / ConfirmModal</SectionTitle>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; Modal, ConfirmModal</p>
+          <div className="ds-comp-row">
+            <Button variant="secondary" onClick={() => setShowModal(true)}>Ouvrir Modal</Button>
+            <Button variant="secondary" onClick={() => setShowConfirm(true)}>Ouvrir ConfirmModal</Button>
+          </div>
+        </section>
+
+        {/* ── Toast ── */}
+        <section className="ds-section">
+          <SectionTitle>Toast</SectionTitle>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; Toast, ToastContainer</p>
+          <div className="ds-comp-row">
+            <Button variant="secondary" onClick={() => addToast({ type: 'success', message: 'Action reussie !' })}>Success</Button>
+            <Button variant="secondary" onClick={() => addToast({ type: 'error', message: 'Une erreur est survenue' })}>Error</Button>
+            <Button variant="secondary" onClick={() => addToast({ type: 'info', message: 'Information utile' })}>Info</Button>
+            <Button variant="secondary" onClick={() => addToast({ type: 'warning', message: 'Attention requise' })}>Warning</Button>
+          </div>
+        </section>
+
+        {/* ── ModuleHeader ── */}
+        <section className="ds-section">
+          <SectionTitle>ModuleHeader</SectionTitle>
+          <p className="ds-component-path">@boilerplate/shared/components &rarr; ModuleHeader</p>
+          <div className="ds-comp-constrained" style={{ border: '1px solid var(--border-color)' }}>
+            <ModuleHeader title="Titre du module" subtitle="Sous-titre" onBack={() => addToast({ type: 'info', message: 'Retour clique' })}>
+              <Button variant="secondary">Action 1</Button>
+              <Button variant="primary">Action 2</Button>
+            </ModuleHeader>
+          </div>
+        </section>
 
         {/* ══════════════════════════════════════════════════════════════════
             COMPOSANTS MODULES (demos avec mock data)
@@ -544,7 +557,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── Gantt Board (Roadmap) ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">GanttBoard (Roadmap)</h2>
+          <SectionTitle>GanttBoard (Roadmap)</SectionTitle>
           <p className="ds-component-path">modules/roadmap/components/GanttBoard</p>
           <div className="ds-gantt-demo">
             <GanttBoard
@@ -567,7 +580,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
 
         {/* ── Delivery Board ── */}
         <section className="ds-section">
-          <h2 className="ds-section-title">BoardDelivery (Delivery)</h2>
+          <SectionTitle>BoardDelivery (Delivery)</SectionTitle>
           <p className="ds-component-path">modules/delivery/components/BoardDelivery</p>
           <div className="ds-delivery-demo">
             <BoardDelivery
