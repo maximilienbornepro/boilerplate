@@ -26,3 +26,96 @@
 .shared-card--interactive:hover {
   background: var(--bg-hover);
 }
+
+/* ── List card layout: icon + content + actions + arrow ── */
+
+.shared-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-md);
+  background: var(--accent-light);
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.shared-card--selected .shared-card__icon {
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+}
+
+.shared-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2xs);
+  flex: 1;
+  min-width: 0;
+}
+
+.shared-card__title {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shared-card__subtitle {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Edit / Delete buttons — hidden by default, shown on card hover ── */
+
+.shared-card__edit-btn,
+.shared-card__delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--spacing-xl);
+  height: var(--spacing-xl);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: all var(--transition-normal);
+}
+
+.shared-card:hover .shared-card__edit-btn,
+.shared-card:hover .shared-card__delete-btn {
+  opacity: 1;
+}
+
+.shared-card__edit-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.shared-card__delete-btn:hover {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+/* ── Arrow chevron ── */
+
+.shared-card__arrow {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform var(--transition-normal), color var(--transition-normal);
+}
+
+.shared-card:hover .shared-card__arrow {
+  transform: translateX(2px);
+  color: var(--accent-primary);
+}

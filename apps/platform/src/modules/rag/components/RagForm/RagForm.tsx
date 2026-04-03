@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal } from '@boilerplate/shared/components';
+import { Modal, FormField, Button } from '@boilerplate/shared/components';
 import type { RagBot } from '../../types/index.js';
 import styles from './RagForm.module.css';
 
@@ -15,8 +15,7 @@ export function RagForm({ bot, onSubmit, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit() {
     if (!name.trim()) { setError('Le nom est obligatoire'); return; }
     setLoading(true);
     setError(null);
@@ -32,37 +31,34 @@ export function RagForm({ bot, onSubmit, onClose }: Props) {
 
   return (
     <Modal onClose={onClose} title={bot ? 'Modifier le RAG' : 'Nouveau RAG'}>
-      <form className={styles.form} onSubmit={handleSubmit}>
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="rag-name">Nom *</label>
+      <div className={styles.modalBody}>
+        <FormField label="Nom" required error={error || undefined}>
           <input
-            id="rag-name"
-            className={styles.input}
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Mon assistant documentaire"
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             autoFocus
           />
-        </div>
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="rag-desc">Description (optionnel)</label>
+        </FormField>
+        <FormField label="Description (optionnel)">
           <textarea
-            id="rag-desc"
-            className={styles.textarea}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="À quoi sert ce RAG ?"
+            rows={3}
           />
-        </div>
-        {error && <p className={styles.error}>{error}</p>}
-        <div className={styles.actions}>
-          <button type="button" className={styles.cancelBtn} onClick={onClose}>Annuler</button>
-          <button type="submit" className={styles.submitBtn} disabled={loading}>
+        </FormField>
+        <div className={styles.modalActions}>
+          <Button variant="secondary" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button variant="primary" onClick={handleSubmit} disabled={loading}>
             {loading ? 'Enregistrement…' : bot ? 'Enregistrer' : 'Créer'}
-          </button>
+          </Button>
         </div>
-      </form>
+      </div>
     </Modal>
   );
 }

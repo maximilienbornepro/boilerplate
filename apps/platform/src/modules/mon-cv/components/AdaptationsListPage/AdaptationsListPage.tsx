@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { ModuleHeader, ConfirmModal } from '@boilerplate/shared/components';
+import { ModuleHeader, ConfirmModal, Card, Button, ToastContainer, LoadingSpinner } from '@boilerplate/shared/components';
+import type { ToastData } from '@boilerplate/shared/components';
 import type { CVAdaptationListItem } from '../../types';
-import { getAdaptations, deleteAdaptation, downloadAdaptationPDF } from '../../services/api';
+import { getAdaptations, deleteAdaptation } from '../../services/api';
 import './AdaptationsListPage.css';
 
 interface AdaptationsListPageProps {
@@ -10,12 +11,6 @@ interface AdaptationsListPageProps {
   onAdapt: () => void;
   onView: (adaptationId: number) => void;
   onBack: () => void;
-}
-
-function getScoreClass(score: number): string {
-  if (score >= 75) return 'apl-score--good';
-  if (score >= 50) return 'apl-score--medium';
-  return 'apl-score--bad';
 }
 
 function formatDate(iso: string): string {
@@ -37,10 +32,13 @@ export function AdaptationsListPage({
 }: AdaptationsListPageProps) {
   const [adaptations, setAdaptations] = useState<CVAdaptationListItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<CVAdaptationListItem | null>(null);
+  const [toasts, setToasts] = useState<ToastData[]>([]);
+
+  const addToast = (toast: Omit<ToastData, 'id'>) => {
+    setToasts(prev => [...prev, { ...toast, id: Date.now().toString() }]);
+  };
 
   useEffect(() => {
     loadAdaptations();
@@ -48,12 +46,11 @@ export function AdaptationsListPage({
 
   const loadAdaptations = async () => {
     setLoading(true);
-    setError('');
     try {
       const list = await getAdaptations(cvId);
       setAdaptations(list);
     } catch (err: any) {
-      setError(err.message || 'Erreur lors du chargement');
+      addToast({ type: 'error', message: err.message || 'Erreur lors du chargement' });
     } finally {
       setLoading(false);
     }
@@ -61,27 +58,17 @@ export function AdaptationsListPage({
 
   const handleDelete = async () => {
     if (!confirmDelete) return;
+    const name = confirmDelete.name || formatDate(confirmDelete.createdAt);
     setDeletingId(confirmDelete.id);
     setConfirmDelete(null);
     try {
       await deleteAdaptation(confirmDelete.id);
       setAdaptations(prev => prev.filter(a => a.id !== confirmDelete.id));
+      addToast({ type: 'success', message: `"${name}" supprimé` });
     } catch (err: any) {
-      setError(err.message || 'Erreur lors de la suppression');
+      addToast({ type: 'error', message: err.message || 'Erreur lors de la suppression' });
     } finally {
       setDeletingId(null);
-    }
-  };
-
-  const handleDownloadPDF = async (adaptation: CVAdaptationListItem) => {
-    setDownloadingId(adaptation.id);
-    try {
-      const name = adaptation.name || `CV_adapte_${new Date(adaptation.createdAt).toLocaleDateString('fr-FR').replace(/\//g, '-')}`;
-      await downloadAdaptationPDF(adaptation.id, `${name}.pdf`);
-    } catch (err: any) {
-      setError(err.message || 'Erreur lors du téléchargement PDF');
-    } finally {
-      setDownloadingId(null);
     }
   };
 
@@ -102,97 +89,70 @@ export function AdaptationsListPage({
       </ModuleHeader>
 
       <div className="apl-page">
-        {error && <div className="apl-error">{error}</div>}
-
         {loading ? (
-          <div className="apl-loading">Chargement...</div>
+          <LoadingSpinner message="Chargement..." />
         ) : adaptations.length === 0 ? (
-          <div className="apl-empty">
-            <div className="apl-empty__icon">📄</div>
-            <p className="apl-empty__title">Aucune adaptation pour ce CV</p>
-            <p className="apl-empty__text">
-              Adaptez ce CV à une offre d'emploi pour générer une version optimisée ATS.
-            </p>
-            <button className="module-header-btn module-header-btn-primary" onClick={onAdapt}>
-              Analyser une offre
-            </button>
-          </div>
+          <Card className="apl-empty-card">
+            <div className="apl-empty-content">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <path d="M9 13h6M9 17h4" />
+              </svg>
+              <p className="apl-empty-title">Aucune adaptation pour ce CV</p>
+              <p className="apl-empty-hint">Adaptez ce CV à une offre d'emploi pour générer une version optimisée ATS</p>
+              <Button variant="primary" onClick={onAdapt}>
+                Analyser une offre
+              </Button>
+            </div>
+          </Card>
         ) : (
-          <div className="apl-grid">
+          <div className="apl-list">
             {adaptations.map(adaptation => (
-              <div
+              <Card
                 key={adaptation.id}
-                className="apl-card"
-                role="button"
-                tabIndex={0}
+                variant="interactive"
                 onClick={() => onView(adaptation.id)}
-                onKeyDown={(e) => e.key === 'Enter' && onView(adaptation.id)}
+                className="apl-doc-card"
               >
-                {/* Icon */}
-                <div className="apl-card__icon">
+                <div className="shared-card__icon">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <polyline points="14 2 14 8 20 8" />
                     <path d="M9 13h6M9 17h4" />
                   </svg>
                 </div>
-
-                {/* Body */}
-                <div className="apl-card__body">
-                  <div className="apl-card__top">
-                    <span className="apl-card__name">
-                      {adaptation.name || 'Adaptation sans titre'}
-                    </span>
-                    <span className={`apl-score ${getScoreClass(adaptation.atsAfterOverall)}`}>
-                      {adaptation.atsAfterOverall}%
-                    </span>
-                  </div>
-
-                  <p className="apl-card__offer">
-                    {adaptation.jobOfferPreview}
-                    {adaptation.jobOfferPreview.length >= 120 && '…'}
-                  </p>
-
-                  <div className="apl-card__meta">
-                    <span>+{adaptation.missionsAdded} mission{adaptation.missionsAdded !== 1 ? 's' : ''}</span>
-                    <span className="apl-card__sep">·</span>
-                    <span>{formatDate(adaptation.createdAt)}</span>
-                  </div>
+                <div className="shared-card__content">
+                  <span className="shared-card__title">
+                    {adaptation.name || 'Adaptation sans titre'}
+                  </span>
                 </div>
-
-                {/* Hover actions */}
                 <button
-                  className="apl-card__action-btn"
-                  onClick={(e) => { e.stopPropagation(); handleDownloadPDF(adaptation); }}
-                  disabled={downloadingId === adaptation.id}
-                  title="Télécharger PDF"
+                  className="shared-card__edit-btn"
+                  onClick={(e) => { e.stopPropagation(); onView(adaptation.id); }}
+                  title="Modifier"
                 >
-                  {downloadingId === adaptation.id ? (
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg>
-                  ) : (
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                  )}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
                 </button>
                 <button
-                  className="apl-card__action-btn apl-card__action-btn--danger"
+                  className="shared-card__delete-btn"
                   onClick={(e) => { e.stopPropagation(); setConfirmDelete(adaptation); }}
                   disabled={deletingId === adaptation.id}
                   title="Supprimer"
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                   </svg>
                 </button>
-
-                {/* Arrow */}
-                <div className="apl-card__arrow">
+                <div className="shared-card__arrow">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="9 18 15 12 9 6"/>
                   </svg>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         )}
@@ -205,9 +165,11 @@ export function AdaptationsListPage({
           onConfirm={handleDelete}
           onCancel={() => setConfirmDelete(null)}
           confirmLabel="Supprimer"
-          variant="danger"
+          danger
         />
       )}
+
+      <ToastContainer toasts={toasts} onDismiss={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
     </>
   );
 }

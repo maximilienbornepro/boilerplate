@@ -99,6 +99,7 @@ function RagApp({ onNavigate }: { onNavigate?: (path: string) => void }) {
         onOpen={(bot) => setView({ type: 'detail', bot })}
         onEdit={(bot) => { setEditBot(bot); setShowForm(true); }}
         onDelete={(bot) => setConfirmDelete(bot)}
+        onCreate={() => { setEditBot(undefined); setShowForm(true); }}
       />
 
       {showForm && (
@@ -115,6 +116,8 @@ function RagApp({ onNavigate }: { onNavigate?: (path: string) => void }) {
           message={`Le RAG "${confirmDelete.name}" et toutes ses données (documents, chunks, conversations) seront définitivement supprimés.`}
           onConfirm={handleDelete}
           onCancel={() => setConfirmDelete(null)}
+          confirmLabel="Supprimer"
+          danger
         />
       )}
     </Layout>

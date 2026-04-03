@@ -17,6 +17,22 @@
   max-width: 50rem;
 }
 
+/* Single-column list using shared Card */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  width: 100%;
+  max-width: 50rem;
+}
+
+.docCard {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg) !important;
+}
+
 /* ── Card — same DNA as SuiviTess ── */
 
 .card {
@@ -95,12 +111,13 @@
 }
 
 /* Edit / Delete — hidden, shown on hover */
-.editBtn {
+.editBtn,
+.deleteBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: var(--spacing-xl);
+  height: var(--spacing-xl);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -111,7 +128,10 @@
   transition: all var(--transition-normal);
 }
 
-.card:hover .editBtn {
+.card:hover .editBtn,
+.card:hover .deleteBtn,
+.docCard:hover .editBtn,
+.docCard:hover .deleteBtn {
   opacity: 1;
 }
 
@@ -132,102 +152,63 @@
   transition: transform var(--transition-normal), color var(--transition-normal);
 }
 
-.card:hover .cardArrow {
+.card:hover .cardArrow,
+.docCard:hover .cardArrow {
   transform: translateX(2px);
   color: var(--accent-primary);
 }
 
-/* ── Form (used by PlanningForm in App.tsx Modal) ── */
+/* ── Modal form layout ── */
 
-.form {
-  padding: 16px 20px 20px;
+.modalBody {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  font-family: var(--font-family-mono);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
+  gap: var(--spacing-md);
 }
 
 .row {
   display: flex;
-  gap: 12px;
+  gap: var(--spacing-md);
 }
 
-.label {
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.row > * {
+  flex: 1;
 }
 
-.input,
-.textarea {
-  padding: 8px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-sm);
-  outline: none;
-  transition: border-color var(--transition-fast);
-}
-
-.input:focus,
-.textarea:focus {
-  border-color: var(--accent-primary);
-}
-
-.textarea {
-  resize: vertical;
-  min-height: 60px;
-}
-
-.actions {
+.modalActions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-light);
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
 }
 
-.cancelBtn {
-  padding: 8px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: transparent;
+/* ── Empty state ── */
+
+.emptyCard {
+  padding: var(--spacing-3xl) var(--spacing-lg) !important;
+  max-width: 50rem;
+  width: 100%;
+}
+
+.emptyContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  text-align: center;
+}
+
+.emptyTitle {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.emptyHint {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: border-color var(--transition-fast);
-}
-
-.cancelBtn:hover {
-  border-color: var(--text-secondary);
-}
-
-.submitBtn {
-  padding: 8px 20px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--accent-primary);
-  color: var(--text-inverse);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity var(--transition-fast);
-}
-
-.submitBtn:hover {
-  opacity: 0.9;
+  margin: 0;
 }

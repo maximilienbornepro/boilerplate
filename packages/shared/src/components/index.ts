@@ -39,6 +39,14 @@ export { ExpandableSection } from './ExpandableSection/ExpandableSection.js';
 // ImageUploader
 export { ImageUploader } from './ImageUploader/ImageUploader.js';
 
+// Badge
+export { Badge } from './Badge/Badge.js';
+
+// Button
+export { Button } from './Button/Button.js';
+export type { ButtonProps, ButtonVariant } from './Button/Button.js';
+export type { BadgeProps, BadgeType } from './Badge/Badge.js';
+
 // Card
 export { Card } from './Card/Card.js';
 export type { CardProps } from './Card/Card.js';

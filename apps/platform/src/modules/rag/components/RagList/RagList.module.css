@@ -25,6 +25,40 @@
   gap: var(--spacing-sm);
 }
 
+/* Single-column list using shared Card */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.docCard {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg) !important;
+}
+
+/* Empty state using shared Card */
+.emptyCard {
+  padding: var(--spacing-3xl) var(--spacing-lg) !important;
+}
+
+.emptyContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  text-align: center;
+}
+
+.emptyHint {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin: 0;
+}
+
 /* ── Card — SuiviTess style ── */
 
 .card {
@@ -115,7 +149,9 @@
 }
 
 .card:hover .editBtn,
-.card:hover .deleteBtn {
+.card:hover .deleteBtn,
+.docCard:hover .editBtn,
+.docCard:hover .deleteBtn {
   opacity: 1;
 }
 
@@ -136,7 +172,8 @@
   transition: transform var(--transition-normal), color var(--transition-normal);
 }
 
-.card:hover .cardArrow {
+.card:hover .cardArrow,
+.docCard:hover .cardArrow {
   transform: translateX(2px);
   color: var(--accent-primary);
 }

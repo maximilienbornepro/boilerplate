@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal } from '@boilerplate/shared/components';
+import { Modal, FormField, Button } from '@boilerplate/shared/components';
 import type { Planning, PlanningFormData } from '../../types';
 import styles from './PlanningList.module.css';
 
@@ -19,8 +19,7 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
   const [startDate, setStartDate] = useState(planning?.startDate || defaultStart);
   const [endDate, setEndDate] = useState(planning?.endDate || defaultEnd);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = () => {
     if (!name.trim() || !startDate || !endDate) return;
     onSubmit({ name: name.trim(), description, startDate, endDate });
   };
@@ -28,65 +27,55 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
   const isEdit = !!planning;
 
   return (
-    <Modal title={isEdit ? 'Modifier le planning' : 'Nouveau planning'} onClose={onClose} maxWidth={480}>
-      <form onSubmit={handleSubmit} className={styles.form}>
-        <div className={styles.field}>
-          <label className={styles.label}>Nom</label>
+    <Modal title={isEdit ? 'Modifier le planning' : 'Nouveau planning'} onClose={onClose}>
+      <div className={styles.modalBody}>
+        <FormField label="Nom" required>
           <input
             type="text"
-            className={styles.input}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Mon planning 2026"
-            required
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             autoFocus
           />
-        </div>
+        </FormField>
 
         <div className={styles.row}>
-          <div className={styles.field}>
-            <label className={styles.label}>Date de début</label>
+          <FormField label="Date de début" required>
             <input
               type="date"
-              className={styles.input}
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              required
             />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label}>Date de fin</label>
+          </FormField>
+          <FormField label="Date de fin" required>
             <input
               type="date"
-              className={styles.input}
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               min={startDate || undefined}
-              required
             />
-          </div>
+          </FormField>
         </div>
 
-        <div className={styles.field}>
-          <label className={styles.label}>Description</label>
+        <FormField label="Description">
           <textarea
-            className={styles.textarea}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Description optionnelle"
             rows={2}
           />
-        </div>
+        </FormField>
 
-        <div className={styles.actions}>
-          <button type="button" className={styles.cancelBtn} onClick={onClose}>
+        <div className={styles.modalActions}>
+          <Button variant="secondary" onClick={onClose}>
             Annuler
-          </button>
-          <button type="submit" className={styles.submitBtn}>
+          </Button>
+          <Button variant="primary" onClick={handleSubmit} disabled={!name.trim() || !startDate || !endDate}>
             {isEdit ? 'Modifier' : 'Créer'}
-          </button>
+          </Button>
         </div>
-      </form>
+      </div>
     </Modal>
   );
 }

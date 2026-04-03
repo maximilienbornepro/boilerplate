@@ -1,81 +1,13 @@
-.form {
+.modalBody {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
   min-width: 320px;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-}
-
-.label {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-family: var(--font-mono);
-}
-
-.input,
-.textarea {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--text-sm);
-  font-family: var(--font-mono);
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.input:focus,
-.textarea:focus {
-  outline: none;
-  border-color: var(--accent-primary);
-}
-
-.textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-.actions {
+.modalActions {
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-sm);
-  margin-top: var(--spacing-xs);
-}
-
-.cancelBtn {
-  background: none;
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-  padding: var(--spacing-xs) var(--spacing-md);
-  cursor: pointer;
-  font-size: var(--text-sm);
-  font-family: var(--font-mono);
-}
-
-.submitBtn {
-  background: var(--accent-primary);
-  border: none;
-  color: var(--bg-primary);
-  padding: var(--spacing-xs) var(--spacing-md);
-  cursor: pointer;
-  font-size: var(--text-sm);
-  font-family: var(--font-mono);
-}
-
-.submitBtn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.error {
-  color: var(--error);
-  font-size: var(--text-sm);
-  margin: 0;
+  margin-top: var(--spacing-sm);
 }

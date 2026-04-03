@@ -1,0 +1,202 @@
+/* ==============================================
+   Custom element marker — visual audit system
+   Elements with data-custom show a small badge
+   indicating they are page-specific (not shared)
+   ============================================== */
+
+[data-custom] {
+  position: relative;
+}
+
+[data-custom]::after {
+  content: attr(data-custom);
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  font-weight: var(--font-weight-bold);
+  color: #000;
+  background: #ff6b35;
+  padding: 1px 4px;
+  border-radius: 2px;
+  line-height: 1.2;
+  white-space: nowrap;
+  z-index: 100;
+  pointer-events: none;
+  letter-spacing: 0.02em;
+  opacity: 0.9;
+}
+
+/* ==============================================
+   Page layout
+   ============================================== */
+
+.demo-page {
+  min-height: 100vh;
+}
+
+.demo-content {
+  padding: var(--spacing-lg);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.demo-stats {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.demo-stat {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.demo-stat--success {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.demo-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.demo-card {
+  padding: var(--spacing-md) !important;
+}
+
+.demo-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-xs);
+}
+
+.demo-card-title {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.demo-card-status {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+}
+
+.demo-card-description {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0 0 var(--spacing-sm) 0;
+  line-height: var(--line-height-relaxed);
+}
+
+.demo-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.demo-card-date {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.demo-card-delete {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--error);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--spacing-2xs) var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.demo-card-delete:hover {
+  background: var(--error-bg);
+}
+
+.demo-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.demo-form input,
+.demo-form textarea {
+  width: 100%;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.demo-form input:focus,
+.demo-form textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+.demo-form textarea {
+  resize: vertical;
+}
+
+.demo-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.demo-btn {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.demo-btn--secondary {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.demo-btn--secondary:hover {
+  background: var(--bg-hover);
+}
+
+.demo-btn--primary {
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+  border-color: var(--accent-primary);
+}
+
+.demo-btn--primary:hover {
+  background: var(--accent-primary-hover);
+}
+
+.demo-btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

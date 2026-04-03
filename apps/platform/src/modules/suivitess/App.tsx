@@ -167,11 +167,7 @@ function DocumentList({ onNavigate }: { onNavigate?: (path: string) => void }) {
 
   return (
     <Layout appId="suivitess" variant="full-width" onNavigate={onNavigate}>
-      <ModuleHeader
-        title="SuiviTess"
-        onBack={handleBack}
-      />
-      <DocumentSelector onSelect={handleSelect} />
+      <DocumentSelector onSelect={handleSelect} onNavigate={onNavigate} />
     </Layout>
   );
 }

@@ -35,6 +35,22 @@
   max-width: 50rem;
 }
 
+/* Document list (single column, full width) */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  width: 100%;
+  max-width: 50rem;
+}
+
+.docCard {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg) !important;
+}
+
 .card {
   display: flex;
   align-items: center;
@@ -71,9 +87,59 @@
 .cardContent {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-2xs);
+  gap: var(--spacing-xs);
   flex: 1;
   min-width: 0;
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* Modal body */
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+/* Empty state */
+.emptyCard {
+  padding: var(--spacing-3xl) var(--spacing-lg) !important;
+  max-width: 50rem;
+  width: 100%;
+}
+
+.emptyContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  text-align: center;
+}
+
+.emptyTitle {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.emptyHint {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin: 0;
 }
 
 .cardTitle {
@@ -91,12 +157,14 @@
   transition: transform var(--transition-normal);
 }
 
-.card:hover .cardArrow {
+.card:hover .cardArrow,
+.docCard:hover .cardArrow {
   transform: translateX(2px);
   color: var(--accent-primary);
 }
 
-/* Delete button on card */
+/* Edit / Delete buttons on card — hidden, shown on hover */
+.editBtn,
 .deleteBtn {
   display: flex;
   align-items: center;
@@ -113,8 +181,16 @@
   transition: all var(--transition-normal);
 }
 
-.card:hover .deleteBtn {
+.card:hover .editBtn,
+.card:hover .deleteBtn,
+.docCard:hover .editBtn,
+.docCard:hover .deleteBtn {
   opacity: 1;
+}
+
+.editBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .deleteBtn:hover {
