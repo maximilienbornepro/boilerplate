@@ -184,8 +184,49 @@ Apres avoir ecrit le code et verifie le preview, TOUJOURS creer la page complete
    - NE JAMAIS recreer un composant a la main (frame + texte + couleurs)
    - TOUJOURS utiliser `component.createInstance()` pour instancier un composant existant
    - Cela garantit que si le composant est modifie dans la page Composants, toutes les pages sont mises a jour automatiquement
-   - Pour trouver un composant : parcourir la page Composants, trouver le Component node par son ID, appeler `.createInstance()`
    - Override les textes et props de l'instance avec le contenu reel du design source
+
+   **Procedure systematique :**
+   a. D'abord, basculer sur la page Composants : `await figma.setCurrentPageAsync(composantsPage)`
+   b. Trouver le composant par son ID (voir mapping ci-dessous) : `const comp = await figma.getNodeByIdAsync('ID')`
+   c. Verifier que c'est un COMPONENT : `if (comp.type === 'COMPONENT')`
+   d. Creer l'instance : `const instance = comp.createInstance()`
+   e. Basculer sur la page cible : `await figma.setCurrentPageAsync(targetPage)`
+   f. Ajouter l'instance au parent : `parentFrame.appendChild(instance)`
+   g. Overrider les textes : parcourir `instance.findAll(n => n.type === 'TEXT')` et modifier `.characters`
+
+   **IDs des composants disponibles :**
+   | Composant | ID | Variants |
+   |-----------|-----|----------|
+   | Hero | `174:2` | — |
+   | StatCounter | `175:2` | — |
+   | Footer | `175:12` | — |
+   | SharedNav | `22:2` | — |
+   | ModuleHeader | `18:2` | — |
+   | Card default | `8:2` | — |
+   | Card compact | `8:5` | — |
+   | Card interactive | `8:8` | — |
+   | Button primary | `25:2` | — |
+   | Button secondary | `25:4` | — |
+   | Button danger | `25:6` | — |
+   | Badge accent | `26:10` | — |
+   | Badge success | `26:2` | — |
+   | Badge warning | `26:4` | — |
+   | Badge error | `26:6` | — |
+   | Badge info | `26:8` | — |
+   | Modal | `39:2` | — |
+   | ConfirmModal default | `41:2` | — |
+   | ConfirmModal danger | `41:15` | — |
+   | Toast success | `33:2` | — |
+   | FormField default | `10:2` | — |
+   | FormField required | `10:13` | — |
+   | ToggleGroup | `9:2` | — |
+   | TagEditor | `19:2` | — |
+   | ListEditor | `38:2` | — |
+   | ExpandableSection expanded | `13:2` | — |
+   | ExpandableSection collapsed | `13:12` | — |
+   | LoadingSpinner md | `15:5` | — |
+
 5. Pour chaque instance, **overrider les textes** avec le contenu reel du design source
 6. La page Figma doit etre une **reproduction 1:1** du design source — pas une version simplifiee
 
