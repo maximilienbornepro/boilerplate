@@ -15,6 +15,7 @@ const MonCvApp = lazy(() => import('./modules/mon-cv/App'));
 const RagApp = lazy(() => import('./modules/rag/App'));
 const DesignSystemApp = lazy(() => import('./modules/design-system/App'));
 const DemoApp = lazy(() => import('./modules/demo/App'));
+const LandingDemoModule = lazy(() => import('./modules/demo/LandingDemo').then(m => ({ default: () => <m.LandingDemo /> })));
 
 interface User {
   id: number;
@@ -172,6 +173,14 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <DemoApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/landing-demo"
+        element={
+          <SuspenseWrapper>
+            <LandingDemoModule />
           </SuspenseWrapper>
         }
       />

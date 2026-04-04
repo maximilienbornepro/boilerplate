@@ -87,6 +87,18 @@ export type { ActionCardProps } from './ActionCard/ActionCard.js';
 export { RecommendationItem } from './RecommendationItem/RecommendationItem.js';
 export type { RecommendationItemProps } from './RecommendationItem/RecommendationItem.js';
 
+// Hero
+export { Hero } from './Hero/Hero.js';
+export type { HeroProps } from './Hero/Hero.js';
+
+// StatCounter
+export { StatCounter } from './StatCounter/StatCounter.js';
+export type { StatCounterProps, StatItem } from './StatCounter/StatCounter.js';
+
+// Footer
+export { Footer } from './Footer/Footer.js';
+export type { FooterProps, FooterLinkGroup } from './Footer/Footer.js';
+
 // SectionTitle
 export { SectionTitle } from './SectionTitle/SectionTitle.js';
 export type { SectionTitleProps } from './SectionTitle/SectionTitle.js';

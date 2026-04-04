@@ -1,0 +1,110 @@
+.landing-page {
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+.landing-container {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 var(--spacing-lg);
+}
+
+/* ── Sections ── */
+
+.landing-section {
+  padding: var(--spacing-3xl) 0;
+}
+
+.landing-section-header {
+  text-align: center;
+  margin-bottom: var(--spacing-3xl);
+}
+
+.landing-section-subtitle {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-md);
+  color: var(--text-muted);
+  margin: var(--spacing-sm) auto 0;
+  max-width: 36rem;
+  line-height: var(--line-height-relaxed);
+}
+
+/* ── Features ── */
+
+.landing-features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-md);
+}
+
+.landing-feature-card {
+  padding: var(--spacing-xl) !important;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.landing-feature-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-md);
+  background: var(--accent-light);
+  color: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.landing-feature-title {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.landing-feature-desc {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin: 0;
+  line-height: var(--line-height-relaxed);
+}
+
+/* ── CTA ── */
+
+.landing-cta {
+  text-align: center;
+  padding: var(--spacing-3xl) !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.landing-cta-title {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.landing-cta-actions {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.landing-cta-trust {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 768px) {
+  .landing-features-grid {
+    grid-template-columns: 1fr;
+  }
+}
