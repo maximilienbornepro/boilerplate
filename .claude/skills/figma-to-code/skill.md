@@ -169,14 +169,38 @@ Afficher le rendu via Preview MCP ou Chrome MCP :
 
 ### 5b. Exporter la page complete dans Figma Design — OBLIGATOIRE
 
-Apres avoir ecrit le code et verifie le preview, TOUJOURS creer la page complete dans le fichier Figma Design (`disZwchND38mOZEYwoHqRR`) :
+Apres avoir ecrit le code et verifie le preview, TOUJOURS creer la page complete dans le fichier Figma Design (`disZwchND38mOZEYwoHqRR`).
+
+**REGLES CRITIQUES pour la reproduction fidele :**
 
 1. Charger le skill `figma:figma-use`
 2. Creer une nouvelle page dans le fichier Figma (ou utiliser une page existante si c'est un remplacement)
-3. Composer la page en utilisant les **instances des composants** existants dans la page Composants
-4. La page Figma doit reproduire fidèlement le layout du code React
-5. Utiliser `figma.createInstance()` ou `importComponentByKeyAsync()` pour instancier les composants shared
-6. La page sert de **reference visuelle** pour les designers et les futures iterations
+3. **Reproduire EXACTEMENT le contenu du Figma Make source** :
+   - **Textes** : utiliser les VRAIS textes du design source (titres, descriptions, labels) — JAMAIS de texte generique ou placeholder
+   - **Images** : telecharger et inclure les images du design source (via les URLs des assets Figma Make) — utiliser `figma.createImageAsync()` ou `figma.createRectangle()` avec image fill
+   - **Layout** : reproduire fidèlement les espacements, alignements, grilles du design source
+   - **Couleurs** : utiliser les design tokens Figma existants, pas des couleurs approximatives
+4. Composer la page en utilisant les **instances des composants** existants dans la page Composants
+5. Pour chaque instance, **overrider les textes** avec le contenu reel du design source
+6. La page Figma doit etre une **reproduction 1:1** du design source — pas une version simplifiee
+
+**CE QUI EST INTERDIT :**
+- ❌ Texte generique ("Description de la fonctionnalite", "Lien 1", "Lien 2")
+- ❌ Images manquantes ou placeholder gris
+- ❌ Layout approximatif qui ne correspond pas au design source
+- ❌ Contenu invente qui n'est pas dans le design source
+
+### 5c. Publier la bibliotheque Figma — ETAPE MANUELLE
+
+Apres avoir cree les composants dans Figma Design, rappeler a l'utilisateur de **publier la bibliotheque** manuellement :
+
+1. Dans Figma, aller dans le fichier Design (`disZwchND38mOZEYwoHqRR`)
+2. Menu Assets → "Publier une bibliothèque" (ou Ctrl+Alt+O)
+3. Selectionner les nouveaux composants ajoutes
+4. Cliquer "Publier"
+5. Ensuite "Exporter vers Figma Make" pour rendre les composants disponibles dans Make
+
+⚠️ Cette etape ne peut PAS etre automatisee via l'API Plugin Figma. C'est une limite de Figma.
 
 ### 6. Iterer
 
