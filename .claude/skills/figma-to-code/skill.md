@@ -180,7 +180,12 @@ Apres avoir ecrit le code et verifie le preview, TOUJOURS creer la page complete
    - **Images** : telecharger et inclure les images du design source (via les URLs des assets Figma Make) — utiliser `figma.createImageAsync()` ou `figma.createRectangle()` avec image fill
    - **Layout** : reproduire fidèlement les espacements, alignements, grilles du design source
    - **Couleurs** : utiliser les design tokens Figma existants, pas des couleurs approximatives
-4. Composer la page en utilisant les **instances des composants** existants dans la page Composants
+4. **OBLIGATOIRE — Utiliser des INSTANCES des composants de la page Composants** :
+   - NE JAMAIS recreer un composant a la main (frame + texte + couleurs)
+   - TOUJOURS utiliser `component.createInstance()` pour instancier un composant existant
+   - Cela garantit que si le composant est modifie dans la page Composants, toutes les pages sont mises a jour automatiquement
+   - Pour trouver un composant : parcourir la page Composants, trouver le Component node par son ID, appeler `.createInstance()`
+   - Override les textes et props de l'instance avec le contenu reel du design source
 5. Pour chaque instance, **overrider les textes** avec le contenu reel du design source
 6. La page Figma doit etre une **reproduction 1:1** du design source — pas une version simplifiee
 
