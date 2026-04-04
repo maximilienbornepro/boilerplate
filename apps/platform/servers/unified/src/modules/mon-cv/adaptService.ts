@@ -39,18 +39,12 @@ export interface AdaptResponse {
     titleChange?: { original: string; proposed: string; reason?: string };
     matchedKeywords?: string[];
     remainingGaps?: string[];
-    // New pipeline fields
-    missionRewrites?: RewriteChange[];
-    projectRewrites?: RewriteChange[];
-    addedCompetences?: string[];
-    addedSoftSkills?: string[];
   };
   atsScore: {
     before: AtsScore;
     after: AtsScore;
   };
   jobAnalysis: JobAnalysis;
-  credibility?: CredibilityAnalysis;
 }
 
 export interface PipelineLogEvent {
@@ -326,32 +320,122 @@ Note: atsHint must be exactly one of: "workday", "taleo", "sap", "unknown"`,
 }
 
 /**
- * STEP 1: Rewrite CV title to match job offer + keep alternative titles
+ * Generate 1-2 new missions relevant to the job offer (ATS-aware, exact tokens)
  */
-export async function rewriteTitle(
-  cvData: CVData,
-  jobAnalysis: JobAnalysis
-): Promise<{ mainTitle: string; alternativeTitles: string[] }> {
+export async function generateMissions(
+  currentExperience: Experience,
+  jobAnalysis: JobAnalysis,
+  customInstructions?: string
+): Promise<string[]> {
   const client = getAnthropicClient();
 
-  const prompt = `Tu es un expert en optimisation de CV pour les systèmes ATS.
+  const atsStyleGuide =
+    jobAnalysis.atsHint === 'workday'
+      ? 'WORKDAY ATS: Extremely literal token matching. Use the exact phrases from the job offer verbatim — no paraphrasing at all.'
+      : jobAnalysis.atsHint === 'taleo'
+        ? 'TALEO ATS: Moderately flexible. Use exact tokens but minor variations (plurals, conjugations) are tolerated.'
+        : jobAnalysis.atsHint === 'sap'
+          ? 'SAP SUCCESSFACTORS ATS: Very strict token matching. Copy exact phrases character-for-character — no paraphrasing whatsoever.'
+          : 'Standard ATS: Use exact tokens from the job offer. Synonyms are not counted.';
 
-Le titre actuel du CV est : "${cvData.title}"
-Le titre exact du poste dans l'offre est : "${jobAnalysis.exactJobTitle}"
-Domaine de l'offre : ${jobAnalysis.domain}
-Mots-clés requis : ${jobAnalysis.requiredKeywords.join(', ')}
+  const prompt = `You are an ATS optimization expert. Generate 1-2 NEW professional missions for a CV that will maximize ATS scoring.
 
-MISSION : Propose un nouveau titre principal pour le CV qui :
-1. Utilise le titre EXACT de l'offre ou s'en rapproche au maximum
-2. Reste crédible par rapport au profil du candidat
-3. Intègre 1-2 mots-clés requis si pertinent (ex: domaine, spécialité)
+${atsStyleGuide}
 
-L'ancien titre sera conservé comme titre alternatif.
+CRITICAL ATS RULES:
+1. Use EXACT tokens from the job offer — NEVER use synonyms
+   Example: if offer says "gestion de projet", write "gestion de projet" — NOT "pilotage de projet"
+2. Required keywords MUST appear as PROOF (contextualized actions), NOT as declarations
+   ✓ "Mise en place d'un processus de gestion de projet Agile pour une équipe de 8 développeurs"
+   ✗ "Compétences en gestion de projet"
+3. If a required keyword is already in the skills section, ALSO include it in a mission
+   → This passes the ATS 2-section frequency threshold (keyword counted once per section, max)
+4. Mission format: action verb + context + measurable result (when possible)
+5. Keep the same language as existing missions
 
-Retourne UNIQUEMENT un JSON :
+Job requirements:
+- Exact job title: ${jobAnalysis.exactJobTitle}
+- REQUIRED keywords (weight ×3 in ATS): ${jobAnalysis.requiredKeywords.join(', ')}
+- Preferred keywords: ${jobAnalysis.preferredKeywords.join(', ')}
+- Technologies: ${jobAnalysis.technologies.join(', ')}
+- Key responsibilities: ${jobAnalysis.keyResponsibilities.join(', ')}
+- Domain: ${jobAnalysis.domain}
+
+Current experience:
+- Title: ${currentExperience.title}
+- Company: ${currentExperience.company}
+- Current missions: ${currentExperience.missions.join('; ')}
+
+${customInstructions ? `Custom instructions: ${customInstructions}` : ''}
+
+RULES:
+- Generate 1-2 NEW missions ONLY
+- ⚠️ Missions MUST be realistic and directly plausible in the context of this specific experience (${currentExperience.title} at ${currentExperience.company}). Do NOT invent unrelated responsibilities.
+- Do NOT repeat existing missions
+- Required keywords MUST appear verbatim in at least one mission
+- ⚠️ ALWAYS use the same language as the existing missions. If existing missions are in French → generate in French. NEVER generate in English if the CV is in French.
+
+Return ONLY a JSON array of strings, no explanations:
+["Mission 1", "Mission 2"]`;
+
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 1000,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    return [];
+  }
+
+  return JSON.parse(jsonMatch[0]) as string[];
+}
+
+/**
+ * Generate 1 new project inspired by side projects (ATS-aware)
+ */
+export async function generateProject(
+  sideProjects: CVData['sideProjects'],
+  jobAnalysis: JobAnalysis,
+  customInstructions?: string
+): Promise<Project | null> {
+  const client = getAnthropicClient();
+
+  const sideProjectsContext =
+    sideProjects?.items?.map(item => `${item.category}: ${item.projects.join(', ')}`).join('\n') ||
+    'No side projects';
+
+  const prompt = `Generate 1 NEW project for a professional CV, inspired by these side projects and optimized for ATS scoring.
+
+CRITICAL ATS RULES:
+- Use exact tokens from the job offer (required keywords verbatim in the description)
+- Project description should contextualize required keywords as achievements
+
+Job requirements:
+- Exact job title: ${jobAnalysis.exactJobTitle}
+- Required keywords (use verbatim): ${jobAnalysis.requiredKeywords.join(', ')}
+- Technologies: ${jobAnalysis.technologies.join(', ')}
+- Domain: ${jobAnalysis.domain}
+
+Side projects for inspiration:
+${sideProjectsContext}
+Technologies used: ${sideProjects?.technologies?.join(', ') || 'N/A'}
+
+${customInstructions ? `Custom instructions: ${customInstructions}` : ''}
+
+RULES:
+- Create a professional project directly inspired by the side projects listed above
+- If no side projects are listed, skip and return null instead of inventing a project
+- Incorporate required keywords verbatim in the description
+- Must be realistic and coherent with the candidate's actual background
+- ⚠️ TOUJOURS utiliser la même langue que les missions du CV. Si le CV est en français → projet en français. NE PAS générer en anglais si le CV est en français.
+
+Return ONLY valid JSON:
 {
-  "mainTitle": "Nouveau titre adapté à l'offre",
-  "alternativeTitles": ["${cvData.title}"]
+  "title": "Project title",
+  "description": "Brief description of the project and impact"
 }`;
 
   const response = await client.messages.create({
@@ -363,536 +447,10 @@ Retourne UNIQUEMENT un JSON :
   const text = response.content[0].type === 'text' ? response.content[0].text : '';
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    return { mainTitle: cvData.title, alternativeTitles: [] };
-  }
-  return JSON.parse(jsonMatch[0]);
-}
-
-/**
- * STEP 2: Rewrite CV summary with ATS keyword stuffing
- */
-export async function rewriteSummary(
-  cvData: CVData,
-  jobAnalysis: JobAnalysis,
-  jobOffer: string
-): Promise<string> {
-  const client = getAnthropicClient();
-
-  const prompt = `Tu es un expert en optimisation de CV pour les systèmes ATS.
-
-Résumé actuel du CV :
-"${cvData.summary}"
-
-Mots-clés REQUIS de l'offre (doivent apparaître verbatim) :
-${jobAnalysis.requiredKeywords.join(', ')}
-
-Mots-clés préférés :
-${jobAnalysis.preferredKeywords.join(', ')}
-
-Titre du poste : ${jobAnalysis.exactJobTitle}
-Domaine : ${jobAnalysis.domain}
-
-MISSION : Réécris le résumé en intégrant un MAXIMUM de mots-clés requis et préférés.
-
-RÈGLES :
-1. Garde le FOND du résumé (années d'expérience, domaines d'expertise, parcours)
-2. Reformule les phrases pour intégrer les tokens EXACTS de l'offre — jamais de synonymes
-3. Le résumé est la section libre du CV — c'est ici qu'on met le plus de keywords
-4. Chaque keyword doit être contextualisé naturellement dans une phrase
-5. Garde la même langue que le résumé original
-6. Maximum 4-5 phrases
-
-Retourne UNIQUEMENT le nouveau résumé en texte brut (pas de JSON, pas de guillemets).`;
-
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 1000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  return text.trim().replace(/^["']|["']$/g, '');
-}
-
-/**
- * STEP 3: Rewrite existing missions to integrate gap keywords (never add new missions)
- */
-export interface RewriteChange {
-  experienceIndex: number;
-  missionIndex?: number;
-  projectIndex?: number;
-  original: string;
-  rewritten: string;
-  keywordsIntegrated: string[];
-}
-
-export async function rewriteMissions(
-  experiences: Experience[],
-  jobAnalysis: JobAnalysis,
-  gapKeywords: string[]
-): Promise<{ experiences: Experience[]; changes: RewriteChange[] }> {
-  if (gapKeywords.length === 0 || experiences.length === 0) {
-    return { experiences, changes: [] };
+    return null;
   }
 
-  const client = getAnthropicClient();
-
-  // Build missions index for Claude
-  const missionsIndex: string[] = [];
-  experiences.forEach((exp, ei) => {
-    exp.missions.forEach((m, mi) => {
-      missionsIndex.push(`[exp${ei}_m${mi}] (${exp.company}) ${m}`);
-    });
-  });
-
-  const prompt = `Tu es un expert en optimisation de CV pour les systèmes ATS.
-
-Voici toutes les missions du CV :
-${missionsIndex.join('\n')}
-
-Voici les mots-clés de l'offre qui ne sont PAS dans le CV :
-${gapKeywords.join(', ')}
-
-MISSION : Pour chaque mot-clé manquant, RÉÉCRIS une mission existante en intégrant le mot-clé EXACT.
-
-RÈGLES STRICTES :
-1. Le FOND de la mission doit rester IDENTIQUE (même contexte, mêmes chiffres, même résultat)
-2. Change uniquement les MOTS pour utiliser les tokens exacts de l'offre
-3. Chaque mission ne peut être réécrite qu'UNE SEULE FOIS
-4. Si aucune mission ne correspond à un keyword → IGNORE ce keyword (ne PAS inventer)
-5. Utilise le token EXACT de l'offre (pas de synonyme)
-6. La mission réécrite doit être naturelle et crédible
-7. Garde la même langue
-
-Retourne UNIQUEMENT un JSON :
-{
-  "rewrites": [
-    {
-      "ref": "exp0_m2",
-      "original": "texte original",
-      "rewritten": "texte réécrit",
-      "keywordsIntegrated": ["keyword1"]
-    }
-  ]
-}`;
-
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 3000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    return { experiences, changes: [] };
-  }
-
-  const parsed = JSON.parse(jsonMatch[0]) as {
-    rewrites: Array<{ ref: string; original: string; rewritten: string; keywordsIntegrated: string[] }>;
-  };
-
-  const changes: RewriteChange[] = [];
-  const updatedExperiences = JSON.parse(JSON.stringify(experiences)) as Experience[];
-
-  for (const rw of parsed.rewrites) {
-    const match = rw.ref.match(/exp(\d+)_m(\d+)/);
-    if (!match) continue;
-    const ei = parseInt(match[1]);
-    const mi = parseInt(match[2]);
-    if (updatedExperiences[ei]?.missions[mi]) {
-      updatedExperiences[ei].missions[mi] = rw.rewritten;
-      changes.push({
-        experienceIndex: ei,
-        missionIndex: mi,
-        original: rw.original,
-        rewritten: rw.rewritten,
-        keywordsIntegrated: rw.keywordsIntegrated,
-      });
-    }
-  }
-
-  return { experiences: updatedExperiences, changes };
-}
-
-/**
- * STEP 4: Rewrite existing project descriptions to integrate gap keywords
- */
-export async function rewriteProjects(
-  experiences: Experience[],
-  jobAnalysis: JobAnalysis,
-  gapKeywords: string[]
-): Promise<{ experiences: Experience[]; changes: RewriteChange[] }> {
-  if (gapKeywords.length === 0 || experiences.length === 0) {
-    return { experiences, changes: [] };
-  }
-
-  const client = getAnthropicClient();
-
-  // Build projects index
-  const projectsIndex: string[] = [];
-  experiences.forEach((exp, ei) => {
-    (exp.projects || []).forEach((p, pi) => {
-      projectsIndex.push(`[exp${ei}_p${pi}] (${exp.company}) ${p.title}: ${p.description}`);
-    });
-  });
-
-  if (projectsIndex.length === 0) {
-    return { experiences, changes: [] };
-  }
-
-  const prompt = `Tu es un expert en optimisation de CV pour les systèmes ATS.
-
-Voici tous les projets du CV :
-${projectsIndex.join('\n')}
-
-Voici les mots-clés de l'offre encore manquants :
-${gapKeywords.join(', ')}
-
-MISSION : Pour chaque mot-clé manquant, RÉÉCRIS la description d'un projet existant en intégrant le mot-clé EXACT.
-
-RÈGLES STRICTES :
-1. Le projet reste le MÊME (même titre, même contexte)
-2. Seule la description est légèrement modifiée pour intégrer le keyword
-3. Si aucun projet ne correspond → IGNORE le keyword
-4. Token EXACT de l'offre, pas de synonyme
-5. Garde la même langue
-
-Retourne UNIQUEMENT un JSON :
-{
-  "rewrites": [
-    {
-      "ref": "exp0_p1",
-      "originalDesc": "description originale",
-      "rewrittenDesc": "description réécrite",
-      "keywordsIntegrated": ["keyword1"]
-    }
-  ]
-}`;
-
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 3000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    return { experiences, changes: [] };
-  }
-
-  const parsed = JSON.parse(jsonMatch[0]) as {
-    rewrites: Array<{ ref: string; originalDesc: string; rewrittenDesc: string; keywordsIntegrated: string[] }>;
-  };
-
-  const changes: RewriteChange[] = [];
-  const updatedExperiences = JSON.parse(JSON.stringify(experiences)) as Experience[];
-
-  for (const rw of parsed.rewrites) {
-    const match = rw.ref.match(/exp(\d+)_p(\d+)/);
-    if (!match) continue;
-    const ei = parseInt(match[1]);
-    const pi = parseInt(match[2]);
-    if (updatedExperiences[ei]?.projects?.[pi]) {
-      updatedExperiences[ei].projects[pi].description = rw.rewrittenDesc;
-      changes.push({
-        experienceIndex: ei,
-        projectIndex: pi,
-        original: rw.originalDesc,
-        rewritten: rw.rewrittenDesc,
-        keywordsIntegrated: rw.keywordsIntegrated,
-      });
-    }
-  }
-
-  return { experiences: updatedExperiences, changes };
-}
-
-/**
- * STEP 5: Extract and add missing competences + soft skills from the offer
- */
-export async function addCompetencesAndSoftSkills(
-  cvData: CVData,
-  jobAnalysis: JobAnalysis,
-  jobOffer: string
-): Promise<{ competences: string[]; softSkills: string[] }> {
-  const client = getAnthropicClient();
-
-  const prompt = `Tu es un expert en optimisation de CV pour les systèmes ATS.
-
-Compétences actuelles du CV :
-${cvData.competences.join(', ')}
-
-Offre d'emploi :
-${jobOffer}
-
-Mots-clés requis : ${jobAnalysis.requiredKeywords.join(', ')}
-
-MISSION : Extraire les compétences techniques ET les soft skills mentionnées dans l'offre qui ne sont PAS déjà dans le CV.
-
-RÈGLES :
-1. Compétences = savoir-faire métier (gestion des risques, comitologie, cadrage périmètre, matrice de risques, etc.)
-2. Soft skills = qualités personnelles (force de proposition, proactif, capacité d'arbitrage, sens de la communication, etc.)
-3. Utilise les tokens EXACTS de l'offre
-4. Ne propose que des compétences crédibles pour le profil
-5. Maximum 5 compétences + 5 soft skills
-
-Retourne UNIQUEMENT un JSON :
-{
-  "competences": ["compétence 1", "compétence 2"],
-  "softSkills": ["soft skill 1", "soft skill 2"]
-}`;
-
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 1000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    return { competences: [], softSkills: [] };
-  }
-
-  const result = JSON.parse(jsonMatch[0]) as { competences: string[]; softSkills: string[] };
-
-  // Filter out duplicates with existing competences
-  const existingLower = cvData.competences.map(c => c.toLowerCase());
-  result.competences = result.competences.filter(c => !existingLower.includes(c.toLowerCase()));
-  result.softSkills = result.softSkills.filter(s => !existingLower.includes(s.toLowerCase()));
-
-  return result;
-}
-
-/**
- * STEP 6: Ensure keywords appear in 2+ sections for maximum sectionCoverage score
- * This is a pure algorithmic step — no LLM call needed.
- */
-export function ensureMultiSectionCoverage(
-  cvData: CVData,
-  jobAnalysis: JobAnalysis
-): CVData {
-  const updated = JSON.parse(JSON.stringify(cvData)) as CVData;
-  const allSkills = [
-    ...(updated.competences || []),
-    ...(updated.outils || []),
-    ...(updated.dev || []),
-    ...(updated.frameworks || []),
-    ...(updated.solutions || []),
-  ].map(s => s.toLowerCase());
-
-  const summaryLower = (updated.summary || '').toLowerCase();
-
-  // Check each required keyword
-  for (const kw of jobAnalysis.requiredKeywords) {
-    const kwLower = kw.toLowerCase();
-
-    // Check if keyword is in missions (any experience)
-    const inMissions = updated.experiences?.some(exp =>
-      exp.missions.some(m => m.toLowerCase().includes(kwLower))
-    );
-
-    // Check if keyword is in skills
-    const inSkills = allSkills.some(s => s.toLowerCase().includes(kwLower));
-
-    // Check if keyword is in summary
-    const inSummary = summaryLower.includes(kwLower);
-
-    // Count sections
-    const sectionCount = (inMissions ? 1 : 0) + (inSkills ? 1 : 0) + (inSummary ? 1 : 0);
-
-    // If only in 1 section, try to add to competences (safest section to add keywords)
-    if (sectionCount === 1 && !inSkills) {
-      // Add as competence if not already there
-      const capitalizedKw = kw.charAt(0).toUpperCase() + kw.slice(1);
-      if (!updated.competences.some(c => c.toLowerCase() === kwLower)) {
-        updated.competences.push(capitalizedKw);
-      }
-    }
-  }
-
-  return updated;
-}
-
-/**
- * STEP 7: Analyze credibility — compare adapted CV with original and rate realism
- */
-export interface CredibilityAnalysis {
-  score: number; // 0-100
-  issues: Array<{
-    section: string;
-    original: string;
-    adapted: string;
-    issue: string;
-    severity: 'low' | 'medium' | 'high';
-  }>;
-  summary: string;
-}
-
-export async function analyzeCredibility(
-  originalCV: CVData,
-  adaptedCV: CVData,
-  jobAnalysis: JobAnalysis
-): Promise<CredibilityAnalysis> {
-  const client = getAnthropicClient();
-
-  // Build a diff of what changed
-  const diffs: string[] = [];
-
-  if (originalCV.title !== adaptedCV.title) {
-    diffs.push(`TITRE: "${originalCV.title}" → "${adaptedCV.title}"`);
-  }
-  if (originalCV.summary !== adaptedCV.summary) {
-    diffs.push(`RÉSUMÉ: changé`);
-  }
-
-  // Compare missions
-  (originalCV.experiences || []).forEach((exp, ei) => {
-    const adaptedExp = adaptedCV.experiences?.[ei];
-    if (!adaptedExp) return;
-    exp.missions.forEach((m, mi) => {
-      if (adaptedExp.missions[mi] && adaptedExp.missions[mi] !== m) {
-        diffs.push(`MISSION [${exp.company}][${mi}]: "${m}" → "${adaptedExp.missions[mi]}"`);
-      }
-    });
-  });
-
-  // Compare competences
-  const newCompetences = (adaptedCV.competences || []).filter(
-    c => !(originalCV.competences || []).includes(c)
-  );
-  if (newCompetences.length > 0) {
-    diffs.push(`COMPÉTENCES ajoutées: ${newCompetences.join(', ')}`);
-  }
-
-  const prompt = `Tu es un expert en recrutement. Analyse la crédibilité d'un CV adapté par rapport à l'original.
-
-Voici les modifications apportées au CV :
-${diffs.join('\n')}
-
-Titre du poste visé : ${jobAnalysis.exactJobTitle}
-
-Pour chaque modification, évalue :
-1. Est-ce que la modification reste crédible et réaliste ?
-2. Est-ce que le candidat pourrait défendre cette formulation en entretien ?
-3. Y a-t-il des incohérences flagrantes ?
-
-Donne un score de crédibilité global de 0 à 100 :
-- 90-100 : Parfaitement crédible, modifications subtiles
-- 70-89 : Crédible, quelques formulations légèrement forcées
-- 50-69 : Moyennement crédible, certaines modifications sont visibles
-- <50 : Peu crédible, modifications trop éloignées de l'original
-
-Retourne UNIQUEMENT un JSON :
-{
-  "score": 85,
-  "issues": [
-    {
-      "section": "mission",
-      "original": "texte original",
-      "adapted": "texte adapté",
-      "issue": "description du problème",
-      "severity": "low"
-    }
-  ],
-  "summary": "Résumé en 1-2 phrases de la crédibilité globale"
-}`;
-
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 2000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    return { score: 100, issues: [], summary: 'Analyse non disponible' };
-  }
-
-  return JSON.parse(jsonMatch[0]) as CredibilityAnalysis;
-}
-
-/**
- * STEP 8: Smooth content — fix awkward phrasing by referencing the original CV
- * Only called when credibility score is below 80
- */
-export async function smoothContent(
-  originalCV: CVData,
-  adaptedCV: CVData,
-  credibility: CredibilityAnalysis
-): Promise<CVData> {
-  const client = getAnthropicClient();
-
-  // Only smooth missions with medium/high severity issues
-  const issuesToFix = credibility.issues.filter(i => i.severity !== 'low');
-  if (issuesToFix.length === 0) return adaptedCV;
-
-  const prompt = `Tu es un expert en rédaction de CV. Certaines modifications apportées au CV sont un peu forcées.
-Lisse le contenu pour que les modifications restent naturelles tout en gardant les mots-clés ATS intégrés.
-
-Problèmes identifiés :
-${issuesToFix.map(i => `- [${i.section}] "${i.adapted}" → Problème: ${i.issue}`).join('\n')}
-
-Texte ORIGINAL du CV (référence de ton naturel) :
-${issuesToFix.map(i => `- Original: "${i.original}"`).join('\n')}
-
-RÈGLES :
-1. Garde les mots-clés ATS qui ont été intégrés
-2. Rends les phrases plus naturelles et fluides
-3. Rapproche-toi du style d'écriture de l'original
-4. Ne change PAS le fond, seulement la forme
-
-Retourne un JSON avec les corrections :
-{
-  "fixes": [
-    {
-      "adapted": "texte adapté problématique",
-      "smoothed": "texte lissé"
-    }
-  ]
-}`;
-
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 2000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return adaptedCV;
-
-  const fixes = JSON.parse(jsonMatch[0]) as {
-    fixes: Array<{ adapted: string; smoothed: string }>;
-  };
-
-  const smoothed = JSON.parse(JSON.stringify(adaptedCV)) as CVData;
-
-  // Apply fixes to missions
-  for (const fix of fixes.fixes) {
-    for (const exp of smoothed.experiences || []) {
-      for (let i = 0; i < exp.missions.length; i++) {
-        if (exp.missions[i] === fix.adapted) {
-          exp.missions[i] = fix.smoothed;
-        }
-      }
-      // Also check project descriptions
-      for (const proj of exp.projects || []) {
-        if (proj.description === fix.adapted) {
-          proj.description = fix.smoothed;
-        }
-      }
-    }
-    // Check summary
-    if (smoothed.summary === fix.adapted) {
-      smoothed.summary = fix.smoothed;
-    }
-  }
-
-  return smoothed;
+  return JSON.parse(jsonMatch[0]) as Project;
 }
 
 /**
@@ -1089,40 +647,28 @@ export async function adaptCV(request: AdaptRequest): Promise<AdaptResponse> {
   // Step 2: Calculate ATS score BEFORE adaptation
   const scoreBefore = scoreCV(cvData, jobAnalysis);
 
-  // Deep clone CV for adaptation
-  let adaptedCV: CVData = JSON.parse(JSON.stringify(cvData));
+  // Step 3: Generate new missions for first experience
+  const newMissions: string[] = [];
+  let newProject: Project | undefined;
+  const adaptedCV: CVData = JSON.parse(JSON.stringify(cvData)); // Deep clone
 
-  // ── NEW PIPELINE: Rewrite existing content instead of adding fictional content ──
+  if (adaptedCV.experiences && adaptedCV.experiences.length > 0) {
+    const firstExp = adaptedCV.experiences[0];
 
-  // Step 3: Rewrite title (adapt to job offer + keep alternatives)
-  const titleResult = await rewriteTitle(adaptedCV, jobAnalysis);
-  adaptedCV.title = titleResult.mainTitle;
-  (adaptedCV as any).alternativeTitles = titleResult.alternativeTitles;
+    // Generate ATS-optimized missions
+    const missions = await generateMissions(firstExp, jobAnalysis, customInstructions);
+    newMissions.push(...missions);
+    firstExp.missions = [...firstExp.missions, ...missions];
 
-  // Step 4: Rewrite summary with keyword stuffing
-  adaptedCV.summary = await rewriteSummary(adaptedCV, jobAnalysis, jobOffer);
+    // Generate ATS-optimized project
+    const project = await generateProject(cvData.sideProjects, jobAnalysis, customInstructions);
+    if (project) {
+      newProject = project;
+      firstExp.projects = [project, ...firstExp.projects];
+    }
+  }
 
-  // Step 5: Identify gap keywords (not found in CV)
-  const intermediateScore = scoreCV(adaptedCV, jobAnalysis);
-  const gapKeywords = intermediateScore.breakdown.requiredMissing;
-
-  // Step 6: Rewrite existing missions to integrate gap keywords
-  const missionResult = await rewriteMissions(adaptedCV.experiences || [], jobAnalysis, gapKeywords);
-  adaptedCV.experiences = missionResult.experiences;
-
-  // Recalculate remaining gaps after mission rewrites
-  const postMissionScore = scoreCV(adaptedCV, jobAnalysis);
-  const remainingGaps = postMissionScore.breakdown.requiredMissing;
-
-  // Step 7: Rewrite existing projects to integrate remaining gap keywords
-  const projectResult = await rewriteProjects(adaptedCV.experiences || [], jobAnalysis, remainingGaps);
-  adaptedCV.experiences = projectResult.experiences;
-
-  // Step 8: Add competences + soft skills from the offer
-  const { competences: newCompetences, softSkills } = await addCompetencesAndSoftSkills(adaptedCV, jobAnalysis, jobOffer);
-  adaptedCV.competences = [...adaptedCV.competences, ...newCompetences, ...softSkills];
-
-  // Step 9: Add relevant technical skills (existing function — kept)
+  // Step 4: Add relevant skills (prioritizing required keywords)
   const addedSkills = await addRelevantSkills(
     {
       competences: cvData.competences,
@@ -1134,46 +680,28 @@ export async function adaptCV(request: AdaptRequest): Promise<AdaptResponse> {
     jobAnalysis
   );
 
+  // Apply new skills to adapted CV
   for (const [cat, skills] of Object.entries(addedSkills)) {
     const key = cat as keyof CVData;
     const existing = (adaptedCV[key] as string[]) || [];
     (adaptedCV[key] as string[]) = [...existing, ...skills];
   }
 
-  // Step 10: Ensure keywords appear in 2+ sections (multi-section coverage)
-  adaptedCV = ensureMultiSectionCoverage(adaptedCV, jobAnalysis);
-
-  // Step 11: Credibility analysis — compare adapted CV with original
-  const credibility = await analyzeCredibility(cvData, adaptedCV, jobAnalysis);
-
-  // Step 12: Final smoothing pass — fix any awkward phrasing from the rewrites
-  if (credibility.score < 80) {
-    adaptedCV = await smoothContent(cvData, adaptedCV, credibility);
-  }
-
-  // Final: Calculate ATS score AFTER all adaptations
+  // Step 5: Calculate ATS score AFTER adaptation
   const scoreAfter = scoreCV(adaptedCV, jobAnalysis);
 
   return {
     adaptedCV,
     changes: {
-      newMissions: [], // No new missions — only rewrites
+      newMissions,
+      newProject,
       addedSkills,
-      termReplacements: [],
-      titleChange: titleResult.mainTitle !== cvData.title
-        ? { original: cvData.title, proposed: titleResult.mainTitle }
-        : undefined,
-      missionRewrites: missionResult.changes,
-      projectRewrites: projectResult.changes,
-      addedCompetences: newCompetences,
-      addedSoftSkills: softSkills,
     },
     atsScore: {
       before: scoreBefore,
       after: scoreAfter,
     },
     jobAnalysis,
-    credibility,
   };
 }
 
