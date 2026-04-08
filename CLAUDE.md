@@ -2,50 +2,6 @@
 
 ## Règles OBLIGATOIRES
 
-### ⛔ INTERDICTION ABSOLUE : Pas de code sans spec validée
-
-**RÈGLE #1 - BLOQUANTE : JAMAIS d'écriture de code sans spec validée.**
-
-Avant d'utiliser les outils `Write` ou `Edit` sur du code applicatif :
-
-1. **VÉRIFIER** qu'un dossier de spec existe :
-   - `plans/<feature>/` avec `proposal.md`, `design.md`, `tasks.md`, `progress.md`
-
-2. **VÉRIFIER** qu'on est sur une branche `feat/<feature>` (pas sur `main`)
-
-3. **VÉRIFIER** que la phase dans `progress.md` est `implementation` ou plus
-
-**Si ces conditions ne sont pas remplies → STOP IMMÉDIAT.**
-
-```
-❌ INTERDIT:
-   User: "Ajoute une page de détail produit"
-   Claude: [Commence à écrire du code]
-
-✅ CORRECT:
-   User: "Ajoute une page de détail produit"
-   Claude: "Je dois d'abord créer une spec.
-            Utilise /spec:propose 'Page detail produit' pour commencer."
-```
-
-**Commande pour créer une spec :**
-
-```
-/spec:propose "description de la fonctionnalité"
-```
-
-Cela crée un dossier `plans/<slug>/` avec proposal.md, design.md, tasks.md, progress.md.
-
-**Exceptions (pas besoin de spec)** :
-- Corrections de typos
-- Mise à jour de documentation (CLAUDE.md, README)
-- Fichiers de configuration (.env, package.json versions)
-- Corrections de bugs critiques en production (avec justification)
-
-**En cas de doute → Demander à l'utilisateur si une spec est requise.**
-
----
-
 ### Tests avant commit/push
 
 **OBLIGATOIRE : Toujours exécuter `npm test` AVANT tout commit ou push.**
