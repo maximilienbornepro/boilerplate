@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ToastContainer } from '@boilerplate/shared/components';
+import { ToastContainer, Card, Button } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import type { Section, Change, WizardStep, Subject, DocumentWithSections, SnapshotInfo } from '../../types';
+import { getStatusOption } from '../../types';
 import {
   fetchDocument,
   createSection,
@@ -116,6 +117,8 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [changes, setChanges] = useState<Change[]>([]);
+  const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
+  const [collapsedSubjectIds, setCollapsedSubjectIds] = useState<Set<string>>(new Set());
   const [addingInSection, setAddingInSection] = useState<string | null>(null);
   const [newSubjectTitle, setNewSubjectTitle] = useState('');
   const [summary, setSummary] = useState<string>('');
@@ -769,96 +772,58 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
             <h1>{docTitle}</h1>
           </div>
 
-          {!j5Date && (
-            <div className={styles.snapshotSummary}>
-              <div className={styles.snapshotHeader}>
-                <span>Aucune sauvegarde disponible</span>
-              </div>
-            </div>
-          )}
-
-          {j5Date && (
-            <div className={styles.snapshotSummary}>
-              <div className={styles.snapshotHeader}>
-                <span>Changements depuis la dernière sauvegarde du</span>
-                {availableSnapshots.length > 1 ? (
-                  <select
-                    className={styles.snapshotSelect}
-                    value={selectedSnapshotId || ''}
-                    onChange={(e) => handleSnapshotChange(Number(e.target.value))}
-                  >
-                    {availableSnapshots.map((snap) => (
-                      <option key={snap.id} value={snap.id}>
-                        {new Date(snap.created_at).toLocaleDateString('fr-FR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span>{new Date(j5Date).toLocaleDateString('fr-FR')}</span>
-                )}
-              </div>
-              {(snapshotChanges.added.length > 0 || snapshotChanges.removed.length > 0 || snapshotChanges.modified.length > 0) ? (
-                <div className={styles.snapshotChanges}>
-                  {snapshotChanges.added.length > 0 && (
-                    <div className={styles.changeGroup}>
-                      <span className={styles.changeLabel + ' ' + styles.added}>+{snapshotChanges.added.length} nouveau(x)</span>
-                      <div className={styles.changeItemsList}>
-                        {snapshotChanges.added.map((a, i) => (
-                          <div key={i} className={styles.changeItem}>
-                            <span className={styles.changeSection}>[{a.section}]</span> {a.title}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {snapshotChanges.removed.length > 0 && (
-                    <div className={styles.changeGroup}>
-                      <span className={styles.changeLabel + ' ' + styles.removed}>-{snapshotChanges.removed.length} supprimé(s)</span>
-                      <div className={styles.changeItemsList}>
-                        {snapshotChanges.removed.map((r, i) => (
-                          <div key={i} className={styles.changeItem}>
-                            <span className={styles.changeSection}>[{r.section}]</span> {r.title}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {snapshotChanges.modified.length > 0 && (
-                    <div className={styles.changeGroup}>
-                      <span className={styles.changeLabel + ' ' + styles.modified}>{snapshotChanges.modified.length} modifié(s)</span>
-                      <div className={styles.changeItemsList}>
-                        {snapshotChanges.modified.map((m, i) => (
-                          <div key={i} className={styles.changeItem}>
-                            <span className={styles.changeSection}>[{m.section}]</span> {m.title}{m.lastChange && <span className={styles.lastChange}> — {m.lastChange}</span>}{m.status && <span className={styles.changeStatus}> - {m.status}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className={styles.noChanges}>Aucun changement détecté</div>
-              )}
-            </div>
-          )}
-
           <div className={styles.reviewLayout}>
             <div className={styles.reviewContent} ref={reviewContentRef}>
               {sections.length === 0 && !showNewSectionForm && (
-                <div className={styles.emptyState}>
-                  <p>Aucune section dans ce document.</p>
-                  <p>Commencez par créer une section pour organiser vos sujets.</p>
-                </div>
+                <Card className={styles.emptyCard}>
+                  <div className={styles.emptyContent}>
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                    <p className={styles.emptyTitle}>Aucune section</p>
+                    <p className={styles.emptyHint}>Créer votre première section pour organiser vos sujets</p>
+                    <Button variant="primary" onClick={() => setShowNewSectionForm(true)}>
+                      + Nouvelle section
+                    </Button>
+                  </div>
+                </Card>
               )}
-              {sections.map((section, sIdx) => (
+              {sections.map((section, sIdx) => {
+                const isSectionCollapsed = collapsedSectionIds.has(section.id);
+                return (
                 <div key={section.id} className={styles.sectionBlock} data-section-id={section.id}>
                   <div className={styles.sectionHeader}>
+                    <button
+                      type="button"
+                      className={styles.collapseBtn}
+                      onClick={() => {
+                        setCollapsedSectionIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(section.id)) next.delete(section.id);
+                          else next.add(section.id);
+                          return next;
+                        });
+                      }}
+                      title={isSectionCollapsed ? 'Déplier la section' : 'Replier la section'}
+                      aria-expanded={!isSectionCollapsed}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ transform: isSectionCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
                     {editingSectionId === section.id ? (
                       <input
                         type="text"
@@ -889,21 +854,26 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
                         title="Cliquer pour renommer"
                       >
                         {section.name}
-                        <span className={styles.editIcon}>✎</span>
                       </h2>
                     )}
                     <span className={styles.sectionCount}>{section.subjects.length} sujet(s)</span>
                     <button
-                      className={styles.deleteSectionBtn}
+                      className="shared-card__delete-btn"
                       onClick={() => handleDeleteSection(section.id)}
                       title="Supprimer cette section"
+                      style={{ opacity: 1 }}
                     >
-                      🗑
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
                     </button>
                   </div>
 
-                  {section.subjects.map((subject, subIdx) => (
-                    <div key={subject.id} data-subject-id={`subject-${sIdx}-${subIdx}`} className={styles.subjectItem}>
+                  {!isSectionCollapsed && section.subjects.map((subject, subIdx) => {
+                    const isSubjectCollapsed = collapsedSubjectIds.has(subject.id);
+                    return (
+                    <div key={subject.id} data-subject-id={`subject-${sIdx}-${subIdx}`} className={`${styles.subjectItem} ${isSubjectCollapsed ? styles.subjectItemCollapsed : ''}`}>
                       <div className={styles.subjectReorderBtns}>
                         <button
                           className={styles.subjectReorderBtn}
@@ -918,24 +888,59 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
                           title="Descendre"
                         >↓</button>
                       </div>
-                      <SubjectReview
-                        compact
-                        subject={subject}
-                        sectionName={section.name}
-                        documentId={selectedDoc}
-                        onNext={(updated) => handleSubjectUpdate(sIdx, subIdx, updated)}
-                        onSaved={(updated) => handleSubjectSaved(sIdx, subIdx, updated)}
-                        onDelete={() => handleDeleteSubject(sIdx, subIdx, subject)}
-                        onFocus={() => setFocusedItem(`subject-${sIdx}-${subIdx}`)}
-                        registerSave={registerSave}
-                        unregisterSave={unregisterSave}
-                        onAutoSaveComplete={handleAutoSaveComplete}
-                        onDirty={handleDirty}
-                      />
+                      {isSubjectCollapsed ? (
+                        <div className={styles.subjectCollapsed}>
+                          <button
+                            type="button"
+                            className={styles.subjectCollapsedToggle}
+                            onClick={() => {
+                              setCollapsedSubjectIds(prev => {
+                                const next = new Set(prev);
+                                next.delete(subject.id);
+                                return next;
+                              });
+                            }}
+                            title="Déplier le sujet"
+                            aria-expanded="false"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: 'rotate(-90deg)' }}>
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                          </button>
+                          <span className={styles.subjectCollapsedTitle}>{subject.title || 'Sans titre'}</span>
+                          <span className={styles.subjectCollapsedStatus}>
+                            <span className={styles.subjectCollapsedDot} style={{ backgroundColor: getStatusOption(subject.status).color }} />
+                            {getStatusOption(subject.status).label}
+                          </span>
+                        </div>
+                      ) : (
+                        <SubjectReview
+                          compact
+                          subject={subject}
+                          sectionName={section.name}
+                          documentId={selectedDoc}
+                          onNext={(updated) => handleSubjectUpdate(sIdx, subIdx, updated)}
+                          onSaved={(updated) => handleSubjectSaved(sIdx, subIdx, updated)}
+                          onDelete={() => handleDeleteSubject(sIdx, subIdx, subject)}
+                          onFocus={() => setFocusedItem(`subject-${sIdx}-${subIdx}`)}
+                          registerSave={registerSave}
+                          unregisterSave={unregisterSave}
+                          onAutoSaveComplete={handleAutoSaveComplete}
+                          onDirty={handleDirty}
+                          onToggleCollapse={() => {
+                            setCollapsedSubjectIds(prev => {
+                              const next = new Set(prev);
+                              next.add(subject.id);
+                              return next;
+                            });
+                          }}
+                        />
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
 
-                  {addingInSection === section.id ? (
+                  {!isSectionCollapsed && (addingInSection === section.id ? (
                     <div className={styles.addSubjectInline}>
                       <input
                         type="text"
@@ -983,11 +988,12 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
                       className={styles.addSubjectBtn}
                       onClick={() => setAddingInSection(section.id)}
                     >
-                      + Ajouter un nouveau sujet
+                      + Nouveau sujet
                     </button>
-                  )}
+                  ))}
                 </div>
-              ))}
+                );
+              })}
 
               {showNewSectionForm ? (
                 <div className={styles.newSectionForm}>
@@ -1019,14 +1025,14 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
                     </button>
                   </div>
                 </div>
-              ) : (
+              ) : sections.length > 0 ? (
                 <button
                   className={styles.addSectionBtn}
                   onClick={() => setShowNewSectionForm(true)}
                 >
                   + Nouvelle section
                 </button>
-              )}
+              ) : null}
             </div>
 
             <TableOfContents

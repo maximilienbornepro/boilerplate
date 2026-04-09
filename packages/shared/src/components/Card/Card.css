@@ -101,7 +101,7 @@
 
 .shared-card__edit-btn:hover {
   background: var(--bg-hover);
-  color: var(--text-primary);
+  color: var(--accent-primary);
 }
 
 .shared-card__delete-btn:hover {

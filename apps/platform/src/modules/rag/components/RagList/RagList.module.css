@@ -1,7 +1,19 @@
 .container {
-  max-width: 960px;
-  margin: 0 auto;
   padding: var(--spacing-xl) var(--spacing-lg) var(--spacing-3xl);
+  position: fixed;
+  top: 110px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.container > * {
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .empty {

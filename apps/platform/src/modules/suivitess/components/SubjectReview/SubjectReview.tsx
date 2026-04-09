@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { Subject } from '../../types';
-import { STATUS_OPTIONS } from '../../types';
+import { STATUS_OPTIONS, getStatusOption } from '../../types';
 import { updateSubject } from '../../services/api';
 import styles from './SubjectReview.module.css';
 
@@ -23,6 +23,7 @@ interface Props {
   unregisterSave?: (id: string) => void;
   onAutoSaveComplete?: () => void;
   onDirty?: () => void;
+  onToggleCollapse?: () => void;
 }
 
 export function SubjectReview({
@@ -43,7 +44,8 @@ export function SubjectReview({
   registerSave,
   unregisterSave,
   onAutoSaveComplete,
-  onDirty
+  onDirty,
+  onToggleCollapse
 }: Props) {
   const [title, setTitle] = useState(subject.title);
   const [status, setStatus] = useState(subject.status);
@@ -473,6 +475,19 @@ export function SubjectReview({
       <div className={styles.subjectCard}>
         {/* Header with title and status */}
         <div className={styles.subjectHeader}>
+          {onToggleCollapse && (
+            <button
+              type="button"
+              className={styles.subjectCollapseBtn}
+              onClick={onToggleCollapse}
+              title="Replier le sujet"
+              aria-expanded="true"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          )}
           {editingTitle ? (
             <input
               ref={titleRef}
@@ -490,7 +505,6 @@ export function SubjectReview({
               onClick={() => { setEditingTitle(true); onFocus?.(); }}
             >
               {title}
-              <span className={styles.editIcon}>&#x270E;</span>
             </h2>
           )}
 
@@ -500,8 +514,11 @@ export function SubjectReview({
               className={`${styles.statusButton} ${status !== subject.status ? styles.changed : ''}`}
               onClick={() => setShowStatusPicker(!showStatusPicker)}
             >
-              {status}
-              <span className={styles.editIcon}>&#x270E;</span>
+              <span className={styles.statusDot} style={{ backgroundColor: getStatusOption(status).color }} />
+              <span className={styles.statusLabel}>{getStatusOption(status).label}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
             </button>
 
             {showStatusPicker && (
@@ -515,7 +532,8 @@ export function SubjectReview({
                       setShowStatusPicker(false);
                     }}
                   >
-                    {opt.label}
+                    <span className={styles.statusDot} style={{ backgroundColor: opt.color }} />
+                    <span>{opt.label}</span>
                   </button>
                 ))}
               </div>
@@ -524,11 +542,15 @@ export function SubjectReview({
 
           {onDelete && (
             <button
-              className={styles.deleteBtn}
+              className="shared-card__delete-btn"
               onClick={onDelete}
               title="Supprimer ce sujet"
+              style={{ opacity: 1 }}
             >
-              🗑
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
             </button>
           )}
         </div>
@@ -674,16 +696,19 @@ export function SubjectReview({
                       )}
                       <button
                         type="button"
-                        className={`${styles.checkBtn} ${strikethrough ? styles.active : ''}`}
+                        className={`shared-card__edit-btn ${strikethrough ? styles.checkActive : ''}`}
                         onClick={() => toggleStrikethrough(i)}
                         title="Marquer comme fait (⌘⇧S)"
+                        style={{ opacity: 1 }}
                       >
-                        ✓
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
                       </button>
                       {allLines.length > 1 && (
                         <button
                           type="button"
-                          className={styles.deleteLineBtn}
+                          className="shared-card__delete-btn"
                           onClick={() => {
                             setSituation(prev => {
                               const lines = prev.split('\n');
@@ -693,8 +718,12 @@ export function SubjectReview({
                             if (i > 0) setFocusLineIndex(i - 1);
                           }}
                           title="Supprimer la ligne"
+                          style={{ opacity: 1 }}
                         >
-                          ×
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
                         </button>
                       )}
                     </div>
@@ -705,7 +734,7 @@ export function SubjectReview({
                 className={styles.addLineBtn}
                 onClick={() => setSituation(prev => prev + '\n')}
               >
-                + Ajouter une ligne
+                + Nouvelle ligne
               </button>
             </div>
           ) : (
@@ -762,28 +791,10 @@ export function SubjectReview({
               onClick={() => { setEditingResponsibility(true); onFocus?.(); }}
             >
               {responsibility || <span className={styles.placeholder}>Non assigné</span>}
-              <span className={styles.editIcon}>&#x270E;</span>
             </div>
           )}
         </div>
 
-        {/* Status indicator */}
-        <div className={styles.changeIndicator}>
-          <div className={styles.changeStatus}>
-            {saveError ? (
-              <span className={styles.errorBadge}>{saveError}</span>
-            ) : isSaving ? (
-              <span className={styles.savingBadge}>
-                <span className={styles.miniSpinner}></span>
-                Sauvegarde auto...
-              </span>
-            ) : pendingSave ? (
-              <span className={styles.pendingBadge}>Modifications en attente...</span>
-            ) : lastSaved ? (
-              <span className={styles.savedBadge}>✓ Sauvegardé à {lastSaved.toLocaleTimeString('fr-FR')}</span>
-            ) : null}
-          </div>
-        </div>
       </div>
 
       {!compact && (

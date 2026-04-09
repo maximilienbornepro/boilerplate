@@ -35,3 +35,42 @@
   color: var(--text-muted);
   font-size: var(--font-size-base);
 }
+
+/* Exports dropdown in ModuleHeader */
+.suivitess-exports {
+  position: relative;
+  display: inline-flex;
+}
+
+.suivitess-exports-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 140px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 600;
+}
+
+.suivitess-exports-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-normal), color var(--transition-normal);
+}
+
+.suivitess-exports-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+}

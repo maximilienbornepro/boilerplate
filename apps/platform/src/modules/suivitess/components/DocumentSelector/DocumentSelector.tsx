@@ -21,7 +21,12 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [newDescription, setNewDescription] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editingDoc, setEditingDoc] = useState<Document | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>({ show: false, doc: null });
   const [deleting, setDeleting] = useState(false);
   const [toasts, setToasts] = useState<ToastData[]>([]);
@@ -51,10 +56,11 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
 
     setCreating(true);
     try {
-      const newDoc = await api.createDocument(newTitle.trim());
+      const newDoc = await api.createDocument(newTitle.trim(), newDescription.trim() || undefined);
       setDocuments(prev => [...prev, newDoc]);
       setShowCreateForm(false);
       setNewTitle('');
+      setNewDescription('');
       addToast({ type: 'success', message: `Review "${newDoc.title}" créée avec succès` });
       onSelect(newDoc);
     } catch (err) {
@@ -62,6 +68,31 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
       addToast({ type: 'error', message: 'Erreur lors de la création du document' });
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleEditClick = (e: React.MouseEvent, doc: Document) => {
+    e.stopPropagation();
+    setEditingDoc(doc);
+    setEditTitle(doc.title);
+    setEditDescription(doc.description ?? '');
+  };
+
+  const handleEditSave = async () => {
+    if (!editingDoc || !editTitle.trim()) return;
+    setSavingEdit(true);
+    try {
+      const updated = await api.updateDocument(editingDoc.id, {
+        title: editTitle.trim(),
+        description: editDescription.trim() || null,
+      });
+      setDocuments(prev => prev.map(d => d.id === updated.id ? updated : d));
+      setEditingDoc(null);
+      addToast({ type: 'success', message: 'Review modifiée' });
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message || 'Erreur lors de la modification' });
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -141,7 +172,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
               </svg>
-              <p className={styles.emptyTitle}>Aucun document</p>
+              <p className={styles.emptyTitle}>Aucune review</p>
               <p className={styles.emptyHint}>Créer votre première review pour commencer</p>
               <Button variant="primary" onClick={() => setShowCreateForm(true)}>
                 + Nouvelle review
@@ -154,7 +185,18 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
               <Card key={doc.id} variant="interactive" onClick={() => onSelect(doc)} className={styles.docCard}>
                 <div className="shared-card__content">
                   <span className="shared-card__title">{doc.title}</span>
+                  {doc.description && <span className="shared-card__subtitle">{doc.description}</span>}
                 </div>
+                <button
+                  className="shared-card__edit-btn"
+                  onClick={(e) => handleEditClick(e, doc)}
+                  title="Modifier"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
                 <button
                   className="shared-card__delete-btn"
                   onClick={(e) => handleDeleteClick(e, doc)}
@@ -177,7 +219,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
 
         {/* Create document modal */}
         {showCreateForm && (
-          <Modal title="Créer une nouvelle review" onClose={() => { setShowCreateForm(false); setNewTitle(''); }}>
+          <Modal title="Créer une nouvelle review" onClose={() => { setShowCreateForm(false); setNewTitle(''); setNewDescription(''); }}>
             <div className={styles.modalBody}>
               <FormField label="Nom de la review" required>
                 <input
@@ -189,12 +231,53 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
                   autoFocus
                 />
               </FormField>
+              <FormField label="Description">
+                <textarea
+                  placeholder="Description optionnelle"
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  rows={2}
+                />
+              </FormField>
               <div className={styles.modalActions}>
-                <Button variant="secondary" onClick={() => { setShowCreateForm(false); setNewTitle(''); }}>
+                <Button variant="secondary" onClick={() => { setShowCreateForm(false); setNewTitle(''); setNewDescription(''); }}>
                   Annuler
                 </Button>
                 <Button variant="primary" onClick={handleCreateDocument} disabled={!newTitle.trim() || creating}>
                   {creating ? 'Création...' : 'Créer'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* Edit document modal */}
+        {editingDoc && (
+          <Modal title="Modifier la review" onClose={() => setEditingDoc(null)}>
+            <div className={styles.modalBody}>
+              <FormField label="Nom de la review" required>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleEditSave()}
+                  autoFocus
+                />
+              </FormField>
+              <FormField label="Description">
+                <textarea
+                  placeholder="Description optionnelle"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={2}
+                />
+              </FormField>
+              <div className={styles.modalActions}>
+                <Button variant="secondary" onClick={() => setEditingDoc(null)}>
+                  Annuler
+                </Button>
+                <Button variant="primary" onClick={handleEditSave} disabled={!editTitle.trim() || savingEdit}>
+                  {savingEdit ? 'Modification...' : 'Modifier'}
                 </Button>
               </div>
             </div>

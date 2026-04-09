@@ -30,16 +30,30 @@ export async function fetchDocuments(): Promise<Document[]> {
   return response.json();
 }
 
-export async function createDocument(title: string): Promise<Document> {
+export async function createDocument(title: string, description?: string): Promise<Document> {
   const response = await fetch(`${API_BASE}/documents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, description }),
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
     throw new Error(error.error || 'Failed to create document');
+  }
+  return response.json();
+}
+
+export async function updateDocument(docId: string, data: { title?: string; description?: string | null }): Promise<Document> {
+  const response = await fetch(`${API_BASE}/documents/${docId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || 'Failed to update document');
   }
   return response.json();
 }

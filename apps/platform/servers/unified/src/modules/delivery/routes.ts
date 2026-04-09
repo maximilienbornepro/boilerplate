@@ -22,9 +22,9 @@ export function createDeliveryRoutes(): Router {
   }));
 
   router.post('/boards', asyncHandler(async (req, res) => {
-    const { name } = req.body;
+    const { name, description } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Le nom est obligatoire' });
-    const board = await db.createBoard(req.user!.id, name.trim());
+    const board = await db.createBoard(req.user!.id, name.trim(), description?.trim() || null);
     res.status(201).json(board);
   }));
 

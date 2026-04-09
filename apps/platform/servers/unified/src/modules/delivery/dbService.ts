@@ -493,6 +493,7 @@ export interface BoardRow {
   id: string;
   userId: number;
   name: string;
+  description: string | null;
   type: string;
   createdAt: string;
   updatedAt: string;
@@ -503,6 +504,7 @@ function mapBoardRow(row: Record<string, unknown>): BoardRow {
     id: row.id as string,
     userId: row.user_id as number,
     name: row.name as string,
+    description: (row.description as string) ?? null,
     type: row.type as string,
     createdAt: (row.created_at as Date).toISOString(),
     updatedAt: (row.updated_at as Date).toISOString(),
@@ -523,22 +525,23 @@ export async function getBoardById(id: string): Promise<BoardRow | null> {
   return mapBoardRow(result.rows[0]);
 }
 
-export async function createBoard(userId: number, name: string): Promise<BoardRow> {
+export async function createBoard(userId: number, name: string, description?: string | null): Promise<BoardRow> {
   const result = await pool.query(
-    `INSERT INTO delivery_boards (user_id, name)
-     VALUES ($1, $2)
+    `INSERT INTO delivery_boards (user_id, name, description)
+     VALUES ($1, $2, $3)
      RETURNING *`,
-    [userId, name]
+    [userId, name, description ?? null]
   );
   return mapBoardRow(result.rows[0]);
 }
 
-export async function updateBoard(id: string, data: { name?: string }): Promise<BoardRow> {
+export async function updateBoard(id: string, data: { name?: string; description?: string | null }): Promise<BoardRow> {
   const fields: string[] = [];
   const values: unknown[] = [];
   let idx = 1;
 
   if (data.name !== undefined) { fields.push(`name = $${idx++}`); values.push(data.name); }
+  if (data.description !== undefined) { fields.push(`description = $${idx++}`); values.push(data.description); }
   fields.push(`updated_at = CURRENT_TIMESTAMP`);
   values.push(id);
 

@@ -1,7 +1,19 @@
 .delivery-list-page {
   padding: var(--spacing-xl) var(--spacing-lg);
+  position: fixed;
+  top: 110px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.delivery-list-page > * {
   max-width: 50rem;
-  margin: 0 auto;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .delivery-list-items {

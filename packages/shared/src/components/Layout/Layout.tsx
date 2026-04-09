@@ -28,9 +28,12 @@ export function Layout({
   navSlot,
   allowedAppIds,
 }: LayoutProps) {
-  // Auto-fallback to current user's permissions when not explicitly provided
+  // Auto-fetch user permissions from AuthContext when not explicitly passed.
+  // This ensures the burger menu inside a module only shows modules the
+  // current user is allowed to access.
   const { user } = useGatewayAuth();
-  const effectiveAllowedAppIds = allowedAppIds ?? user?.permissions;
+  const effectiveAllowedAppIds = allowedAppIds ?? (noAuth ? undefined : user?.permissions);
+
   const variantClass = {
     centered: styles.centered,
     'centered-narrow': styles.centeredNarrow,
