@@ -41,25 +41,39 @@ export function createRoutes(): Router {
       return;
     }
 
-    // Generate ID from title (kebab-case)
-    const id = title
+    // Generate base slug from title (kebab-case). Documents may share the same
+    // name — we keep a readable slug in the URL by appending -2, -3, ... when
+    // the base slug collides with an existing primary key.
+    const baseSlug = title
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
+      .replace(/^-|-$/g, '') || 'document';
 
-    try {
-      const doc = await db.createDocument(id, title.trim());
-      console.log('[SuiVitess] Document created:', id);
-      res.json(doc);
-    } catch (error: unknown) {
-      if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
-        res.status(409).json({ error: 'Un document avec ce nom existe déjà' });
+    const MAX_SUFFIX_ATTEMPTS = 100;
+    let id = baseSlug;
+    let suffix = 1;
+
+    for (let attempt = 0; attempt < MAX_SUFFIX_ATTEMPTS; attempt++) {
+      try {
+        const doc = await db.createDocument(id, title.trim());
+        console.log('[SuiVitess] Document created:', id);
+        res.json(doc);
         return;
+      } catch (error: unknown) {
+        if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
+          // Primary-key collision → try next suffix
+          suffix += 1;
+          id = `${baseSlug}-${suffix}`;
+          continue;
+        }
+        throw error;
       }
-      throw error;
     }
+
+    // Should be unreachable in practice
+    res.status(500).json({ error: 'Impossible de générer un identifiant unique pour ce document' });
   }));
 
   // Get document with all sections and subjects
