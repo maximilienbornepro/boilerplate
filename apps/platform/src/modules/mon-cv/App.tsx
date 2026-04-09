@@ -35,14 +35,13 @@ export default function MonCvApp({ onNavigate, embedMode, embedId }: MonCvAppPro
   );
 }
 
-function CVListRoute({ onNavigate }: { onNavigate?: (path: string) => void }) {
+function CVListRoute(_props: { onNavigate?: (path: string) => void }) {
   const navigate = useNavigate();
   return (
     <CVListPage
       onEdit={(cvId) => navigate(`/mon-cv/${cvId}`)}
       onAdapt={(cvId) => navigate(`/mon-cv/${cvId}/adapt`)}
       onAdaptations={(cvId) => navigate(`/mon-cv/${cvId}/adaptations`)}
-      onBack={() => onNavigate?.('/')}
     />
   );
 }

@@ -103,10 +103,6 @@ export function LeaveBar({
         />
       )}
 
-      {position.width > 60 && (
-        <span className={styles.label}>{leave.reason || 'Congé'}</span>
-      )}
-
       {/* Right resize handle */}
       {showHandles && (
         <div

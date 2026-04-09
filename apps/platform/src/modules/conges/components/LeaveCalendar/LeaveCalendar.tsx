@@ -1,5 +1,6 @@
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import type { Member, Leave, ViewMode } from '../../types';
+import { getLeaveReasonInfo } from '../../types';
 import { LeaveBar } from './LeaveBar';
 import { isHoliday, getDateRangeWarnings } from '../../utils/holidays';
 import styles from './LeaveCalendar.module.css';
@@ -321,7 +322,6 @@ export function LeaveCalendar({
         <div className={styles.nameColumn} ref={nameScrollRef}>
           {members.map((m) => (
             <div key={m.id} className={`${styles.nameCell} ${m.id === currentUserId ? styles.currentUser : ''}`} style={{ height: ROW_HEIGHT }}>
-              <span className={styles.dot} style={{ backgroundColor: m.color }} />
               <span className={styles.memberName}>{m.email}</span>
             </div>
           ))}
@@ -382,7 +382,7 @@ export function LeaveCalendar({
                       <LeaveBar
                         key={leave.id}
                         leave={leave}
-                        color={member.color}
+                        color={getLeaveReasonInfo(leave.reason).color}
                         chartStartDate={startDate}
                         columnWidth={colWidth}
                         isDraggable={canDrag}

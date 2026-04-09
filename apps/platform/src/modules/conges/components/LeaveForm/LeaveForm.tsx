@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Modal } from '@boilerplate/shared/components';
-import type { Member, Leave, LeaveFormData } from '../../types';
+import type { Member, Leave, LeaveFormData, LeaveReason } from '../../types';
+import { LEAVE_REASONS } from '../../types';
 import { getDateRangeWarnings } from '../../utils/holidays';
 import styles from './LeaveForm.module.css';
 
@@ -13,13 +14,6 @@ interface LeaveFormProps {
   onClose: () => void;
 }
 
-const REASON_OPTIONS = [
-  'Congé payé',
-  'RTT',
-  'Congé maladie',
-  'Congé sans solde',
-];
-
 export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onClose }: LeaveFormProps) {
   const isAdmin = currentUser?.isAdmin ?? false;
 
@@ -30,7 +24,7 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
     if (leave) return leave.startPeriod || 'full';
     return 'full';
   });
-  const [reason, setReason] = useState(leave?.reason || REASON_OPTIONS[0]);
+  const [reason, setReason] = useState<LeaveReason>(leave?.reason || 'cp');
 
   // Fix: ensure memberId always matches currentUser for non-admins
   useEffect(() => {
@@ -118,10 +112,10 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
           <select
             className={styles.select}
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            onChange={(e) => setReason(e.target.value as LeaveReason)}
           >
-            {REASON_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
+            {LEAVE_REASONS.map((opt) => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
             ))}
           </select>
         </div>

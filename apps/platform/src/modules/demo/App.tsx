@@ -33,7 +33,7 @@ export default function DemoApp({ onNavigate }: { onNavigate?: (path: string) =>
   );
 }
 
-function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
+function AppContent(_props: { onNavigate?: (path: string) => void }) {
   const [items, setItems] = useState<DemoItem[]>(MOCK_ITEMS);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -78,7 +78,7 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
 
   return (
     <div className="demo-page">
-      <ModuleHeader title="Page Démo" subtitle="Liste avec création" onBack={() => onNavigate?.('/')}>
+      <ModuleHeader title="Page Démo" subtitle="Liste avec création">
         <button className="module-header-btn module-header-btn-primary" onClick={() => setShowCreateModal(true)}>
           + Créer
         </button>

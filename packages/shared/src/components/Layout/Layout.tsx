@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { SharedNav } from '../SharedNav/SharedNav.js';
+import { APPS } from '../SharedNav/constants.js';
 import styles from './Layout.module.css';
 
 export type LayoutVariant = 'centered' | 'centered-narrow' | 'full-width' | 'sidebar' | 'custom';
@@ -32,8 +33,16 @@ export function Layout({
     custom: styles.custom,
   }[variant];
 
+  const moduleApp = appId ? APPS.find((a) => a.id === appId) : undefined;
+  const moduleStyle: CSSProperties | undefined = moduleApp
+    ? ({
+        ['--accent-primary' as string]: moduleApp.color,
+        ['--accent-primary-hover' as string]: moduleApp.gradientEnd,
+      } as CSSProperties)
+    : undefined;
+
   return (
-    <div className={styles.app}>
+    <div className={styles.app} style={moduleStyle}>
       <SharedNav
         currentApp={appId}
         onNavigate={onNavigate}

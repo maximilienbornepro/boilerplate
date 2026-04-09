@@ -97,7 +97,6 @@ function RagListPage({ onNavigate }: { onNavigate?: (path: string) => void }) {
       <ModuleHeader
         title="RAG"
         subtitle={`${bots.length} assistant${bots.length !== 1 ? 's' : ''}`}
-        onBack={() => onNavigate ? onNavigate('/') : (window.location.href = '/')}
       >
         <button
           className="module-header-btn module-header-btn-primary"

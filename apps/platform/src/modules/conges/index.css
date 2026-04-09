@@ -4,7 +4,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  padding: var(--spacing-md) var(--spacing-5);
+  padding: var(--spacing-md) var(--spacing-5) var(--spacing-md) 0;
   gap: var(--spacing-md);
 }
 

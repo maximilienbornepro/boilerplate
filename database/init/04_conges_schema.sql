@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS conges_leaves (
     end_date DATE NOT NULL,
     start_period VARCHAR(10) DEFAULT 'full' CHECK (start_period IN ('full', 'morning', 'afternoon')),
     end_period VARCHAR(10) DEFAULT 'full' CHECK (end_period IN ('full', 'morning', 'afternoon')),
-    reason TEXT,
+    reason VARCHAR(20) DEFAULT 'cp',
     status VARCHAR(20) DEFAULT 'approved',
     created_by INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

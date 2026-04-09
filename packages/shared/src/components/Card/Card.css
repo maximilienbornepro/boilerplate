@@ -49,9 +49,11 @@
 .shared-card__content {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: var(--spacing-2xs);
   flex: 1;
   min-width: 0;
+  min-height: 2.5rem;
 }
 
 .shared-card__title {
@@ -103,13 +105,18 @@
 }
 
 .shared-card__delete-btn:hover {
-  background: var(--error-bg);
-  color: var(--error);
+  background: var(--bg-hover);
+  color: var(--accent-primary);
 }
 
 /* ── Arrow chevron ── */
 
 .shared-card__arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--spacing-xl);
+  height: var(--spacing-xl);
   color: var(--text-muted);
   flex-shrink: 0;
   transition: transform var(--transition-normal), color var(--transition-normal);
