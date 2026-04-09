@@ -76,10 +76,12 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [scrollOffset, setScrollOffset] = useState(0);
   /**
-   * The virtual "Delivery" parent row starts collapsed on first mount so
-   * users don't get hundreds of tickets shoved in their face. We only
-   * auto-collapse it once per session (tracked by this ref) so the user
-   * can freely expand/collapse it afterwards.
+   * Auto-collapse virtual delivery rows on first mount so users don't get
+   * hundreds of tickets shoved in their face:
+   *   - The top-level "Delivery" row itself.
+   *   - Every virtual container (manual delivery task with Jira children).
+   * We only auto-collapse once per session (tracked by this ref) so the
+   * user can freely expand/collapse them afterwards.
    */
   const autoCollapsedDeliveryRef = useRef(false);
   useEffect(() => {
@@ -87,11 +89,33 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
     const hasVirtualDelivery = tasks.some(t => t.id === VIRTUAL_DELIVERY_PARENT_ID);
     if (!hasVirtualDelivery) return;
     autoCollapsedDeliveryRef.current = true;
+
+    // Any task whose id is referenced as parentId by at least one other task.
+    const parentIds = new Set<string>();
+    for (const t of tasks) {
+      if (t.parentId) parentIds.add(t.parentId);
+    }
+    // Collapse: the Delivery row itself, and every virtual manual container
+    // (a compact virtual leaf that has virtual children). We skip board
+    // sub-parents (which are virtual but NOT compact) so they stay expanded
+    // once the user opens the Delivery row.
+    const toCollapse = new Set<string>([VIRTUAL_DELIVERY_PARENT_ID]);
+    for (const t of tasks) {
+      if (t.isVirtual && t.compact === true && parentIds.has(t.id)) {
+        toCollapse.add(t.id);
+      }
+    }
+
     setCollapsedIds(prev => {
-      if (prev.has(VIRTUAL_DELIVERY_PARENT_ID)) return prev;
+      let changed = false;
       const next = new Set(prev);
-      next.add(VIRTUAL_DELIVERY_PARENT_ID);
-      return next;
+      for (const id of toCollapse) {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
   }, [tasks]);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
@@ -251,11 +275,14 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
     return map;
   }, [flatTasks]);
 
-  // Top-level parent tasks with row indices (for marker snapping)
+  // Top-level parent tasks with row indices (for marker snapping).
+  // Virtual overlay rows (e.g. Delivery) are excluded because their synthetic
+  // ids are not real UUIDs and would violate the `roadmap_markers.task_id`
+  // foreign key if a user tried to snap a marker onto them.
   const topLevelTaskRows = useMemo(() => {
     return flatTasks
       .map((item, index) => ({ task: item.task, rowIndex: index }))
-      .filter(item => item.task.parentId === null);
+      .filter(item => item.task.parentId === null && !item.task.isVirtual);
   }, [flatTasks]);
 
   const handleCreateDep = useCallback((fromTaskId: string, toTaskId: string) => {

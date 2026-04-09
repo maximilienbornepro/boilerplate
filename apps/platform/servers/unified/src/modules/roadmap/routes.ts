@@ -245,7 +245,17 @@ Si aucun sujet n'est pertinent, retourne [].`,
 
   router.put('/markers/:id', asyncHandler(async (req, res) => {
     const { name, markerDate, color, type, taskId } = req.body;
-    const marker = await db.updateMarker(req.params.id, { name, markerDate, color, type, taskId });
+    // Defensive: a marker's task_id column is a UUID FK on roadmap_tasks.
+    // Synthetic ids used by virtual overlays (delivery, ...) are NOT valid
+    // UUIDs and must never be persisted here. Treat them as "no snap".
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const safeTaskId =
+      taskId === null || taskId === undefined
+        ? taskId
+        : typeof taskId === 'string' && UUID_RE.test(taskId)
+          ? taskId
+          : null;
+    const marker = await db.updateMarker(req.params.id, { name, markerDate, color, type, taskId: safeTaskId });
     if (!marker) { res.status(404).json({ error: 'Marqueur non trouve' }); return; }
     res.json(marker);
   }));
@@ -289,10 +299,10 @@ Si aucun sujet n'est pertinent, retourne [].`,
 
   /**
    * Build the delivery overlay for a planning.
-   * For each linked board: fetch raw tasks (+ positions), derive dates via
-   * the pure `deriveOverlayTasks` function, and merge with board metadata.
-   * Returns a flat array of overlay tasks the frontend can render as a
-   * virtual "Delivery" row.
+   * For each linked board: fetch raw tasks (+ positions) and derive dates
+   * via the pure `deriveOverlayTasks` function (deterministic calendar —
+   * no planning range needed, no Jira call). Returns a flat array of
+   * overlay tasks the frontend can render as a virtual "Delivery" row.
    */
   router.get('/plannings/:id/delivery-overlay', asyncHandler(async (req, res) => {
     const planning = await db.getPlanningById(req.params.id);
@@ -313,11 +323,7 @@ Si aucun sujet n'est pertinent, retourne [].`,
       const { boardName, tasks } = await db.getRawDeliveryTasksForBoard(board.id);
       if (tasks.length === 0) continue;
 
-      const derived = deriveOverlayTasks({
-        planningStart: planning.startDate,
-        planningEnd: planning.endDate,
-        rawTasks: tasks,
-      });
+      const derived = deriveOverlayTasks({ rawTasks: tasks });
 
       for (const task of derived) {
         overlay.push({ ...task, boardId: board.id, boardName });

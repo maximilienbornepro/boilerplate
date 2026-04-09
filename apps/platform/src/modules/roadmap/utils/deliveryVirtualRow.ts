@@ -1,4 +1,5 @@
 import type { Task, DeliveryOverlayTask } from '../types';
+import { getStatusColor, normalizeStatus } from './statusColors';
 
 /**
  * Synthetic id of the top-level virtual "Delivery" parent row.
@@ -38,19 +39,26 @@ function maxIso(dates: string[]): string {
  *
  *   Single board:
  *     Delivery (parent, level 0, normal size)
- *       ├─ Task 1 (leaf, level 1, COMPACT row)
- *       └─ Task 2 (leaf, level 1, COMPACT row)
+ *       ├─ Manual container (leaf OR container, level 1, COMPACT row)
+ *       │    └─ Jira child (level 2, COMPACT row)
+ *       └─ Standalone Jira (level 1, COMPACT row)
  *
  *   Multiple boards:
  *     Delivery (parent, level 0, normal size)
  *       ├─ [Board A] (sub-parent, level 1, normal size)
- *       │    ├─ Task 1 (leaf, level 2, COMPACT row)
- *       │    └─ Task 2 (leaf, level 2, COMPACT row)
+ *       │    ├─ Manual container (level 2, COMPACT row)
+ *       │    │    └─ Jira child (level 3, COMPACT row)
+ *       │    └─ Standalone Jira (level 2, COMPACT row)
  *       └─ [Board B] (sub-parent, level 1, normal size)
- *            └─ Task 3 (leaf, level 2, COMPACT row)
+ *            └─ Jira (level 2, COMPACT row)
  *
  * When only ONE board is linked the board sub-parent is redundant (the
  * "Delivery" row already represents it), so we collapse the hierarchy.
+ *
+ * When a delivery task has a `parentTaskId` that points to ANOTHER task in
+ * the same board overlay, we preserve that relationship by nesting the
+ * virtual leaf under its parent's virtual leaf — matching delivery's
+ * manual-container → Jira-child model.
  *
  * Every virtual task carries `isVirtual: true` and `readOnly: true`. Leaves
  * additionally have `compact: true` so GanttBoard renders them on a thin
@@ -104,31 +112,55 @@ export function buildEnhancedTasks(
 
   const virtualRows: Task[] = [parent];
 
+  /**
+   * Build a leaf Task for a delivery overlay item. The parent of the leaf
+   * depends on the delivery task's own `parentTaskId`:
+   *   - If the delivery task is a child of another task that is also in
+   *     this board's overlay, the leaf nests under that parent's virtual id.
+   *   - Otherwise, the leaf nests directly under `fallbackParentId` (which
+   *     is either the Delivery parent or the Board sub-parent).
+   */
   const makeLeaf = (
     o: DeliveryOverlayTask,
-    parentVirtualId: string,
+    fallbackParentId: string,
+    boardTaskIds: Set<string>,
     leafIndex: number
-  ): Task => ({
-    id: virtualDeliveryTaskId(o.boardId, o.id),
-    planningId,
-    parentId: parentVirtualId,
-    name: stripJiraKey(o.title),
-    description: null,
-    startDate: o.startDate,
-    endDate: o.endDate,
-    color: o.source === 'jira' ? '#0052cc' : '#5a6f8c',
-    progress: 0,
-    sortOrder: leafIndex,
-    createdAt: nowIso,
-    updatedAt: nowIso,
-    readOnly: true,
-    isVirtual: true,
-    virtualSource: 'delivery',
-    compact: true,
-  });
+  ): Task => {
+    const nestsUnderDeliveryParent =
+      o.parentTaskId !== null && boardTaskIds.has(o.parentTaskId);
+    const parentId = nestsUnderDeliveryParent
+      ? virtualDeliveryTaskId(o.boardId, o.parentTaskId!)
+      : fallbackParentId;
+
+    // Delivery stores raw localized statuses (e.g. "Terminé", "En Cours",
+    // "À faire"); normalize them to the 3 simple buckets so the color map
+    // and the dot renderer agree — exactly like delivery's own dots do.
+    const simpleStatus = normalizeStatus(o.status);
+
+    return {
+      id: virtualDeliveryTaskId(o.boardId, o.id),
+      planningId,
+      parentId,
+      name: stripJiraKey(o.title),
+      description: null,
+      startDate: o.startDate,
+      endDate: o.endDate,
+      // Bar color matches the status dot so the two visual cues stay in sync.
+      color: getStatusColor(simpleStatus),
+      progress: 0,
+      sortOrder: leafIndex,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      readOnly: true,
+      isVirtual: true,
+      virtualSource: 'delivery',
+      compact: true,
+      status: simpleStatus,
+    };
+  };
 
   if (hasMultipleBoards) {
-    // Level 1: board sub-parents. Level 2: leaves under each board.
+    // Level 1: board sub-parents. Level 2+: leaves under each board.
     let boardIndex = 0;
     for (const [boardId, { boardName, items }] of byBoard) {
       const boardParent: Task = {
@@ -149,8 +181,10 @@ export function buildEnhancedTasks(
         virtualSource: 'delivery',
       };
       virtualRows.push(boardParent);
+
+      const boardTaskIds = new Set(items.map(i => i.id));
       items.forEach((o, leafIndex) => {
-        virtualRows.push(makeLeaf(o, boardParent.id, leafIndex));
+        virtualRows.push(makeLeaf(o, boardParent.id, boardTaskIds, leafIndex));
       });
       boardIndex += 1;
     }
@@ -158,8 +192,11 @@ export function buildEnhancedTasks(
     // Single board: skip the sub-parent and nest leaves directly under "Delivery".
     const onlyEntry = byBoard.values().next().value;
     if (onlyEntry) {
-      onlyEntry.items.forEach((o, leafIndex) => {
-        virtualRows.push(makeLeaf(o, VIRTUAL_DELIVERY_PARENT_ID, leafIndex));
+      const boardTaskIds = new Set(onlyEntry.items.map((i: DeliveryOverlayTask) => i.id));
+      onlyEntry.items.forEach((o: DeliveryOverlayTask, leafIndex: number) => {
+        virtualRows.push(
+          makeLeaf(o, VIRTUAL_DELIVERY_PARENT_ID, boardTaskIds, leafIndex)
+        );
       });
     }
   }

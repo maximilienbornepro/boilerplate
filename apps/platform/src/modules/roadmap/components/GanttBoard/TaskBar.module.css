@@ -42,6 +42,42 @@
 .indentLine.indentLineHidden::before { display: none; }
 .indentLine.indentLineHalf::before { bottom: 50%; }
 .indentLine.indentLineCurrent::after { content: ''; position: absolute; left: 11px; top: 50%; right: 0; height: 1px; background: var(--text-muted); }
+/* Compact indent (used for virtual delivery overlay rows). Half-width so
+   deeply nested overlays don't push the name off-screen. */
+.indentLineCompact { width: 14px; }
+.indentLineCompact::before { left: 6px; }
+.indentLineCompact.indentLineCurrent::after { left: 6px; }
+
+/* Status dot (used for virtual delivery leaves to show their workflow status). */
+.statusDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin: 0 6px 0 2px;
+}
+
+/* Section header style applied to the top-level virtual "Delivery" row so
+   users can distinguish it from a real task. Tinted background that spans
+   the row, uppercase letter-spaced label, no timeline bar (hidden inline
+   via display:none on the .taskBar). The existing collapse button still
+   shows on the left so the row can be expanded/collapsed. */
+.deliverySectionHeader {
+  background: var(--bg-secondary);
+}
+.deliverySectionHeader .taskName {
+  background: var(--bg-secondary);
+}
+.deliverySectionHeader .nameText,
+.deliverySectionHeader .nameText.parentName {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: var(--text-secondary);
+  -webkit-line-clamp: 1;
+}
 
 .taskDot { width: var(--spacing-sm); height: var(--spacing-sm); border-radius: 4px; flex-shrink: 0; box-shadow: var(--shadow-sm); }
 

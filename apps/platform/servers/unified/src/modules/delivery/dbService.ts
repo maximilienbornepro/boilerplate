@@ -574,6 +574,10 @@ export async function initDeliveryDb(): Promise<void> {
       )
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_delivery_boards_user ON delivery_boards(user_id)`);
+    // Existing delivery_boards tables (created before `description` was added
+    // to the schema) need an explicit ALTER since CREATE TABLE IF NOT EXISTS
+    // is a no-op when the table already exists.
+    await pool.query(`ALTER TABLE delivery_boards ADD COLUMN IF NOT EXISTS description TEXT`);
 
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS source VARCHAR(10) DEFAULT 'manual'`);
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS parent_task_id UUID REFERENCES delivery_tasks(id) ON DELETE SET NULL`);

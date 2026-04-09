@@ -5,15 +5,25 @@
  * then calls `deriveOverlayTasks` to compute the final date ranges that the
  * frontend renders as read-only bars on top of the Gantt.
  *
- * Rules (validated with the user):
- *  - An increment's duration is (planning_duration / N_increments),
- *    equally split across all distinct increments of the board.
- *  - Within an increment, a task's date range is derived from its grid
- *    position (start_col / end_col) proportionally to the increment range.
- *  - Tasks without a grid position cover the full increment range.
- *  - Every task has a minimum duration of 7 days (clamped at the end).
- *  - If the planning has non-positive duration, or the board has no
- *    increments, nothing is returned.
+ * MODEL (mirrors `apps/platform/src/modules/delivery/components/BurgerMenu.tsx`)
+ *   Delivery uses a deterministic calendar for 2026:
+ *     - `inc1` starts on 2026-01-19 (a Monday).
+ *     - Each increment contains 3 sprints of 14 days = 42 days per increment.
+ *     - `inc2` starts on `inc1.start + 42` days, etc. up to `inc8`.
+ *
+ *   Delivery tasks are placed on a 6-column grid inside their increment
+ *   (TOTAL_COLS = 6). Since each increment is 42 days long, **1 column = 7
+ *   days**. So a task with `startCol = 0, endCol = 2` spans exactly 14 days
+ *   from the increment's start date.
+ *
+ *   A delivery task's `increment_id` follows the pattern `${boardId}_inc${N}`.
+ *   We extract the `inc${N}` suffix to look up its start date.
+ *
+ * Rules:
+ *   - Tasks whose `increment_id` cannot be resolved (unknown suffix,
+ *     malformed, increment number out of the 1..8 range) are dropped.
+ *   - Tasks without grid position cover the full increment (42 days).
+ *   - Every task has a minimum duration of 7 days (clamped at the end).
  */
 
 export interface RawDeliveryTask {
@@ -23,6 +33,9 @@ export interface RawDeliveryTask {
   status: string;
   source: 'manual' | 'jira';
   incrementId: string;
+  /** delivery_tasks.parent_task_id — set for Jira tickets nested inside a
+   *  manual container task. Null for top-level tasks. */
+  parentTaskId: string | null;
   /** delivery_positions.start_col — null when no position is stored */
   startCol: number | null;
   /** delivery_positions.end_col — null when no position is stored */
@@ -36,6 +49,8 @@ export interface DerivedDeliveryTask {
   status: string;
   source: 'manual' | 'jira';
   incrementId: string;
+  /** See RawDeliveryTask.parentTaskId. */
+  parentTaskId: string | null;
   /** ISO YYYY-MM-DD */
   startDate: string;
   /** ISO YYYY-MM-DD */
@@ -43,28 +58,27 @@ export interface DerivedDeliveryTask {
 }
 
 export interface DeriveOverlayInput {
-  /** ISO YYYY-MM-DD */
-  planningStart: string;
-  /** ISO YYYY-MM-DD */
-  planningEnd: string;
   rawTasks: RawDeliveryTask[];
 }
 
+/** 1 sprint = 14 days (2 weeks). */
+export const SPRINT_DURATION_DAYS = 14;
+/** Delivery boards have 3 sprints per increment. */
+export const SPRINTS_PER_INCREMENT = 3;
+/** Increment total duration = 3 * 14 = 42 days. */
+export const INCREMENT_DURATION_DAYS = SPRINT_DURATION_DAYS * SPRINTS_PER_INCREMENT; // 42
+/** Delivery boards use a 6-col grid. With a 42-day increment → 7 days/col. */
+export const TOTAL_COLS = 6;
+export const DAYS_PER_COLUMN = INCREMENT_DURATION_DAYS / TOTAL_COLS; // 7
+/** First day of inc1, as defined in BurgerMenu.generateIncrements2026(). */
+export const INC1_START_ISO = '2026-01-19';
+/** Minimum visual duration so a 0-width task is still visible. */
 export const MIN_TASK_DURATION_DAYS = 7;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/**
- * Natural-ordering compare: "inc2" < "inc10" (not "inc10" < "inc2" as in
- * plain string sort). Used so increments listed as inc1..inc10..inc11
- * are ordered chronologically regardless of zero-padding.
- */
-function naturalCompare(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-}
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Parse 'YYYY-MM-DD' into a UTC Date (midnight). Safe from local-TZ drift. */
 function parseIsoDate(iso: string): Date {
-  // Accept both full ISO and plain date — trim time part if present.
   const datePart = iso.slice(0, 10);
   const [y, m, d] = datePart.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d));
@@ -87,90 +101,78 @@ function diffDays(a: Date, b: Date): number {
 }
 
 /**
+ * Extract the increment number from a delivery increment_id like
+ * `${boardId}_inc3`. Returns null if the suffix is missing, malformed,
+ * or outside the 1..8 range supported by the delivery module.
+ */
+export function extractIncrementNumber(incrementId: string | null | undefined): number | null {
+  if (!incrementId) return null;
+  const match = incrementId.match(/_inc(\d+)$/);
+  if (!match) return null;
+  const n = parseInt(match[1], 10);
+  if (!Number.isFinite(n) || n < 1 || n > 8) return null;
+  return n;
+}
+
+/**
+ * Compute the start date of a given increment number (1..8).
+ * `inc${n}.start = INC1_START + (n - 1) * 42 days`.
+ */
+export function getIncrementStartDate(incrementNumber: number): Date {
+  return addDays(parseIsoDate(INC1_START_ISO), (incrementNumber - 1) * INCREMENT_DURATION_DAYS);
+}
+
+/**
  * Core derivation function. Pure — same inputs always produce same outputs.
- * No Math.random, no Date.now, no side effects.
+ * No Math.random, no Date.now, no side effects, no planning dependency.
  */
 export function deriveOverlayTasks(input: DeriveOverlayInput): DerivedDeliveryTask[] {
-  const { planningStart, planningEnd, rawTasks } = input;
-
-  const start = parseIsoDate(planningStart);
-  const end = parseIsoDate(planningEnd);
-  const totalDays = diffDays(start, end);
-
-  // Guard: non-positive planning range → nothing to render.
-  if (totalDays <= 0) return [];
+  const { rawTasks } = input;
   if (rawTasks.length === 0) return [];
-
-  // Group tasks by increment.
-  const tasksByIncrement = new Map<string, RawDeliveryTask[]>();
-  for (const task of rawTasks) {
-    if (!task.incrementId) continue;
-    const bucket = tasksByIncrement.get(task.incrementId) ?? [];
-    bucket.push(task);
-    tasksByIncrement.set(task.incrementId, bucket);
-  }
-
-  const increments = Array.from(tasksByIncrement.keys()).sort(naturalCompare);
-  const n = increments.length;
-
-  // Guard: no increments → nothing to render.
-  if (n === 0) return [];
-
-  const incrementDurationDays = totalDays / n;
 
   const result: DerivedDeliveryTask[] = [];
 
-  for (let i = 0; i < n; i++) {
-    const incrementId = increments[i];
-    const tasks = tasksByIncrement.get(incrementId)!;
-    const incStart = addDays(start, i * incrementDurationDays);
-    const incEnd = addDays(start, (i + 1) * incrementDurationDays);
+  for (const task of rawTasks) {
+    const incNum = extractIncrementNumber(task.incrementId);
+    if (incNum === null) continue; // Orphan task, unknown increment → skip.
 
-    // Max column used in this increment, used to scale task positions.
-    // Filter out tasks without a position before computing max.
-    const positioned = tasks.filter(t => t.startCol !== null && t.endCol !== null);
-    const maxCol = positioned.reduce(
-      (acc, t) => Math.max(acc, t.endCol ?? 0),
-      0
-    );
+    const incStart = getIncrementStartDate(incNum);
 
-    for (const task of tasks) {
-      let taskStart: Date;
-      let taskEnd: Date;
+    let taskStart: Date;
+    let taskEnd: Date;
 
-      if (
-        task.startCol !== null &&
-        task.endCol !== null &&
-        maxCol > 0 &&
-        task.endCol > task.startCol
-      ) {
-        // Proportional mapping inside the increment.
-        const startRatio = task.startCol / maxCol;
-        const endRatio = task.endCol / maxCol;
-        taskStart = addDays(incStart, startRatio * incrementDurationDays);
-        taskEnd = addDays(incStart, endRatio * incrementDurationDays);
-      } else {
-        // No position or degenerate range → cover the full increment.
-        taskStart = incStart;
-        taskEnd = incEnd;
-      }
-
-      // Clamp to minimum 7 days.
-      if (diffDays(taskStart, taskEnd) < MIN_TASK_DURATION_DAYS) {
-        taskEnd = addDays(taskStart, MIN_TASK_DURATION_DAYS);
-      }
-
-      result.push({
-        id: task.id,
-        title: task.title,
-        type: task.type,
-        status: task.status,
-        source: task.source,
-        incrementId: task.incrementId,
-        startDate: formatIsoDate(taskStart),
-        endDate: formatIsoDate(taskEnd),
-      });
+    if (
+      task.startCol !== null &&
+      task.endCol !== null &&
+      task.endCol > task.startCol
+    ) {
+      // Each column is exactly 7 days. 0 ≤ startCol < endCol ≤ TOTAL_COLS.
+      const startCol = Math.max(0, task.startCol);
+      const endCol = Math.min(TOTAL_COLS, task.endCol);
+      taskStart = addDays(incStart, startCol * DAYS_PER_COLUMN);
+      taskEnd = addDays(incStart, endCol * DAYS_PER_COLUMN);
+    } else {
+      // No grid position → cover the full increment.
+      taskStart = incStart;
+      taskEnd = addDays(incStart, INCREMENT_DURATION_DAYS);
     }
+
+    // Clamp to minimum 7 days so single-day tasks stay visible.
+    if (diffDays(taskStart, taskEnd) < MIN_TASK_DURATION_DAYS) {
+      taskEnd = addDays(taskStart, MIN_TASK_DURATION_DAYS);
+    }
+
+    result.push({
+      id: task.id,
+      title: task.title,
+      type: task.type,
+      status: task.status,
+      source: task.source,
+      incrementId: task.incrementId,
+      parentTaskId: task.parentTaskId,
+      startDate: formatIsoDate(taskStart),
+      endDate: formatIsoDate(taskEnd),
+    });
   }
 
   return result;

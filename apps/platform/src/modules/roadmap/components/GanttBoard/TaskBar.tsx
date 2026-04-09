@@ -3,6 +3,8 @@ import type { Task, ViewMode, TimeColumn } from '../../types';
 import { useDragTask } from '../../hooks/useDragTask';
 import { useResizeTask } from '../../hooks/useResizeTask';
 import { calculateTaskPosition, parseDate, getColumnWidth } from '../../utils/dateUtils';
+import { getStatusColor } from '../../utils/statusColors';
+import { VIRTUAL_DELIVERY_PARENT_ID } from '../../utils/deliveryVirtualRow';
 import { ConfirmModal } from '@boilerplate/shared/components';
 import styles from './TaskBar.module.css';
 
@@ -40,6 +42,10 @@ interface TaskBarProps {
 
 const DEFAULT_ROW_HEIGHT = 80;
 const INDENT_SIZE = 24;
+/** Indent per level on compact rows. Half the normal indent to keep the
+ *  name visible on deeply nested virtual overlays. Must match
+ *  `.indentLineCompact` width in TaskBar.module.css. */
+const COMPACT_INDENT_SIZE = 14;
 
 export function TaskBar({
   task, level, ancestorIsLast = [], parentName, chartStartDate, viewMode, hasChildren, isCollapsed,
@@ -55,6 +61,10 @@ export function TaskBar({
   // Compact mode: thin row with a minimal 4px bar and a single-line name.
   // Used for virtual delivery leaves so hundreds of tickets fit on screen.
   const isCompact = task.compact === true;
+  // Section header: the top-level virtual "Delivery" row. Rendered as a
+  // visually distinct group header (no timeline bar, tinted background,
+  // uppercase label) so users can tell it's a grouping, not a task.
+  const isDeliverySectionHeader = task.id === VIRTUAL_DELIVERY_PARENT_ID;
   const columnWidth = getColumnWidth(viewMode);
   const taskStart = parseDate(task.startDate);
   const taskEnd = parseDate(task.endDate);
@@ -164,10 +174,12 @@ export function TaskBar({
 
   return (
     <div
-      className={`${styles.taskRow} ${isResizing ? styles.dragging : ''} ${isDragging ? styles.isDragging : ''} ${isFocused ? styles.focused : ''}`}
+      className={`${styles.taskRow} ${isResizing ? styles.dragging : ''} ${isDragging ? styles.isDragging : ''} ${isFocused ? styles.focused : ''} ${isDeliverySectionHeader ? styles.deliverySectionHeader : ''}`}
       style={{
         height: rowHeight,
-        borderBottom: `1px solid ${parentColor ?? task.color}${isCompact ? '20' : '40'}`,
+        borderBottom: isDeliverySectionHeader
+          ? '2px solid var(--border-color)'
+          : `1px solid ${parentColor ?? task.color}${isCompact ? '20' : '40'}`,
       }}
       data-task-id={task.id}
     >
@@ -181,12 +193,16 @@ export function TaskBar({
         onDragLeave={effectiveReadOnly ? undefined : handleDragLeave}
         onDrop={effectiveReadOnly ? undefined : handleDrop}
       >
-        {level > 0 && !isCompact && (
-          <div className={styles.indentGuides} style={{ width: level * INDENT_SIZE }}>
+        {level > 0 && (
+          <div
+            className={styles.indentGuides}
+            style={{ width: level * (isCompact ? COMPACT_INDENT_SIZE : INDENT_SIZE) }}
+          >
             {Array.from({ length: level }).map((_, i) => {
               const isLastAtLevel = ancestorIsLast[i + 1] ?? false;
               const isCurrentLevel = i === level - 1;
               const classes = [styles.indentLine];
+              if (isCompact) classes.push(styles.indentLineCompact);
               if (isLastAtLevel && !isCurrentLevel) classes.push(styles.indentLineHidden);
               if (isLastAtLevel && isCurrentLevel) classes.push(styles.indentLineHalf);
               if (isCurrentLevel) classes.push(styles.indentLineCurrent);
@@ -194,14 +210,30 @@ export function TaskBar({
             })}
           </div>
         )}
-        {level > 0 && isCompact && (
-          <div style={{ width: level * INDENT_SIZE, flexShrink: 0 }} />
+
+        {hasChildren && onToggleCollapse && (
+          <button
+            className={styles.collapseButton}
+            style={{
+              color: parentColor ?? task.color,
+              ...(isCompact ? { width: 16, height: 16, padding: 0, flexShrink: 0 } : undefined),
+            }}
+            onClick={(e) => { e.stopPropagation(); onToggleCollapse(task.id); }}
+            title={isCollapsed ? 'Déplier' : 'Replier'}
+          >
+            <svg width={isCompact ? 10 : 14} height={isCompact ? 10 : 14} viewBox="0 0 24 24" fill="currentColor" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}><path d="M7 10l5 5 5-5z" /></svg>
+          </button>
         )}
 
-        {hasChildren && onToggleCollapse && !isCompact && (
-          <button className={styles.collapseButton} style={{ color: parentColor ?? task.color }} onClick={(e) => { e.stopPropagation(); onToggleCollapse(task.id); }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}><path d="M7 10l5 5 5-5z" /></svg>
-          </button>
+        {/* Status dot — only rendered when a status is set (virtual delivery
+            overlays carry one, real roadmap tasks don't). Same color source
+            as the bar fill (see `getStatusColor`) so the two stay in sync. */}
+        {task.status && (
+          <span
+            className={styles.statusDot}
+            style={{ background: getStatusColor(task.status) }}
+            title={task.status}
+          />
         )}
 
         {isEditing ? (

@@ -412,6 +412,7 @@ export async function getRawDeliveryTasksForBoard(boardId: string): Promise<{
     status: string;
     source: 'manual' | 'jira';
     incrementId: string;
+    parentTaskId: string | null;
     startCol: number | null;
     endCol: number | null;
   }>;
@@ -427,9 +428,12 @@ export async function getRawDeliveryTasksForBoard(boardId: string): Promise<{
   const boardName = boardResult.rows[0].name as string;
 
   // Tasks + positions. LEFT JOIN because a task may not have a grid position.
+  // parent_task_id lets us reconstruct the delivery container → child relation
+  // (manual task containing Jira tickets, 1 level deep).
   const result = await pool.query(
     `SELECT
         t.id, t.title, t.type, t.status, t.source, t.increment_id,
+        t.parent_task_id,
         p.start_col, p.end_col
        FROM delivery_tasks t
        LEFT JOIN delivery_positions p
@@ -446,6 +450,7 @@ export async function getRawDeliveryTasksForBoard(boardId: string): Promise<{
     status: string;
     source: string;
     increment_id: string;
+    parent_task_id: string | null;
     start_col: number | null;
     end_col: number | null;
   }) => ({
@@ -455,6 +460,7 @@ export async function getRawDeliveryTasksForBoard(boardId: string): Promise<{
     status: row.status,
     source: (row.source === 'jira' ? 'jira' : 'manual') as 'manual' | 'jira',
     incrementId: row.increment_id,
+    parentTaskId: row.parent_task_id,
     startCol: row.start_col,
     endCol: row.end_col,
   }));

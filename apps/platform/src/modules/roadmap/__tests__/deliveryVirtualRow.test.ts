@@ -36,6 +36,7 @@ function makeOverlay(overrides: Partial<DeliveryOverlayTask> & { id: string }): 
     startDate: '2026-04-05',
     endDate: '2026-04-12',
     incrementId: 'board-1_inc1',
+    parentTaskId: null,
     ...overrides,
   };
 }
@@ -220,5 +221,81 @@ describe('buildEnhancedTasks — virtual Delivery row injection', () => {
     expect(new Set(result.map(t => t.id)).size).toBe(5);
     expect(result.find(t => t.id === virtualDeliveryBoardId('board-A'))).toBeDefined();
     expect(result.find(t => t.id === virtualDeliveryBoardId('board-B'))).toBeDefined();
+  });
+
+  describe('delivery parent-child nesting (manual containers)', () => {
+    it('nests a Jira child under its manual container parent (single board)', () => {
+      const overlay = [
+        makeOverlay({ id: 'manual-1', source: 'manual', boardId: 'b1', parentTaskId: null }),
+        makeOverlay({ id: 'jira-1',   source: 'jira',   boardId: 'b1', parentTaskId: 'manual-1' }),
+        makeOverlay({ id: 'jira-2',   source: 'jira',   boardId: 'b1', parentTaskId: 'manual-1' }),
+      ];
+      const result = buildEnhancedTasks([], overlay);
+
+      const manual = result.find(t => t.id === virtualDeliveryTaskId('b1', 'manual-1'))!;
+      const jira1 = result.find(t => t.id === virtualDeliveryTaskId('b1', 'jira-1'))!;
+      const jira2 = result.find(t => t.id === virtualDeliveryTaskId('b1', 'jira-2'))!;
+
+      // Manual container sits under Delivery directly.
+      expect(manual.parentId).toBe(VIRTUAL_DELIVERY_PARENT_ID);
+      // Jira children sit under the manual container.
+      expect(jira1.parentId).toBe(virtualDeliveryTaskId('b1', 'manual-1'));
+      expect(jira2.parentId).toBe(virtualDeliveryTaskId('b1', 'manual-1'));
+    });
+
+    it('nests a Jira child under its manual container parent (multi-board)', () => {
+      const overlay = [
+        makeOverlay({ id: 'manual-1', source: 'manual', boardId: 'b1', boardName: 'Board A', parentTaskId: null }),
+        makeOverlay({ id: 'jira-1',   source: 'jira',   boardId: 'b1', boardName: 'Board A', parentTaskId: 'manual-1' }),
+        makeOverlay({ id: 'jira-standalone', source: 'jira', boardId: 'b2', boardName: 'Board B', parentTaskId: null }),
+      ];
+      const result = buildEnhancedTasks([], overlay);
+
+      const manualInBoardA = result.find(t => t.id === virtualDeliveryTaskId('b1', 'manual-1'))!;
+      const jiraInBoardA = result.find(t => t.id === virtualDeliveryTaskId('b1', 'jira-1'))!;
+      const jiraInBoardB = result.find(t => t.id === virtualDeliveryTaskId('b2', 'jira-standalone'))!;
+
+      // Manual container nests under Board A sub-parent.
+      expect(manualInBoardA.parentId).toBe(virtualDeliveryBoardId('b1'));
+      // Its Jira child nests under the manual container, not the board.
+      expect(jiraInBoardA.parentId).toBe(virtualDeliveryTaskId('b1', 'manual-1'));
+      // Standalone Jira in Board B nests directly under Board B sub-parent.
+      expect(jiraInBoardB.parentId).toBe(virtualDeliveryBoardId('b2'));
+    });
+
+    it('treats a Jira child as a standalone leaf when its parent is not in the same board overlay', () => {
+      // parent_task_id references an id that never appears in this board
+      // (e.g. the parent was deleted or is in a different increment not
+      // linked). The orphaned child must still render — nested directly
+      // under the fallback parent.
+      const overlay = [
+        makeOverlay({ id: 'orphan-jira', source: 'jira', boardId: 'b1', parentTaskId: 'missing-parent-id' }),
+      ];
+      const result = buildEnhancedTasks([], overlay);
+
+      const leaf = result.find(t => t.id === virtualDeliveryTaskId('b1', 'orphan-jira'))!;
+      expect(leaf.parentId).toBe(VIRTUAL_DELIVERY_PARENT_ID);
+    });
+
+    it('does not cross-nest between boards even if parentTaskId happens to match a task in another board', () => {
+      // Very edge case: two boards each have a task with id "shared".
+      // parentTaskId lookup must be scoped to the current board only.
+      const overlay = [
+        makeOverlay({ id: 'shared', source: 'manual', boardId: 'b1', boardName: 'Board A', parentTaskId: null }),
+        makeOverlay({ id: 'childA', source: 'jira',   boardId: 'b1', boardName: 'Board A', parentTaskId: 'shared' }),
+        // Board B has a task ALSO referencing 'shared' as parent, but
+        // 'shared' only exists in Board A, so this must be treated as an
+        // orphan standalone leaf in Board B.
+        makeOverlay({ id: 'childB', source: 'jira',   boardId: 'b2', boardName: 'Board B', parentTaskId: 'shared' }),
+      ];
+      const result = buildEnhancedTasks([], overlay);
+
+      const childA = result.find(t => t.id === virtualDeliveryTaskId('b1', 'childA'))!;
+      expect(childA.parentId).toBe(virtualDeliveryTaskId('b1', 'shared'));
+
+      const childB = result.find(t => t.id === virtualDeliveryTaskId('b2', 'childB'))!;
+      // Must fall back to Board B's sub-parent, not to Board A's "shared".
+      expect(childB.parentId).toBe(virtualDeliveryBoardId('b2'));
+    });
   });
 });

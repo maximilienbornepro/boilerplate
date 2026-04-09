@@ -45,6 +45,12 @@ export interface Task {
    * leaves so hundreds of tickets don't take over the Gantt vertically.
    */
   compact?: boolean;
+  /**
+   * Workflow status for virtual delivery tasks — triggers a colored
+   * status dot next to the task name in compact mode. Not used by real
+   * roadmap tasks (those track progress as a 0-100 percentage instead).
+   */
+  status?: string;
 }
 
 export interface LinkedDeliveryBoard {
@@ -64,6 +70,11 @@ export interface DeliveryOverlayTask {
   startDate: string;
   endDate: string;
   incrementId: string;
+  /**
+   * id of the delivery task this one is nested under (manual container →
+   * Jira children). null for top-level delivery tasks.
+   */
+  parentTaskId: string | null;
 }
 
 export interface Dependency {
