@@ -134,6 +134,8 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
 
   const hierarchy = useMemo(() => buildTaskHierarchy(tasks), [tasks]);
   const flatTasks = useMemo(() => flattenHierarchy(hierarchy, collapsedIds), [hierarchy, collapsedIds]);
+  // Tasks-only height (excludes the "+ Tâche" / "+ Marqueur" rows below)
+  const tasksHeight = flatTasks.length * ROW_HEIGHT;
 
   const getAncestorIds = useCallback((taskId: string): string[] => {
     const ancestors: string[] = [];
@@ -355,7 +357,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
         </div>
 
         <div className={styles.contentInner} style={{ width: totalWidth + 250, minWidth: totalWidth + 250 }}>
-          <div className={styles.grid}>
+          <div className={styles.grid} style={{ height: tasksHeight, bottom: 'auto' }}>
             <div className={styles.taskNameColumn} />
             {(() => {
               let pixelLeft = 0;
@@ -418,13 +420,13 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
                 <div className={styles.addTaskRow}>
                   <button className={styles.addTaskButton} onClick={onAddTask}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                    Ajouter une tâche
+                    Tâche
                   </button>
                 </div>
                 {onAddMarker && (
                   <div className={styles.addTaskRow}>
                     <button className={styles.addFaiButton} onClick={onAddMarker}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                       Marqueur
                     </button>
                   </div>
@@ -445,7 +447,16 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
             mousePosition={mousePosition}
           />
 
-          <TodayMarker chartStartDate={chartStartDate} chartEndDate={chartEndDate} viewMode={viewMode} columns={effectiveColumns} />
+          <TodayMarker
+            chartStartDate={chartStartDate}
+            chartEndDate={chartEndDate}
+            viewMode={viewMode}
+            columns={effectiveColumns}
+            totalHeight={tasksHeight}
+          />
+
+          {/* Planning bottom delimiter */}
+          <div className={styles.planningBottomDelimiter} style={{ top: tasksHeight }} />
 
           {/* Markers */}
           {markers?.map(m => (
@@ -460,6 +471,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
               readOnly={readOnly}
               topLevelTaskRows={topLevelTaskRows}
               rowHeight={ROW_HEIGHT}
+              maxHeight={tasksHeight}
             />
           ))}
         </div>

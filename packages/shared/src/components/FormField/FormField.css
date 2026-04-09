@@ -8,12 +8,10 @@
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .shared-form-field-required {
-  color: var(--error);
+  color: var(--text-primary);
   margin-left: 2px;
 }
 

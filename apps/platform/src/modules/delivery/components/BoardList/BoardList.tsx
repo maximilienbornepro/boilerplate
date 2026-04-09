@@ -81,10 +81,7 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
 
   return (
     <>
-      <ModuleHeader
-        title="Delivery"
-        subtitle={loading ? '' : `${boards.length} board${boards.length > 1 ? 's' : ''}`}
-      >
+      <ModuleHeader title="Delivery">
         <button
           className="module-header-btn module-header-btn-primary"
           onClick={() => setShowCreateForm(true)}
@@ -105,7 +102,7 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
                 <line x1="9" y1="21" x2="9" y2="9" />
               </svg>
               <p className="delivery-list-empty-title">Aucun board</p>
-              <p className="delivery-list-empty-hint">Créez votre premier board de livraison pour commencer</p>
+              <p className="delivery-list-empty-hint">Créer votre premier board de livraison pour commencer</p>
               <Button variant="primary" onClick={() => setShowCreateForm(true)}>
                 + Nouveau board
               </Button>

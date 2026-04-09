@@ -94,10 +94,7 @@ function RagListPage({ onNavigate }: { onNavigate?: (path: string) => void }) {
 
   return (
     <Layout appId="rag" variant="full-width" onNavigate={onNavigate}>
-      <ModuleHeader
-        title="RAG"
-        subtitle={`${bots.length} assistant${bots.length !== 1 ? 's' : ''}`}
-      >
+      <ModuleHeader title="RAG">
         <button
           className="module-header-btn module-header-btn-primary"
           onClick={() => { setEditBot(undefined); setShowForm(true); }}

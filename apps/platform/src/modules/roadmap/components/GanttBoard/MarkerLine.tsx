@@ -20,6 +20,8 @@ interface MarkerLineProps {
   readOnly?: boolean;
   topLevelTaskRows?: TopLevelTaskRow[];
   rowHeight?: number;
+  /** Max height in px — if provided, the vertical line stops at this height */
+  maxHeight?: number;
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -28,7 +30,7 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function MarkerLine({
-  marker, chartStartDate, chartEndDate, viewMode, onUpdate, onDelete, readOnly, topLevelTaskRows, rowHeight = 64,
+  marker, chartStartDate, chartEndDate, viewMode, onUpdate, onDelete, readOnly, topLevelTaskRows, rowHeight = 64, maxHeight,
 }: MarkerLineProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(marker.name);
@@ -101,7 +103,14 @@ export function MarkerLine({
   const badgeTop = snappedRow !== null ? snappedRow.rowIndex * rowHeight + 4 : undefined;
 
   return (
-    <div ref={markerRef} className={styles.marker} style={{ left: finalPosition }}>
+    <div
+      ref={markerRef}
+      className={styles.marker}
+      style={{
+        left: finalPosition,
+        ...(maxHeight !== undefined ? { height: maxHeight, bottom: 'auto' } : {}),
+      }}
+    >
       <div className={styles.line} style={{ backgroundImage: `linear-gradient(180deg, ${marker.color} 0%, ${marker.color} 50%, transparent 50%, transparent 100%)` }} />
       <div
         className={`${styles.badge} ${readOnly ? styles.badgeReadOnly : ''}`}

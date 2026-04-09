@@ -557,8 +557,21 @@ export async function deleteBoard(id: string): Promise<void> {
 // ============ Init ============
 
 export async function initDeliveryDb(): Promise<void> {
-  // Auto-migration: add new columns if they don't exist (for existing DBs)
+  // Auto-migration: create missing tables and add new columns (for existing DBs)
   try {
+    // Ensure delivery_boards exists (introduced in 13_delivery_boards_schema.sql)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS delivery_boards (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_delivery_boards_user ON delivery_boards(user_id)`);
+
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS source VARCHAR(10) DEFAULT 'manual'`);
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS parent_task_id UUID REFERENCES delivery_tasks(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS description TEXT`);

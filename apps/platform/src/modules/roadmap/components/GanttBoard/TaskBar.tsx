@@ -162,12 +162,10 @@ export function TaskBar({
           </div>
         )}
 
-        {hasChildren && onToggleCollapse ? (
+        {hasChildren && onToggleCollapse && (
           <button className={styles.collapseButton} style={{ color: parentColor ?? task.color }} onClick={(e) => { e.stopPropagation(); onToggleCollapse(task.id); }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}><path d="M7 10l5 5 5-5z" /></svg>
           </button>
-        ) : (
-          <div className={styles.taskDot} style={{ backgroundColor: parentColor ?? task.color }} />
         )}
 
         {isEditing ? (
