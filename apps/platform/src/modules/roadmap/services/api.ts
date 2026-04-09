@@ -1,4 +1,4 @@
-import type { Planning, Task, Dependency, Marker, PlanningFormData, TaskFormData } from '../types';
+import type { Planning, Task, Dependency, Marker, PlanningFormData, TaskFormData, LinkedDeliveryBoard, DeliveryOverlayTask } from '../types';
 
 export interface LinkedSubject {
   id: string;
@@ -84,3 +84,24 @@ export async function updateSubject(
   });
   if (!response.ok) throw new Error('Failed to update subject');
 }
+
+// Delivery board links (roadmap ↔ delivery overlay)
+export const fetchAllDeliveryBoards = (): Promise<LinkedDeliveryBoard[]> =>
+  fetchApi('/delivery-boards');
+
+export const fetchLinkedBoards = (planningId: string): Promise<LinkedDeliveryBoard[]> =>
+  fetchApi(`/plannings/${planningId}/delivery-boards`);
+
+export const linkDeliveryBoard = (planningId: string, boardId: string): Promise<{ success: boolean }> =>
+  fetchApi(`/plannings/${planningId}/delivery-boards`, {
+    method: 'POST',
+    body: JSON.stringify({ boardId }),
+  });
+
+export const unlinkDeliveryBoard = (planningId: string, boardId: string): Promise<{ success: boolean }> =>
+  fetchApi(`/plannings/${planningId}/delivery-boards/${boardId}`, {
+    method: 'DELETE',
+  });
+
+export const fetchDeliveryOverlay = (planningId: string): Promise<DeliveryOverlayTask[]> =>
+  fetchApi(`/plannings/${planningId}/delivery-overlay`);

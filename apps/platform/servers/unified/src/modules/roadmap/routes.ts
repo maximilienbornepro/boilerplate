@@ -4,10 +4,12 @@ import { authMiddleware } from '../../middleware/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
 import { searchSubjects as searchSuivitessSubjects } from '../suivitess/dbService.js';
+import { deriveOverlayTasks, type DerivedDeliveryTask } from './deliveryOverlay.js';
 
 export async function initDb() {
   await db.initPool();
   await db.ensureTaskSubjectsTable();
+  await db.ensurePlanningDeliveryBoardsTable();
 }
 
 export function createRoadmapRoutes(): Router {
@@ -252,6 +254,77 @@ Si aucun sujet n'est pertinent, retourne [].`,
     const success = await db.deleteMarker(req.params.id);
     if (!success) { res.status(404).json({ error: 'Marqueur non trouve' }); return; }
     res.json({ success: true });
+  }));
+
+  // ==================== DELIVERY BOARD LINKS ====================
+
+  // List all delivery boards (used to populate the planning form selector)
+  router.get('/delivery-boards', asyncHandler(async (_req, res) => {
+    const boards = await db.getAllDeliveryBoards();
+    res.json(boards);
+  }));
+
+  // List boards linked to a planning
+  router.get('/plannings/:id/delivery-boards', asyncHandler(async (req, res) => {
+    const boards = await db.getLinkedBoards(req.params.id);
+    res.json(boards);
+  }));
+
+  // Link a board to a planning
+  router.post('/plannings/:id/delivery-boards', asyncHandler(async (req, res) => {
+    const { boardId } = req.body;
+    if (!boardId) {
+      res.status(400).json({ error: 'boardId est requis' });
+      return;
+    }
+    await db.linkBoard(req.params.id, boardId);
+    res.json({ success: true });
+  }));
+
+  // Unlink a board from a planning
+  router.delete('/plannings/:id/delivery-boards/:boardId', asyncHandler(async (req, res) => {
+    await db.unlinkBoard(req.params.id, req.params.boardId);
+    res.json({ success: true });
+  }));
+
+  /**
+   * Build the delivery overlay for a planning.
+   * For each linked board: fetch raw tasks (+ positions), derive dates via
+   * the pure `deriveOverlayTasks` function, and merge with board metadata.
+   * Returns a flat array of overlay tasks the frontend can render as a
+   * virtual "Delivery" row.
+   */
+  router.get('/plannings/:id/delivery-overlay', asyncHandler(async (req, res) => {
+    const planning = await db.getPlanningById(req.params.id);
+    if (!planning) {
+      res.status(404).json({ error: 'Planning non trouve' });
+      return;
+    }
+
+    const linkedBoards = await db.getLinkedBoards(req.params.id);
+    if (linkedBoards.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    const overlay: Array<DerivedDeliveryTask & { boardId: string; boardName: string }> = [];
+
+    for (const board of linkedBoards) {
+      const { boardName, tasks } = await db.getRawDeliveryTasksForBoard(board.id);
+      if (tasks.length === 0) continue;
+
+      const derived = deriveOverlayTasks({
+        planningStart: planning.startDate,
+        planningEnd: planning.endDate,
+        rawTasks: tasks,
+      });
+
+      for (const task of derived) {
+        overlay.push({ ...task, boardId: board.id, boardName });
+      }
+    }
+
+    res.json(overlay);
   }));
 
   return router;

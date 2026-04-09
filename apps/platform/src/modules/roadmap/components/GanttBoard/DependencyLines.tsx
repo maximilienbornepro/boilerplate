@@ -8,6 +8,10 @@ interface DependencyLinesProps {
   dependencies: Dependency[];
   tasks: Task[];
   taskIndexMap: Map<string, number>;
+  /** Cumulative y offsets per flat row (length = N+1). */
+  rowOffsets: number[];
+  /** Height of each flat row (length = N). */
+  rowHeights: number[];
   chartStartDate: Date;
   viewMode: ViewMode;
   onDelete?: (dependencyId: string) => void;
@@ -16,13 +20,14 @@ interface DependencyLinesProps {
   mousePosition?: { x: number; y: number } | null;
 }
 
-const ROW_HEIGHT = 80;
 const BAR_HEIGHT = 48;
 
 export function DependencyLines({
   dependencies,
   tasks,
   taskIndexMap,
+  rowOffsets,
+  rowHeights,
   chartStartDate,
   viewMode,
   onDelete,
@@ -40,16 +45,23 @@ export function DependencyLines({
       const taskStart = parseDate(task.startDate);
       const taskEnd = parseDate(task.endDate);
       const { left, width } = calculateTaskPosition(taskStart, taskEnd, chartStartDate, columnWidth, viewMode);
+      // Variable row heights: center the dependency attach point inside
+      // the actual row for this index.
+      const rowTop = rowOffsets[index] ?? index * 80;
+      const rowHeight = rowHeights[index] ?? 80;
+      // Compact rows can be smaller than BAR_HEIGHT — clamp so the bar
+      // visually lives inside the row.
+      const effectiveBarHeight = Math.min(BAR_HEIGHT, rowHeight);
       positions.set(task.id, {
         taskId: task.id,
         x: 250 + left,
-        y: index * ROW_HEIGHT + (ROW_HEIGHT - BAR_HEIGHT) / 2,
+        y: rowTop + (rowHeight - effectiveBarHeight) / 2,
         width,
-        height: BAR_HEIGHT,
+        height: effectiveBarHeight,
       });
     }
     return positions;
-  }, [tasks, taskIndexMap, chartStartDate, columnWidth, viewMode]);
+  }, [tasks, taskIndexMap, rowOffsets, rowHeights, chartStartDate, columnWidth, viewMode]);
 
   const lines = useMemo(() => {
     return dependencies

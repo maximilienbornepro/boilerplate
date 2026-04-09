@@ -20,6 +20,12 @@ interface MarkerLineProps {
   readOnly?: boolean;
   topLevelTaskRows?: TopLevelTaskRow[];
   rowHeight?: number;
+  /**
+   * Cumulative y offsets for all flat rows (length = N+1). When provided,
+   * the badge uses `rowOffsets[rowIndex]` instead of `rowIndex * rowHeight`
+   * to account for variable row heights.
+   */
+  rowOffsets?: number[];
   /** Max height in px — if provided, the vertical line stops at this height */
   maxHeight?: number;
 }
@@ -30,7 +36,7 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function MarkerLine({
-  marker, chartStartDate, chartEndDate, viewMode, onUpdate, onDelete, readOnly, topLevelTaskRows, rowHeight = 64, maxHeight,
+  marker, chartStartDate, chartEndDate, viewMode, onUpdate, onDelete, readOnly, topLevelTaskRows, rowHeight = 64, rowOffsets, maxHeight,
 }: MarkerLineProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(marker.name);
@@ -100,7 +106,10 @@ export function MarkerLine({
     return topLevelTaskRows.find(r => r.task.id === marker.taskId) ?? null;
   }, [marker.taskId, topLevelTaskRows]);
 
-  const badgeTop = snappedRow !== null ? snappedRow.rowIndex * rowHeight + 4 : undefined;
+  const badgeTop =
+    snappedRow !== null
+      ? (rowOffsets ? rowOffsets[snappedRow.rowIndex] : snappedRow.rowIndex * rowHeight) + 4
+      : undefined;
 
   return (
     <div

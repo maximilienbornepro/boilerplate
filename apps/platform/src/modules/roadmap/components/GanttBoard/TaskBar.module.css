@@ -235,6 +235,21 @@
 .taskBar.childBar .progressBar { background: currentColor; opacity: 0.15; }
 .taskBar.childBar:hover { opacity: 1; box-shadow: 0 0 0 1px currentColor; }
 
+/*
+  Compact variant — virtual delivery leaf rows. We render them as a thin
+  4px horizontal line (height/top are set inline via rowHeight) and
+  override `.childBar`'s transparent background so the bar is actually
+  visible. Inline styles still control color; we only neutralize the
+  !important from childBar here.
+*/
+.taskBar.compact {
+  background: var(--compact-bar-color, currentColor) !important;
+  border: none !important;
+  opacity: 0.9;
+  padding: 0;
+}
+.taskBar.compact:hover { opacity: 1; }
+
 .contextMenu {
   position: absolute;
   top: 100%;
