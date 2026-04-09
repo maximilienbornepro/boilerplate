@@ -329,6 +329,7 @@ export interface Board {
   id: string;
   userId: number;
   name: string;
+  description: string | null;
   type: string;
   createdAt: string;
   updatedAt: string;
@@ -344,17 +345,17 @@ export async function fetchBoard(id: string): Promise<Board> {
   return handleResponse<Board>(res);
 }
 
-export async function createBoard(name: string): Promise<Board> {
+export async function createBoard(name: string, description?: string): Promise<Board> {
   const res = await fetch(`${API_BASE}/boards`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, description }),
   });
   return handleResponse<Board>(res);
 }
 
-export async function updateBoardApi(id: string, data: { name?: string }): Promise<Board> {
+export async function updateBoardApi(id: string, data: { name?: string; description?: string | null }): Promise<Board> {
   const res = await fetch(`${API_BASE}/boards/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as api from '../../services/api';
-import type { SnapshotInfo, DocumentWithSections } from '../../types';
+import type { SnapshotInfo, DocumentWithSections, SnapshotDiff } from '../../types';
 import styles from './HistoryPanel.module.css';
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
 
 export function HistoryPanel({ documentId, onClose, onRestore }: Props) {
   const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([]);
+  const [diff, setDiff] = useState<SnapshotDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<number | null>(null);
   const [previewId, setPreviewId] = useState<number | null>(null);
@@ -19,8 +20,12 @@ export function HistoryPanel({ documentId, onClose, onRestore }: Props) {
   useEffect(() => {
     async function load() {
       try {
-        const history = await api.getDocumentHistory(documentId);
+        const [history, diffResult] = await Promise.all([
+          api.getDocumentHistory(documentId),
+          api.getSnapshotDiff(documentId).catch(() => null),
+        ]);
         setSnapshots(history);
+        setDiff(diffResult);
       } catch (err) {
         console.error('Failed to load history:', err);
       } finally {
@@ -135,8 +140,13 @@ export function HistoryPanel({ documentId, onClose, onRestore }: Props) {
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.panel} onClick={e => e.stopPropagation()}>
         <div className={styles.header}>
-          <h2>Historique</h2>
-          <button className={styles.closeBtn} onClick={onClose}>×</button>
+          <h2>Historique et sauvegarde</h2>
+          <button className={styles.closeBtn} onClick={onClose} title="Fermer" aria-label="Fermer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
 
         <div className={styles.content}>
@@ -149,6 +159,49 @@ export function HistoryPanel({ documentId, onClose, onRestore }: Props) {
               <span className={styles.hint}>Un snapshot est créé automatiquement une fois par jour lors de la première modification.</span>
             </div>
           ) : (
+            <>
+              {/* Diff depuis la dernière sauvegarde */}
+              {diff && diff.snapshotDate && (
+                <div className={styles.diffBlock}>
+                  <div className={styles.diffHeader}>
+                    Changements depuis la dernière sauvegarde du{' '}
+                    <strong>
+                      {new Date(diff.snapshotDate).toLocaleDateString('fr-FR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </strong>
+                  </div>
+                  {diff.hasChanges ? (
+                    <div className={styles.diffChanges}>
+                      {(['added', 'removed', 'modified'] as const).map((type) => {
+                        const items = diff.changes.filter((c) => c.changeType === type);
+                        if (items.length === 0) return null;
+                        const label = type === 'added' ? `+${items.length} nouveau(x)` : type === 'removed' ? `-${items.length} supprimé(s)` : `${items.length} modifié(s)`;
+                        return (
+                          <div key={type} className={styles.diffGroup}>
+                            <span className={`${styles.diffLabel} ${styles[`diffLabel_${type}`]}`}>{label}</span>
+                            <div className={styles.diffItems}>
+                              {items.map((c, i) => (
+                                <div key={i} className={styles.diffItem}>
+                                  <span className={styles.diffSection}>[{c.sectionName}]</span> {c.subjectTitle}
+                                  {c.details && <span className={styles.diffDetails}> — {c.details}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className={styles.diffNoChanges}>Aucun changement détecté</div>
+                  )}
+                </div>
+              )}
+
             <div className={styles.list}>
               {snapshots.map(snapshot => (
                 <div key={snapshot.id} className={styles.item}>
@@ -178,6 +231,7 @@ export function HistoryPanel({ documentId, onClose, onRestore }: Props) {
                 </div>
               ))}
             </div>
+            </>
           )}
         </div>
       </div>

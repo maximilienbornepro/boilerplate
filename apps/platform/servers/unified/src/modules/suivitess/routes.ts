@@ -34,7 +34,7 @@ export function createRoutes(): Router {
 
   // Create document
   router.post('/documents', asyncHandler(async (req, res) => {
-    const { title } = req.body;
+    const { title, description } = req.body;
 
     if (!title || !title.trim()) {
       res.status(400).json({ error: 'Title is required' });
@@ -50,7 +50,7 @@ export function createRoutes(): Router {
       .replace(/^-|-$/g, '');
 
     try {
-      const doc = await db.createDocument(id, title.trim());
+      const doc = await db.createDocument(id, title.trim(), description?.trim() || null);
       console.log('[SuiVitess] Document created:', id);
       res.json(doc);
     } catch (error: unknown) {
@@ -60,6 +60,25 @@ export function createRoutes(): Router {
       }
       throw error;
     }
+  }));
+
+  // Update document title/description
+  router.put('/documents/:docId', asyncHandler(async (req, res) => {
+    const { docId } = req.params;
+    const { title, description } = req.body;
+    if (title !== undefined && !String(title).trim()) {
+      res.status(400).json({ error: 'Le titre est obligatoire' });
+      return;
+    }
+    const updated = await db.updateDocument(docId, {
+      ...(title !== undefined ? { title: String(title).trim() } : {}),
+      ...(description !== undefined ? { description: String(description).trim() || null } : {}),
+    });
+    if (!updated) {
+      res.status(404).json({ error: 'Document not found' });
+      return;
+    }
+    res.json(updated);
   }));
 
   // Get document with all sections and subjects

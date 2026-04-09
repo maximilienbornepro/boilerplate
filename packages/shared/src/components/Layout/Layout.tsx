@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { SharedNav } from '../SharedNav/SharedNav.js';
 import { APPS } from '../SharedNav/constants.js';
+import { useGatewayUser } from '../../hooks/useGatewayAuth.js';
 import styles from './Layout.module.css';
 
 export type LayoutVariant = 'centered' | 'centered-narrow' | 'full-width' | 'sidebar' | 'custom';
@@ -41,12 +42,18 @@ export function Layout({
       } as CSSProperties)
     : undefined;
 
+  // Auto-fetch user permissions from AuthContext if not explicitly passed.
+  // This ensures the burger menu inside a module only shows modules the
+  // current user is allowed to access.
+  const { user } = useGatewayUser();
+  const effectiveAllowedAppIds = allowedAppIds ?? (noAuth ? undefined : user?.permissions);
+
   return (
     <div className={styles.app} style={moduleStyle}>
       <SharedNav
         currentApp={appId}
         onNavigate={onNavigate}
-        allowedAppIds={allowedAppIds}
+        allowedAppIds={effectiveAllowedAppIds}
       >
         {navSlot}
       </SharedNav>

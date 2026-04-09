@@ -1,6 +1,7 @@
 export interface Document {
   id: string;
   title: string;
+  description?: string | null;
 }
 
 export interface Subject {
@@ -72,11 +73,21 @@ export interface SnapshotInfo {
 
 export type WizardStep = 'select' | 'review' | 'preview' | 'complete';
 
-export const STATUS_OPTIONS = [
-  { value: '🔴 à faire', label: '🔴 À faire' },
-  { value: '🟡 en cours', label: '🟡 En cours' },
-  { value: '🔵 en analyse', label: '🔵 En analyse' },
-  { value: '🟢 terminé', label: '🟢 Terminé' },
-  { value: '🟣 bloqué', label: '🟣 Bloqué' },
-  { value: '🚀 à MEP', label: '🚀 À MEP' },
+export interface StatusOption {
+  value: string;
+  label: string;
+  color: string;
+}
+
+export const STATUS_OPTIONS: StatusOption[] = [
+  { value: '🔴 à faire', label: 'À faire', color: '#ef4444' },
+  { value: '🟡 en cours', label: 'En cours', color: '#f59e0b' },
+  { value: '🔵 en analyse', label: 'En analyse', color: '#3b82f6' },
+  { value: '🟢 terminé', label: 'Terminé', color: '#10b981' },
+  { value: '🟣 bloqué', label: 'Bloqué', color: '#a855f7' },
+  { value: '🚀 à MEP', label: 'À MEP', color: '#06b6d4' },
 ];
+
+export function getStatusOption(value: string): StatusOption {
+  return STATUS_OPTIONS.find(o => o.value === value) ?? STATUS_OPTIONS[0];
+}

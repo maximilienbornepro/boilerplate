@@ -55,10 +55,13 @@ export async function initDb(): Promise<void> {
       CREATE TABLE IF NOT EXISTS suivitess_documents (
         id VARCHAR(50) PRIMARY KEY,
         title VARCHAR(255) NOT NULL,
+        description TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    // Auto-migration: add description column for existing installs
+    await client.query(`ALTER TABLE suivitess_documents ADD COLUMN IF NOT EXISTS description TEXT`);
 
     // Create sections table
     await client.query(`
@@ -197,16 +200,32 @@ export async function searchSubjects(q: string): Promise<SubjectSearchResult[]> 
 // ==================== DOCUMENT QUERIES ====================
 
 export async function getAllDocuments() {
-  const result = await pool.query('SELECT id, title FROM suivitess_documents ORDER BY title');
+  const result = await pool.query('SELECT id, title, description FROM suivitess_documents ORDER BY title');
   return result.rows;
 }
 
-export async function createDocument(id: string, title: string) {
+export async function createDocument(id: string, title: string, description?: string | null) {
   const result = await pool.query(
-    'INSERT INTO suivitess_documents (id, title) VALUES ($1, $2) RETURNING id, title',
-    [id, title]
+    'INSERT INTO suivitess_documents (id, title, description) VALUES ($1, $2, $3) RETURNING id, title, description',
+    [id, title, description ?? null]
   );
   return result.rows[0];
+}
+
+export async function updateDocument(docId: string, data: { title?: string; description?: string | null }) {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let idx = 1;
+  if (data.title !== undefined) { fields.push(`title = $${idx++}`); values.push(data.title); }
+  if (data.description !== undefined) { fields.push(`description = $${idx++}`); values.push(data.description); }
+  if (fields.length === 0) return null;
+  fields.push(`updated_at = NOW()`);
+  values.push(docId);
+  const result = await pool.query(
+    `UPDATE suivitess_documents SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, title, description`,
+    values
+  );
+  return result.rows[0] ?? null;
 }
 
 export async function deleteDocument(docId: string) {

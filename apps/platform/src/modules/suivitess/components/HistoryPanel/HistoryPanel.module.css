@@ -5,7 +5,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
-  z-index: var(--z-modal);
+  z-index: 100000; /* Above SharedNav (99999) and ModuleHeader */
 }
 
 .panel {
@@ -42,23 +42,27 @@
 }
 
 .closeBtn {
-  width: var(--spacing-xl);
-  height: var(--spacing-xl);
+  width: 36px;
+  height: 36px;
   border: none;
   background: transparent;
-  color: var(--text-muted);
-  font-size: var(--font-size-2xl);
+  color: var(--text-primary);
   cursor: pointer;
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-normal);
+  flex-shrink: 0;
+  transition: color var(--transition-normal), background var(--transition-normal);
+}
+
+.closeBtn svg {
+  flex-shrink: 0;
 }
 
 .closeBtn:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--bg-hover);
+  color: var(--accent-primary);
 }
 
 .content {
@@ -226,4 +230,89 @@
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   margin-top: var(--spacing-1);
+}
+
+/* ── Diff block (changes since last snapshot) ── */
+
+.diffBlock {
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+  font-family: var(--font-family-mono);
+}
+
+.diffHeader {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-bottom: var(--spacing-sm);
+}
+
+.diffHeader strong {
+  color: var(--text-primary);
+}
+
+.diffChanges {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.diffGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.diffLabel {
+  display: inline-block;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  align-self: flex-start;
+}
+
+.diffLabel_added {
+  background: rgba(16, 185, 129, 0.18);
+  color: #10b981;
+}
+
+.diffLabel_removed {
+  background: rgba(220, 38, 38, 0.2);
+  color: #f87171;
+}
+
+.diffLabel_modified {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.diffItems {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: var(--spacing-sm);
+}
+
+.diffItem {
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+}
+
+.diffSection {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-semibold);
+  margin-right: 4px;
+}
+
+.diffDetails {
+  color: var(--text-muted);
+}
+
+.diffNoChanges {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-style: italic;
 }
