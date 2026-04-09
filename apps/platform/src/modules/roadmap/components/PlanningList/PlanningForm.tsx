@@ -1,11 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal, FormField, Button } from '@boilerplate/shared/components';
-import type { Planning, PlanningFormData } from '../../types';
+import type { Planning, PlanningFormData, LinkedDeliveryBoard } from '../../types';
+import * as api from '../../services/api';
 import styles from './PlanningList.module.css';
 
 interface PlanningFormProps {
   planning?: Planning | null;
-  onSubmit: (data: PlanningFormData) => void;
+  /**
+   * Called with the form data. Must return the created/updated Planning
+   * so the form can link/unlink delivery boards against its id.
+   * Returning null aborts the board-linking step.
+   */
+  onSubmit: (data: PlanningFormData) => Promise<Planning | null>;
   onClose: () => void;
 }
 
@@ -19,9 +25,70 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
   const [startDate, setStartDate] = useState(planning?.startDate || defaultStart);
   const [endDate, setEndDate] = useState(planning?.endDate || defaultEnd);
 
-  const handleSubmit = () => {
-    if (!name.trim() || !startDate || !endDate) return;
-    onSubmit({ name: name.trim(), description, startDate, endDate });
+  const [availableBoards, setAvailableBoards] = useState<LinkedDeliveryBoard[]>([]);
+  const [selectedBoardIds, setSelectedBoardIds] = useState<Set<string>>(new Set());
+  const [initialBoardIds, setInitialBoardIds] = useState<Set<string>>(new Set());
+  const [boardsLoading, setBoardsLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Load all available delivery boards + (if editing) the currently linked ones.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const all = await api.fetchAllDeliveryBoards();
+        if (cancelled) return;
+        setAvailableBoards(all);
+
+        if (planning?.id) {
+          const linked = await api.fetchLinkedBoards(planning.id);
+          if (cancelled) return;
+          const ids = new Set(linked.map(b => b.id));
+          setSelectedBoardIds(ids);
+          setInitialBoardIds(ids);
+        }
+      } catch {
+        // Silent fail — delivery boards are optional.
+      } finally {
+        if (!cancelled) setBoardsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [planning?.id]);
+
+  const toggleBoard = (boardId: string) => {
+    setSelectedBoardIds(prev => {
+      const next = new Set(prev);
+      if (next.has(boardId)) next.delete(boardId);
+      else next.add(boardId);
+      return next;
+    });
+  };
+
+  const syncBoardLinks = async (planningId: string) => {
+    const toLink = Array.from(selectedBoardIds).filter(id => !initialBoardIds.has(id));
+    const toUnlink = Array.from(initialBoardIds).filter(id => !selectedBoardIds.has(id));
+
+    await Promise.all([
+      ...toLink.map(id => api.linkDeliveryBoard(planningId, id).catch(() => {})),
+      ...toUnlink.map(id => api.unlinkDeliveryBoard(planningId, id).catch(() => {})),
+    ]);
+  };
+
+  const handleSubmit = async () => {
+    if (!name.trim() || !startDate || !endDate || submitting) return;
+    setSubmitting(true);
+    try {
+      const saved = await onSubmit({ name: name.trim(), description, startDate, endDate });
+      if (saved) {
+        await syncBoardLinks(saved.id);
+      }
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const isEdit = !!planning;
@@ -67,12 +134,41 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
           />
         </FormField>
 
+        <FormField label="Delivery boards liés">
+          {boardsLoading ? (
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+              Chargement des boards…
+            </div>
+          ) : availableBoards.length === 0 ? (
+            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+              Aucun delivery board disponible.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 4, padding: '0.5rem' }}>
+              {availableBoards.map(board => (
+                <label
+                  key={board.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', width: '100%' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedBoardIds.has(board.id)}
+                    onChange={() => toggleBoard(board.id)}
+                    style={{ width: 16, height: 16, flexShrink: 0, margin: 0 }}
+                  />
+                  <span style={{ flex: 1, textAlign: 'left' }}>{board.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </FormField>
+
         <div className={styles.modalActions}>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>
             Annuler
           </Button>
-          <Button variant="primary" onClick={handleSubmit} disabled={!name.trim() || !startDate || !endDate}>
-            {isEdit ? 'Modifier' : 'Créer'}
+          <Button variant="primary" onClick={handleSubmit} disabled={!name.trim() || !startDate || !endDate || submitting}>
+            {submitting ? 'Enregistrement…' : isEdit ? 'Modifier' : 'Créer'}
           </Button>
         </div>
       </div>

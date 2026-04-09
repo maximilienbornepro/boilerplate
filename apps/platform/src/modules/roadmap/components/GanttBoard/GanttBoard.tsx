@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useCallback, useEffect, useImperativeHandle,
 import type { Task, Dependency, ViewMode, Planning, Marker } from '../../types';
 import { generateTimeColumns, getColumnWidth, parseDate, getExtendedDateRange, calculateTaskPosition, getMonthGroups, getTotalWidth, calculatePixelOffset } from '../../utils/dateUtils';
 import { buildTaskHierarchy, flattenHierarchy, hasParentChildRelationship } from '../../utils/taskUtils';
+import { VIRTUAL_DELIVERY_PARENT_ID } from '../../utils/deliveryVirtualRow';
 import { TaskBar } from './TaskBar';
 import { TodayMarker } from './TodayMarker';
 import { DependencyLines } from './DependencyLines';
@@ -35,7 +36,21 @@ export interface GanttBoardHandle {
   scrollToToday: () => void;
 }
 
-const ROW_HEIGHT = 80;
+/**
+ * Normal row height for real roadmap tasks and virtual parents.
+ * Exported so TaskBar and friends can compute fallbacks.
+ */
+export const ROW_HEIGHT = 80;
+/**
+ * Compact row height for virtual delivery leaves. Keeps hundreds of
+ * delivery tickets from dominating the Gantt vertically.
+ */
+export const ROW_HEIGHT_COMPACT = 24;
+
+/** Returns the row height for a given task. Pure helper. */
+export function getTaskRowHeight(task: { compact?: boolean }): number {
+  return task.compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT;
+}
 
 export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function GanttBoard({
   planning,
@@ -60,6 +75,25 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
   const contentRef = useRef<HTMLDivElement>(null);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [scrollOffset, setScrollOffset] = useState(0);
+  /**
+   * The virtual "Delivery" parent row starts collapsed on first mount so
+   * users don't get hundreds of tickets shoved in their face. We only
+   * auto-collapse it once per session (tracked by this ref) so the user
+   * can freely expand/collapse it afterwards.
+   */
+  const autoCollapsedDeliveryRef = useRef(false);
+  useEffect(() => {
+    if (autoCollapsedDeliveryRef.current) return;
+    const hasVirtualDelivery = tasks.some(t => t.id === VIRTUAL_DELIVERY_PARENT_ID);
+    if (!hasVirtualDelivery) return;
+    autoCollapsedDeliveryRef.current = true;
+    setCollapsedIds(prev => {
+      if (prev.has(VIRTUAL_DELIVERY_PARENT_ID)) return prev;
+      const next = new Set(prev);
+      next.add(VIRTUAL_DELIVERY_PARENT_ID);
+      return next;
+    });
+  }, [tasks]);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [contentAreaWidth, setContentAreaWidth] = useState(0);
 
@@ -134,8 +168,24 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
 
   const hierarchy = useMemo(() => buildTaskHierarchy(tasks), [tasks]);
   const flatTasks = useMemo(() => flattenHierarchy(hierarchy, collapsedIds), [hierarchy, collapsedIds]);
-  // Tasks-only height (excludes the "+ Tâche" / "+ Marqueur" rows below)
-  const tasksHeight = flatTasks.length * ROW_HEIGHT;
+  /**
+   * Per-row heights + cumulative offsets. `rowOffsets[i]` is the y position
+   * (in px) where row `i` starts; `rowOffsets[flatTasks.length]` is the
+   * total tasks section height. We use variable heights because virtual
+   * delivery leaves are rendered on compact 24px rows.
+   */
+  const { rowHeights, rowOffsets, tasksHeight } = useMemo(() => {
+    const heights: number[] = flatTasks.map(item => getTaskRowHeight(item.task));
+    const offsets: number[] = [0];
+    for (let i = 0; i < heights.length; i++) {
+      offsets.push(offsets[i] + heights[i]);
+    }
+    return {
+      rowHeights: heights,
+      rowOffsets: offsets,
+      tasksHeight: offsets[offsets.length - 1] ?? 0,
+    };
+  }, [flatTasks]);
 
   const getAncestorIds = useCallback((taskId: string): string[] => {
     const ancestors: string[] = [];
@@ -378,7 +428,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
                 <span>Deposer ici pour retirer le parent</span>
               </div>
             )}
-            {flatTasks.map(({ task, level, ancestorIsLast }) => {
+            {flatTasks.map(({ task, level, ancestorIsLast }, index) => {
               const parentTask = task.parentId ? tasks.find(t => t.id === task.parentId) : null;
               const rootColor = task.parentId ? getRootColor(task.parentId) : undefined;
               return (
@@ -394,6 +444,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
                   columns={effectiveColumns}
                   hasChildren={!!(task.children && task.children.length > 0)}
                   isCollapsed={collapsedIds.has(task.id)}
+                  rowHeight={rowHeights[index] ?? ROW_HEIGHT}
                   onMove={handleTaskMove}
                   onResize={handleTaskResize}
                   onNameChange={handleNameChange}
@@ -439,6 +490,8 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
             dependencies={dependencies}
             tasks={tasks}
             taskIndexMap={taskIndexMap}
+            rowOffsets={rowOffsets}
+            rowHeights={rowHeights}
             chartStartDate={chartStartDate}
             viewMode={viewMode}
             onDelete={onDeleteDependency}
@@ -471,6 +524,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
               readOnly={readOnly}
               topLevelTaskRows={topLevelTaskRows}
               rowHeight={ROW_HEIGHT}
+              rowOffsets={rowOffsets}
               maxHeight={tasksHeight}
             />
           ))}

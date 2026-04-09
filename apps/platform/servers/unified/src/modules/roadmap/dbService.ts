@@ -343,3 +343,136 @@ export async function ensureTaskSubjectsTable(): Promise<void> {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_rts_task ON roadmap_task_subjects(task_id)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_rts_subject ON roadmap_task_subjects(subject_id)');
 }
+
+// ==================== PLANNING-DELIVERY BOARD LINKS ====================
+
+export interface LinkedDeliveryBoard {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export async function ensurePlanningDeliveryBoardsTable(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS roadmap_planning_delivery_boards (
+      planning_id UUID NOT NULL,
+      board_id    UUID NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (planning_id, board_id)
+    )
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_rpdb_planning ON roadmap_planning_delivery_boards(planning_id)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_rpdb_board    ON roadmap_planning_delivery_boards(board_id)');
+}
+
+export async function getLinkedBoards(planningId: string): Promise<LinkedDeliveryBoard[]> {
+  const result = await pool.query(
+    `SELECT b.id, b.name, rpdb.created_at
+       FROM roadmap_planning_delivery_boards rpdb
+       JOIN delivery_boards b ON b.id = rpdb.board_id
+      WHERE rpdb.planning_id = $1
+      ORDER BY b.name`,
+    [planningId]
+  );
+  return result.rows.map((row: { id: string; name: string; created_at: Date }) => ({
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at.toISOString(),
+  }));
+}
+
+export async function linkBoard(planningId: string, boardId: string): Promise<void> {
+  await pool.query(
+    'INSERT INTO roadmap_planning_delivery_boards (planning_id, board_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [planningId, boardId]
+  );
+}
+
+export async function unlinkBoard(planningId: string, boardId: string): Promise<void> {
+  await pool.query(
+    'DELETE FROM roadmap_planning_delivery_boards WHERE planning_id = $1 AND board_id = $2',
+    [planningId, boardId]
+  );
+}
+
+/**
+ * Raw fetch of all tasks belonging to a board, joined with their grid position.
+ * Returns rows shaped for `deriveOverlayTasks`.
+ *
+ * A board id is a UUID (no underscores); increment_id is formatted as
+ * `${boardId}_inc1`, `${boardId}_inc2`, ... The LIKE pattern with ESCAPE
+ * guarantees we only match increments of this exact board.
+ */
+export async function getRawDeliveryTasksForBoard(boardId: string): Promise<{
+  boardName: string;
+  tasks: Array<{
+    id: string;
+    title: string;
+    type: string;
+    status: string;
+    source: 'manual' | 'jira';
+    incrementId: string;
+    startCol: number | null;
+    endCol: number | null;
+  }>;
+}> {
+  // Board name
+  const boardResult = await pool.query(
+    'SELECT name FROM delivery_boards WHERE id = $1',
+    [boardId]
+  );
+  if (boardResult.rows.length === 0) {
+    return { boardName: '', tasks: [] };
+  }
+  const boardName = boardResult.rows[0].name as string;
+
+  // Tasks + positions. LEFT JOIN because a task may not have a grid position.
+  const result = await pool.query(
+    `SELECT
+        t.id, t.title, t.type, t.status, t.source, t.increment_id,
+        p.start_col, p.end_col
+       FROM delivery_tasks t
+       LEFT JOIN delivery_positions p
+         ON p.task_id = t.id AND p.increment_id = t.increment_id
+      WHERE t.increment_id LIKE $1 ESCAPE '\\'
+      ORDER BY t.increment_id, t.created_at`,
+    [`${boardId}\\_%`]
+  );
+
+  const tasks = result.rows.map((row: {
+    id: string;
+    title: string;
+    type: string;
+    status: string;
+    source: string;
+    increment_id: string;
+    start_col: number | null;
+    end_col: number | null;
+  }) => ({
+    id: row.id,
+    title: row.title,
+    type: row.type,
+    status: row.status,
+    source: (row.source === 'jira' ? 'jira' : 'manual') as 'manual' | 'jira',
+    incrementId: row.increment_id,
+    startCol: row.start_col,
+    endCol: row.end_col,
+  }));
+
+  return { boardName, tasks };
+}
+
+/**
+ * List all delivery boards (used by the planning form to offer a selector).
+ * We intentionally keep this inside roadmap's dbService so the route can
+ * avoid a cross-module HTTP round-trip.
+ */
+export async function getAllDeliveryBoards(): Promise<Array<{ id: string; name: string }>> {
+  const result = await pool.query(
+    'SELECT id, name FROM delivery_boards ORDER BY name'
+  );
+  return result.rows.map((row: { id: string; name: string }) => ({
+    id: row.id,
+    name: row.name,
+  }));
+}

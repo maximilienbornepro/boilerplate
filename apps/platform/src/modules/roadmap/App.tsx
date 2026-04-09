@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import { Layout, LoadingSpinner, ModuleHeader, ConfirmModal } from '@boilerplate/shared/components';
-import type { Planning, Task, Dependency, ViewMode, Marker, PlanningFormData } from './types';
+import type { Planning, Task, Dependency, ViewMode, Marker, PlanningFormData, DeliveryOverlayTask } from './types';
 import * as api from './services/api';
 import { getNextColor } from './utils/taskUtils';
+import { buildEnhancedTasks } from './utils/deliveryVirtualRow';
 import { PlanningList } from './components/PlanningList/PlanningList';
 import { PlanningForm } from './components/PlanningList/PlanningForm';
 import { GanttBoard, type GanttBoardHandle } from './components/GanttBoard/GanttBoard';
@@ -124,18 +125,26 @@ function PlanningListView({ onNavigate }: { onNavigate?: (path: string) => void 
       .finally(() => setLoading(false));
   }, []);
 
-  const handleCreatePlanningFromForm = async (data: PlanningFormData) => {
+  const handleCreatePlanningFromForm = async (data: PlanningFormData): Promise<Planning | null> => {
     try {
       const planning = await api.createPlanning(data);
-      navigate(`/roadmap/${planning.id}`);
-    } catch {}
+      // Note: navigation is deferred until the form has linked its delivery
+      // boards (see <PlanningForm onSubmit={...}> below). We just return
+      // the created planning so the form can orchestrate the linking step.
+      return planning;
+    } catch {
+      return null;
+    }
   };
 
-  const handleEditPlanning = async (id: string, data: Partial<Planning>) => {
+  const handleEditPlanningFromForm = async (id: string, data: PlanningFormData): Promise<Planning | null> => {
     try {
       const updated = await api.updatePlanning(id, data);
       setPlannings(prev => prev.map(p => p.id === id ? updated : p));
-    } catch {}
+      return updated;
+    } catch {
+      return null;
+    }
   };
 
   const handleDeletePlanning = async () => {
@@ -174,12 +183,18 @@ function PlanningListView({ onNavigate }: { onNavigate?: (path: string) => void 
           planning={editingPlanningForForm}
           onSubmit={async (data) => {
             if (editingPlanningForForm) {
-              await handleEditPlanning(editingPlanningForForm.id, data);
-            } else {
-              await handleCreatePlanningFromForm(data);
+              return handleEditPlanningFromForm(editingPlanningForForm.id, data);
             }
-            setShowPlanningForm(false);
-            setEditingPlanningForForm(null);
+            const created = await handleCreatePlanningFromForm(data);
+            // Navigate only AFTER the form has finished its linking step
+            // (it will call onClose after linking, which triggers cleanup).
+            if (created) {
+              // Delay navigation until after the form's syncBoardLinks() call
+              // resolves. The form awaits onSubmit, then syncBoardLinks, then
+              // onClose — we use a microtask queue here via setTimeout(0).
+              setTimeout(() => navigate(`/roadmap/${created.id}`), 0);
+            }
+            return created;
           }}
           onClose={() => { setShowPlanningForm(false); setEditingPlanningForForm(null); }}
         />
@@ -205,6 +220,7 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [markers, setMarkers] = useState<Marker[]>([]);
+  const [deliveryOverlay, setDeliveryOverlay] = useState<DeliveryOverlayTask[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [yearOffset, setYearOffset] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -242,15 +258,26 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
   const loadPlanningData = async (planningId: string) => {
     try {
       setLoading(true);
-      const [t, d, m] = await Promise.all([
+      const [t, d, m, overlay] = await Promise.all([
         api.fetchTasks(planningId),
         api.fetchDependencies(planningId),
         api.fetchMarkers(planningId),
+        api.fetchDeliveryOverlay(planningId).catch(() => [] as DeliveryOverlayTask[]),
       ]);
-      setTasks(t); setDependencies(d); setMarkers(m);
+      setTasks(t); setDependencies(d); setMarkers(m); setDeliveryOverlay(overlay);
     } catch { setError('Erreur lors du chargement des données'); }
     finally { setLoading(false); }
   };
+
+  /**
+   * Tasks fed to GanttBoard — real roadmap tasks with an optional virtual
+   * "Delivery" parent row prepended when a delivery overlay exists.
+   * Memoized so we don't rebuild the array on every render.
+   */
+  const enhancedTasks = useMemo(
+    () => buildEnhancedTasks(tasks, deliveryOverlay),
+    [tasks, deliveryOverlay]
+  );
 
   // Planning handlers
   const handleCreatePlanning = async () => {
@@ -296,6 +323,8 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
   // Task handlers
   const handleAddTask = () => { setEditingTask(null); setShowTaskForm(true); };
   const handleTaskClick = useCallback((task: Task) => {
+    // Virtual delivery rows are read-only — don't open the subjects panel.
+    if (task.isVirtual) return;
     setSelectedTask(task);
     setShowSubjectsPanel(true);
     // Close any open TaskForm if switching tasks
@@ -361,6 +390,8 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
   };
 
   const handleTaskDeleteDirect = useCallback(async (taskId: string) => {
+    // Guard against virtual delivery rows — they have no DB row.
+    if (taskId.startsWith('__virtual_')) return;
     try {
       await api.deleteTask(taskId);
       setTasks(prev => prev.filter(t => t.id !== taskId && t.parentId !== taskId));
@@ -369,6 +400,8 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
 
   const handleAddChildTask = useCallback(async (parentId: string) => {
     if (!selectedPlanning) return;
+    // Cannot add real children under a virtual parent.
+    if (parentId.startsWith('__virtual_')) return;
     const today = new Date();
     const startDate = today.toISOString().split('T')[0];
     const end = new Date(today); end.setDate(end.getDate() + 4);
@@ -384,6 +417,8 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
   }, [selectedPlanning, tasks]);
 
   const handleTaskUpdate = useCallback(async (taskId: string, updates: Partial<Task>) => {
+    // Virtual tasks are not persisted — silently ignore any update attempt.
+    if (taskId.startsWith('__virtual_')) return;
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
     try { await api.updateTask(taskId, updates); }
     catch { setError('Erreur lors de la mise à jour'); if (selectedPlanning) loadPlanningData(selectedPlanning.id); }
@@ -391,6 +426,8 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
 
   // Dependency handlers
   const handleCreateDependency = useCallback(async (fromTaskId: string, toTaskId: string) => {
+    // Dependencies cannot involve virtual delivery rows.
+    if (fromTaskId.startsWith('__virtual_') || toTaskId.startsWith('__virtual_')) return;
     try {
       const dep = await api.createDependency(fromTaskId, toTaskId);
       setDependencies(prev => [...prev, dep]);
@@ -515,7 +552,7 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
               startDate: `${new Date(selectedPlanning.startDate).getFullYear() + yearOffset}-${selectedPlanning.startDate.slice(5)}`,
               endDate: `${new Date(selectedPlanning.endDate).getFullYear() + yearOffset}-${selectedPlanning.endDate.slice(5)}`,
             } : selectedPlanning}
-            tasks={tasks}
+            tasks={enhancedTasks}
             dependencies={dependencies}
             viewMode={viewMode}
             markers={markers}

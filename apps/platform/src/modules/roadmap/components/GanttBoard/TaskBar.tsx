@@ -15,6 +15,8 @@ interface TaskBarProps {
   viewMode: ViewMode;
   hasChildren: boolean;
   isCollapsed?: boolean;
+  /** Row height in px — variable to support compact virtual delivery leaves. */
+  rowHeight?: number;
   onMove: (taskId: string, newStart: string, newEnd: string) => void;
   onResize: (taskId: string, newStart: string, newEnd: string) => void;
   onNameChange: (taskId: string, name: string) => void;
@@ -36,16 +38,23 @@ interface TaskBarProps {
   parentColor?: string;
 }
 
-const ROW_HEIGHT = 80;
+const DEFAULT_ROW_HEIGHT = 80;
 const INDENT_SIZE = 24;
 
 export function TaskBar({
   task, level, ancestorIsLast = [], parentName, chartStartDate, viewMode, hasChildren, isCollapsed,
+  rowHeight = DEFAULT_ROW_HEIGHT,
   onMove, onResize, onNameChange, onClick, onDelete, onAddChild, onToggleCollapse,
   onStartDependency, onEndDependency, isDrawingDependency,
   onParentChange, onReorder, draggedTaskId, onDragStart, onDragEnd, readOnly, isFocused,
   columns, parentColor,
 }: TaskBarProps) {
+  // A task can opt out of editing via its own `readOnly` flag (e.g. virtual
+  // delivery overlay rows), independently of the global GanttBoard prop.
+  const effectiveReadOnly = readOnly || task.readOnly === true;
+  // Compact mode: thin row with a minimal 4px bar and a single-line name.
+  // Used for virtual delivery leaves so hundreds of tickets fit on screen.
+  const isCompact = task.compact === true;
   const columnWidth = getColumnWidth(viewMode);
   const taskStart = parseDate(task.startDate);
   const taskEnd = parseDate(task.endDate);
@@ -83,7 +92,7 @@ export function TaskBar({
   };
 
   const startEditing = (e: React.MouseEvent) => {
-    if (readOnly) return;
+    if (effectiveReadOnly) return;
     e.stopPropagation();
     setEditValue(task.name);
     setIsEditing(true);
@@ -137,18 +146,42 @@ export function TaskBar({
 
   const isDragging = draggedTaskId === task.id;
 
+  // Compact task name styles — single line with ellipsis, smaller font.
+  const compactNameStyle: React.CSSProperties | undefined = isCompact
+    ? {
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        fontSize: '0.75rem',
+        lineHeight: `${rowHeight - 4}px`,
+        display: 'inline-block',
+        maxWidth: '100%',
+      }
+    : undefined;
+
+  // Compact bar: a thin horizontal line centered in the row.
+  const compactBarHeight = 4;
+
   return (
-    <div className={`${styles.taskRow} ${isResizing ? styles.dragging : ''} ${isDragging ? styles.isDragging : ''} ${isFocused ? styles.focused : ''}`} style={{ height: ROW_HEIGHT, borderBottom: `1px solid ${parentColor ?? task.color}40` }} data-task-id={task.id}>
+    <div
+      className={`${styles.taskRow} ${isResizing ? styles.dragging : ''} ${isDragging ? styles.isDragging : ''} ${isFocused ? styles.focused : ''}`}
+      style={{
+        height: rowHeight,
+        borderBottom: `1px solid ${parentColor ?? task.color}${isCompact ? '20' : '40'}`,
+      }}
+      data-task-id={task.id}
+    >
       <div
         className={[styles.taskName, isDragOver && styles.dragOver, dropPosition === 'above' && styles.dropAbove, dropPosition === 'below' && styles.dropBelow, dropPosition === 'child' && styles.dropChild].filter(Boolean).join(' ')}
-        draggable={!isEditing && !readOnly}
-        onDragStart={readOnly ? undefined : handleDragStartHierarchy}
-        onDragEnd={readOnly ? undefined : handleDragEndHierarchy}
-        onDragOver={readOnly ? undefined : handleDragOver}
-        onDragLeave={readOnly ? undefined : handleDragLeave}
-        onDrop={readOnly ? undefined : handleDrop}
+        style={isCompact ? { padding: '0 8px 0 8px', height: rowHeight, overflow: 'hidden' } : undefined}
+        draggable={!isEditing && !effectiveReadOnly}
+        onDragStart={effectiveReadOnly ? undefined : handleDragStartHierarchy}
+        onDragEnd={effectiveReadOnly ? undefined : handleDragEndHierarchy}
+        onDragOver={effectiveReadOnly ? undefined : handleDragOver}
+        onDragLeave={effectiveReadOnly ? undefined : handleDragLeave}
+        onDrop={effectiveReadOnly ? undefined : handleDrop}
       >
-        {level > 0 && (
+        {level > 0 && !isCompact && (
           <div className={styles.indentGuides} style={{ width: level * INDENT_SIZE }}>
             {Array.from({ length: level }).map((_, i) => {
               const isLastAtLevel = ancestorIsLast[i + 1] ?? false;
@@ -161,8 +194,11 @@ export function TaskBar({
             })}
           </div>
         )}
+        {level > 0 && isCompact && (
+          <div style={{ width: level * INDENT_SIZE, flexShrink: 0 }} />
+        )}
 
-        {hasChildren && onToggleCollapse && (
+        {hasChildren && onToggleCollapse && !isCompact && (
           <button className={styles.collapseButton} style={{ color: parentColor ?? task.color }} onClick={(e) => { e.stopPropagation(); onToggleCollapse(task.id); }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}><path d="M7 10l5 5 5-5z" /></svg>
           </button>
@@ -171,12 +207,19 @@ export function TaskBar({
         {isEditing ? (
           <input ref={inputRef} type="text" className={styles.nameInput} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={handleKeyDown} autoFocus />
         ) : (
-          <span className={`${styles.nameText} ${level < 2 ? styles.parentName : ''}`} title="Double-cliquer pour modifier" onDoubleClick={startEditing}>{task.name}</span>
+          <span
+            className={`${styles.nameText} ${level < 2 ? styles.parentName : ''}`}
+            style={compactNameStyle}
+            title={isCompact ? task.name : 'Double-cliquer pour modifier'}
+            onDoubleClick={startEditing}
+          >
+            {task.name}
+          </span>
         )}
 
         {dropPosition === 'child' && <span className={styles.dropChildLabel}>→ Enfant</span>}
 
-        {!readOnly && (
+        {!effectiveReadOnly && !isCompact && (
           <div className={styles.actionButtons}>
             <button className={styles.addChildButton} onClick={(e) => { e.stopPropagation(); onAddChild(task.id); }} title="Ajouter une sous-tâche">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -190,31 +233,42 @@ export function TaskBar({
 
       <div
         ref={taskBarRef}
-        className={`${styles.taskBar} ${isDrawingDependency ? styles.drawingTarget : ''} ${level === 0 ? styles.parentBar : level === 1 ? styles.subParentBar : styles.childBar}`}
+        className={`${styles.taskBar} ${isDrawingDependency ? styles.drawingTarget : ''} ${level === 0 ? styles.parentBar : level === 1 ? styles.subParentBar : styles.childBar} ${isCompact ? styles.compact : ''}`}
         style={{
           left: 250 + left,
           width: Math.max(finalWidth, 20),
-          backgroundColor: level < 2 ? task.color : 'transparent',
-          borderColor: level < 2 ? 'transparent' : (parentColor ?? task.color),
+          backgroundColor: isCompact ? undefined : (level < 2 ? task.color : 'transparent'),
+          borderColor: isCompact ? undefined : (level < 2 ? 'transparent' : (parentColor ?? task.color)),
           color: level < 2 ? 'white' : (parentColor ?? task.color),
           transform: resizeTranslateX !== 0 ? `translateX(${resizeTranslateX}px)` : 'none',
-          cursor: readOnly ? 'default' : undefined,
+          cursor: effectiveReadOnly ? 'default' : undefined,
+          opacity: task.isVirtual && !isCompact ? 0.9 : undefined,
+          borderStyle: task.isVirtual && !isCompact ? 'dashed' : undefined,
+          // Compact mode: override height/top so the bar is a thin horizontal line.
+          // `--compact-bar-color` is consumed by the .compact CSS class to beat
+          // the `!important` from .childBar without fighting specificity inline.
+          ['--compact-bar-color' as string]: isCompact ? task.color : undefined,
+          height: isCompact ? compactBarHeight : undefined,
+          top: isCompact ? (rowHeight - compactBarHeight) / 2 : undefined,
+          borderRadius: isCompact ? 2 : undefined,
         }}
-        onMouseDown={readOnly ? undefined : handleMouseDown}
+        onMouseDown={effectiveReadOnly ? undefined : handleMouseDown}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
       >
-        {!readOnly && <div className={`${styles.resizeHandle} ${styles.left}`} data-resize-handle onMouseDown={(e) => handleResizeStart(e, 'left')} />}
-        <div className={styles.barContent}>
-          {task.progress > 0 && <div className={styles.progressBar} style={{ width: `${task.progress}%` }} />}
-          {viewMode !== 'quarter' && viewMode !== 'year' && (
-            <span className={styles.barLabel}>
-              {task.name}
-            </span>
-          )}
-        </div>
-        {!readOnly && <div className={`${styles.resizeHandle} ${styles.right}`} data-resize-handle onMouseDown={(e) => handleResizeStart(e, 'right')} />}
-        {!readOnly && onStartDependency && (
+        {!effectiveReadOnly && !isCompact && <div className={`${styles.resizeHandle} ${styles.left}`} data-resize-handle onMouseDown={(e) => handleResizeStart(e, 'left')} />}
+        {!isCompact && (
+          <div className={styles.barContent}>
+            {task.progress > 0 && <div className={styles.progressBar} style={{ width: `${task.progress}%` }} />}
+            {viewMode !== 'quarter' && viewMode !== 'year' && (
+              <span className={styles.barLabel}>
+                {task.name}
+              </span>
+            )}
+          </div>
+        )}
+        {!effectiveReadOnly && !isCompact && <div className={`${styles.resizeHandle} ${styles.right}`} data-resize-handle onMouseDown={(e) => handleResizeStart(e, 'right')} />}
+        {!effectiveReadOnly && !isCompact && onStartDependency && (
           <div className={styles.dependencyHandle} data-dependency-handle onClick={(e) => { e.stopPropagation(); onStartDependency(task.id); }} title="Créer une dépendance">
             <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
           </div>
