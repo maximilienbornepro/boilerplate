@@ -153,7 +153,7 @@ function PlanningListView({ onNavigate }: { onNavigate?: (path: string) => void 
 
   return (
     <>
-      <ModuleHeader title="Roadmap" onBack={() => onNavigate ? onNavigate('/') : (window.location.href = '/')}>
+      <ModuleHeader title="Roadmap">
         <button
           className="module-header-btn module-header-btn-primary"
           onClick={() => { setEditingPlanningForForm(null); setShowPlanningForm(true); }}

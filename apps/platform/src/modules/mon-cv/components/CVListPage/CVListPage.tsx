@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ModuleHeader, Modal, ConfirmModal, Card, FormField, Button, ToastContainer, LoadingSpinner, Badge } from '@boilerplate/shared/components';
+import { ModuleHeader, Modal, ConfirmModal, Card, FormField, Button, ToastContainer, LoadingSpinner } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import type { CVListItem } from '../../types';
 import { createEmptyCV } from '../../types';
@@ -10,10 +10,9 @@ interface CVListPageProps {
   onEdit: (cvId: number) => void;
   onAdapt: (cvId: number) => void;
   onAdaptations: (cvId: number) => void;
-  onBack: () => void;
 }
 
-export function CVListPage({ onEdit, onAdapt, onAdaptations, onBack }: CVListPageProps) {
+export function CVListPage({ onEdit, onAdapt, onAdaptations }: CVListPageProps) {
   const [cvs, setCvs] = useState<CVListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<ToastData[]>([]);
@@ -92,11 +91,7 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations, onBack }: CVListPag
 
   return (
     <>
-      <ModuleHeader
-        title="Mes CV"
-        subtitle={loading ? '' : `${cvs.length} CV${cvs.length > 1 ? 's' : ''}`}
-        onBack={onBack}
-      >
+      <ModuleHeader title="Mes CV">
         <button
           className="module-header-btn module-header-btn-primary"
           onClick={() => setShowCreate(true)}
@@ -131,32 +126,14 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations, onBack }: CVListPag
                 onClick={() => onEdit(cv.id)}
                 className="cv-list-doc-card"
               >
-                <div className="shared-card__icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                  </svg>
-                </div>
                 <div className="shared-card__content">
-                  <span className="shared-card__title">
-                    {cv.name}
-                  </span>
-                  {cv.isDefault && (
-                    <Badge type="accent">Par défaut</Badge>
-                  )}
+                  <div className="cv-list-title-row">
+                    <span className="shared-card__title">{cv.name}</span>
+                    {cv.isDefault && (
+                      <span className="cv-list-default-badge">Par défaut</span>
+                    )}
+                  </div>
                 </div>
-                <button
-                  className="shared-card__edit-btn"
-                  onClick={(e) => { e.stopPropagation(); onEdit(cv.id); }}
-                  title="Modifier"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                </button>
                 <button
                   className="shared-card__delete-btn"
                   onClick={(e) => handleDeleteClick(e, cv)}

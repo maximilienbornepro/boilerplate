@@ -15,12 +15,20 @@ export async function initPool() {
   }
 }
 
+export type LeaveReason = 'cp' | 'rtt' | 'maladie' | 'sans_solde';
+
 // Types
 export interface Member {
   id: number;
   email: string;
   color: string;
   sortOrder: number;
+}
+
+const VALID_REASONS: LeaveReason[] = ['cp', 'rtt', 'maladie', 'sans_solde'];
+
+function normalizeReason(value: unknown): LeaveReason {
+  return VALID_REASONS.includes(value as LeaveReason) ? (value as LeaveReason) : 'cp';
 }
 
 export interface Leave {
@@ -30,7 +38,7 @@ export interface Leave {
   endDate: string;
   startPeriod: 'full' | 'morning' | 'afternoon';
   endPeriod: 'full' | 'morning' | 'afternoon';
-  reason: string | null;
+  reason: LeaveReason;
   status: string;
   createdBy: number | null;
   createdAt: string;
@@ -60,7 +68,7 @@ function formatLeave(row: any): Leave {
     endDate: formatDate(row.end_date),
     startPeriod: row.start_period,
     endPeriod: row.end_period,
-    reason: row.reason,
+    reason: normalizeReason(row.reason),
     status: row.status,
     createdBy: row.created_by,
     createdAt: row.created_at.toISOString(),
@@ -143,7 +151,7 @@ export async function createLeave(
       endDate,
       data?.startPeriod || 'full',
       data?.endPeriod || 'full',
-      data?.reason || null,
+      normalizeReason(data?.reason),
       data?.createdBy || null,
     ]
   );
@@ -168,7 +176,7 @@ export async function updateLeave(
   if (data.endDate !== undefined) { updates.push(`end_date = $${paramIndex++}`); values.push(data.endDate); }
   if (data.startPeriod !== undefined) { updates.push(`start_period = $${paramIndex++}`); values.push(data.startPeriod); }
   if (data.endPeriod !== undefined) { updates.push(`end_period = $${paramIndex++}`); values.push(data.endPeriod); }
-  if (data.reason !== undefined) { updates.push(`reason = $${paramIndex++}`); values.push(data.reason); }
+  if (data.reason !== undefined) { updates.push(`reason = $${paramIndex++}`); values.push(normalizeReason(data.reason)); }
 
   if (updates.length === 0) return getLeaveById(id);
 

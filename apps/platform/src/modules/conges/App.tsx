@@ -3,6 +3,7 @@ import { Layout, ToastContainer, ConfirmModal, ModuleHeader, useGatewayUser } fr
 import type { ToastData } from '@boilerplate/shared/components';
 import { LeaveCalendar } from './components/LeaveCalendar/LeaveCalendar';
 import { LeaveForm } from './components/LeaveForm/LeaveForm';
+import { Legend } from './components/Legend/Legend';
 import { ViewControls } from './components/ViewControls/ViewControls';
 import type { Member, Leave, LeaveFormData, ViewMode } from './types';
 import * as api from './services/api';
@@ -16,7 +17,7 @@ export default function CongesApp({ onNavigate }: { onNavigate?: (path: string) 
   );
 }
 
-function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
+function AppContent({ onNavigate: _onNavigate }: { onNavigate?: (path: string) => void }) {
   const { user } = useGatewayUser();
 
   const [viewMode, setViewMode] = useState<ViewMode>('month');
@@ -146,25 +147,18 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
     setScrollToTodayTrigger((n) => n + 1);
   }, []);
 
-  const handleBack = useCallback(() => {
-    if (onNavigate) onNavigate('/');
-    else window.location.href = '/';
-  }, [onNavigate]);
-
   return (
     <>
-      <ModuleHeader title="Congés" onBack={handleBack}>
-        <button className="module-header-btn" onClick={handleToday}>
-          Aujourd&apos;hui
-        </button>
+      <ModuleHeader title="Congés">
         <ViewControls
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           year={year}
           onYearChange={handleYearChange}
+          onToday={handleToday}
         />
         <button className="module-header-btn module-header-btn-primary" onClick={handleAddLeave}>
-          + Nouveau
+          + Nouvelle demande
         </button>
       </ModuleHeader>
 
@@ -180,19 +174,22 @@ function AppContent({ onNavigate }: { onNavigate?: (path: string) => void }) {
               </p>
             </div>
           ) : (
-            <LeaveCalendar
-              members={members}
-              leaves={leaves}
-              startDate={startDate}
-              endDate={endDate}
-              viewMode={viewMode}
-              currentUserId={user?.id}
-              isAdmin={user?.isAdmin ?? false}
-              onLeaveClick={handleLeaveClick}
-              onLeaveMove={handleLeaveMove}
-              onLeaveResize={handleLeaveResize}
-              scrollToTodayTrigger={scrollToTodayTrigger}
-            />
+            <>
+              <LeaveCalendar
+                members={members}
+                leaves={leaves}
+                startDate={startDate}
+                endDate={endDate}
+                viewMode={viewMode}
+                currentUserId={user?.id}
+                isAdmin={user?.isAdmin ?? false}
+                onLeaveClick={handleLeaveClick}
+                onLeaveMove={handleLeaveMove}
+                onLeaveResize={handleLeaveResize}
+                scrollToTodayTrigger={scrollToTodayTrigger}
+              />
+              <Legend />
+            </>
           )}
         </div>
       </div>

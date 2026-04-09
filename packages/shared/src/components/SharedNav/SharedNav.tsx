@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
-import { APPS, CATEGORIES } from './constants.js';
-import type { AppInfo } from './constants.js';
-import { MenuIcon, HomeIcon, LogoutIcon } from './icons.js';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import { APPS } from './constants.js';
+import { MenuIcon, LogoutIcon } from './icons.js';
 import './SharedNav.css';
 
 export interface SharedNavProps {
@@ -15,16 +14,11 @@ export interface SharedNavProps {
 
 export function SharedNav({
   currentApp,
-  children,
   allowedAppIds,
   onNavigate,
 }: SharedNavProps) {
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const menuContainerRef = useRef<HTMLDivElement>(null);
-
-  const currentAppInfo: AppInfo | undefined = currentApp
-    ? APPS.find(app => app.id === currentApp)
-    : undefined;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
 
   // Add/remove has-shared-nav class on body
   useEffect(() => {
@@ -34,9 +28,9 @@ export function SharedNav({
     };
   }, []);
 
-  // Block body scroll when dropdown is open
+  // Block body scroll when drawer is open
   useEffect(() => {
-    if (dropdownOpen) {
+    if (drawerOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -44,31 +38,24 @@ export function SharedNav({
     return () => {
       document.body.style.overflow = '';
     };
-  }, [dropdownOpen]);
+  }, [drawerOpen]);
 
-  // Close dropdown on outside click
+  // Close drawer on ESC key
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        menuContainerRef.current &&
-        !menuContainerRef.current.contains(e.target as Node)
-      ) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener('click', handleClickOutside);
-    return () => {
-      document.removeEventListener('click', handleClickOutside);
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawerOpen(false);
     };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
   }, []);
 
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, path: string) => {
     if (onNavigate) {
       e.preventDefault();
-      setDropdownOpen(false);
+      setDrawerOpen(false);
       onNavigate(path);
     } else {
-      setDropdownOpen(false);
+      setDrawerOpen(false);
     }
   };
 
@@ -81,113 +68,112 @@ export function SharedNav({
     }
   }, []);
 
+  // Filter apps for menu (exclude design-system, settings — they're separate)
+  const menuApps = APPS.filter(app =>
+    app.id !== 'design-system' && (!allowedAppIds || allowedAppIds.includes(app.id))
+  );
+
   return (
-    <nav className="shared-nav">
-      {/* Left: logo + brand */}
-      <div className="shared-nav-left">
-        <a
-          className="shared-nav-logo-link"
-          href="/"
-          onClick={(e) => handleNavClick(e, '/')}
-          title="Accueil"
-        >
-          <img
-            src="/favicon.svg"
-            alt="Boilerplate"
-            className="shared-nav-logo"
-          />
-        </a>
-
-        {currentAppInfo ? (
+    <>
+      <nav className="shared-nav">
+        {/* Left: terminal logo only */}
+        <div className="shared-nav-left">
           <a
-            className="shared-nav-brand"
-            href={currentAppInfo.path}
-            onClick={(e) => handleNavClick(e, currentAppInfo.path)}
-          >
-            <span
-              className="shared-nav-brand-dot"
-              style={{ backgroundColor: currentAppInfo.color }}
-            />
-            {currentAppInfo.name}
-          </a>
-        ) : (
-          <a
-            className="shared-nav-brand"
+            className="shared-nav-logo-link"
             href="/"
             onClick={(e) => handleNavClick(e, '/')}
+            title="Accueil"
           >
-            Boilerplate
+            <span className="shared-nav-logo-terminal" aria-label="Boilerplate">&gt;_</span>
           </a>
-        )}
-      </div>
+        </div>
 
-      {/* Right: burger menu */}
-      <div className="shared-nav-right" ref={menuContainerRef}>
-        <button
-          className="shared-nav-menu-toggle"
-          onClick={() => setDropdownOpen(prev => !prev)}
-          type="button"
-          title="Menu"
-        >
-          <MenuIcon />
-        </button>
+        {/* Right: burger menu toggle */}
+        <div className="shared-nav-right">
+          <button
+            className="shared-nav-menu-toggle"
+            onClick={() => setDrawerOpen(true)}
+            type="button"
+            title="Menu"
+            aria-label="Ouvrir le menu"
+          >
+            <MenuIcon />
+          </button>
+        </div>
+      </nav>
 
-        <div className={`shared-nav-dropdown${dropdownOpen ? ' open' : ''}`}>
+      {/* Full-screen drawer */}
+      <div
+        ref={drawerRef}
+        className={`shared-nav-drawer${drawerOpen ? ' open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-hidden={!drawerOpen}
+      >
+        {/* Drawer header: logo + close */}
+        <div className="shared-nav-drawer-header">
           <a
-            className="shared-nav-dropdown-home"
+            className="shared-nav-logo-link"
             href="/"
             onClick={(e) => handleNavClick(e, '/')}
+            title="Accueil"
           >
-            <HomeIcon />
-            <span>Accueil</span>
+            <span className="shared-nav-logo-terminal" aria-label="Boilerplate">&gt;_</span>
           </a>
+          <button
+            className="shared-nav-drawer-close"
+            onClick={() => setDrawerOpen(false)}
+            type="button"
+            title="Fermer le menu"
+            aria-label="Fermer le menu"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
 
-          {CATEGORIES.map((category) => {
-            const categoryApps = APPS.filter(
-              app => app.category === category.id && (!allowedAppIds || allowedAppIds.includes(app.id))
-            );
-            if (categoryApps.length === 0) return null;
-
-            return (
-              <React.Fragment key={category.id}>
-                <div className="shared-nav-dropdown-category">
-                  <span className="shared-nav-dropdown-category-icon">{category.icon}</span>
-                  <span>{category.name}</span>
-                </div>
-                {categoryApps.map(app => (
-                  <a
-                    key={app.id}
-                    className={`shared-nav-dropdown-item${
-                      currentApp === app.id ? ' active' : ''
-                    }`}
-                    href={app.path}
-                    onClick={(e) => handleNavClick(e, app.path)}
-                  >
+        {/* Drawer content: app list */}
+        <div className="shared-nav-drawer-content">
+          <ul className="shared-nav-drawer-list">
+            {menuApps.map(app => (
+              <li key={app.id}>
+                <a
+                  className={`shared-nav-drawer-item${currentApp === app.id ? ' active' : ''}`}
+                  href={app.path}
+                  onClick={(e) => handleNavClick(e, app.path)}
+                >
+                  <span className="shared-nav-drawer-icon">
                     <span
-                      className="shared-nav-dropdown-dot"
+                      className="shared-nav-drawer-dot"
                       style={{ backgroundColor: app.color }}
                     />
-                    <span className="shared-nav-dropdown-name">{app.name}</span>
-                  </a>
-                ))}
-              </React.Fragment>
-            );
-          })}
+                  </span>
+                  <span className="shared-nav-drawer-name">{app.name}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
 
-          {/* Settings + Logout */}
-          <div className="shared-nav-dropdown-divider" />
-
+          {/* Settings (separated, no bullet, gear icon) */}
           <a
-            className="shared-nav-dropdown-item"
+            className="shared-nav-drawer-settings"
             href="/reglages"
             onClick={(e) => handleNavClick(e, '/reglages')}
           >
-            <span className="shared-nav-dropdown-icon">&#x2699;&#xFE0F;</span>
-            <span className="shared-nav-dropdown-name">Réglages</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+            <span>Réglages</span>
           </a>
+        </div>
 
+        {/* Drawer footer: logout */}
+        <div className="shared-nav-drawer-footer">
           <button
-            className="shared-nav-dropdown-logout"
+            className="shared-nav-drawer-logout"
             onClick={handleLogout}
             type="button"
           >
@@ -196,7 +182,16 @@ export function SharedNav({
           </button>
         </div>
       </div>
-    </nav>
+
+      {/* Backdrop */}
+      {drawerOpen && (
+        <div
+          className="shared-nav-backdrop"
+          onClick={() => setDrawerOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+    </>
   );
 }
 

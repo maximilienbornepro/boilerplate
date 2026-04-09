@@ -132,8 +132,8 @@
 }
 
 .actions :global(.module-header-btn-primary:hover) {
-  background: var(--accent-secondary);
-  border-color: var(--accent-secondary);
+  background: var(--accent-primary-hover);
+  border-color: var(--accent-primary-hover);
 }
 
 .actions :global(.module-header-btn-danger) {
