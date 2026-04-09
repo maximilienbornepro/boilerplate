@@ -3,10 +3,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  flex: 1;
   gap: var(--spacing-xl);
   padding: var(--spacing-2xl) var(--spacing-lg);
+  position: fixed;
+  top: 110px; /* SharedNav 50px + ModuleHeader 60px */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .header {

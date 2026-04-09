@@ -4,9 +4,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  flex: 1;
   padding: var(--spacing-2xl) var(--spacing-lg);
   font-family: var(--font-family-mono);
+  position: fixed;
+  top: 110px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .grid {
