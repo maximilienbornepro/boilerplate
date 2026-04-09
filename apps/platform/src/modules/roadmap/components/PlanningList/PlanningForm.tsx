@@ -27,14 +27,14 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
   const isEdit = !!planning;
 
   return (
-    <Modal title={isEdit ? 'Modifier le planning' : 'Nouveau planning'} onClose={onClose}>
+    <Modal title={isEdit ? 'Modifier la roadmap' : 'Nouvelle roadmap'} onClose={onClose}>
       <div className={styles.modalBody}>
         <FormField label="Nom" required>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Mon planning 2026"
+            placeholder="Ma roadmap 2026"
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             autoFocus
           />

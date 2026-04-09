@@ -124,10 +124,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
 
   return (
     <>
-      <ModuleHeader
-        title="SuiviTess"
-        subtitle="Sélectionnez un document à mettre à jour"
-      >
+      <ModuleHeader title="SuiviTess">
         <button
           className="module-header-btn module-header-btn-primary"
           onClick={() => setShowCreateForm(true)}
@@ -145,7 +142,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
                 <polyline points="14 2 14 8 20 8" />
               </svg>
               <p className={styles.emptyTitle}>Aucun document</p>
-              <p className={styles.emptyHint}>Créez votre première review pour commencer</p>
+              <p className={styles.emptyHint}>Créer votre première review pour commencer</p>
               <Button variant="primary" onClick={() => setShowCreateForm(true)}>
                 + Nouvelle review
               </Button>

@@ -121,10 +121,6 @@ export function SubjectsPanel({
   const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  // AI Suggestions
-  const [suggestions, setSuggestions] = useState<SubjectSearchResult[]>([]);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-
   // New subject creation
   const [showNewSubject, setShowNewSubject] = useState(false);
   const [newSubjectTitle, setNewSubjectTitle] = useState('');
@@ -147,18 +143,6 @@ export function SubjectsPanel({
   }, [task.id]);
 
   useEffect(() => { loadSubjects(); }, [loadSubjects]);
-
-  // Load AI suggestions when task changes
-  useEffect(() => {
-    let cancelled = false;
-    setLoadingSuggestions(true);
-    setSuggestions([]);
-    api.suggestSubjects(task.id)
-      .then(results => { if (!cancelled) setSuggestions(results); })
-      .catch(() => { /* silent fail */ })
-      .finally(() => { if (!cancelled) setLoadingSuggestions(false); });
-    return () => { cancelled = true; };
-  }, [task.id]);
 
   useEffect(() => {
     if (debouncedQuery.length < 2) { setSearchResults([]); setShowDropdown(false); return; }
@@ -185,7 +169,6 @@ export function SubjectsPanel({
     try {
       await api.linkSubject(task.id, result.id);
       setSearchQuery(''); setShowDropdown(false);
-      setSuggestions(prev => prev.filter(s => s.id !== result.id));
       await loadSubjects();
     } catch { setError('Erreur lors de la liaison'); }
   }, [task.id, loadSubjects]);
@@ -275,10 +258,6 @@ export function SubjectsPanel({
       {/* ── Header ── */}
       <div className="sp-header">
         <div className="sp-header-info">
-          <div className="sp-header-label">
-            <span className="sp-task-color-dot" style={{ backgroundColor: task.color }} />
-            TÂCHE
-          </div>
           <input
             className="sp-task-name-input"
             value={taskName}
@@ -334,78 +313,11 @@ export function SubjectsPanel({
           </div>
         )}
 
-        {/* ── AI Suggestions ── */}
-        {!editingSubjectId && (loadingSuggestions || suggestions.length > 0) && (
-          <div className="sp-suggestions">
-            <div className="sp-suggestions-header">
-              <span className="sp-suggestions-badge">IA</span>
-              <span>Suggestions</span>
-              {loadingSuggestions && <span className="sp-search-spinner">⏳</span>}
-            </div>
-            {suggestions.map(s => (
-              <button key={s.id} className="sp-suggestion-item" onClick={() => handleLink(s)}>
-                <span className="sp-dropdown-status">{s.status.split(' ')[0]}</span>
-                <div className="sp-dropdown-content">
-                  <span className="sp-dropdown-title">{s.title}</span>
-                  <span className="sp-dropdown-doc">{s.document_title} › {s.section_name}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* ── New subject form ── */}
-        {!editingSubjectId && (
-          <div className="sp-new-subject-section">
-            {!showNewSubject ? (
-              <button className="sp-btn sp-btn-new" onClick={handleOpenNewSubject}>
-                + Nouveau sujet
-              </button>
-            ) : (
-              <div className="sp-new-subject-form">
-                <select
-                  className="sp-new-subject-select"
-                  value={selectedDocId}
-                  onChange={e => setSelectedDocId(e.target.value)}
-                >
-                  {availableDocs.map(doc => (
-                    <option key={doc.id} value={doc.id}>{doc.title}</option>
-                  ))}
-                </select>
-                <input
-                  className="sp-new-subject-input"
-                  type="text"
-                  placeholder="Titre du sujet..."
-                  value={newSubjectTitle}
-                  onChange={e => setNewSubjectTitle(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleCreateSubject(); }}
-                  autoFocus
-                />
-                <div className="sp-new-subject-hint">
-                  Sera ajouté dans la section « {ROADMAP_SECTION_NAME} »
-                </div>
-                <div className="sp-new-subject-actions">
-                  <button
-                    className="sp-btn sp-btn-primary"
-                    onClick={handleCreateSubject}
-                    disabled={creatingSubject || !newSubjectTitle.trim()}
-                  >
-                    {creatingSubject ? 'Création...' : 'Créer et lier'}
-                  </button>
-                  <button className="sp-btn" onClick={() => setShowNewSubject(false)}>
-                    Annuler
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ── Subjects list ── */}
         <div className="sp-subjects">
           {subjectsLoading && <div className="sp-loading">Chargement...</div>}
           {!subjectsLoading && subjects.length === 0 && (
-            <div className="sp-empty">Aucun sujet lié. Recherchez ci-dessus pour en ajouter.</div>
+            <div className="sp-empty">Aucun sujet lié. Rechercher ci-dessus pour en ajouter.</div>
           )}
 
           {subjects.map(subject => (
@@ -475,16 +387,78 @@ export function SubjectsPanel({
 
       </div>{/* end scrollable */}
 
+      {/* ── Sticky "New subject" CTA ── */}
+      {!editingSubjectId && (
+        <div className="sp-new-subject-sticky">
+          {!showNewSubject ? (
+            <button
+              type="button"
+              className="sp-new-subject-primary"
+              onClick={handleOpenNewSubject}
+            >
+              + Nouveau sujet
+            </button>
+          ) : (
+            <div className="sp-new-subject-form">
+              <select
+                className="sp-new-subject-select"
+                value={selectedDocId}
+                onChange={e => setSelectedDocId(e.target.value)}
+              >
+                {availableDocs.map(doc => (
+                  <option key={doc.id} value={doc.id}>{doc.title}</option>
+                ))}
+              </select>
+              <input
+                className="sp-new-subject-input"
+                type="text"
+                placeholder="Titre du sujet..."
+                value={newSubjectTitle}
+                onChange={e => setNewSubjectTitle(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCreateSubject(); }}
+                autoFocus
+              />
+              <div className="sp-new-subject-hint">
+                Sera ajouté dans la section « {ROADMAP_SECTION_NAME} »
+              </div>
+              <div className="sp-new-subject-actions">
+                <button className="sp-btn" onClick={() => setShowNewSubject(false)}>
+                  Annuler
+                </button>
+                <button
+                  className="sp-new-subject-primary"
+                  onClick={handleCreateSubject}
+                  disabled={creatingSubject || !newSubjectTitle.trim()}
+                >
+                  {creatingSubject ? 'Création...' : 'Créer et lier'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Compact footer ── */}
       <div className="sp-footer">
         <div className="sp-footer-actions">
           {planningId && (
             <button
-              className={`sp-footer-btn ${copiedEmbed ? 'sp-footer-btn--copied' : ''}`}
+              type="button"
+              className={`roadmap-share-btn${copiedEmbed ? ' roadmap-share-btn--copied' : ''}`}
               onClick={handleCopyEmbed}
-              title="Copier le lien embed"
+              title={copiedEmbed ? 'Lien copié !' : 'Copier le lien de partage'}
+              aria-label="Partager"
             >
-              {copiedEmbed ? '✓' : <LinkIcon />}
+              {copiedEmbed ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              )}
             </button>
           )}
           <button

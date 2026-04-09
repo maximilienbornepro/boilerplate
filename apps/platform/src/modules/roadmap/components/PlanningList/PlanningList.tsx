@@ -29,10 +29,10 @@ export function PlanningList({
               <line x1="8" y1="2" x2="8" y2="6" />
               <line x1="3" y1="10" x2="21" y2="10" />
             </svg>
-            <p className={styles.emptyTitle}>Aucun planning</p>
-            <p className={styles.emptyHint}>Créez votre premier planning pour commencer</p>
+            <p className={styles.emptyTitle}>Aucune roadmap</p>
+            <p className={styles.emptyHint}>Créer votre première roadmap pour commencer</p>
             <Button variant="primary" onClick={onAdd}>
-              + Nouveau planning
+              + Nouvelle roadmap
             </Button>
           </div>
         </Card>

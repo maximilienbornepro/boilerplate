@@ -5,6 +5,16 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  /* Viewport-constrained so the gantt scrolls internally and the header stays sticky.
+     Uses dynamic viewport units to adapt if ModuleHeader wraps on narrow screens. */
+  height: calc(100dvh - 110px); /* SharedNav 50px + ModuleHeader min 60px */
+}
+
+@media (max-width: 900px) {
+  .roadmap-planning-view {
+    /* On narrow screens, ModuleHeader actions may wrap to 2 rows (~104px total) */
+    height: calc(100dvh - 154px);
+  }
 }
 
 /* When SubjectsPanel is visible, switch to row layout */
@@ -58,6 +68,52 @@
   font-size: var(--font-size-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
   cursor: pointer;
+}
+
+/* Add task / Add marker CTAs — same width as the left column buttons */
+.roadmap-add-btn {
+  min-width: 140px;
+  height: 32px;
+  padding: 0 var(--spacing-md);
+  justify-content: center;
+}
+
+/* Share (paper plane) icon button */
+.roadmap-share-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  min-width: 36px;
+  height: 36px;
+  padding: 0 var(--spacing-sm);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: color var(--transition-normal), background var(--transition-normal), transform var(--transition-normal);
+  flex-shrink: 0;
+}
+
+.roadmap-share-btn:hover {
+  color: var(--accent-primary);
+  transform: translate(1px, -1px) rotate(-4deg);
+}
+
+.roadmap-share-btn svg {
+  flex-shrink: 0;
+}
+
+/* Copied success state — simple violet check */
+.roadmap-share-btn--copied,
+.roadmap-share-btn--copied:hover {
+  color: var(--accent-primary);
+  background: transparent;
+  transform: none !important;
 }
 
 /* Embed mode */

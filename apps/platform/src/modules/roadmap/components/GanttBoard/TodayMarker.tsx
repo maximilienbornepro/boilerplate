@@ -10,7 +10,7 @@ interface TodayMarkerProps {
   columns?: TimeColumn[];
 }
 
-export function TodayMarker({ chartStartDate, viewMode, columns }: TodayMarkerProps) {
+export function TodayMarker({ chartStartDate, viewMode, columns, totalHeight }: TodayMarkerProps) {
   const columnWidth = getColumnWidth(viewMode);
 
   const leftPosition = useMemo(() => {
@@ -43,9 +43,9 @@ export function TodayMarker({ chartStartDate, viewMode, columns }: TodayMarkerPr
       style={{
         position: 'absolute',
         top: 0,
-        left: 250 + leftPosition,
+        left: 250 + leftPosition + columnWidth / 2,
         width: 2,
-        height: '100%',
+        height: totalHeight ? `${totalHeight}px` : '100%',
         background: 'var(--accent-primary)',
         opacity: 0.7,
         transform: 'translateX(-1px)',

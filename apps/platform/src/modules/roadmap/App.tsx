@@ -158,7 +158,7 @@ function PlanningListView({ onNavigate }: { onNavigate?: (path: string) => void 
           className="module-header-btn module-header-btn-primary"
           onClick={() => { setEditingPlanningForForm(null); setShowPlanningForm(true); }}
         >
-          + Nouveau planning
+          + Nouvelle roadmap
         </button>
       </ModuleHeader>
       <PlanningList
@@ -463,18 +463,46 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
       )}
 
       <ModuleHeader title={selectedPlanning.name} onBack={() => navigate('/roadmap')}>
-        <button className="module-header-btn" onClick={handleTodayClick}>
-          Aujourd'hui
-        </button>
         <ViewSelector
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           yearOffset={yearOffset}
           onYearOffsetChange={setYearOffset}
-          currentYear={new Date().getFullYear() + yearOffset}
+          currentYear={new Date(selectedPlanning.startDate).getFullYear() + yearOffset}
+          onToday={handleTodayClick}
+          yearNavDisabled={new Date(selectedPlanning.startDate).getFullYear() === new Date(selectedPlanning.endDate).getFullYear()}
         />
-        <button className="module-header-btn module-header-btn-primary" onClick={handleCopyPreviewLink}>
-          {copiedPreview ? 'Copié !' : 'Partager'}
+        <button
+          type="button"
+          className={`roadmap-share-btn${copiedPreview ? ' roadmap-share-btn--copied' : ''}`}
+          onClick={handleCopyPreviewLink}
+          title={copiedPreview ? 'Lien copié !' : 'Copier le lien de partage'}
+          aria-label="Partager"
+        >
+          {copiedPreview ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          )}
+        </button>
+        <button
+          type="button"
+          className="module-header-btn module-header-btn-primary roadmap-add-btn"
+          onClick={handleAddTask}
+        >
+          + Tâche
+        </button>
+        <button
+          type="button"
+          className="module-header-btn module-header-btn-primary roadmap-add-btn"
+          onClick={handleCreateMarker}
+        >
+          + Marqueur
         </button>
       </ModuleHeader>
 

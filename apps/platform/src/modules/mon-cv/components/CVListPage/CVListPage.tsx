@@ -111,7 +111,7 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations }: CVListPageProps) 
                 <polyline points="14 2 14 8 20 8" />
               </svg>
               <p className="cv-list-empty-title">Aucun CV</p>
-              <p className="cv-list-empty-hint">Créez votre premier CV pour commencer</p>
+              <p className="cv-list-empty-hint">Créer votre premier CV pour commencer</p>
               <Button variant="primary" onClick={() => setShowCreate(true)}>
                 + Nouveau CV
               </Button>

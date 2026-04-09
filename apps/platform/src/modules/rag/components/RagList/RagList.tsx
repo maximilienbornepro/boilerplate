@@ -22,7 +22,7 @@ export function RagList({ bots, onOpen, onDelete, onCreate }: Props) {
               <path d="M12 7v4" />
             </svg>
             <p className={styles.emptyTitle}>Aucun assistant RAG</p>
-            <p className={styles.emptyHint}>Créez votre premier assistant documentaire pour commencer</p>
+            <p className={styles.emptyHint}>Créer votre premier assistant documentaire pour commencer</p>
             {onCreate && (
               <Button variant="primary" onClick={onCreate}>
                 + Nouveau RAG
