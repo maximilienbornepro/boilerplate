@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { SharedNav } from '../SharedNav/SharedNav.js';
 import { APPS } from '../SharedNav/constants.js';
+import { useGatewayAuth } from '../../hooks/useGatewayAuth.js';
 import styles from './Layout.module.css';
 
 export type LayoutVariant = 'centered' | 'centered-narrow' | 'full-width' | 'sidebar' | 'custom';
@@ -12,7 +13,9 @@ export interface LayoutProps {
   noAuth?: boolean;
   onNavigate?: (path: string) => void;
   navSlot?: ReactNode;
-  /** If provided, only show these app IDs in the menu */
+  /** If provided, only show these app IDs in the menu.
+   * If omitted, falls back to the current user's permissions from useGatewayAuth.
+   * Pass an empty array to hide all apps. */
   allowedAppIds?: string[];
 }
 
@@ -25,6 +28,9 @@ export function Layout({
   navSlot,
   allowedAppIds,
 }: LayoutProps) {
+  // Auto-fallback to current user's permissions when not explicitly provided
+  const { user } = useGatewayAuth();
+  const effectiveAllowedAppIds = allowedAppIds ?? user?.permissions;
   const variantClass = {
     centered: styles.centered,
     'centered-narrow': styles.centeredNarrow,
@@ -46,7 +52,7 @@ export function Layout({
       <SharedNav
         currentApp={appId}
         onNavigate={onNavigate}
-        allowedAppIds={allowedAppIds}
+        allowedAppIds={effectiveAllowedAppIds}
       >
         {navSlot}
       </SharedNav>
