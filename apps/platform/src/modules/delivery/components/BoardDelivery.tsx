@@ -21,7 +21,9 @@ interface BoardDeliveryProps {
   jiraBaseUrl?: string | null;
 }
 
-const ROW_HEIGHT = 95;
+/** Vertical pitch between rows on the board grid. Tasks are positioned at
+ *  `top: row * ROW_HEIGHT` so this also controls the gap between tasks. */
+const ROW_HEIGHT = 60;
 const TOTAL_COLS = 6;
 
 export function BoardDelivery({

@@ -12,8 +12,6 @@ const STATUS_DOT_COLORS: Record<SimpleStatus, string> = {
 
 // Max chips visible in a container before showing the "+N" indicator
 const MAX_VISIBLE_CHIPS = 3;
-// Container always occupies 2 row-heights on the grid
-const CONTAINER_ROW_SPAN = 2;
 
 const getStatusInfo = (status?: string): { label: string; className: string } | null => {
   if (!status) return null;
@@ -248,9 +246,11 @@ export function TaskBlock({
   };
 
   if (isContainer) {
-    // Fixed height = 2 row-heights regardless of child count
-    blockStyle.height = `${CONTAINER_ROW_SPAN * rowHeight}px`;
-    blockStyle.minHeight = `${CONTAINER_ROW_SPAN * rowHeight}px`;
+    // Dynamic height: the container grows to fit its title, optional
+    // description, and up to 3 chips (+ the "•••" more indicator when
+    // there are 4+ children). CSS `.containerBlock { min-height: ... }`
+    // floors the size so an empty container stays usable.
+    blockStyle.height = 'auto';
   } else {
     blockStyle.background = getTaskColor(task);
   }

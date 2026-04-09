@@ -2,9 +2,8 @@ import { useState, useCallback } from 'react';
 import {
   Layout, ModuleHeader, Modal, ConfirmModal, LoadingSpinner,
   Toast, ToastContainer, ListEditor, TagEditor, ExpandableSection,
-  ImageUploader, Card, FormField, ToggleGroup,
-  Badge, Button, MenuDropdown, InlineEdit, FileDragDropZone,
-  ScoreBlock, ActionCard, RecommendationItem, ProjectEditor,
+  ImageUploader, Card, FormField,
+  Badge, Button, ProjectEditor,
   SectionTitle, Tabs,
 } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
@@ -160,7 +159,6 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
   const [listItems, setListItems] = useState(['Premier element', 'Deuxieme element', 'Troisieme element']);
   const [tags, setTags] = useState(['React', 'TypeScript', 'Node.js', 'PostgreSQL']);
   const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [toggleValue, setToggleValue] = useState('month');
   const [tabValue, setTabValue] = useState('tab1');
   const [formName, setFormName] = useState('');
   const [formError, setFormError] = useState('');
@@ -342,44 +340,6 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
           </div>
         </section>
 
-        {/* ── ToggleGroup ── */}
-        <section className="ds-section">
-          <SectionTitle>ToggleGroup</SectionTitle>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; ToggleGroup</p>
-          <ToggleGroup
-            options={[
-              { value: 'month', label: 'Mois' },
-              { value: 'quarter', label: 'Trimestre' },
-              { value: 'year', label: 'Annee' },
-            ]}
-            value={toggleValue}
-            onChange={setToggleValue}
-          />
-        </section>
-
-        {/* ── MenuDropdown ── */}
-        <section className="ds-section">
-          <SectionTitle>MenuDropdown</SectionTitle>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; MenuDropdown</p>
-          <MenuDropdown items={[
-            { label: 'Editer', onClick: () => addToast({ type: 'info', message: 'Editer' }) },
-            { label: 'Dupliquer', onClick: () => addToast({ type: 'info', message: 'Dupliquer' }) },
-            { label: 'Supprimer', onClick: () => addToast({ type: 'error', message: 'Supprimer' }), danger: true },
-          ]} />
-        </section>
-
-        {/* ── InlineEdit ── */}
-        <section className="ds-section">
-          <SectionTitle>InlineEdit</SectionTitle>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; InlineEdit</p>
-          <div className="ds-comp-constrained">
-            <InlineEdit
-              value="Cliquez pour editer ce texte"
-              onSave={(val) => addToast({ type: 'success', message: `Sauvegarde : ${val}` })}
-            />
-          </div>
-        </section>
-
         {/* ── ListEditor ── */}
         <section className="ds-section">
           <SectionTitle>ListEditor</SectionTitle>
@@ -436,74 +396,6 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
           <p className="ds-component-path">@boilerplate/shared/components &rarr; ImageUploader</p>
           <div className="ds-comp-constrained">
             <ImageUploader image={profileImage || undefined} onChange={setProfileImage} label="Photo de profil" size="medium" />
-          </div>
-        </section>
-
-        {/* ── FileDragDropZone ── */}
-        <section className="ds-section">
-          <SectionTitle>FileDragDropZone</SectionTitle>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; FileDragDropZone</p>
-          <div className="ds-comp-constrained">
-            <FileDragDropZone
-              onFiles={(files) => addToast({ type: 'info', message: `${files.length} fichier(s)` })}
-              accept=".pdf,.txt,.md"
-              label="Glissez vos fichiers ici (PDF, TXT, MD)"
-            />
-          </div>
-        </section>
-
-        {/* ── ScoreBlock ── */}
-        <section className="ds-section">
-          <SectionTitle>ScoreBlock</SectionTitle>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; ScoreBlock</p>
-          <div className="ds-comp-constrained">
-            <ScoreBlock
-              title="Score ATS"
-              before={45}
-              after={82}
-              metrics={[
-                { label: 'Keywords', value: 12, max: 15 },
-                { label: 'Experience', value: 90, max: 100 },
-              ]}
-            />
-          </div>
-        </section>
-
-        {/* ── ActionCard ── */}
-        <section className="ds-section">
-          <SectionTitle>ActionCard</SectionTitle>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; ActionCard</p>
-          <div className="ds-comp-constrained">
-            <ActionCard onToggle={() => {}} selected={false} impact="critical">
-              <strong>Action critique</strong>
-              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Description de l'action critique</p>
-            </ActionCard>
-            <ActionCard onToggle={() => {}} selected impact="important">
-              <strong>Action selectionnee</strong>
-              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>Cette action est selectionnee</p>
-            </ActionCard>
-          </div>
-        </section>
-
-        {/* ── RecommendationItem ── */}
-        <section className="ds-section">
-          <SectionTitle>RecommendationItem</SectionTitle>
-          <p className="ds-component-path">@boilerplate/shared/components &rarr; RecommendationItem</p>
-          <div className="ds-comp-constrained">
-            <RecommendationItem
-              priority="critique"
-              type="add"
-              action="Ajouter des mots-cles pertinents"
-              example="Ex: React, TypeScript, Node.js"
-              keywords={['React', 'TypeScript']}
-              onApply={() => addToast({ type: 'success', message: 'Recommandation appliquee' })}
-            />
-            <RecommendationItem
-              priority="important"
-              type="replace"
-              action="Remplacer les termes generiques"
-              example="Remplacer 'developpeur' par 'ingenieur logiciel'"
-            />
           </div>
         </section>
 
