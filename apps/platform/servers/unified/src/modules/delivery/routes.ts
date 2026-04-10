@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
@@ -10,6 +10,104 @@ import {
 
 export function createDeliveryRoutes(): Router {
   const router = Router();
+
+  // ============ Figma Plugin Export (PUBLIC — no auth) ============
+  // These routes are consumed by the Figma plugin which runs in an iframe
+  // sandbox (origin: null) and cannot carry session cookies. CORS headers
+  // are set explicitly to allow any origin.
+
+  const figmaCors = (_req: Request, res: Response, next: NextFunction) => {
+    // Override the global cors middleware which sets credentials: true +
+    // reflects origin. The Figma plugin runs in origin: null (iframe sandbox)
+    // and browsers reject "null" origin with credentials. We use wildcard
+    // origin + no credentials for these public routes.
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.removeHeader('Access-Control-Allow-Credentials');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+    next();
+  };
+
+  router.get('/figma/boards', figmaCors, asyncHandler(async (_req, res) => {
+    // List ALL boards (no user filter — plugin doesn't authenticate)
+    const result = await db.getAllBoardsPublic();
+    res.json(result);
+  }));
+
+  router.get('/figma/boards/:boardId/export', figmaCors, asyncHandler(async (req, res) => {
+    const boardId = req.params.boardId as string;
+    const board = await db.getBoardById(boardId);
+    if (!board) {
+      res.status(404).json({ error: 'Board not found' });
+      return;
+    }
+
+    const totalCols = board.boardType === 'calendaire' ? 4 : (board.durationWeeks ?? 6);
+
+    const tasks = await db.getAllTasksForBoard(boardId);
+    const positions = await db.getPositionsForBoard(boardId);
+    const posMap = new Map(positions.map(p => [p.taskId, p]));
+
+    let hiddenIds = new Set<string>();
+    try {
+      const state = await db.getIncrementState(boardId);
+      hiddenIds = new Set(state.hiddenTaskIds || []);
+    } catch { /* no state */ }
+
+    const visibleTasks = tasks.filter(t => !hiddenIds.has(t.id));
+
+    const exportTasks = visibleTasks
+      .filter(t => !t.parentTaskId)
+      .map(task => {
+        const pos = posMap.get(task.id);
+        const startCol = pos?.startCol ?? 0;
+        const endCol = pos?.endCol ?? (startCol + 1);
+        const colSpan = endCol - startCol;
+
+        const keyMatch = task.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+        const jiraKey = keyMatch ? keyMatch[1] : task.title.slice(0, 20);
+        const titleClean = task.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim() || task.title;
+
+        const taskData: TaskForFigma = {
+          jiraKey,
+          title: titleClean,
+          status: normalizeStatus(task.status),
+          version: null,
+          estimatedDays: task.estimatedDays,
+          colSpan,
+        };
+
+        const children = visibleTasks
+          .filter(c => c.parentTaskId === task.id)
+          .map(c => {
+            const cKey = c.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+            return {
+              jiraKey: cKey ? cKey[1] : '',
+              title: c.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim(),
+              status: normalizeStatus(c.status),
+            };
+          });
+
+        return {
+          id: task.id, jiraKey, title: titleClean, status: taskData.status,
+          colSpan, children,
+          position: { startCol, endCol, row: pos?.row ?? 0 },
+          svg: generateTaskSvg(taskData),
+        };
+      });
+
+    res.json({
+      boardId: board.id, boardName: board.name, boardType: board.boardType,
+      totalCols, startDate: board.startDate, endDate: board.endDate,
+      durationWeeks: board.durationWeeks, tasks: exportTasks, count: exportTasks.length,
+    });
+  }));
+
+  // OPTIONS preflight for Figma CORS
+  router.options('/figma/boards', figmaCors, (_req, res) => res.sendStatus(204));
+  router.options('/figma/boards/:boardId/export', figmaCors, (_req, res) => res.sendStatus(204));
+
+  // ============ Authenticated routes below ============
   router.use(authMiddleware);
 
   // ============ Boards CRUD ============
@@ -489,117 +587,6 @@ export function createDeliveryRoutes(): Router {
       };
     });
     res.json(issues);
-  }));
-
-  // ============ Figma Plugin Export ============
-  // These routes are consumed by the Figma plugin ("Delivery Board Import")
-  // to render task cards as SVG nodes on the Figma canvas.
-  // The plugin sends the board ID and receives SVG cards with positions.
-
-  // List boards available for export (no auth required for plugin — TODO: add token auth later)
-  router.get('/figma/boards', asyncHandler(async (req, res) => {
-    const boards = await db.getAllBoards(req.user!.id);
-    res.json(boards.map(b => ({
-      id: b.id,
-      name: b.name,
-      boardType: b.boardType,
-      startDate: b.startDate,
-      endDate: b.endDate,
-      durationWeeks: b.durationWeeks,
-    })));
-  }));
-
-  // Export a board's tasks as SVG for Figma
-  router.get('/figma/boards/:boardId/export', asyncHandler(async (req, res) => {
-    const boardId = req.params.boardId as string;
-    const board = await db.getBoardById(boardId);
-    if (!board) {
-      res.status(404).json({ error: 'Board not found' });
-      return;
-    }
-
-    // Compute totalCols from board config
-    const totalCols = board.boardType === 'calendaire' ? 4 : (board.durationWeeks ?? 6);
-
-    // Fetch all tasks + positions for the board
-    const tasks = await db.getAllTasksForBoard(boardId);
-    const positions = await db.getPositionsForBoard(boardId);
-    const posMap = new Map(positions.map(p => [p.taskId, p]));
-
-    // Filter hidden tasks
-    let hiddenIds = new Set<string>();
-    try {
-      const state = await db.getIncrementState(boardId);
-      hiddenIds = new Set(state.hiddenTaskIds || []);
-    } catch {
-      // No state → no hidden tasks
-    }
-
-    const visibleTasks = tasks.filter(t => !hiddenIds.has(t.id));
-
-    // Build export payload
-    const exportTasks = visibleTasks
-      .filter(t => !t.parentTaskId) // Only top-level tasks (containers + standalone)
-      .map(task => {
-        const pos = posMap.get(task.id);
-        const startCol = pos?.startCol ?? 0;
-        const endCol = pos?.endCol ?? (startCol + 1);
-        const colSpan = endCol - startCol;
-
-        // Extract Jira key from title
-        const keyMatch = task.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
-        const jiraKey = keyMatch ? keyMatch[1] : task.title.slice(0, 20);
-
-        const titleClean = task.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim() || task.title;
-
-        const taskData: TaskForFigma = {
-          jiraKey,
-          title: titleClean,
-          status: normalizeStatus(task.status),
-          version: null,
-          estimatedDays: task.estimatedDays,
-          colSpan,
-        };
-
-        // Get children for containers
-        const children = visibleTasks
-          .filter(c => c.parentTaskId === task.id)
-          .map(c => {
-            const cKeyMatch = c.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
-            return {
-              jiraKey: cKeyMatch ? cKeyMatch[1] : '',
-              title: c.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim(),
-              status: normalizeStatus(c.status),
-            };
-          });
-
-        return {
-          id: task.id,
-          jiraKey,
-          title: titleClean,
-          status: taskData.status,
-          colSpan,
-          children,
-          position: {
-            startCol,
-            endCol,
-            row: pos?.row ?? 0,
-          },
-          svg: generateTaskSvg(taskData),
-        };
-      });
-
-    res.json({
-      boardId: board.id,
-      boardName: board.name,
-      boardType: board.boardType,
-      totalCols,
-      startDate: board.startDate,
-      endDate: board.endDate,
-      durationWeeks: board.durationWeeks,
-      tasks: exportTasks,
-      count: exportTasks.length,
-    });
   }));
 
   return router;

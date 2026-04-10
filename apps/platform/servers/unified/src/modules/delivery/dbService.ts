@@ -578,6 +578,20 @@ export async function getAllBoards(userId: number): Promise<BoardRow[]> {
   return result.rows.map(mapBoardRow);
 }
 
+/** Public variant — returns ALL boards without user filtering.
+ *  Used by the Figma plugin which doesn't authenticate. */
+export async function getAllBoardsPublic(): Promise<Array<{ id: string; name: string; boardType: string; startDate: string | null; endDate: string | null; durationWeeks: number | null }>> {
+  const result = await pool.query('SELECT id, name, board_type, start_date, end_date, duration_weeks FROM delivery_boards ORDER BY name');
+  return result.rows.map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    name: row.name as string,
+    boardType: ((row.board_type as string) ?? 'agile'),
+    startDate: row.start_date ? formatPgDate(row.start_date as Date) : null,
+    endDate: row.end_date ? formatPgDate(row.end_date as Date) : null,
+    durationWeeks: (row.duration_weeks as number) ?? null,
+  }));
+}
+
 export async function getBoardById(id: string): Promise<BoardRow | null> {
   const result = await pool.query('SELECT * FROM delivery_boards WHERE id = $1', [id]);
   if (result.rows.length === 0) return null;

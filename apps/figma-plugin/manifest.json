@@ -1,6 +1,6 @@
 {
-  "name": "Delivery Board Import",
-  "id": "delivery-board-import",
+  "name": "Boilerplate - Delivery Export",
+  "id": "boilerplate-delivery-export",
   "api": "1.0.0",
   "main": "code.js",
   "capabilities": [],
@@ -9,6 +9,6 @@
   "ui": "ui.html",
   "networkAccess": {
     "allowedDomains": ["*"],
-    "reasoning": "Requires access to delivery server via ngrok tunnel to fetch tasks data"
+    "reasoning": "Requires access to boilerplate server for delivery board data"
   }
 }
