@@ -8,6 +8,7 @@ import { TodayMarker } from './TodayMarker';
 import { DependencyLines } from './DependencyLines';
 import { MarkerLine } from './MarkerLine';
 import { useDependencyDraw } from '../../hooks/useDependencyDraw';
+import { Card, Button } from '@boilerplate/shared/components';
 import styles from './GanttBoard.module.css';
 
 interface GanttBoardProps {
@@ -403,6 +404,29 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
       getDescIds(taskId).forEach(id => onTaskUpdate(id, { color }));
     }
   }, [tasks, onTaskUpdate, getRootColor, getDescIds]);
+
+  // Empty state — no tasks: show card instead of calendar
+  if (!readOnly && flatTasks.length === 0) {
+    return (
+      <div className={styles.emptyWrapper}>
+        <Card className={styles.emptyCard}>
+          <div className={styles.emptyContent}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <p className={styles.emptyTitle}>Aucune tâche</p>
+            <p className={styles.emptyHint}>Créer votre première tâche pour commencer</p>
+            <Button variant="primary" onClick={onAddTask}>
+              + Tâche
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className={`${styles.container} ${autoHeight ? styles.autoHeight : ''}`}>
