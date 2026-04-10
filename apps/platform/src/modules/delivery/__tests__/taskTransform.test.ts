@@ -13,7 +13,7 @@ const MOCK_TASK_DATA: TaskData = {
   assignee: 'John Doe',
   priority: 'medium',
   estimatedDays: 3,
-  incrementId: 'inc1',
+  incrementId: 'board_s1',
   sprintName: 'Sprint 1',
   source: 'manual',
   parentTaskId: null,

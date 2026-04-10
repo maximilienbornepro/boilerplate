@@ -53,6 +53,43 @@ export async function getAllTasks(incrementId: string): Promise<TaskRow[]> {
   return result.rows.map(mapTaskRow);
 }
 
+/**
+ * Fetch all tasks belonging to a board, across ALL sprints.
+ * Matches:
+ *   - `${boardId}_s1`, `${boardId}_s2`, ... (new sprint format)
+ *   - `${boardId}_inc1`, ... (legacy increment format)
+ *   - `${boardId}` (bare board ID — tasks created during the transition)
+ */
+export async function getAllTasksForBoard(boardId: string): Promise<TaskRow[]> {
+  const result = await pool.query(
+    `SELECT ${TASK_COLUMNS} FROM delivery_tasks
+     WHERE increment_id = $1 OR increment_id LIKE $2 ESCAPE '\\'
+     ORDER BY increment_id, created_at`,
+    [boardId, `${boardId}\\_%`]
+  );
+  return result.rows.map(mapTaskRow);
+}
+
+/**
+ * Fetch all positions for a board, across ALL sprints.
+ */
+export async function getPositionsForBoard(boardId: string): Promise<TaskPosition[]> {
+  const result = await pool.query(
+    `SELECT task_id, increment_id, start_col, end_col, row, row_span
+     FROM delivery_positions
+     WHERE increment_id = $1 OR increment_id LIKE $2 ESCAPE '\\'`,
+    [boardId, `${boardId}\\_%`]
+  );
+  return result.rows.map((row: Record<string, unknown>) => ({
+    taskId: row.task_id as string,
+    incrementId: row.increment_id as string,
+    startCol: row.start_col as number,
+    endCol: row.end_col as number,
+    row: row.row as number,
+    rowSpan: (row.row_span as number) || 1,
+  }));
+}
+
 export async function createTask(task: {
   title: string;
   type?: string;
@@ -489,14 +526,33 @@ export async function ensureDailySnapshot(incrementId: string): Promise<boolean>
 
 // ============ Boards CRUD ============
 
+export type BoardType = 'agile' | 'calendaire';
+
 export interface BoardRow {
   id: string;
   userId: number;
   name: string;
   description: string | null;
-  type: string;
+  boardType: BoardType;
+  startDate: string | null;
+  endDate: string | null;
+  durationWeeks: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Format a Date created by the pg driver from a DATE column.
+ * The pg driver parses DATE values into `new Date(year, month, day)` using
+ * the SERVER's local timezone. We must read back with local getters (not
+ * toISOString which converts to UTC and can shift the date by −1 day in
+ * timezones east of UTC like France CEST).
+ */
+function formatPgDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function mapBoardRow(row: Record<string, unknown>): BoardRow {
@@ -505,7 +561,10 @@ function mapBoardRow(row: Record<string, unknown>): BoardRow {
     userId: row.user_id as number,
     name: row.name as string,
     description: (row.description as string) ?? null,
-    type: row.type as string,
+    boardType: (row.board_type as BoardType) ?? 'agile',
+    startDate: row.start_date ? formatPgDate(row.start_date as Date) : null,
+    endDate: row.end_date ? formatPgDate(row.end_date as Date) : null,
+    durationWeeks: (row.duration_weeks as number) ?? null,
     createdAt: (row.created_at as Date).toISOString(),
     updatedAt: (row.updated_at as Date).toISOString(),
   };
@@ -525,23 +584,42 @@ export async function getBoardById(id: string): Promise<BoardRow | null> {
   return mapBoardRow(result.rows[0]);
 }
 
-export async function createBoard(userId: number, name: string, description?: string | null): Promise<BoardRow> {
+export async function createBoard(
+  userId: number,
+  name: string,
+  description?: string | null,
+  boardType: BoardType = 'agile',
+  startDate?: string | null,
+  endDate?: string | null,
+  durationWeeks?: number | null,
+): Promise<BoardRow> {
   const result = await pool.query(
-    `INSERT INTO delivery_boards (user_id, name, description)
-     VALUES ($1, $2, $3)
+    `INSERT INTO delivery_boards (user_id, name, description, board_type, start_date, end_date, duration_weeks)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [userId, name, description ?? null]
+    [userId, name, description ?? null, boardType, startDate ?? null, endDate ?? null, durationWeeks ?? null]
   );
   return mapBoardRow(result.rows[0]);
 }
 
-export async function updateBoard(id: string, data: { name?: string; description?: string | null }): Promise<BoardRow> {
+export async function updateBoard(id: string, data: {
+  name?: string;
+  description?: string | null;
+  boardType?: BoardType;
+  startDate?: string | null;
+  endDate?: string | null;
+  durationWeeks?: number | null;
+}): Promise<BoardRow> {
   const fields: string[] = [];
   const values: unknown[] = [];
   let idx = 1;
 
   if (data.name !== undefined) { fields.push(`name = $${idx++}`); values.push(data.name); }
   if (data.description !== undefined) { fields.push(`description = $${idx++}`); values.push(data.description); }
+  if (data.boardType !== undefined) { fields.push(`board_type = $${idx++}`); values.push(data.boardType); }
+  if (data.startDate !== undefined) { fields.push(`start_date = $${idx++}`); values.push(data.startDate); }
+  if (data.endDate !== undefined) { fields.push(`end_date = $${idx++}`); values.push(data.endDate); }
+  if (data.durationWeeks !== undefined) { fields.push(`duration_weeks = $${idx++}`); values.push(data.durationWeeks); }
   fields.push(`updated_at = CURRENT_TIMESTAMP`);
   values.push(id);
 
@@ -574,10 +652,23 @@ export async function initDeliveryDb(): Promise<void> {
       )
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_delivery_boards_user ON delivery_boards(user_id)`);
-    // Existing delivery_boards tables (created before `description` was added
-    // to the schema) need an explicit ALTER since CREATE TABLE IF NOT EXISTS
-    // is a no-op when the table already exists.
+    // Existing delivery_boards tables need explicit ALTER for columns added
+    // after initial schema creation (CREATE TABLE IF NOT EXISTS is a no-op
+    // when the table already exists).
     await pool.query(`ALTER TABLE delivery_boards ADD COLUMN IF NOT EXISTS description TEXT`);
+    await pool.query(`ALTER TABLE delivery_boards ADD COLUMN IF NOT EXISTS board_type VARCHAR(20) DEFAULT 'agile'`);
+    await pool.query(`ALTER TABLE delivery_boards ADD COLUMN IF NOT EXISTS start_date DATE`);
+    await pool.query(`ALTER TABLE delivery_boards ADD COLUMN IF NOT EXISTS end_date DATE`);
+    await pool.query(`ALTER TABLE delivery_boards ADD COLUMN IF NOT EXISTS duration_weeks INTEGER`);
+    // Backfill existing boards with default agile config (6 weeks, matching
+    // the old inc1 = 42 days model, starting 2026-01-19).
+    await pool.query(`
+      UPDATE delivery_boards
+      SET board_type = 'agile', start_date = '2026-01-19',
+          end_date = '2026-01-19'::date + INTERVAL '42 days',
+          duration_weeks = 6
+      WHERE start_date IS NULL
+    `);
 
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS source VARCHAR(10) DEFAULT 'manual'`);
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS parent_task_id UUID REFERENCES delivery_tasks(id) ON DELETE SET NULL`);

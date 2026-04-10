@@ -19,6 +19,14 @@
   background: var(--sprint-header-bg);
   color: var(--text-secondary);
   border-right: 1px solid var(--border-color);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+/* Visual feedback when a container is dragged over this row's label */
+.rowLabelDragOver {
+  background: var(--accent-light, rgba(0, 188, 212, 0.1));
+  border-color: var(--accent-primary);
+  box-shadow: inset 0 0 0 2px var(--accent-primary);
 }
 
 .timeline {

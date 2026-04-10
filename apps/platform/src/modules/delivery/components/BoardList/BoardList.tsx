@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { ModuleHeader, Card, Modal, FormField, Button, ConfirmModal, ToastContainer, LoadingSpinner } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import { fetchBoards, createBoard, updateBoardApi, deleteBoardApi } from '../../services/api';
-import type { Board } from '../../services/api';
+import type { Board, BoardType } from '../../services/api';
 import './BoardList.css';
 
 interface BoardListProps {
@@ -16,6 +16,18 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [newBoardType, setNewBoardType] = useState<BoardType>('agile');
+  const [newStartDate, setNewStartDate] = useState(() => {
+    const d = new Date();
+    // Default to next Monday
+    d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));
+    return d.toISOString().split('T')[0];
+  });
+  const [newDurationWeeks, setNewDurationWeeks] = useState(8);
+  const [newMonth, setNewMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [creating, setCreating] = useState(false);
   const [editingBoard, setEditingBoard] = useState<Board | null>(null);
   const [editName, setEditName] = useState('');
@@ -49,7 +61,16 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      const board = await createBoard(newName.trim(), newDescription.trim() || undefined);
+      const startDate = newBoardType === 'calendaire'
+        ? `${newMonth}-01`
+        : newStartDate;
+      const board = await createBoard(
+        newName.trim(),
+        newBoardType,
+        startDate,
+        newBoardType === 'agile' ? newDurationWeeks : undefined,
+        newDescription.trim() || undefined,
+      );
       setBoards(prev => [board, ...prev]);
       setShowCreateForm(false);
       setNewName('');
@@ -196,6 +217,40 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
                 autoFocus
               />
             </FormField>
+
+            <FormField label="Type">
+              <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.875rem' }}>
+                  <input type="radio" name="boardType" value="agile" checked={newBoardType === 'agile'} onChange={() => setNewBoardType('agile')} />
+                  Agile
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.875rem' }}>
+                  <input type="radio" name="boardType" value="calendaire" checked={newBoardType === 'calendaire'} onChange={() => setNewBoardType('calendaire')} />
+                  Calendaire
+                </label>
+              </div>
+            </FormField>
+
+            {newBoardType === 'agile' ? (
+              <>
+                <FormField label="Date de début" required>
+                  <input type="date" value={newStartDate} onChange={e => setNewStartDate(e.target.value)} />
+                </FormField>
+                <FormField label="Durée" required>
+                  <select value={newDurationWeeks} onChange={e => setNewDurationWeeks(Number(e.target.value))}>
+                    <option value={2}>2 semaines (1 sprint)</option>
+                    <option value={4}>4 semaines (2 sprints)</option>
+                    <option value={6}>6 semaines (3 sprints)</option>
+                    <option value={8}>8 semaines (4 sprints)</option>
+                  </select>
+                </FormField>
+              </>
+            ) : (
+              <FormField label="Mois" required>
+                <input type="month" value={newMonth} onChange={e => setNewMonth(e.target.value)} />
+              </FormField>
+            )}
+
             <FormField label="Description">
               <textarea
                 placeholder="Description optionnelle"

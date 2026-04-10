@@ -43,11 +43,14 @@ interface TaskBlockProps {
   onNestTask?: (childId: string, containerId: string) => void;
   onUnnest?: (childId: string) => void;
   jiraBaseUrl?: string | null;
+  /** Called when a container is dragged and released over a different
+   *  project row label (detected via elementsFromPoint on mouseup). */
+  onProjectDrop?: (taskId: string, project: string) => void;
 }
 
 export function TaskBlock({
   task, totalCols, rowHeight, readOnly = false,
-  onUpdate, onDelete, onResize, onMove, onNestTask, onUnnest, jiraBaseUrl,
+  onUpdate, onDelete, onResize, onMove, onNestTask, onUnnest, jiraBaseUrl, onProjectDrop,
 }: TaskBlockProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(task.title);
@@ -223,7 +226,29 @@ export function TaskBlock({
         }
       }
 
-      // Normal move
+      // Cross-row move for containers: check if the cursor landed on a
+      // project row label. We check bounding rects directly instead of
+      // elementsFromPoint because data-project sits on .rowLabel (sibling
+      // of .timeline, not ancestor), so closest() from timeline children
+      // would never find it.
+      if (isContainer && onProjectDrop) {
+        const labels = document.querySelectorAll('[data-project]');
+        for (const label of labels) {
+          const rect = label.getBoundingClientRect();
+          if (
+            upEvent.clientX >= rect.left && upEvent.clientX <= rect.right &&
+            upEvent.clientY >= rect.top && upEvent.clientY <= rect.bottom
+          ) {
+            const targetProject = label.getAttribute('data-project');
+            if (targetProject) {
+              onProjectDrop(task.id, targetProject);
+              return;
+            }
+          }
+        }
+      }
+
+      // Normal move (within the same row)
       if (!blockRef.current?.parentElement || !onMove) return;
       const colWidth = blockRef.current.parentElement.offsetWidth / totalCols;
       const deltaCols = Math.round((upEvent.clientX - startXRef.current) / colWidth);
@@ -235,7 +260,7 @@ export function TaskBlock({
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [isEditing, isResizing, readOnly, startCol, endCol, row, totalCols, rowHeight, task.id, task.source, taskWidth, onMove, onNestTask]);
+  }, [isEditing, isResizing, readOnly, startCol, endCol, row, totalCols, rowHeight, task.id, task.source, taskWidth, onMove, onNestTask, isContainer, onProjectDrop]);
 
   // ── Styles ──
   const blockStyle: React.CSSProperties = {
@@ -352,7 +377,7 @@ export function TaskBlock({
           {task.estimatedDays && <span className={styles.daysBadge}>{task.estimatedDays}j</span>}
           {task.type === 'tech' && <span className={styles.techBadge}>TECH</span>}
           {task.type === 'bug'  && <span className={styles.bugBadge}>BUG</span>}
-          <span className={styles.taskTitle}>{task.title}</span>
+          <span className={styles.taskTitle}>{stripJiraKey(task.title)}</span>
         </div>
       )}
 

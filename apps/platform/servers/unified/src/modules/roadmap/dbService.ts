@@ -405,6 +405,12 @@ export async function unlinkBoard(planningId: string, boardId: string): Promise<
  */
 export async function getRawDeliveryTasksForBoard(boardId: string): Promise<{
   boardName: string;
+  boardConfig: {
+    boardType: 'agile' | 'calendaire';
+    startDate: string;
+    endDate: string;
+    durationWeeks: number | null;
+  } | null;
   tasks: Array<{
     id: string;
     title: string;
@@ -417,15 +423,26 @@ export async function getRawDeliveryTasksForBoard(boardId: string): Promise<{
     endCol: number | null;
   }>;
 }> {
-  // Board name
+  // Board info (name + config for overlay date derivation)
   const boardResult = await pool.query(
-    'SELECT name FROM delivery_boards WHERE id = $1',
+    'SELECT name, board_type, start_date, end_date, duration_weeks FROM delivery_boards WHERE id = $1',
     [boardId]
   );
   if (boardResult.rows.length === 0) {
-    return { boardName: '', tasks: [] };
+    return { boardName: '', boardConfig: null, tasks: [] };
   }
-  const boardName = boardResult.rows[0].name as string;
+  const row = boardResult.rows[0];
+  const boardName = row.name as string;
+  // Use local getters (not toISOString) because the pg driver creates Date
+  // objects in the server's local timezone for DATE columns. In France
+  // (CEST, UTC+2) toISOString would shift April 1 back to March 31.
+  const pgDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const boardConfig = {
+    boardType: (row.board_type as 'agile' | 'calendaire') ?? 'agile',
+    startDate: row.start_date ? pgDate(row.start_date as Date) : '2026-01-19',
+    endDate: row.end_date ? pgDate(row.end_date as Date) : '2026-03-02',
+    durationWeeks: (row.duration_weeks as number) ?? null,
+  };
 
   // Tasks + positions. LEFT JOIN because a task may not have a grid position.
   // parent_task_id lets us reconstruct the delivery container → child relation
@@ -438,9 +455,9 @@ export async function getRawDeliveryTasksForBoard(boardId: string): Promise<{
        FROM delivery_tasks t
        LEFT JOIN delivery_positions p
          ON p.task_id = t.id AND p.increment_id = t.increment_id
-      WHERE t.increment_id LIKE $1 ESCAPE '\\'
+      WHERE t.increment_id = $1 OR t.increment_id LIKE $2 ESCAPE '\\'
       ORDER BY t.increment_id, t.created_at`,
-    [`${boardId}\\_%`]
+    [boardId, `${boardId}\\_%`]
   );
 
   const tasks = result.rows.map((row: {
@@ -465,7 +482,7 @@ export async function getRawDeliveryTasksForBoard(boardId: string): Promise<{
     endCol: row.end_col,
   }));
 
-  return { boardName, tasks };
+  return { boardName, boardConfig, tasks };
 }
 
 /**

@@ -320,10 +320,10 @@ Si aucun sujet n'est pertinent, retourne [].`,
     const overlay: Array<DerivedDeliveryTask & { boardId: string; boardName: string }> = [];
 
     for (const board of linkedBoards) {
-      const { boardName, tasks } = await db.getRawDeliveryTasksForBoard(board.id);
-      if (tasks.length === 0) continue;
+      const { boardName, boardConfig, tasks } = await db.getRawDeliveryTasksForBoard(board.id);
+      if (tasks.length === 0 || !boardConfig) continue;
 
-      const derived = deriveOverlayTasks({ rawTasks: tasks });
+      const derived = deriveOverlayTasks({ rawTasks: tasks, boardConfig });
 
       for (const task of derived) {
         overlay.push({ ...task, boardId: board.id, boardName });
