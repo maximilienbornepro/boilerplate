@@ -96,34 +96,50 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
   return (
     <Modal title={isEdit ? 'Modifier la roadmap' : 'Nouvelle roadmap'} onClose={onClose}>
       <div className={styles.modalBody}>
-        <FormField label="Nom" required>
+        <FormField label="Nom de la roadmap" required>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Ma roadmap 2026"
+            placeholder="Ex: Roadmap Q2 2026"
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             autoFocus
           />
         </FormField>
 
-        <div className={styles.row}>
-          <FormField label="Date de début" required>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
+        <FormField label="Date de début" required>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+        </FormField>
+
+        <FormField label="Date de fin" required>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            min={startDate || undefined}
+          />
+        </FormField>
+
+        {!boardsLoading && availableBoards.length > 0 && (
+          <FormField label="Delivery boards liés">
+            <div className={styles.boardList}>
+              {availableBoards.map(board => (
+                <label key={board.id} className={styles.boardCheckbox}>
+                  <input
+                    type="checkbox"
+                    checked={selectedBoardIds.has(board.id)}
+                    onChange={() => toggleBoard(board.id)}
+                  />
+                  <span>{board.name}</span>
+                </label>
+              ))}
+            </div>
           </FormField>
-          <FormField label="Date de fin" required>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              min={startDate || undefined}
-            />
-          </FormField>
-        </div>
+        )}
 
         <FormField label="Description">
           <textarea
@@ -132,35 +148,6 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
             placeholder="Description optionnelle"
             rows={2}
           />
-        </FormField>
-
-        <FormField label="Delivery boards liés">
-          {boardsLoading ? (
-            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-              Chargement des boards…
-            </div>
-          ) : availableBoards.length === 0 ? (
-            <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-              Aucun delivery board disponible.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 180, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 4, padding: '0.5rem' }}>
-              {availableBoards.map(board => (
-                <label
-                  key={board.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', width: '100%' }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedBoardIds.has(board.id)}
-                    onChange={() => toggleBoard(board.id)}
-                    style={{ width: 16, height: 16, flexShrink: 0, margin: 0 }}
-                  />
-                  <span style={{ flex: 1, textAlign: 'left' }}>{board.name}</span>
-                </label>
-              ))}
-            </div>
-          )}
         </FormField>
 
         <div className={styles.modalActions}>

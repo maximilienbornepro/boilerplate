@@ -588,6 +588,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                   onTaskMove={handleTaskMove}
                   onNestTask={handleNestTask}
                   onUnnestTask={handleUnnestTask}
+                  onAddTask={() => setShowAddTask(true)}
                 />
               </div>
             </div>

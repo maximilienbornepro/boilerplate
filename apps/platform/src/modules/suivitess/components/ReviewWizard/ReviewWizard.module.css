@@ -844,3 +844,21 @@
   }
 
 }
+
+/* ── Drag & drop ── */
+
+.draggable {
+  cursor: grab;
+}
+
+.draggable:active {
+  cursor: grabbing;
+}
+
+.dropLine {
+  height: 3px;
+  background: var(--accent-primary);
+  border-radius: 2px;
+  margin: 2px 0;
+  pointer-events: none;
+}

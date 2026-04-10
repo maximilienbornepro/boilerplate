@@ -34,29 +34,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // On mount, try to fetch the user. If the backend isn't ready yet
+  // (network error), retry a few times before giving up — this avoids
+  // the "Erreur de connexion" flash when the frontend starts before
+  // the backend in local dev.
   useEffect(() => {
-    refreshUser().finally(() => setLoading(false));
+    let cancelled = false;
+    const MAX_RETRIES = 8;
+    const RETRY_DELAY = 800; // ms
+
+    async function init() {
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+          const res = await fetch('/api/auth/me', { credentials: 'include' });
+          if (cancelled) return;
+          const data = await res.json();
+          setUser(data.user);
+          return;
+        } catch {
+          // Network error — backend probably not ready yet
+          if (cancelled) return;
+          if (attempt < MAX_RETRIES - 1) {
+            await new Promise((r) => setTimeout(r, RETRY_DELAY));
+          }
+        }
+      }
+      // All retries exhausted — no backend available
+      if (!cancelled) setUser(null);
+    }
+
+    init().finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const login = async (email: string, password: string) => {
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-        credentials: 'include',
-      });
-      const data = await res.json();
+    const MAX_LOGIN_RETRIES = 3;
+    const RETRY_DELAY = 1000;
 
-      if (!res.ok) {
-        return { success: false, error: data.error };
+    for (let attempt = 0; attempt < MAX_LOGIN_RETRIES; attempt++) {
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+          credentials: 'include',
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          return { success: false, error: data.error };
+        }
+
+        setUser(data.user);
+        return { success: true };
+      } catch {
+        if (attempt < MAX_LOGIN_RETRIES - 1) {
+          await new Promise((r) => setTimeout(r, RETRY_DELAY));
+          continue;
+        }
+        return { success: false, error: 'Erreur de connexion' };
       }
-
-      setUser(data.user);
-      return { success: true };
-    } catch {
-      return { success: false, error: 'Erreur de connexion' };
     }
+    return { success: false, error: 'Erreur de connexion' };
   };
 
   const register = async (email: string, password: string) => {

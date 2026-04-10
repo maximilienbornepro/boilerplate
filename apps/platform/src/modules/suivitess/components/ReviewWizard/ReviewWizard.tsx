@@ -119,6 +119,8 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
   const [changes, setChanges] = useState<Change[]>([]);
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [collapsedSubjectIds, setCollapsedSubjectIds] = useState<Set<string>>(new Set());
+  const [dragItem, setDragItem] = useState<{ type: 'section' | 'subject'; sectionIdx: number; subjectIdx?: number } | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<{ type: 'section' | 'subject'; sectionIdx: number; subjectIdx?: number; position: 'before' | 'after' } | null>(null);
   const [addingInSection, setAddingInSection] = useState<string | null>(null);
   const [newSubjectTitle, setNewSubjectTitle] = useState('');
   const [summary, setSummary] = useState<string>('');
@@ -794,8 +796,42 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
               {sections.map((section, sIdx) => {
                 const isSectionCollapsed = collapsedSectionIds.has(section.id);
                 return (
-                <div key={section.id} className={styles.sectionBlock} data-section-id={section.id}>
-                  <div className={styles.sectionHeader}>
+                <div
+                  key={section.id}
+                  className={styles.sectionBlock}
+                  data-section-id={section.id}
+                  draggable={isSectionCollapsed}
+                  onDragStart={isSectionCollapsed ? (e) => {
+                    setDragItem({ type: 'section', sectionIdx: sIdx });
+                    e.dataTransfer.effectAllowed = 'move';
+                    if (e.currentTarget instanceof HTMLElement) e.currentTarget.style.opacity = '0.4';
+                  } : undefined}
+                  onDragEnd={(e) => {
+                    if (e.currentTarget instanceof HTMLElement) e.currentTarget.style.opacity = '1';
+                    if (dragItem?.type === 'section' && dropIndicator?.type === 'section') {
+                      let toIdx = dropIndicator.sectionIdx;
+                      if (dropIndicator.position === 'after') toIdx += 1;
+                      if (toIdx > dragItem.sectionIdx) toIdx -= 1;
+                      if (toIdx !== dragItem.sectionIdx) handleReorderSection(dragItem.sectionIdx, toIdx);
+                    }
+                    setDragItem(null);
+                    setDropIndicator(null);
+                  }}
+                  onDragOver={isSectionCollapsed ? (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (!dragItem || dragItem.type !== 'section') return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                    setDropIndicator({ type: 'section', sectionIdx: sIdx, position });
+                  } : undefined}
+                  onDragLeave={isSectionCollapsed ? () => setDropIndicator(null) : undefined}
+                  onDrop={isSectionCollapsed ? (e) => { e.preventDefault(); } : undefined}
+                >
+                  {dropIndicator?.type === 'section' && dropIndicator.sectionIdx === sIdx && dropIndicator.position === 'before' && (
+                    <div className={styles.dropLine} />
+                  )}
+                  <div className={`${styles.sectionHeader} ${isSectionCollapsed ? styles.draggable : ''}`}>
                     <button
                       type="button"
                       className={styles.collapseBtn}
@@ -873,23 +909,47 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
                   {!isSectionCollapsed && section.subjects.map((subject, subIdx) => {
                     const isSubjectCollapsed = collapsedSubjectIds.has(subject.id);
                     return (
-                    <div key={subject.id} data-subject-id={`subject-${sIdx}-${subIdx}`} className={`${styles.subjectItem} ${isSubjectCollapsed ? styles.subjectItemCollapsed : ''}`}>
-                      <div className={styles.subjectReorderBtns}>
-                        <button
-                          className={styles.subjectReorderBtn}
-                          onClick={() => handleReorderSubject(sIdx, subIdx, subIdx - 1)}
-                          disabled={subIdx === 0}
-                          title="Monter"
-                        >↑</button>
-                        <button
-                          className={styles.subjectReorderBtn}
-                          onClick={() => handleReorderSubject(sIdx, subIdx, subIdx + 1)}
-                          disabled={subIdx === section.subjects.length - 1}
-                          title="Descendre"
-                        >↓</button>
-                      </div>
+                    <div
+                      key={subject.id}
+                      data-subject-id={`subject-${sIdx}-${subIdx}`}
+                      className={`${styles.subjectItem} ${isSubjectCollapsed ? styles.subjectItemCollapsed : ''}`}
+                      draggable={isSubjectCollapsed}
+                      onDragStart={isSubjectCollapsed ? (e) => {
+                        setDragItem({ type: 'subject', sectionIdx: sIdx, subjectIdx: subIdx });
+                        e.dataTransfer.effectAllowed = 'move';
+                        if (e.currentTarget instanceof HTMLElement) e.currentTarget.style.opacity = '0.4';
+                      } : undefined}
+                      onDragEnd={(e) => {
+                        if (e.currentTarget instanceof HTMLElement) e.currentTarget.style.opacity = '1';
+                        if (dragItem && dropIndicator && dropIndicator.type === 'subject' && dropIndicator.subjectIdx !== undefined) {
+                          let toIdx = dropIndicator.subjectIdx;
+                          if (dropIndicator.position === 'after') toIdx += 1;
+                          if (dragItem.sectionIdx === dropIndicator.sectionIdx) {
+                            if (toIdx > (dragItem.subjectIdx ?? 0)) toIdx -= 1;
+                            if (toIdx !== dragItem.subjectIdx) handleReorderSubject(dragItem.sectionIdx, dragItem.subjectIdx!, toIdx);
+                          } else {
+                            handleReorderSubjectCrossSection(dragItem.sectionIdx, dragItem.subjectIdx!, dropIndicator.sectionIdx, toIdx);
+                          }
+                        }
+                        setDragItem(null);
+                        setDropIndicator(null);
+                      }}
+                      onDragOver={isSubjectCollapsed ? (e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (!dragItem || dragItem.type !== 'subject') return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                        setDropIndicator({ type: 'subject', sectionIdx: sIdx, subjectIdx: subIdx, position });
+                      } : undefined}
+                      onDragLeave={isSubjectCollapsed ? () => setDropIndicator(null) : undefined}
+                      onDrop={isSubjectCollapsed ? (e) => { e.preventDefault(); } : undefined}
+                    >
+                      {dropIndicator?.type === 'subject' && dropIndicator.sectionIdx === sIdx && dropIndicator.subjectIdx === subIdx && dropIndicator.position === 'before' && (
+                        <div className={styles.dropLine} />
+                      )}
                       {isSubjectCollapsed ? (
-                        <div className={styles.subjectCollapsed}>
+                        <div className={`${styles.subjectCollapsed} ${isSubjectCollapsed ? styles.draggable : ''}`}>
                           <button
                             type="button"
                             className={styles.subjectCollapsedToggle}
@@ -935,6 +995,9 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
                             });
                           }}
                         />
+                      )}
+                      {dropIndicator?.type === 'subject' && dropIndicator.sectionIdx === sIdx && dropIndicator.subjectIdx === subIdx && dropIndicator.position === 'after' && (
+                        <div className={styles.dropLine} />
                       )}
                     </div>
                     );
@@ -991,6 +1054,9 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
                       + Nouveau sujet
                     </button>
                   ))}
+                  {dropIndicator?.type === 'section' && dropIndicator.sectionIdx === sIdx && dropIndicator.position === 'after' && (
+                    <div className={styles.dropLine} />
+                  )}
                 </div>
                 );
               })}

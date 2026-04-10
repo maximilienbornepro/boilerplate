@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { Sprint, Task, Release } from '../types';
+import { Card, Button } from '@boilerplate/shared/components';
 import { BoardRow } from './BoardRow';
 import { SprintColumn } from './SprintColumn';
 import { ReleaseMarker } from './ReleaseMarker';
@@ -30,6 +31,8 @@ interface BoardDeliveryProps {
   availableProjects?: string[];
   /** Called when the user reassigns a container to a different project row. */
   onContainerProjectChange?: (taskId: string, project: string) => void;
+  /** Called when the user clicks "+ Tâche" in the empty state. */
+  onAddTask?: () => void;
 }
 
 /** Vertical pitch between rows on the board grid. Tasks are positioned at
@@ -74,6 +77,7 @@ export function BoardDelivery({
   containerProjectMap = {},
   availableProjects = [],
   onContainerProjectChange,
+  onAddTask,
 }: BoardDeliveryProps) {
   // Group tasks by Jira project. Each project gets its own BoardRow.
   // Containers (manual tasks) check the override map first, then fall
@@ -102,6 +106,27 @@ export function BoardDelivery({
 
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [tasks, containerProjectMap]);
+
+  if (tasks.length === 0 && !readOnly && onAddTask) {
+    return (
+      <div className={styles.emptyWrapper}>
+        <Card className={styles.emptyCard}>
+          <div className={styles.emptyContent}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="9" y1="21" x2="9" y2="9" />
+            </svg>
+            <p className={styles.emptyTitle}>Aucune tâche</p>
+            <p className={styles.emptyHint}>Créer votre première tâche pour commencer</p>
+            <Button variant="primary" onClick={onAddTask}>
+              + Tâche
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.board}>
