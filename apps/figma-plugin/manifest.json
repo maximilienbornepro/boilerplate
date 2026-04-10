@@ -1,0 +1,14 @@
+{
+  "name": "Delivery Board Import",
+  "id": "delivery-board-import",
+  "api": "1.0.0",
+  "main": "code.js",
+  "capabilities": [],
+  "enableProposedApi": false,
+  "editorType": ["figma", "figjam"],
+  "ui": "ui.html",
+  "networkAccess": {
+    "allowedDomains": ["*"],
+    "reasoning": "Requires access to delivery server via ngrok tunnel to fetch tasks data"
+  }
+}

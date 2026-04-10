@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      color: #333;
+      padding: 16px;
+      background: #fff;
+    }
+
+    h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #1a1a1a;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .header h2 {
+      margin-bottom: 0;
+    }
+
+    .logo {
+      width: 28px;
+      height: 28px;
+      flex-shrink: 0;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #555;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 12px;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    button {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      color: white;
+    }
+
+    .btn-success:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(5, 150, 105, 0.4);
+    }
+
+    .btn-secondary {
+      background: #f3f4f6;
+      color: #374151;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #e5e7eb;
+    }
+
+    .status {
+      margin-top: 16px;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      display: none;
+    }
+
+    .status.info {
+      display: block;
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .status.error {
+      display: block;
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    .status.success {
+      display: block;
+      background: #d1fae5;
+      color: #059669;
+    }
+
+    .task-preview {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f9fafb;
+      border-radius: 6px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    .task-preview h4 {
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #6b7280;
+    }
+
+    .task-preview ul {
+      list-style: none;
+      font-size: 11px;
+    }
+
+    .task-preview li {
+      padding: 4px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .task-preview li:last-child {
+      border-bottom: none;
+    }
+
+    .help-text {
+      font-size: 10px;
+      color: #9ca3af;
+      margin-top: 4px;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 20px 0;
+    }
+
+    .checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 8px;
+      background: #f9fafb;
+      border-radius: 6px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 400;
+      margin-bottom: 0;
+    }
+
+    .checkbox-label:hover {
+      background: #f3f4f6;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg class="logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="ftv-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#667eea"/>
+          <stop offset="100%" style="stop-color:#764ba2"/>
+        </linearGradient>
+      </defs>
+      <rect width="100" height="100" rx="20" fill="url(#ftv-gradient)"/>
+      <text x="50" y="68" font-family="Arial Black, sans-serif" font-size="48" font-weight="900" fill="white" text-anchor="middle">ftv</text>
+    </svg>
+    <h2>Delivery Board Import</h2>
+  </div>
+
+  <div class="form-group">
+    <label for="apiUrl">URL du serveur</label>
+    <input type="text" id="apiUrl" placeholder="https://studio.vitess.tech" value="https://studio.vitess.tech">
+    <div class="help-text">Production: https://studio.vitess.tech | Dev: https://xxx.ngrok.app</div>
+  </div>
+
+  <div class="form-group">
+    <label>Projets</label>
+    <div class="checkbox-group" id="projectCheckboxes">
+      <label class="checkbox-label"><input type="checkbox" value="TVSMART" checked> TVSMART</label>
+      <label class="checkbox-label"><input type="checkbox" value="TVFREE"> TVFREE</label>
+      <label class="checkbox-label"><input type="checkbox" value="TVORA"> TVORA</label>
+      <label class="checkbox-label"><input type="checkbox" value="TVSFR"> TVSFR</label>
+      <label class="checkbox-label"><input type="checkbox" value="TVFIRE"> TVFIRE</label>
+    </div>
+    <div class="help-text">Selectionnez un ou plusieurs projets</div>
+  </div>
+
+  <div class="form-group">
+    <label for="piId">PI</label>
+    <select id="piId">
+      <option value="PI1" selected>PI1</option>
+      <option value="PI2">PI2</option>
+      <option value="PI3">PI3</option>
+      <option value="PI4">PI4</option>
+      <option value="PI5">PI5</option>
+      <option value="PI6">PI6</option>
+      <option value="PI7">PI7</option>
+      <option value="PI8">PI8</option>
+    </select>
+  </div>
+
+  <hr>
+  <h3 style="font-size: 12px; margin-bottom: 12px; color: #6b7280;">Configuration du positionnement</h3>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+    <div class="form-group" style="margin-bottom: 8px;">
+      <label for="startX">Position X (S1)</label>
+      <input type="number" id="startX" value="200">
+    </div>
+    <div class="form-group" style="margin-bottom: 8px;">
+      <label for="startY">Position Y (1ère ligne)</label>
+      <input type="number" id="startY" value="300">
+    </div>
+    <div class="form-group" style="margin-bottom: 8px;">
+      <label for="columnWidth">Largeur colonne</label>
+      <input type="number" id="columnWidth" value="560">
+    </div>
+    <div class="form-group" style="margin-bottom: 8px;">
+      <label for="rowHeight">Hauteur ligne</label>
+      <input type="number" id="rowHeight" value="200">
+    </div>
+  </div>
+  <div class="help-text" style="margin-bottom: 16px;">Ajustez ces valeurs selon votre grille FigJam</div>
+
+  <div class="button-group">
+    <button class="btn-primary" id="loadBtn">Charger les taches</button>
+    <button class="btn-secondary" onclick="cancel()">Annuler</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="task-preview" id="taskPreview" style="display: none;">
+    <h4>Taches chargees (<span id="taskCount">0</span>)</h4>
+    <ul id="taskList"></ul>
+  </div>
+
+  <div id="importSection" style="display: none;">
+    <hr>
+    <div class="button-group">
+      <button class="btn-primary" id="importTasksBtn" onclick="importTasks()">Importer les taches</button>
+      <button class="btn-success" id="importReleasesBtn" onclick="importReleases()">Importer les releases</button>
+    </div>
+  </div>
+
+  <script>
+    let loadedProjects = []; // Array of {projectId, tasks, maxRow, mepMarkers}
+    let apiBaseUrl = '';
+    let apiPath = '/api'; // Default to dev, updated when loading tasks
+
+    // Note: localStorage is not available in Figma plugins
+
+    function setStatus(message, type = 'info') {
+      const status = document.getElementById('status');
+      status.className = 'status ' + type;
+      status.textContent = message;
+    }
+
+    function clearStatus() {
+      const status = document.getElementById('status');
+      status.className = 'status';
+      status.textContent = '';
+    }
+
+    function getSelectedProjects() {
+      const checkboxes = document.querySelectorAll('#projectCheckboxes input[type="checkbox"]:checked');
+      return Array.from(checkboxes).map(function(cb) { return cb.value; });
+    }
+
+    async function loadTasks() {
+      console.log('loadTasks called');
+
+      const apiUrl = document.getElementById('apiUrl').value.trim();
+      const selectedProjects = getSelectedProjects();
+      const piId = document.getElementById('piId').value.trim();
+
+      console.log('Config:', { apiUrl, selectedProjects, piId });
+
+      if (!apiUrl) {
+        setStatus('Veuillez entrer l\'URL du serveur', 'error');
+        return;
+      }
+
+      if (selectedProjects.length === 0) {
+        setStatus('Veuillez selectionner au moins un projet', 'error');
+        return;
+      }
+
+      if (!piId) {
+        setStatus('Veuillez entrer le PI', 'error');
+        return;
+      }
+
+      // Remove trailing slash
+      apiBaseUrl = apiUrl.replace(/\/+$/, '');
+
+      // Determine API path based on server type
+      // Production (studio.vitess.tech) uses /delivery-api/
+      // Dev (localhost) uses /delivery/api/
+      const isProduction = apiBaseUrl.includes('studio.vitess.tech');
+      apiPath = isProduction ? '/delivery-api' : '/delivery/api';
+
+      setStatus('Chargement en cours...', 'info');
+      document.getElementById('loadBtn').disabled = true;
+
+      try {
+        loadedProjects = [];
+        let totalTasks = 0;
+
+        // Load tasks for each selected project
+        for (var i = 0; i < selectedProjects.length; i++) {
+          var project = selectedProjects[i];
+          setStatus('Chargement de ' + project + '...', 'info');
+
+          const url = apiBaseUrl + apiPath + '/figma/tasks/' + project + '/' + piId;
+          console.log('Fetching:', url);
+
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+            },
+          });
+
+          console.log('Response status:', response.status);
+
+          if (!response.ok) {
+            const text = await response.text();
+            console.log('Error response:', text);
+            throw new Error('HTTP ' + response.status + ': ' + response.statusText + ' (' + project + ')');
+          }
+
+          const data = await response.json();
+          console.log('Data received for ' + project + ':', data);
+
+          if (data.error) {
+            throw new Error(data.error);
+          }
+
+          const tasks = data.tasks || [];
+          const mepMarkers = data.mepMarkers || [];
+          if (tasks.length > 0 || mepMarkers.length > 0) {
+            // Calculate max row for this project
+            var maxRow = 0;
+            for (var j = 0; j < tasks.length; j++) {
+              if (tasks[j].position && tasks[j].position.row > maxRow) {
+                maxRow = tasks[j].position.row;
+              }
+            }
+            loadedProjects.push({
+              projectId: project,
+              tasks: tasks,
+              mepMarkers: mepMarkers,
+              maxRow: maxRow
+            });
+            totalTasks += tasks.length;
+          }
+        }
+
+        if (totalTasks === 0) {
+          setStatus('Aucune tache trouvee pour les projets selectionnes', 'error');
+          document.getElementById('taskPreview').style.display = 'none';
+          document.getElementById('importSection').style.display = 'none';
+          return;
+        }
+
+        // Show preview
+        document.getElementById('taskCount').textContent = totalTasks;
+        const taskList = document.getElementById('taskList');
+        var previewHtml = '';
+        for (var p = 0; p < loadedProjects.length; p++) {
+          var proj = loadedProjects[p];
+          previewHtml += '<li style="font-weight: 600; color: #667eea; border-bottom: none; padding-top: 8px;">' + proj.projectId + ' (' + proj.tasks.length + ' taches)</li>';
+          var showCount = Math.min(3, proj.tasks.length);
+          for (var t = 0; t < showCount; t++) {
+            var task = proj.tasks[t];
+            var title = task.title.length > 30 ? task.title.substring(0, 30) + '...' : task.title;
+            previewHtml += '<li style="padding-left: 12px;"><strong>' + task.jiraKey + '</strong> - ' + title + '</li>';
+          }
+          if (proj.tasks.length > 3) {
+            previewHtml += '<li style="color: #9ca3af; padding-left: 12px;">... et ' + (proj.tasks.length - 3) + ' autres</li>';
+          }
+        }
+        taskList.innerHTML = previewHtml;
+
+        document.getElementById('taskPreview').style.display = 'block';
+        document.getElementById('importSection').style.display = 'block';
+
+        setStatus(totalTasks + ' taches chargees (' + loadedProjects.length + ' projets)', 'success');
+
+      } catch (error) {
+        console.error('Fetch error:', error);
+        setStatus('Erreur: ' + error.message, 'error');
+        document.getElementById('taskPreview').style.display = 'none';
+        document.getElementById('importSection').style.display = 'none';
+      } finally {
+        document.getElementById('loadBtn').disabled = false;
+      }
+    }
+
+    function importTasks() {
+      if (loadedProjects.length === 0) {
+        setStatus('Aucune tache a importer', 'error');
+        return;
+      }
+
+      // Get positioning config from form
+      const config = {
+        startX: parseInt(document.getElementById('startX').value) || 200,
+        startY: parseInt(document.getElementById('startY').value) || 300,
+        columnWidth: parseInt(document.getElementById('columnWidth').value) || 560,
+        rowHeight: parseInt(document.getElementById('rowHeight').value) || 200,
+      };
+
+      parent.postMessage({
+        pluginMessage: {
+          type: 'import-tasks',
+          projects: loadedProjects,
+          config: config
+        }
+      }, '*');
+    }
+
+    async function importReleases() {
+      const selectedProjects = getSelectedProjects();
+      const project = selectedProjects[0]; // Use first selected project for releases
+      const piId = document.getElementById('piId').value;
+
+      if (!project) {
+        setStatus('Veuillez selectionner au moins un projet', 'error');
+        return;
+      }
+
+      if (!apiBaseUrl) {
+        setStatus('Veuillez d\'abord charger les taches', 'error');
+        return;
+      }
+
+      setStatus('Chargement des releases...', 'info');
+      document.getElementById('importReleasesBtn').disabled = true;
+
+      try {
+        // Fetch releases from server filtered by PI date range
+        const url = `${apiBaseUrl}${apiPath}/figma/releases/${project}/${piId}`;
+        console.log('Fetching releases:', url);
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          console.log('Error response:', text);
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('Releases data received:', data);
+
+        if (data.error) {
+          throw new Error(data.error);
+        }
+
+        if (!data.releases || data.releases.length === 0) {
+          setStatus('Aucune release trouvee pour ce projet', 'error');
+          return;
+        }
+
+        parent.postMessage({
+          pluginMessage: {
+            type: 'import-releases',
+            svg: data.svg,
+            count: data.count
+          }
+        }, '*');
+
+        setStatus(`${data.count} releases importees`, 'success');
+
+      } catch (error) {
+        console.error('Releases fetch error:', error);
+        setStatus(`Erreur: ${error.message}`, 'error');
+      } finally {
+        document.getElementById('importReleasesBtn').disabled = false;
+      }
+    }
+
+    function escapeXml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function cancel() {
+      parent.postMessage({ pluginMessage: { type: 'cancel' } }, '*');
+    }
+
+    // Initialize on load
+    console.log('Plugin UI loaded');
+    document.getElementById('loadBtn').addEventListener('click', function(e) {
+      e.preventDefault();
+      console.log('Button clicked via addEventListener');
+      loadTasks();
+    });
+  </script>
+</body>
+</html>
