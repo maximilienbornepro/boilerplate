@@ -211,6 +211,9 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
     };
   }, [flatTasks]);
 
+  // Minimum visible calendar height even when empty (200px ≈ 2.5 rows)
+  const calendarHeight = Math.max(tasksHeight, 200);
+
   const getAncestorIds = useCallback((taskId: string): string[] => {
     const ancestors: string[] = [];
     let currentTask = tasks.find(t => t.id === taskId);
@@ -433,9 +436,13 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
           </div>
         </div>
 
+        {/* Sticky opaque cover for task-name column — direct child of scroll container */}
+        <div className={styles.taskAreaCover} />
+
         <div className={styles.contentInner} style={{ width: totalWidth + 250, minWidth: totalWidth + 250 }}>
-          <div className={styles.grid} style={{ height: tasksHeight, bottom: 'auto' }}>
-            <div className={styles.taskNameColumn} />
+          {/* Grid: weekends/holidays + today — limited to calendar zone */}
+          <div className={styles.grid} style={{ height: calendarHeight, bottom: 'auto' }}>
+            <div className={styles.gridSeparator} />
             {(() => {
               let pixelLeft = 0;
               return effectiveColumns.map((col, index) => {
@@ -495,6 +502,10 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
 
             {!readOnly && (
               <>
+                {/* Spacer to push CTAs below the calendar zone */}
+                {calendarHeight > tasksHeight && (
+                  <div style={{ height: calendarHeight - tasksHeight }} />
+                )}
                 <div className={styles.addTaskRow}>
                   <button className={styles.addTaskButton} onClick={onAddTask}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -532,11 +543,11 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
             chartEndDate={chartEndDate}
             viewMode={viewMode}
             columns={effectiveColumns}
-            totalHeight={tasksHeight}
+            totalHeight={calendarHeight}
           />
 
           {/* Planning bottom delimiter */}
-          <div className={styles.planningBottomDelimiter} style={{ top: tasksHeight }} />
+          <div className={styles.planningBottomDelimiter} style={{ top: calendarHeight }} />
 
           {/* Markers */}
           {markers?.map(m => (
@@ -552,7 +563,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
               topLevelTaskRows={topLevelTaskRows}
               rowHeight={ROW_HEIGHT}
               rowOffsets={rowOffsets}
-              maxHeight={tasksHeight}
+              maxHeight={calendarHeight}
             />
           ))}
         </div>
