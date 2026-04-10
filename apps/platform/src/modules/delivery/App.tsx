@@ -5,18 +5,18 @@ import { BoardList } from './components/BoardList/BoardList';
 import { RestoreModal } from './components/RestoreModal';
 import { SnapshotModal } from './components/SnapshotModal';
 import { ImportModal } from './components/ImportModal';
-import { generateIncrements2026 } from './components/BurgerMenu';
+import { generateSprintsForBoard, type BoardConfig } from './utils/sprintGeneration';
 import { Layout, ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import type { Board } from './services/api';
 import { fetchBoard } from './services/api';
 import {
-  fetchTasks,
+  fetchTasksForBoard,
   createTask,
   updateTaskApi,
   nestTaskApi,
   unnestTaskApi,
   saveTaskPosition,
-  getTaskPositions,
+  fetchPositionsForBoard,
   fetchIncrementState,
   hideTask,
   restoreTasks,
@@ -27,6 +27,7 @@ import {
 import type { ActiveConnector } from './services/api';
 import type { Task, IncrementState, HiddenTask } from './types';
 import { transformTask, buildTaskTree } from './utils/taskTransform';
+import { extractJiraKey } from './utils/jiraUtils';
 
 // Containers always occupy 2 rows on the grid (fixed height)
 const CONTAINER_ROW_SPAN = 2;
@@ -92,9 +93,6 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedIncrementBase, setSelectedIncrementBase] = useState('inc1');
-  // Prefix increment with board ID to isolate data per board
-  const selectedIncrement = `${board.id}_${selectedIncrementBase}`;
   const [incrementState, setIncrementState] = useState<IncrementState | null>(null);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
@@ -103,18 +101,31 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [jiraSiteUrl, setJiraSiteUrl] = useState<string | null>(null);
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  // Manual override: assigns a container to a specific project row.
+  // Key = task id, value = project key. Takes priority over child-based detection.
+  const [containerProjectMap, setContainerProjectMap] = useState<Record<string, string>>({});
 
-  const incrementList = useMemo(() => generateIncrements2026(), []);
+  // Compute sprint structure from the board's config (replaces the old
+  // hardcoded generateIncrements2026 function + the increment selector).
+  const boardConfig: BoardConfig = useMemo(() => ({
+    id: board.id,
+    boardType: board.boardType ?? 'agile',
+    startDate: board.startDate ?? '2026-01-19',
+    endDate: board.endDate ?? '2026-03-02',
+    durationWeeks: board.durationWeeks ?? 6,
+  }), [board]);
 
-  const currentIncrementName = useMemo(() => {
-    const inc = incrementList.find((i) => i.id === selectedIncrementBase);
-    return inc?.name || selectedIncrementBase;
-  }, [incrementList, selectedIncrementBase]);
+  const { sprints: currentSprints, totalCols } = useMemo(
+    () => generateSprintsForBoard(boardConfig),
+    [boardConfig]
+  );
 
-  const currentSprints = useMemo(() => {
-    const inc = incrementList.find((i) => i.id === selectedIncrementBase);
-    return inc?.sprints || [];
-  }, [incrementList, selectedIncrementBase]);
+  // Board-level state ID (used for freeze/hide/snapshot — scoped to the
+  // board as a whole, not to individual sprints).
+  const boardStateId = board.id;
+  // Default sprint for new tasks (first sprint of the board).
+  const defaultSprintId = currentSprints[0]?.id ?? `${board.id}_s1`;
 
   // Load active connectors + Jira site URL on mount
   useEffect(() => {
@@ -132,22 +143,22 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
     load();
   }, []);
 
-  // Load increment state
+  // Load board-level state (freeze, hidden tasks)
   const loadIncrementState = useCallback(async () => {
     try {
-      const state = await fetchIncrementState(selectedIncrement);
+      const state = await fetchIncrementState(boardStateId);
       setIncrementState(state);
     } catch (err) {
-      console.error('Failed to load increment state:', err);
+      console.error('Failed to load board state:', err);
       setIncrementState({
-        incrementId: selectedIncrement,
+        incrementId: boardStateId,
         isFrozen: false,
         hiddenTaskIds: [],
         hiddenTasks: [],
         frozenAt: null,
       });
     }
-  }, [selectedIncrement]);
+  }, [boardStateId]);
 
   useEffect(() => {
     loadIncrementState();
@@ -156,22 +167,22 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   // Auto-snapshot
   useEffect(() => {
     if (incrementState) {
-      ensureDailySnapshot(selectedIncrement)
+      ensureDailySnapshot(boardStateId)
         .then(({ created }) => {
-          if (created) console.log('Daily snapshot created for', selectedIncrement);
+          if (created) console.log('Daily snapshot created for board', boardStateId);
         })
         .catch((err) => console.error('Failed to ensure daily snapshot:', err));
     }
-  }, [incrementState, selectedIncrement]);
+  }, [incrementState, boardStateId]);
 
-  // Reset state when increment changes
+  // Reset state when board changes
   useEffect(() => {
     setTasks([]);
     setError(null);
     setIncrementState(null);
-  }, [selectedIncrement]);
+  }, [boardStateId]);
 
-  // Load tasks
+  // Load all tasks for the board (across all sprints)
   const loadTasks = useCallback(async () => {
     if (incrementState === null) return;
 
@@ -179,16 +190,16 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
     setError(null);
 
     try {
-      const taskData = await fetchTasks(selectedIncrement);
+      const taskData = await fetchTasksForBoard(board.id);
 
       // Filter out hidden tasks
       const hiddenIds = new Set(incrementState.hiddenTaskIds || []);
       const visibleTasks = taskData.filter(t => !hiddenIds.has(t.id));
 
-      // Load positions
+      // Load positions for the entire board
       let positions: { taskId: string; startCol: number; endCol: number; row: number; rowSpan?: number }[] = [];
       try {
-        const posData = await getTaskPositions(selectedIncrement);
+        const posData = await fetchPositionsForBoard(board.id);
         positions = posData.map(p => ({
           taskId: p.taskId,
           startCol: p.startCol,
@@ -220,7 +231,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
     } finally {
       setIsLoading(false);
     }
-  }, [selectedIncrement, incrementState]);
+  }, [board.id, incrementState]);
 
   useEffect(() => {
     loadTasks();
@@ -240,7 +251,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
 
   const handleTaskDelete = async (taskId: string) => {
     try {
-      const result = await hideTask(selectedIncrement, taskId);
+      const result = await hideTask(boardStateId, taskId);
       setIncrementState((prev) =>
         prev ? {
           ...prev,
@@ -256,7 +267,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
 
   const handleRestoreTasks = async (taskIds: string[]) => {
     try {
-      const result = await restoreTasks(selectedIncrement, taskIds);
+      const result = await restoreTasks(boardStateId, taskIds);
       setIncrementState((prev) =>
         prev ? {
           ...prev,
@@ -282,7 +293,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
       const task = tasks.find((t) => t.id === taskId);
       await saveTaskPosition({
         taskId,
-        incrementId: selectedIncrement,
+        incrementId: defaultSprintId,
         startCol: newStartCol,
         endCol: newEndCol,
         row: task?.row ?? 0,
@@ -309,7 +320,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
     try {
       await saveTaskPosition({
         taskId,
-        incrementId: selectedIncrement,
+        incrementId: defaultSprintId,
         startCol: newStartCol,
         endCol: newEndCol,
         row: newRow,
@@ -338,7 +349,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
       await nestTaskApi(childId, containerId);
       await saveTaskPosition({
         taskId: containerId,
-        incrementId: selectedIncrement,
+        incrementId: defaultSprintId,
         startCol: container.startCol ?? 0,
         endCol: container.endCol ?? 2,
         row: container.row ?? 0,
@@ -350,7 +361,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
         prev.map((t) => t.id === childId ? { ...t, parentTaskId: null } : t)
       );
     }
-  }, [tasks, selectedIncrement]);
+  }, [tasks, boardStateId]);
 
   // Unnest a child task from its container
   const handleUnnestTask = useCallback(async (childId: string) => {
@@ -375,15 +386,15 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
 
     try {
       await unnestTaskApi(childId);
-      await saveTaskPosition({ taskId: childId, incrementId: selectedIncrement, startCol: 0, endCol: 2, row: maxEndRow, rowSpan: 1 });
+      await saveTaskPosition({ taskId: childId, incrementId: defaultSprintId, startCol: 0, endCol: 2, row: maxEndRow, rowSpan: 1 });
       if (container) {
-        await saveTaskPosition({ taskId: containerId, incrementId: selectedIncrement, startCol: container.startCol ?? 0, endCol: container.endCol ?? 2, row: container.row ?? 0, rowSpan: CONTAINER_ROW_SPAN });
+        await saveTaskPosition({ taskId: containerId, incrementId: defaultSprintId, startCol: container.startCol ?? 0, endCol: container.endCol ?? 2, row: container.row ?? 0, rowSpan: CONTAINER_ROW_SPAN });
       }
     } catch (err) {
       console.error('Failed to unnest task:', err);
       loadTasks();
     }
-  }, [tasks, selectedIncrement, loadTasks]);
+  }, [tasks, boardStateId, loadTasks]);
 
   // Add new task (always manual = container)
   const handleAddTask = async () => {
@@ -392,7 +403,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
     try {
       const taskData = await createTask({
         title: newTaskTitle.trim(),
-        incrementId: selectedIncrement,
+        incrementId: defaultSprintId,
         type: 'feature',
         status: 'todo',
         source: 'manual',
@@ -423,7 +434,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
 
       await saveTaskPosition({
         taskId: newTask.id,
-        incrementId: selectedIncrement,
+        incrementId: defaultSprintId,
         startCol: 0,
         endCol: 2,
         row: maxEndRow,
@@ -437,8 +448,38 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
     }
   };
 
+  // Extract distinct Jira project keys from task titles for the project filter.
+  const jiraProjects = useMemo(() => {
+    const projects = new Set<string>();
+    for (const task of tasks) {
+      const key = extractJiraKey(task.title);
+      if (key) {
+        const project = key.split('-')[0];
+        projects.add(project);
+      }
+    }
+    return Array.from(projects).sort();
+  }, [tasks]);
+
+  // Filter tasks by selected project (null = show all).
+  const filteredTasks = useMemo(() => {
+    if (!selectedProject) return tasks;
+    return tasks.filter(task => {
+      // Manual tasks (containers) → always show if they have children matching
+      if (task.source === 'manual') {
+        // Show container if any of its children belong to this project
+        const hasMatchingChild = tasks.some(
+          t => t.parentTaskId === task.id && extractJiraKey(t.title)?.startsWith(selectedProject + '-')
+        );
+        return hasMatchingChild;
+      }
+      const key = extractJiraKey(task.title);
+      return key ? key.startsWith(selectedProject + '-') : false;
+    });
+  }, [tasks, selectedProject]);
+
   // Build task tree (containers with children embedded) for rendering
-  const displayTasks = useMemo(() => buildTaskTree(tasks), [tasks]);
+  const displayTasks = useMemo(() => buildTaskTree(filteredTasks), [filteredTasks]);
 
   const hiddenTaskCount = incrementState?.hiddenTasks?.length || 0;
 
@@ -450,17 +491,18 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
             title={board.name}
             onBack={onBack}
           >
-            <select
-              className="module-header-btn increment-select"
-              value={selectedIncrementBase}
-              onChange={(e) => setSelectedIncrementBase(e.target.value)}
-            >
-              {incrementList.map((inc) => (
-                <option key={inc.id} value={inc.id}>
-                  {inc.name}
-                </option>
-              ))}
-            </select>
+            {jiraProjects.length >= 2 && (
+              <select
+                className="module-header-btn"
+                value={selectedProject ?? ''}
+                onChange={(e) => setSelectedProject(e.target.value || null)}
+              >
+                <option value="">Tous les projets</option>
+                {jiraProjects.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            )}
 
             {activeConnectors.length > 0 && (
               <button
@@ -531,9 +573,15 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                   sprints={currentSprints}
                   tasks={displayTasks}
                   releases={[]}
-                  boardLabel={currentIncrementName}
+                  boardLabel={board.name}
                   readOnly={false}
+                  totalCols={totalCols}
                   jiraBaseUrl={jiraSiteUrl}
+                  containerProjectMap={containerProjectMap}
+                  availableProjects={jiraProjects}
+                  onContainerProjectChange={(taskId, project) =>
+                    setContainerProjectMap(prev => ({ ...prev, [taskId]: project }))
+                  }
                   onTaskUpdate={handleTaskUpdate}
                   onTaskDelete={handleTaskDelete}
                   onTaskResize={handleTaskResize}
@@ -556,7 +604,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
 
           {showSnapshotModal && (
             <SnapshotModal
-              incrementId={selectedIncrement}
+              incrementId={boardStateId}
               onRestore={async () => {
                 await loadTasks();
                 await loadIncrementState();
@@ -567,7 +615,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
 
           {showImportModal && (
             <ImportModal
-              incrementId={selectedIncrement}
+              incrementId={defaultSprintId}
               activeConnectors={activeConnectors}
               onImported={loadTasks}
               onClose={() => setShowImportModal(false)}

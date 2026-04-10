@@ -22,10 +22,51 @@ export function createDeliveryRoutes(): Router {
   }));
 
   router.post('/boards', asyncHandler(async (req, res) => {
-    const { name, description } = req.body;
+    const { name, description, boardType, startDate, endDate, durationWeeks } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Le nom est obligatoire' });
-    const board = await db.createBoard(req.user!.id, name.trim(), description?.trim() || null);
-    res.status(201).json(board);
+
+    const type = (boardType === 'calendaire' ? 'calendaire' : 'agile') as db.BoardType;
+
+    // Validation per type
+    if (type === 'agile') {
+      const weeks = Number(durationWeeks);
+      if (![2, 4, 6, 8].includes(weeks)) {
+        return res.status(400).json({ error: 'durationWeeks doit etre 2, 4, 6 ou 8 pour un board agile' });
+      }
+      if (!startDate) {
+        return res.status(400).json({ error: 'startDate est obligatoire' });
+      }
+      // Compute end date from start + duration. Use Date.UTC to avoid
+      // local-timezone shift (France UTC+2 would push the date back 1 day).
+      const [sy, sm, sd] = startDate.split('-').map(Number);
+      const startUtc = new Date(Date.UTC(sy, sm - 1, sd));
+      const endUtc = new Date(startUtc.getTime() + weeks * 7 * 24 * 60 * 60 * 1000);
+      const computedEnd = `${endUtc.getUTCFullYear()}-${String(endUtc.getUTCMonth() + 1).padStart(2, '0')}-${String(endUtc.getUTCDate()).padStart(2, '0')}`;
+      const board = await db.createBoard(
+        req.user!.id, name.trim(), description?.trim() || null,
+        type, startDate, computedEnd, weeks
+      );
+      res.status(201).json(board);
+    } else {
+      // Calendaire: startDate = first of month, endDate = last of month.
+      // Parse as pure ISO date strings to avoid local-timezone shift
+      // (e.g. France UTC+2 makes "2026-04-01" become "2026-03-31" in UTC).
+      if (!startDate) {
+        return res.status(400).json({ error: 'startDate est obligatoire' });
+      }
+      const [y, m] = startDate.split('-').map(Number);
+      const firstOfMonth = `${y}-${String(m).padStart(2, '0')}-01`;
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate(); // m is 1-indexed here, Date.UTC(y, m, 0) = last day of month m
+      const lastOfMonth = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const board = await db.createBoard(
+        req.user!.id, name.trim(), description?.trim() || null,
+        type,
+        firstOfMonth,
+        lastOfMonth,
+        4 // 4 weeks
+      );
+      res.status(201).json(board);
+    }
   }));
 
   router.put('/boards/:id', asyncHandler(async (req, res) => {
@@ -40,7 +81,20 @@ export function createDeliveryRoutes(): Router {
 
   // ============ Tasks CRUD ============
 
-  // Get all tasks for an increment (syncs Jira statuses on the fly)
+  // Get ALL tasks for a board (across all sprints) — used by the new
+  // board-level view where all sprints are visible simultaneously.
+  router.get('/tasks/board/:boardId', asyncHandler(async (req, res) => {
+    const tasks = await db.getAllTasksForBoard(req.params.boardId);
+    res.json(tasks);
+  }));
+
+  // Get all positions for a board (across all sprints)
+  router.get('/positions/board/:boardId', asyncHandler(async (req, res) => {
+    const positions = await db.getPositionsForBoard(req.params.boardId);
+    res.json(positions);
+  }));
+
+  // Get all tasks for a single increment/sprint (legacy + Jira status sync)
   router.get('/tasks/:incrementId', asyncHandler(async (req, res) => {
     const tasks = await db.getAllTasks(req.params.incrementId);
 

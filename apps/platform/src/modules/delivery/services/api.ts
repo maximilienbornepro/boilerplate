@@ -325,12 +325,17 @@ export async function ensureDailySnapshot(incrementId: string): Promise<{ create
 
 // ============ Boards ============
 
+export type BoardType = 'agile' | 'calendaire';
+
 export interface Board {
   id: string;
   userId: number;
   name: string;
   description: string | null;
-  type: string;
+  boardType: BoardType;
+  startDate: string | null;
+  endDate: string | null;
+  durationWeeks: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -345,12 +350,18 @@ export async function fetchBoard(id: string): Promise<Board> {
   return handleResponse<Board>(res);
 }
 
-export async function createBoard(name: string, description?: string): Promise<Board> {
+export async function createBoard(
+  name: string,
+  boardType: BoardType,
+  startDate: string,
+  durationWeeks?: number,
+  description?: string,
+): Promise<Board> {
   const res = await fetch(`${API_BASE}/boards`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ name, description }),
+    body: JSON.stringify({ name, description, boardType, startDate, durationWeeks }),
   });
   return handleResponse<Board>(res);
 }
@@ -374,4 +385,16 @@ export async function deleteBoardApi(id: string): Promise<void> {
     const data = await res.json();
     throw new Error(data.error || 'Erreur lors de la suppression');
   }
+}
+
+// Fetch ALL tasks for a board (across all sprints) — used by the new
+// board-level view where all sprints are visible simultaneously.
+export async function fetchTasksForBoard(boardId: string): Promise<Task[]> {
+  const res = await fetch(`${API_BASE}/tasks/board/${boardId}`, { credentials: 'include' });
+  return handleResponse<Task[]>(res);
+}
+
+export async function fetchPositionsForBoard(boardId: string): Promise<TaskPosition[]> {
+  const res = await fetch(`${API_BASE}/positions/board/${boardId}`, { credentials: 'include' });
+  return handleResponse<TaskPosition[]>(res);
 }
