@@ -522,6 +522,60 @@ const copyEmbedLink = (item: Entity) => {
 - Préfixer les classes globales avec le nom du module (`products-page`)
 - Utiliser CSS modules pour les composants internes
 
+## Données de production (seed)
+
+Les données de production de `francetv.vitess.tech` (delivery-process) sont commitées dans `database/seed/` pour que tout le monde puisse travailler avec des données réelles en local.
+
+### Importer les données de production en local
+
+```bash
+# Importer les données commitées (database/seed/)
+./scripts/sync-prod-data.sh
+
+# OU : dump frais depuis le serveur de prod + import
+./scripts/sync-prod-data.sh --from-prod
+```
+
+**Prérequis** :
+- Docker Compose lancé (`docker compose up -d`)
+- Pour `--from-prod` : accès SSH à `studio.vitess.tech`
+
+### Ce qui est importé
+
+| Source (francetv.vitess.tech) | Destination locale | Notes |
+|---|---|---|
+| DB `suivitess` → documents, sections, subjects, snapshots | `suivitess_*` | Import direct, mapping 1:1 |
+| DB `roadmap` → plannings, tasks, dependencies, markers | `roadmap_*` | Import direct, colonnes `owner_id`/`workspace_id` ignorées |
+| DB `delivery` → task_positions par (project, PI) | `delivery_boards` + `delivery_tasks` + `delivery_positions` | **Converti** : chaque combo (project_id, pi_id) → 1 board agile de 6 semaines |
+
+### Mettre à jour les données seed
+
+Après avoir fait `--from-prod`, les CSV dans `database/seed/` sont mis à jour. **Commiter** les fichiers pour que les autres puissent en bénéficier :
+
+```bash
+./scripts/sync-prod-data.sh --from-prod
+git add database/seed/
+git commit -m "chore: update seed data from production"
+git push
+```
+
+### Fichiers seed
+
+| Fichier | Contenu |
+|---|---|
+| `database/seed/suivitess_documents.csv` | Documents suivitess |
+| `database/seed/suivitess_sections.csv` | Sections |
+| `database/seed/suivitess_subjects.csv` | Sujets |
+| `database/seed/suivitess_snapshots.csv` | Snapshots |
+| `database/seed/roadmap_plannings.csv` | Plannings roadmap |
+| `database/seed/roadmap_tasks.csv` | Tâches roadmap |
+| `database/seed/roadmap_deps.csv` | Dépendances |
+| `database/seed/roadmap_markers.csv` | Marqueurs |
+| `database/seed/delivery_positions.csv` | Positions brutes (ancien modèle) |
+| `database/seed/delivery_import.sql` | SQL généré : boards + tasks + positions (nouveau modèle) |
+
+---
+
 ## Compte admin par défaut
 
 Deux comptes administrateur sont créés automatiquement au démarrage :
