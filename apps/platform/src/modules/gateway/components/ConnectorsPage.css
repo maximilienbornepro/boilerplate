@@ -40,6 +40,28 @@
   margin-bottom: var(--spacing-xl);
 }
 
+/* Section groups */
+.connectors-group {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.connectors-group-title {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+  margin: 0 0 var(--spacing-xs) 0;
+}
+
+.connectors-group-desc {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin: 0 0 var(--spacing-lg) 0;
+  line-height: 1.5;
+}
+
 /* Connector cards list */
 .connectors-list {
   display: flex;
