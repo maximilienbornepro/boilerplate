@@ -218,6 +218,32 @@ export function createConnectorsRoutes(): Router {
           details: err instanceof Error ? err.message : 'Erreur inconnue',
         });
       }
+    } else if (service === 'fathom') {
+      try {
+        const { listFathomCalls } = await import('../suivitess/fathomService.js');
+        const calls = await listFathomCalls(userId, 7);
+        await db.markConnectorTested(userId, service, true);
+        res.json({ success: true, message: `${calls.length} appels recents trouves` });
+      } catch (err) {
+        await db.markConnectorTested(userId, service, false);
+        res.status(400).json({
+          error: 'Echec de connexion Fathom',
+          details: err instanceof Error ? err.message : 'Erreur inconnue',
+        });
+      }
+    } else if (service === 'otter') {
+      try {
+        const { listOtterCalls } = await import('../suivitess/otterService.js');
+        const calls = await listOtterCalls(userId, 7);
+        await db.markConnectorTested(userId, service, true);
+        res.json({ success: true, message: `${calls.length} conversations recentes trouvees` });
+      } catch (err) {
+        await db.markConnectorTested(userId, service, false);
+        res.status(400).json({
+          error: 'Echec de connexion Otter',
+          details: err instanceof Error ? err.message : 'Erreur inconnue',
+        });
+      }
     } else {
       res.status(400).json({ error: `Test non disponible pour le service: ${service}` });
     }
