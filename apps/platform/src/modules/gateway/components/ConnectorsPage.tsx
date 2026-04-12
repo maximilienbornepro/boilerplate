@@ -585,7 +585,7 @@ function JiraCard({
   onSaved: () => void;
   onDeleted: () => void;
 }) {
-  const service = SERVICES[0]; // jira
+  const service = ALL_SERVICES.find(s => s.id === 'jira')!;
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'token' | 'oauth'>(oauthAvailable ? 'oauth' : 'token');
 
