@@ -50,13 +50,18 @@ export function MergeTranscriptionModal({ documentId, onClose, onMerged }: Merge
   const [sections, setSections] = useState<Section[]>([]);
   const [loadingSections, setLoadingSections] = useState(true);
 
-  // Step 2: proposals
+  // Step 2: proposals (mutable — user can change section targets)
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [analyzing, setAnalyzing] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ enriched: number; created: number; sectionsCreated: number } | null>(null);
+
+  // Non-transcription sections (targets for create_subject)
+  const existingSections = sections.filter(s =>
+    !/^(Fathom|Otter|Transcription)\s*[—–-]/i.test(s.name)
+  );
 
   // Fetch document + AI providers
   useEffect(() => {
@@ -131,6 +136,42 @@ export function MergeTranscriptionModal({ documentId, onClose, onMerged }: Merge
     }
   };
 
+  const updateProposal = (id: number, updates: Partial<Proposal>) => {
+    setProposals(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+  };
+
+  // Convert an enrich proposal to a create_subject (user decides the target is wrong)
+  const convertToCreate = (p: Proposal) => {
+    updateProposal(p.id, {
+      action: 'create_subject',
+      sectionId: existingSections[0]?.id || '',
+      sectionName: existingSections[0]?.name || '',
+      title: p.subjectTitle || 'Nouveau sujet',
+      situation: p.appendText || '',
+    });
+  };
+
+  // Change the target section for a create_subject proposal
+  const changeTargetSection = (proposalId: number, newSectionId: string) => {
+    if (newSectionId === '__new__') {
+      // Convert to create_section
+      const p = proposals.find(pr => pr.id === proposalId);
+      if (!p) return;
+      updateProposal(proposalId, {
+        action: 'create_section',
+        sectionName: p.title || 'Nouvelle section',
+        sectionId: undefined,
+        subjects: [{ title: p.title || '', situation: p.situation || '', responsibility: p.responsibility, status: p.status }],
+      });
+    } else {
+      const section = existingSections.find(s => s.id === newSectionId);
+      updateProposal(proposalId, {
+        sectionId: newSectionId,
+        sectionName: section?.name || '',
+      });
+    }
+  };
+
   const handleApply = async () => {
     const toApply = proposals.filter(p => selected.has(p.id));
     if (toApply.length === 0) return;
@@ -159,7 +200,7 @@ export function MergeTranscriptionModal({ documentId, onClose, onMerged }: Merge
 
     if (p.action === 'enrich') {
       return (
-        <label key={p.id} className={`${styles.proposal} ${isSelected ? styles.selected : ''}`}>
+        <div key={p.id} className={`${styles.proposal} ${isSelected ? styles.selected : ''}`}>
           <input type="checkbox" checked={isSelected} onChange={() => toggleProposal(p.id)} />
           <div className={styles.proposalContent}>
             <div className={styles.proposalAction}>
@@ -170,37 +211,63 @@ export function MergeTranscriptionModal({ documentId, onClose, onMerged }: Merge
             </div>
             <div className={styles.proposalDetail}>{p.appendText}</div>
             {p.reason && <div className={styles.proposalReason}>{p.reason}</div>}
+            <button
+              className={styles.convertBtn}
+              onClick={(e) => { e.stopPropagation(); convertToCreate(p); }}
+              title="Convertir en nouveau sujet (si le sujet cible n'est pas le bon)"
+            >
+              Créer comme nouveau sujet
+            </button>
           </div>
-        </label>
+        </div>
       );
     }
 
     if (p.action === 'create_subject') {
       return (
-        <label key={p.id} className={`${styles.proposal} ${isSelected ? styles.selected : ''}`}>
+        <div key={p.id} className={`${styles.proposal} ${isSelected ? styles.selected : ''}`}>
           <input type="checkbox" checked={isSelected} onChange={() => toggleProposal(p.id)} />
           <div className={styles.proposalContent}>
             <div className={styles.proposalAction}>
               <span className={styles.actionCreate}>+ Sujet</span>
-              <span className={styles.proposalTarget}>
-                {p.title} <span className={styles.inSection}>→ {p.sectionName}</span>
-              </span>
+              <span className={styles.proposalTarget}>{p.title}</span>
+            </div>
+            <div className={styles.sectionSelector}>
+              <span className={styles.selectorLabel}>Section :</span>
+              <select
+                className={styles.sectionSelect}
+                value={p.sectionId || ''}
+                onChange={(e) => changeTargetSection(p.id, e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {existingSections.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+                <option value="__new__">+ Nouvelle section</option>
+              </select>
             </div>
             {p.situation && <div className={styles.proposalDetail}>{p.situation}</div>}
             {p.reason && <div className={styles.proposalReason}>{p.reason}</div>}
           </div>
-        </label>
+        </div>
       );
     }
 
     if (p.action === 'create_section') {
       return (
-        <label key={p.id} className={`${styles.proposal} ${isSelected ? styles.selected : ''}`}>
+        <div key={p.id} className={`${styles.proposal} ${isSelected ? styles.selected : ''}`}>
           <input type="checkbox" checked={isSelected} onChange={() => toggleProposal(p.id)} />
           <div className={styles.proposalContent}>
             <div className={styles.proposalAction}>
               <span className={styles.actionSection}>+ Section</span>
-              <span className={styles.proposalTarget}>{p.sectionName}</span>
+              <input
+                type="text"
+                className={styles.sectionNameInput}
+                value={p.sectionName || ''}
+                onChange={(e) => { e.stopPropagation(); updateProposal(p.id, { sectionName: e.target.value }); }}
+                onClick={(e) => e.stopPropagation()}
+                placeholder="Nom de la section"
+              />
             </div>
             {p.subjects && p.subjects.length > 0 && (
               <ul className={styles.subjectsList}>
@@ -211,7 +278,7 @@ export function MergeTranscriptionModal({ documentId, onClose, onMerged }: Merge
             )}
             {p.reason && <div className={styles.proposalReason}>{p.reason}</div>}
           </div>
-        </label>
+        </div>
       );
     }
 

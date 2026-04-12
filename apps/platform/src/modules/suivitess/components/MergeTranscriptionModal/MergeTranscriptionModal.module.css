@@ -186,6 +186,59 @@
   font-style: italic;
 }
 
+/* Section target selector */
+.sectionSelector {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: 2px;
+}
+
+.selectorLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.sectionSelect {
+  flex: 1;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-family-mono);
+}
+
+.sectionNameInput {
+  flex: 1;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xs);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-family-mono);
+}
+
+.convertBtn {
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  align-self: flex-start;
+}
+
+.convertBtn:hover {
+  color: var(--accent-primary-hover, var(--accent-primary));
+}
+
 .subjectsList {
   list-style: none;
   padding: 0;
