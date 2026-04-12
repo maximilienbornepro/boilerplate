@@ -102,8 +102,16 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'fathom',
         name: 'Fathom',
-        description: 'Associer les transcriptions de vos calls a vos sessions SuiviTess',
+        description: 'Importer les transcriptions Fathom dans vos sessions SuiviTess',
         color: '#6366f1',
+        icon: <FathomIcon />,
+        enabled: true,
+      },
+      {
+        id: 'otter',
+        name: 'Otter.ai',
+        description: 'Importer les transcriptions Otter dans vos sessions SuiviTess',
+        color: '#3b82f6',
         icon: <FathomIcon />,
         enabled: true,
       },
@@ -726,9 +734,14 @@ const AI_FIELDS: Record<string, AIFieldDef[]> = {
 
 const AI_SERVICE_IDS = new Set(['anthropic', 'openai', 'mistral', 'scaleway']);
 
-// Fathom uses a simple API key
+// Transcription providers use simple API keys
 AI_FIELDS['fathom'] = [
-  { key: 'apiKey', label: 'Cle API Fathom', type: 'password', required: true, placeholder: 'fathom_...' },
+  { key: 'apiKey', label: 'Cle API Fathom', type: 'password', required: true, placeholder: 'fathom_...', hint: 'Disponible dans les parametres Fathom > API' },
+];
+
+AI_FIELDS['otter'] = [
+  { key: 'apiKey', label: 'Cle API Otter', type: 'password', required: true, placeholder: '...' },
+  { key: 'baseUrl', label: 'URL de base', type: 'text', placeholder: 'https://api.otter.ai/v1', hint: 'Laissez vide pour l\'URL par defaut' },
 ];
 
 // ==================== Generic AI Form ====================
@@ -980,7 +993,7 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
                   />
                 );
               }
-              if (AI_SERVICE_IDS.has(service.id) || service.id === 'fathom') {
+              if (AI_SERVICE_IDS.has(service.id) || service.id === 'fathom' || service.id === 'otter') {
                 if (!service.enabled) return <ConnectorCardDisabled key={service.id} service={service} />;
                 return (
                   <AIProviderCard

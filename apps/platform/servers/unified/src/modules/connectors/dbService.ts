@@ -44,7 +44,7 @@ export interface Connector {
   updatedAt: string;
 }
 
-export const SUPPORTED_SERVICES = ['jira', 'notion', 'clickup', 'fathom', 'anthropic', 'openai', 'mistral', 'scaleway'] as const;
+export const SUPPORTED_SERVICES = ['jira', 'notion', 'clickup', 'fathom', 'otter', 'anthropic', 'openai', 'mistral', 'scaleway'] as const;
 export type ServiceType = typeof SUPPORTED_SERVICES[number];
 
 function formatConnector(row: any): Connector {
@@ -66,6 +66,7 @@ const SENSITIVE_FIELD_MAP: Record<string, string[]> = {
   notion: ['apiKey'],
   clickup: ['apiKey'],
   fathom: ['apiKey'],
+  otter: ['apiKey'],
   anthropic: ['apiKey'],
   openai: ['apiKey'],
   mistral: ['apiKey'],

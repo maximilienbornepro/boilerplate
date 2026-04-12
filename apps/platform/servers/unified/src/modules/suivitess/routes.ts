@@ -574,5 +574,99 @@ export function createRoutes(): Router {
     res.json({ success: true });
   }));
 
+  // ==================== Transcription Import (Fathom, Otter, etc.) ====================
+
+  // List recent calls from a transcription provider
+  router.get('/transcription/calls', asyncHandler(async (req, res) => {
+    const provider = (req.query.provider as string) || 'fathom';
+    const days = parseInt(req.query.days as string) || 30;
+
+    if (provider === 'fathom') {
+      const { listFathomCalls } = await import('./fathomService.js');
+      const calls = await listFathomCalls(req.user!.id, days);
+      res.json(calls);
+    } else if (provider === 'otter') {
+      const { listOtterCalls } = await import('./otterService.js');
+      const calls = await listOtterCalls(req.user!.id, days);
+      res.json(calls);
+    } else {
+      res.status(400).json({ error: `Provider de transcription non supporté: ${provider}` });
+    }
+  }));
+
+  // Import a call transcript into a SuiviTess document section.
+  // Provider-agnostic — fetches transcript from the configured provider,
+  // then creates a section + subjects in the target document.
+  router.post('/documents/:docId/transcript-import', asyncHandler(async (req, res) => {
+    const { docId } = req.params;
+    const { callId, callTitle, provider: providerParam } = req.body;
+    const provider = providerParam || 'fathom';
+
+    if (!callId) {
+      res.status(400).json({ error: 'callId est requis' });
+      return;
+    }
+
+    // Fetch the transcript from the provider
+    let transcript: Array<{ speaker: string; text: string; timestamp?: number }> = [];
+
+    if (provider === 'fathom') {
+      const { getFathomTranscript } = await import('./fathomService.js');
+      transcript = await getFathomTranscript(req.user!.id, callId);
+    } else if (provider === 'otter') {
+      const { getOtterTranscript } = await import('./otterService.js');
+      transcript = await getOtterTranscript(req.user!.id, callId);
+    } else {
+      res.status(400).json({ error: `Provider non supporté: ${provider}` });
+      return;
+    }
+
+    if (transcript.length === 0) {
+      res.status(400).json({ error: 'Transcription vide' });
+      return;
+    }
+
+    // Create a section named after the provider + call title
+    const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
+    const sectionName = `${providerLabel} — ${callTitle || 'Call'}`;
+    const section = await db.createSection(docId, sectionName);
+
+    // Group transcript entries by contiguous speaker blocks
+    const blocks: Array<{ speaker: string; texts: string[] }> = [];
+    let current: { speaker: string; texts: string[] } | null = null;
+
+    for (const entry of transcript) {
+      if (current && current.speaker === entry.speaker) {
+        current.texts.push(entry.text);
+      } else {
+        if (current) blocks.push(current);
+        current = { speaker: entry.speaker, texts: [entry.text] };
+      }
+    }
+    if (current) blocks.push(current);
+
+    // Create subjects (max 50 to avoid flooding)
+    const maxBlocks = Math.min(blocks.length, 50);
+    for (let i = 0; i < maxBlocks; i++) {
+      const block = blocks[i];
+      const fullText = block.texts.join(' ');
+      const title = fullText.slice(0, 200);
+      await db.createSubject(
+        section.id,
+        `[${block.speaker}] ${title}${fullText.length > 200 ? '...' : ''}`,
+        fullText,
+        '🟡 en cours',
+        block.speaker,
+      );
+    }
+
+    res.json({
+      success: true,
+      sectionId: section.id,
+      sectionName,
+      subjectCount: maxBlocks,
+    });
+  }));
+
   return router;
 }
