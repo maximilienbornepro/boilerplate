@@ -15,8 +15,10 @@
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 420px;
+  max-height: calc(100vh - var(--spacing-xl) * 2);
   padding: var(--spacing-lg);
   box-shadow: var(--shadow-lg);
+  overflow-y: auto;
 }
 
 .header {
