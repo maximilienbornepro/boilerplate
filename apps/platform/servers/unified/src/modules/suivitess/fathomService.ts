@@ -66,29 +66,29 @@ export async function listFathomCalls(userId: number, days: number = 30): Promis
   }
 
   const data = await response.json() as {
-    meetings?: Array<{
-      id?: string;
-      meeting_id?: string;
+    items?: Array<{
+      recording_id?: number;
       title?: string;
       meeting_title?: string;
       created_at?: string;
       recording_start_time?: string;
       recording_end_time?: string;
       url?: string;
+      share_url?: string;
     }>;
   };
 
-  const meetings = data.meetings || [];
+  const items = data.items || [];
 
-  return meetings.map(m => {
+  return items.map(m => {
     const start = m.recording_start_time ? new Date(m.recording_start_time).getTime() : 0;
     const end = m.recording_end_time ? new Date(m.recording_end_time).getTime() : 0;
     return {
-      id: m.id || m.meeting_id || '',
+      id: String(m.recording_id || ''),
       title: m.title || m.meeting_title || 'Sans titre',
       date: m.created_at || m.recording_start_time || '',
       duration: start && end ? Math.round((end - start) / 1000) : undefined,
-      url: m.url,
+      url: m.url || m.share_url,
     };
   }).sort((a, b) => b.date.localeCompare(a.date));
 }
