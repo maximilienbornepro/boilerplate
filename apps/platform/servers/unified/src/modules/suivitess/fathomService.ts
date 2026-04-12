@@ -115,15 +115,25 @@ export async function getFathomTranscript(userId: number, recordingId: string): 
 
   const data = await response.json() as {
     transcript?: Array<{
-      speaker?: string;
+      speaker?: string | { display_name?: string; matched_calendar_invitee_email?: string };
       text?: string;
-      timestamp?: number;
+      timestamp?: string | number;
     }>;
   };
 
-  return (data.transcript || []).map(entry => ({
-    speaker: entry.speaker || 'Inconnu',
-    text: entry.text || '',
-    timestamp: entry.timestamp,
-  }));
+  return (data.transcript || []).map(entry => {
+    // speaker can be a string or an object { display_name, ... }
+    let speakerName = 'Inconnu';
+    if (typeof entry.speaker === 'string') {
+      speakerName = entry.speaker;
+    } else if (entry.speaker?.display_name) {
+      speakerName = entry.speaker.display_name;
+    }
+
+    return {
+      speaker: speakerName,
+      text: entry.text || '',
+      timestamp: typeof entry.timestamp === 'number' ? entry.timestamp : undefined,
+    };
+  });
 }
