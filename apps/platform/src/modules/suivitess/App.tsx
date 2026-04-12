@@ -7,6 +7,7 @@ import { DocumentSelector } from './components/DocumentSelector/DocumentSelector
 import { HistoryPanel } from './components/HistoryPanel/HistoryPanel';
 import { RecorderBar } from './components/RecorderBar/RecorderBar';
 import { SuggestionsPanel } from './components/SuggestionsPanel/SuggestionsPanel';
+import { TranscriptionImportModal } from './components/TranscriptionImportModal/TranscriptionImportModal';
 
 function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void }) {
   const { docId } = useParams<{ docId: string }>();
@@ -20,6 +21,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const [showHistory, setShowHistory] = useState(false);
   const [showRecorder, setShowRecorder] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showTranscriptionImport, setShowTranscriptionImport] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showExports, setShowExports] = useState(false);
@@ -85,6 +87,13 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           title="Connecter un call Teams"
         >
           Teams
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={() => setShowTranscriptionImport(true)}
+          title="Importer une transcription (Fathom, Otter...)"
+        >
+          Transcription
         </button>
         {(exportJsonFn || copyFn) && (
           <div ref={exportsRef} className="suivitess-exports">
@@ -180,6 +189,13 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           documentId={docId}
           onClose={() => setShowHistory(false)}
           onRestore={handleRestore}
+        />
+      )}
+      {showTranscriptionImport && docId && (
+        <TranscriptionImportModal
+          documentId={docId}
+          onClose={() => setShowTranscriptionImport(false)}
+          onImported={() => setRefreshKey(k => k + 1)}
         />
       )}
     </Layout>
