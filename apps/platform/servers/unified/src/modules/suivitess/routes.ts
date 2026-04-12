@@ -599,7 +599,7 @@ export function createRoutes(): Router {
   // then creates a section + subjects in the target document.
   router.post('/documents/:docId/transcript-import', asyncHandler(async (req, res) => {
     const { docId } = req.params;
-    const { callId, callTitle, provider: providerParam } = req.body;
+    const { callId, callTitle, provider: providerParam, useAI, aiProvider: aiProviderParam } = req.body;
     const provider = providerParam || 'fathom';
 
     if (!callId) {
@@ -626,12 +626,89 @@ export function createRoutes(): Router {
       return;
     }
 
+    // Build full transcript text
+    const transcriptText = transcript.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+
     // Create a section named after the provider + call title
     const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
     const sectionName = `${providerLabel} — ${callTitle || 'Call'}`;
     const section = await db.createSection(docId, sectionName);
 
-    // Group transcript entries by contiguous speaker blocks
+    if (useAI) {
+      // ── AI-powered extraction: send transcript to LLM to extract structured subjects ──
+      try {
+        const { getAnthropicClient } = await import('../connectors/aiProvider.js');
+        const { client, model } = await getAnthropicClient(req.user!.id);
+
+        const aiResponse = await client.messages.create({
+          model,
+          max_tokens: 4096,
+          messages: [{
+            role: 'user',
+            content: `Tu es un assistant de suivi de réunion. Analyse cette transcription et extrais les sujets clés discutés.
+
+Pour chaque sujet, retourne :
+- "title": un titre court et clair (max 100 caractères)
+- "situation": un résumé de ce qui a été dit sur ce sujet (2-3 phrases max)
+- "responsibility": la personne responsable si mentionnée, sinon null
+- "status": "🔴 à faire" si c'est une action, "🟡 en cours" si c'est un sujet ouvert, "🟢 fait" si c'est résolu
+
+Retourne UNIQUEMENT un tableau JSON, sans markdown ni explication.
+Exemple: [{"title":"...", "situation":"...", "responsibility":"...", "status":"🔴 à faire"}]
+
+Maximum 15 sujets, priorise les plus importants.
+
+Transcription:
+${transcriptText.slice(0, 30000)}`,
+          }],
+        });
+
+        const responseText = aiResponse.content
+          .filter(c => c.type === 'text')
+          .map(c => (c as { type: 'text'; text: string }).text)
+          .join('');
+
+        // Parse JSON
+        let subjects: Array<{ title: string; situation: string; responsibility?: string | null; status?: string }> = [];
+        try {
+          let jsonText = responseText.trim();
+          if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
+          if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
+          if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
+          subjects = JSON.parse(jsonText.trim());
+        } catch {
+          // Fallback: try to extract array from response
+          const match = responseText.match(/\[[\s\S]*\]/);
+          if (match) subjects = JSON.parse(match[0]);
+        }
+
+        // Create subjects from AI analysis
+        for (let i = 0; i < Math.min(subjects.length, 15); i++) {
+          const s = subjects[i];
+          await db.createSubject(
+            section.id,
+            s.title || 'Sujet sans titre',
+            s.situation || '',
+            s.status || '🟡 en cours',
+            s.responsibility || null,
+          );
+        }
+
+        res.json({
+          success: true,
+          sectionId: section.id,
+          sectionName,
+          subjectCount: subjects.length,
+          mode: 'ai',
+        });
+        return;
+      } catch (err) {
+        // AI failed — fall through to raw import
+        console.error('[SuiviTess] AI transcript analysis failed:', err);
+      }
+    }
+
+    // ── Raw import: group by speaker blocks (fallback or when useAI=false) ──
     const blocks: Array<{ speaker: string; texts: string[] }> = [];
     let current: { speaker: string; texts: string[] } | null = null;
 
@@ -645,7 +722,6 @@ export function createRoutes(): Router {
     }
     if (current) blocks.push(current);
 
-    // Create subjects (max 50 to avoid flooding)
     const maxBlocks = Math.min(blocks.length, 50);
     for (let i = 0; i < maxBlocks; i++) {
       const block = blocks[i];
@@ -665,6 +741,7 @@ export function createRoutes(): Router {
       sectionId: section.id,
       sectionName,
       subjectCount: maxBlocks,
+      mode: 'raw',
     });
   }));
 
