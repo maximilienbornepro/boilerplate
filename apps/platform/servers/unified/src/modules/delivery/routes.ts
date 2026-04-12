@@ -528,6 +528,69 @@ export function createDeliveryRoutes(): Router {
     res.json(sprints);
   }));
 
+  // List fix versions (releases) for one or more projects, filtered by date range
+  router.get('/jira/versions', asyncHandler(async (req, res) => {
+    const { projectKeys, startDate, endDate } = req.query as {
+      projectKeys?: string;   // comma-separated: "TVSMART,TVFIRE"
+      startDate?: string;     // ISO YYYY-MM-DD
+      endDate?: string;
+    };
+    if (!projectKeys) {
+      res.status(400).json({ error: 'projectKeys is required' });
+      return;
+    }
+
+    const ctx = await getJiraContext(req.user!.id);
+    if (!ctx) {
+      res.status(401).json({ error: 'No Jira auth available' });
+      return;
+    }
+
+    const keys = projectKeys.split(',').map(k => k.trim()).filter(Boolean);
+    const releases: Array<{
+      id: string;
+      version: string;
+      date: string;
+      projectKey: string;
+    }> = [];
+
+    for (const projectKey of keys) {
+      try {
+        const url = `${ctx.baseUrl}/rest/api/3/project/${projectKey}/versions`;
+        const response = await fetch(url, { headers: ctx.headers });
+        if (!response.ok) continue;
+
+        const versions = await response.json() as Array<{
+          id: string;
+          name: string;
+          releaseDate?: string;
+          released?: boolean;
+        }>;
+
+        for (const v of versions) {
+          if (!v.releaseDate) continue;
+          // Filter by date range if provided
+          if (startDate && v.releaseDate < startDate) continue;
+          if (endDate && v.releaseDate > endDate) continue;
+
+          releases.push({
+            id: v.id,
+            version: v.name,
+            date: v.releaseDate,
+            projectKey,
+          });
+        }
+      } catch {
+        // Skip project on error
+      }
+    }
+
+    // Sort by date
+    releases.sort((a, b) => a.date.localeCompare(b.date));
+
+    res.json(releases);
+  }));
+
   // List issues for selected sprints
   router.get('/jira/issues', asyncHandler(async (req, res) => {
     const { sprintIds } = req.query as { sprintIds?: string };

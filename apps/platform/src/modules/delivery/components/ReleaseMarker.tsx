@@ -50,14 +50,23 @@ export function ReleaseMarker({ release, sprints, totalCols }: ReleaseMarkerProp
 
   const leftPercent = (position / totalCols) * 100;
 
+  const markerColor = release.color || undefined;
+
   return (
     <div
       className={styles.releaseMarker}
       style={{ left: `${leftPercent}%` }}
-      title={`Release ${release.version} - ${formatDate(release.date)}`}
+      title={`${release.projectKey ? release.projectKey + ' ' : ''}${release.version} - ${formatDate(release.date)}`}
     >
-      <div className={styles.line} />
-      <div className={styles.badge}>
+      <div
+        className={styles.line}
+        style={markerColor ? {
+          background: `linear-gradient(180deg, ${markerColor} 0%, ${markerColor} 50%, transparent 50%, transparent 100%)`,
+          backgroundSize: '2px 8px',
+        } : undefined}
+      />
+      <div className={styles.badge} style={markerColor ? { background: markerColor } : undefined}>
+        {release.projectKey && <span className={styles.project}>{release.projectKey}</span>}
         <span className={styles.version}>{release.version}</span>
         <span className={styles.date}>{formatDate(release.date)}</span>
       </div>

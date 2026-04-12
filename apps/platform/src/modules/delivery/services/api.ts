@@ -398,3 +398,16 @@ export async function fetchPositionsForBoard(boardId: string): Promise<TaskPosit
   const res = await fetch(`${API_BASE}/positions/board/${boardId}`, { credentials: 'include' });
   return handleResponse<TaskPosition[]>(res);
 }
+
+// Fetch Jira fix versions (releases) for given project keys, filtered by date range
+export async function fetchJiraVersions(
+  projectKeys: string[],
+  startDate?: string,
+  endDate?: string,
+): Promise<Array<{ id: string; version: string; date: string; projectKey: string }>> {
+  const params = new URLSearchParams({ projectKeys: projectKeys.join(',') });
+  if (startDate) params.set('startDate', startDate);
+  if (endDate) params.set('endDate', endDate);
+  const res = await fetch(`${API_BASE}/jira/versions?${params}`, { credentials: 'include' });
+  return handleResponse(res);
+}

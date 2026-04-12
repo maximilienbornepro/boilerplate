@@ -23,9 +23,10 @@ import {
   ensureDailySnapshot,
   fetchActiveConnectors,
   fetchJiraSiteUrl,
+  fetchJiraVersions,
 } from './services/api';
 import type { ActiveConnector } from './services/api';
-import type { Task, IncrementState, HiddenTask } from './types';
+import type { Task, Release, IncrementState, HiddenTask } from './types';
 import { transformTask, buildTaskTree } from './utils/taskTransform';
 import { extractJiraKey } from './utils/jiraUtils';
 
@@ -105,6 +106,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   // Manual override: assigns a container to a specific project row.
   // Key = task id, value = project key. Takes priority over child-based detection.
   const [containerProjectMap, setContainerProjectMap] = useState<Record<string, string>>({});
+  const [releases, setReleases] = useState<Release[]>([]);
 
   // Compute sprint structure from the board's config (replaces the old
   // hardcoded generateIncrements2026 function + the increment selector).
@@ -461,6 +463,32 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
     return Array.from(projects).sort();
   }, [tasks]);
 
+  // Per-project colors for release markers
+  const PROJECT_MARKER_COLORS: Record<string, string> = {
+    TVSMART: '#3b82f6', TVFREE: '#1f2937', TVORA: '#f97316',
+    TVSFR: '#dc2626', TVFIRE: '#eab308', PLAYERW: '#8b5cf6',
+    ROADMAP_SFR: '#ec4899', TVAPI: '#06b6d4', TVAPPS: '#14b8a6',
+  };
+
+  // Fetch Jira releases when projects are detected and board has dates
+  useEffect(() => {
+    if (jiraProjects.length === 0 || !boardConfig.startDate || !boardConfig.endDate) {
+      setReleases([]);
+      return;
+    }
+    fetchJiraVersions(jiraProjects, boardConfig.startDate, boardConfig.endDate)
+      .then(versions => {
+        setReleases(versions.map(v => ({
+          id: v.id,
+          date: v.date,
+          version: v.version,
+          projectKey: v.projectKey,
+          color: PROJECT_MARKER_COLORS[v.projectKey] || '#6b7280',
+        })));
+      })
+      .catch(() => setReleases([]));
+  }, [jiraProjects, boardConfig.startDate, boardConfig.endDate]);
+
   // Filter tasks by selected project (null = show all).
   const filteredTasks = useMemo(() => {
     if (!selectedProject) return tasks;
@@ -572,7 +600,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                 <BoardDelivery
                   sprints={currentSprints}
                   tasks={displayTasks}
-                  releases={[]}
+                  releases={releases}
                   boardLabel={board.name}
                   readOnly={false}
                   totalCols={totalCols}

@@ -37,6 +37,10 @@ export interface Release {
   id: string;
   date: string;
   version: string;
+  /** Jira project key (e.g. TVFIRE) — used for per-project coloring. */
+  projectKey?: string;
+  /** Hex color for this marker. */
+  color?: string;
 }
 
 export interface HiddenTask {

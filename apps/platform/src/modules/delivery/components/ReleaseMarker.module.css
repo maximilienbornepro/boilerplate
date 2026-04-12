@@ -38,6 +38,13 @@
   pointer-events: auto;
 }
 
+.project {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
 .version {
   font-weight: var(--font-weight-bold);
 }
