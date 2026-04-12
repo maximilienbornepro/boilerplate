@@ -57,6 +57,57 @@
   margin: 0;
 }
 
+/* Quarter group boards */
+.delivery-list-quarter-boards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+/* Card metadata row (type badge + date range + duration) */
+.delivery-list-card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  color: var(--text-muted);
+}
+
+.delivery-list-badge-type {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.delivery-list-badge-agile {
+  background: var(--info-bg);
+  color: var(--info);
+}
+
+.delivery-list-badge-calendaire {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.delivery-list-card-period {
+  color: var(--text-secondary);
+}
+
+.delivery-list-card-duration {
+  color: var(--text-muted);
+}
+
+.delivery-list-card-duration::before {
+  content: '·';
+  margin-right: var(--spacing-sm);
+}
+
 /* Modal */
 .delivery-list-modal-body {
   display: flex;

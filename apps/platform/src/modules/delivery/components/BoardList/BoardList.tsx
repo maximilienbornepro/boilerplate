@@ -1,9 +1,71 @@
-import { useState, useEffect } from 'react';
-import { ModuleHeader, Card, Modal, FormField, Button, ConfirmModal, ToastContainer, LoadingSpinner } from '@boilerplate/shared/components';
+import { useState, useEffect, useMemo } from 'react';
+import { ModuleHeader, Card, Modal, FormField, Button, ConfirmModal, ToastContainer, LoadingSpinner, ExpandableSection } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import { fetchBoards, createBoard, updateBoardApi, deleteBoardApi } from '../../services/api';
 import type { Board, BoardType } from '../../services/api';
 import './BoardList.css';
+
+// ── Quarter grouping helpers ──────────────────────────────────────────
+
+const QUARTER_LABELS = ['T1', 'T2', 'T3', 'T4'];
+const MONTH_NAMES_SHORT = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin', 'juil', 'août', 'sep', 'oct', 'nov', 'déc'];
+const MONTH_NAMES_FULL = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+function getQuarterKey(startDate: string | null): string {
+  if (!startDate) return 'Non daté';
+  const [y, m] = startDate.split('-').map(Number);
+  const q = Math.ceil(m / 3);
+  return `${QUARTER_LABELS[q - 1]} ${y}`;
+}
+
+/** Sort key for quarters: "T2 2026" → "2026-2", "Non daté" → "9999-9" */
+function quarterSortKey(label: string): string {
+  if (label === 'Non daté') return '9999-9';
+  const match = label.match(/T(\d) (\d{4})/);
+  if (!match) return '9999-9';
+  return `${match[2]}-${match[1]}`;
+}
+
+function groupBoardsByQuarter(boards: Board[]): Array<[string, Board[]]> {
+  const groups = new Map<string, Board[]>();
+  for (const board of boards) {
+    const key = getQuarterKey(board.startDate);
+    const group = groups.get(key) ?? [];
+    group.push(board);
+    groups.set(key, group);
+  }
+  // Sort quarters: most recent first. Boards within each quarter: startDate desc.
+  return Array.from(groups.entries())
+    .sort(([a], [b]) => quarterSortKey(b).localeCompare(quarterSortKey(a)))
+    .map(([key, groupBoards]) => [
+      key,
+      groupBoards.sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? '')),
+    ]);
+}
+
+function formatDateShort(iso: string | null): string {
+  if (!iso) return '?';
+  const [, m, d] = iso.split('-').map(Number);
+  return `${d} ${MONTH_NAMES_SHORT[m - 1]}`;
+}
+
+function formatBoardPeriod(board: Board): string {
+  if (board.boardType === 'calendaire' && board.startDate) {
+    const [, m] = board.startDate.split('-').map(Number);
+    const [y] = board.startDate.split('-');
+    return `${MONTH_NAMES_FULL[m - 1]} ${y}`;
+  }
+  if (board.startDate && board.endDate) {
+    return `${formatDateShort(board.startDate)} → ${formatDateShort(board.endDate)}`;
+  }
+  return '';
+}
+
+function formatDuration(board: Board): string {
+  if (board.boardType === 'calendaire') return '1 mois';
+  if (board.durationWeeks) return `${board.durationWeeks} sem`;
+  return '';
+}
 
 interface BoardListProps {
   onSelect: (board: Board) => void;
@@ -40,6 +102,8 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
   const addToast = (toast: Omit<ToastData, 'id'>) => {
     setToasts(prev => [...prev, { ...toast, id: Date.now().toString() }]);
   };
+
+  const quarterGroups = useMemo(() => groupBoardsByQuarter(boards), [boards]);
 
   useEffect(() => {
     loadBoards();
@@ -162,43 +226,63 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
           </Card>
         ) : (
           <div className="delivery-list-items">
-            {boards.map(board => (
-              <Card
-                key={board.id}
-                variant="interactive"
-                onClick={() => onSelect(board)}
-                className="delivery-list-doc-card"
+            {quarterGroups.map(([quarter, quarterBoards], index) => (
+              <ExpandableSection
+                key={quarter}
+                title={quarter}
+                badge={quarterBoards.length}
+                defaultExpanded={index === 0}
               >
-                <div className="shared-card__content">
-                  <span className="shared-card__title">{board.name}</span>
-                  {board.description && <span className="shared-card__subtitle">{board.description}</span>}
+                <div className="delivery-list-quarter-boards">
+                  {quarterBoards.map(board => (
+                    <Card
+                      key={board.id}
+                      variant="interactive"
+                      onClick={() => onSelect(board)}
+                      className="delivery-list-doc-card"
+                    >
+                      <div className="shared-card__content">
+                        <span className="shared-card__title">{board.name}</span>
+                        <div className="delivery-list-card-meta">
+                          <span className={`delivery-list-badge-type delivery-list-badge-${board.boardType}`}>
+                            {board.boardType === 'calendaire' ? 'Calendaire' : 'Agile'}
+                          </span>
+                          <span className="delivery-list-card-period">{formatBoardPeriod(board)}</span>
+                          {formatDuration(board) && (
+                            <span className="delivery-list-card-duration">{formatDuration(board)}</span>
+                          )}
+                        </div>
+                        {board.description && <span className="shared-card__subtitle">{board.description}</span>}
+                      </div>
+                      <button
+                        className="shared-card__edit-btn"
+                        onClick={(e) => handleEditClick(e, board)}
+                        title="Modifier"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button
+                        className="shared-card__delete-btn"
+                        onClick={(e) => handleDeleteClick(e, board)}
+                        title="Supprimer"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                      <div className="shared-card__arrow">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </div>
+                    </Card>
+                  ))}
                 </div>
-                <button
-                  className="shared-card__edit-btn"
-                  onClick={(e) => handleEditClick(e, board)}
-                  title="Modifier"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                </button>
-                <button
-                  className="shared-card__delete-btn"
-                  onClick={(e) => handleDeleteClick(e, board)}
-                  title="Supprimer"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
-                </button>
-                <div className="shared-card__arrow">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                </div>
-              </Card>
+              </ExpandableSection>
             ))}
           </div>
         )}
