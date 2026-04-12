@@ -32,7 +32,7 @@ export interface OtterTranscriptEntry {
 
 async function getOtterConfig(userId: number): Promise<{ apiKey: string; baseUrl: string }> {
   const connector = await getConnector(userId, 'otter');
-  if (!connector?.isActive || !connector.config?.apiKey) {
+  if (!connector?.config?.apiKey) {
     throw new Error('Otter.ai non configuré. Ajoutez votre clé API dans Réglages > Connecteurs.');
   }
   return {

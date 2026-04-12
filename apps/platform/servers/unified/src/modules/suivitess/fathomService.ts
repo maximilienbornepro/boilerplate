@@ -35,7 +35,7 @@ export interface FathomCallWithTranscript extends FathomCall {
  */
 async function getFathomApiKey(userId: number): Promise<string> {
   const connector = await getConnector(userId, 'fathom');
-  if (!connector?.isActive || !connector.config?.apiKey) {
+  if (!connector?.config?.apiKey) {
     throw new Error('Fathom non configuré. Ajoutez votre clé API dans Réglages > Connecteurs.');
   }
   return connector.config.apiKey as string;
