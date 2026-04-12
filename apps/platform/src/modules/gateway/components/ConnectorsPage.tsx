@@ -62,7 +62,15 @@ const ClickUpIcon = () => (
 
 // ==================== Service definitions ====================
 
+// Generic AI icon (brain)
+const AIIcon = ({ color }: { color?: string }) => (
+  <svg viewBox="0 0 24 24" fill={color || 'currentColor'}>
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+  </svg>
+);
+
 const SERVICES: ServiceDefinition[] = [
+  // ── Integration services ──
   {
     id: 'jira',
     name: 'Jira',
@@ -86,6 +94,39 @@ const SERVICES: ServiceDefinition[] = [
     color: '#7B68EE',
     icon: <ClickUpIcon />,
     enabled: false,
+  },
+  // ── AI Providers ──
+  {
+    id: 'anthropic',
+    name: 'Anthropic (Claude)',
+    description: 'Claude - IA pour adaptation CV, suggestions, RAG',
+    color: '#D97757',
+    icon: <AIIcon color="#D97757" />,
+    enabled: true,
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    description: 'GPT-4o, embeddings text-embedding-3 pour le RAG',
+    color: '#10a37f',
+    icon: <AIIcon color="#10a37f" />,
+    enabled: true,
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral',
+    description: 'Mistral Large - IA francaise performante',
+    color: '#F7D046',
+    icon: <AIIcon color="#F7D046" />,
+    enabled: true,
+  },
+  {
+    id: 'scaleway',
+    name: 'Scaleway',
+    description: 'API compatible OpenAI - LLM et embeddings heberges',
+    color: '#4F0599',
+    icon: <AIIcon color="#4F0599" />,
+    enabled: true,
   },
 ];
 
@@ -566,21 +607,14 @@ function JiraCard({
   );
 }
 
-// ==================== Connector Card Component (non-Jira) ====================
+// ==================== Connector Card Component (disabled services) ====================
 
-function ConnectorCard({
-  service,
-}: {
-  service: ServiceDefinition;
-}) {
+function ConnectorCardDisabled({ service }: { service: ServiceDefinition }) {
   return (
     <div className="connector-card disabled">
       <div className="connector-card-header">
         <div className="connector-card-left">
-          <div
-            className="connector-card-icon"
-            style={{ background: service.color, color: '#fff' }}
-          >
+          <div className="connector-card-icon" style={{ background: service.color, color: '#fff' }}>
             {service.icon}
           </div>
           <div className="connector-card-info">
@@ -588,11 +622,209 @@ function ConnectorCard({
             <div className="connector-card-desc">{service.description}</div>
           </div>
         </div>
-
         <div className="connector-card-right">
           <span className="connector-coming-soon">Bientot disponible</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ==================== AI Provider Config ==========================================
+
+interface AIFieldDef {
+  key: string;
+  label: string;
+  type: 'text' | 'password';
+  placeholder?: string;
+  required?: boolean;
+  hint?: string;
+}
+
+const AI_FIELDS: Record<string, AIFieldDef[]> = {
+  anthropic: [
+    { key: 'apiKey', label: 'Cle API', type: 'password', required: true, placeholder: 'sk-ant-...' },
+    { key: 'model', label: 'Modele', type: 'text', placeholder: 'claude-sonnet-4-6', hint: 'Laissez vide pour le modele par defaut' },
+  ],
+  openai: [
+    { key: 'apiKey', label: 'Cle API', type: 'password', required: true, placeholder: 'sk-...' },
+    { key: 'model', label: 'Modele Chat', type: 'text', placeholder: 'gpt-4o' },
+    { key: 'embeddingModel', label: 'Modele Embedding', type: 'text', placeholder: 'text-embedding-3-small' },
+  ],
+  mistral: [
+    { key: 'apiKey', label: 'Cle API', type: 'password', required: true, placeholder: '...' },
+    { key: 'model', label: 'Modele', type: 'text', placeholder: 'mistral-large-latest' },
+    { key: 'baseUrl', label: 'URL de base', type: 'text', placeholder: 'https://api.mistral.ai/v1', hint: 'Laissez vide pour l\'URL par defaut' },
+  ],
+  scaleway: [
+    { key: 'apiKey', label: 'Cle API', type: 'password', required: true, placeholder: '...' },
+    { key: 'baseUrl', label: 'URL de base', type: 'text', required: true, placeholder: 'https://api.scaleway.ai/v1' },
+    { key: 'chatModel', label: 'Modele Chat', type: 'text', placeholder: 'qwen3-32b' },
+    { key: 'embeddingModel', label: 'Modele Embedding', type: 'text', placeholder: 'bge-multilingual-gemma2' },
+  ],
+};
+
+const AI_SERVICE_IDS = new Set(['anthropic', 'openai', 'mistral', 'scaleway']);
+
+// ==================== Generic AI Form ====================
+
+function AIProviderForm({
+  service,
+  connector,
+  onSaved,
+  onDeleted,
+}: {
+  service: ServiceDefinition;
+  connector: ConnectorData | null;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  const fields = AI_FIELDS[service.id] || [];
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const v: Record<string, string> = {};
+    for (const f of fields) {
+      v[f.key] = (connector?.config?.[f.key] as string) || '';
+    }
+    setValues(v);
+    setTestResult(null);
+    setError('');
+  }, [connector, service.id]);
+
+  const handleSave = async () => {
+    const missing = fields.filter(f => f.required && !values[f.key]);
+    if (missing.length > 0) {
+      setError(`Champs requis : ${missing.map(f => f.label).join(', ')}`);
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await saveConnector(service.id, values);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    setError('');
+    try {
+      const result = await testConnector(service.id);
+      setTestResult({ success: true, message: `Connexion reussie ! Modele : ${result.model || '?'}` });
+      onSaved();
+    } catch (err) {
+      setTestResult({ success: false, message: err instanceof Error ? err.message : 'Erreur' });
+      onSaved();
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError('');
+    try {
+      await deleteConnector(service.id);
+      onDeleted();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="connector-card-body">
+      <div className="connector-form">
+        {fields.map(f => (
+          <div key={f.key} className="connector-field">
+            <label htmlFor={`${service.id}-${f.key}`}>{f.label}{f.required ? ' *' : ''}</label>
+            <input
+              id={`${service.id}-${f.key}`}
+              type={f.type}
+              value={values[f.key] || ''}
+              onChange={e => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+              placeholder={f.placeholder}
+            />
+            {f.hint && <span className="connector-field-hint">{f.hint}</span>}
+          </div>
+        ))}
+      </div>
+
+      {error && <div className="connectors-error">{error}</div>}
+      {testResult && (
+        <div className={`connector-test-result ${testResult.success ? 'success' : 'error'}`}>
+          {testResult.message}
+        </div>
+      )}
+
+      <div className="connector-actions">
+        <button className="connector-btn primary" onClick={handleSave} disabled={saving}>
+          {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+        </button>
+        <button className="connector-btn secondary" onClick={handleTest} disabled={testing || !connector}>
+          {testing ? 'Test...' : 'Tester'}
+        </button>
+        {connector && (
+          <button className="connector-btn danger" onClick={handleDelete} disabled={deleting}>
+            {deleting ? 'Suppression...' : 'Supprimer'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ==================== Generic AI Provider Card ====================
+
+function AIProviderCard({
+  service,
+  connector,
+  onSaved,
+  onDeleted,
+}: {
+  service: ServiceDefinition;
+  connector: ConnectorData | null;
+  onSaved: () => void;
+  onDeleted: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isActive = connector?.isActive ?? false;
+
+  return (
+    <div className="connector-card">
+      <div className="connector-card-header" onClick={() => setExpanded(!expanded)}>
+        <div className="connector-card-left">
+          <div className="connector-card-icon" style={{ background: service.color, color: '#fff' }}>
+            {service.icon}
+          </div>
+          <div className="connector-card-info">
+            <div className="connector-card-name">{service.name}</div>
+            <div className="connector-card-desc">{service.description}</div>
+          </div>
+        </div>
+        <div className="connector-card-right">
+          <div className={`connector-status ${isActive ? 'active' : 'inactive'}`}>
+            <span className="connector-status-dot" />
+            {isActive ? 'Connecte' : connector ? 'Configure' : 'Non configure'}
+          </div>
+          <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>&#x25BC;</span>
+        </div>
+      </div>
+      {expanded && (
+        <AIProviderForm service={service} connector={connector} onSaved={onSaved} onDeleted={onDeleted} />
+      )}
     </div>
   );
 }
@@ -659,9 +891,23 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
           onSaved={loadConnectors}
           onDeleted={loadConnectors}
         />
-        {SERVICES.filter(s => s.id !== 'jira').map(service => (
-          <ConnectorCard key={service.id} service={service} />
-        ))}
+        {SERVICES.filter(s => s.id !== 'jira').map(service => {
+          if (AI_SERVICE_IDS.has(service.id)) {
+            return (
+              <AIProviderCard
+                key={service.id}
+                service={service}
+                connector={getConnectorForService(service.id)}
+                onSaved={loadConnectors}
+                onDeleted={loadConnectors}
+              />
+            );
+          }
+          if (!service.enabled) {
+            return <ConnectorCardDisabled key={service.id} service={service} />;
+          }
+          return null;
+        })}
       </div>
       </div>
     </>

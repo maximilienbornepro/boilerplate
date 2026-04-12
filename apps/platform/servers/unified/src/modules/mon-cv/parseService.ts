@@ -1,6 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk';
 import mammoth from 'mammoth';
 import type { CVData } from './types.js';
+import { getAnthropicClient } from '../connectors/aiProvider.js';
 
 // pdf-parse@2.x exports a PDFParse class (not a function like v1.x)
 import { PDFParse } from 'pdf-parse';
@@ -11,13 +11,6 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
   await parser.destroy();
   return result.text ?? '';
 }
-
-// Check API key at module load
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.warn('[Mon-CV] WARNING: ANTHROPIC_API_KEY not set - CV parsing will fail');
-}
-
-const anthropic = new Anthropic();
 
 const CV_PARSE_PROMPT = `Analyse ce CV et extrait les informations dans le format JSON suivant.
 Retourne UNIQUEMENT le JSON, sans markdown ni explication.
@@ -112,17 +105,12 @@ export async function parseCV(buffer: Buffer, type: 'pdf' | 'docx'): Promise<CVD
   return parseCVWithText(text);
 }
 
-export async function parseCVWithText(text: string): Promise<CVData> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || apiKey === 'your-anthropic-api-key' || apiKey.trim() === '') {
-    console.error('[Mon-CV] ANTHROPIC_API_KEY is not configured');
-    throw new Error('ANTHROPIC_API_KEY non configurée - veuillez ajouter votre clé API Anthropic dans le fichier .env');
-  }
-
+export async function parseCVWithText(text: string, userId: number = 1): Promise<CVData> {
   try {
+    const { client, model } = await getAnthropicClient(userId);
     console.log('[Mon-CV] Calling Anthropic API for CV parsing...');
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+    const response = await client.messages.create({
+      model,
       max_tokens: 8192,
       messages: [
         {
@@ -163,16 +151,12 @@ export async function parseCVWithText(text: string): Promise<CVData> {
 }
 
 // Vision-based PDF parsing for scanned PDFs using Claude's document type
-export async function parseCVWithVision(buffer: Buffer): Promise<CVData> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || apiKey === 'your-anthropic-api-key' || apiKey.trim() === '') {
-    throw new Error('ANTHROPIC_API_KEY non configurée - veuillez ajouter votre clé API Anthropic dans le fichier .env');
-  }
-
+export async function parseCVWithVision(buffer: Buffer, userId: number = 1): Promise<CVData> {
+  const { client, model } = await getAnthropicClient(userId);
   const base64 = buffer.toString('base64');
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+  const response = await client.messages.create({
+    model,
     max_tokens: 8000,
     messages: [
       {

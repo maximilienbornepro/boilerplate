@@ -113,7 +113,9 @@ async function handleAgentMessage(documentId: string, msg: any) {
 async function generateSuggestionsAsync(documentId: string, recordingId: number, transcript: db.CaptionEntry[]) {
   try {
     const { generateSuggestions } = await import('./suggestionsService.js');
-    await generateSuggestions(documentId, recordingId, transcript);
+    // userId=1 (admin) — the recorder is a system-level process, not per-user.
+    // AI config is resolved from admin's connector config or env var fallback.
+    await generateSuggestions(1, documentId, recordingId, transcript);
     await db.updateRecordingStatus(recordingId, 'done');
   } catch (err) {
     console.error('[Recorder] Failed to generate suggestions:', err);

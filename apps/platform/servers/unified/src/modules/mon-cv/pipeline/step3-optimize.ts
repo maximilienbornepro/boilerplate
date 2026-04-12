@@ -1,9 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
 import type { CVData } from '../types.js';
 import { scoreCV } from '../adaptService.js';
 import type { CVMap, MatchAnalysis, TermReplacement, OptimizationResult } from './types.js';
-
-const MODEL = 'claude-sonnet-4-20250514';
+import { getAnthropicClient } from '../../connectors/aiProvider.js';
 
 /**
  * Step 3: Optimize content by applying term replacements.
@@ -39,10 +37,10 @@ export async function optimizeContent(
     };
   });
 
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+  const { client, model } = await getAnthropicClient(1); // system-level
 
   const response = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 2000,
     messages: [{
       role: 'user',

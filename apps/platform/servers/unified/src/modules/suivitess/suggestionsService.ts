@@ -3,10 +3,8 @@
  * Compares Teams transcript with suivitess document content and generates suggestions via Claude.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import * as db from './dbService.js';
-
-const client = new Anthropic();
+import { getAnthropicClient } from '../connectors/aiProvider.js';
 const MAX_TRANSCRIPT_CHARS = 50_000;
 const MAX_SUGGESTIONS = 20;
 
@@ -20,6 +18,7 @@ interface RawSuggestion {
 }
 
 export async function generateSuggestions(
+  userId: number,
   documentId: string,
   recordingId: number,
   transcript: db.CaptionEntry[]
@@ -41,9 +40,10 @@ export async function generateSuggestions(
   // Build prompt
   const prompt = buildPrompt(doc.title, documentText, transcriptText);
 
-  // Call Claude
+  // Call Claude (resolved from user's connector config or env var fallback)
+  const { client, model } = await getAnthropicClient(userId);
   const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model,
     max_tokens: 4096,
     messages: [{ role: 'user', content: prompt }],
   });

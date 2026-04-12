@@ -1,10 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk';
 import type { CVData } from '../types.js';
 import type { JobAnalysis, AtsScore } from '../adaptService.js';
 import { analyzeJobOffer, scoreCV } from '../adaptService.js';
 import type { CVMap, CVElement, MatchAnalysis, SynonymPair } from './types.js';
-
-const MODEL = 'claude-sonnet-4-20250514';
+import { getAnthropicClient } from '../../connectors/aiProvider.js';
 
 /**
  * Step 2: Analyze matches between CV and job offer.
@@ -56,7 +54,7 @@ async function detectSynonyms(
   unmatchedKeywords: string[],
   _jobAnalysis: JobAnalysis
 ): Promise<SynonymPair[]> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+  const { client, model } = await getAnthropicClient(1); // system-level, admin fallback
 
   // Build context: only elements that could contain synonyms
   const relevantElements = elements.filter(el =>
@@ -66,7 +64,7 @@ async function detectSynonyms(
   const cvPhrases = relevantElements.map(el => `[${el.id}] ${el.text}`).join('\n');
 
   const response = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 1500,
     messages: [{
       role: 'user',

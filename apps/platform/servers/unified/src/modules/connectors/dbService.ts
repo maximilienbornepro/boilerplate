@@ -27,7 +27,7 @@ export interface Connector {
   updatedAt: string;
 }
 
-export const SUPPORTED_SERVICES = ['jira', 'notion', 'clickup'] as const;
+export const SUPPORTED_SERVICES = ['jira', 'notion', 'clickup', 'anthropic', 'openai', 'mistral', 'scaleway'] as const;
 export type ServiceType = typeof SUPPORTED_SERVICES[number];
 
 function formatConnector(row: any): Connector {
@@ -43,24 +43,32 @@ function formatConnector(row: any): Connector {
   };
 }
 
+// Services whose config contains an API key/token that must be masked
+const SENSITIVE_FIELD_MAP: Record<string, string[]> = {
+  jira: ['apiToken'],
+  notion: ['apiKey'],
+  clickup: ['apiKey'],
+  anthropic: ['apiKey'],
+  openai: ['apiKey'],
+  mistral: ['apiKey'],
+  scaleway: ['apiKey'],
+};
+
+function maskValue(value: string): string {
+  return value.length > 8
+    ? value.substring(0, 4) + '****' + value.substring(value.length - 4)
+    : '****';
+}
+
 // Sanitize config for response (mask sensitive fields)
 export function sanitizeConfig(service: string, cfg: Record<string, unknown>): Record<string, unknown> {
   const sanitized = { ...cfg };
-
-  if (service === 'jira' && sanitized.apiToken) {
-    const token = sanitized.apiToken as string;
-    sanitized.apiToken = token.length > 8
-      ? token.substring(0, 4) + '****' + token.substring(token.length - 4)
-      : '****';
+  const fields = SENSITIVE_FIELD_MAP[service] ?? [];
+  for (const field of fields) {
+    if (sanitized[field] && typeof sanitized[field] === 'string') {
+      sanitized[field] = maskValue(sanitized[field] as string);
+    }
   }
-
-  if ((service === 'notion' || service === 'clickup') && sanitized.apiKey) {
-    const key = sanitized.apiKey as string;
-    sanitized.apiKey = key.length > 8
-      ? key.substring(0, 4) + '****' + key.substring(key.length - 4)
-      : '****';
-  }
-
   return sanitized;
 }
 

@@ -140,6 +140,84 @@ export function createConnectorsRoutes(): Router {
           details: err instanceof Error ? err.message : 'Erreur inconnue',
         });
       }
+    } else if (service === 'anthropic') {
+      try {
+        const Anthropic = (await import('@anthropic-ai/sdk')).default;
+        const client = new Anthropic({ apiKey: connector.config.apiKey as string });
+        const response = await client.messages.create({
+          model: (connector.config.model as string) || 'claude-sonnet-4-6',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'Dis "ok"' }],
+        });
+        await db.markConnectorTested(userId, service, true);
+        res.json({ success: true, model: response.model });
+      } catch (err) {
+        await db.markConnectorTested(userId, service, false);
+        res.status(400).json({
+          error: 'Echec de connexion Anthropic',
+          details: err instanceof Error ? err.message : 'Erreur inconnue',
+        });
+      }
+    } else if (service === 'openai') {
+      try {
+        const OpenAI = (await import('openai')).default;
+        const client = new OpenAI({ apiKey: connector.config.apiKey as string });
+        const response = await client.chat.completions.create({
+          model: (connector.config.model as string) || 'gpt-4o',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'Say ok' }],
+        });
+        await db.markConnectorTested(userId, service, true);
+        res.json({ success: true, model: response.model });
+      } catch (err) {
+        await db.markConnectorTested(userId, service, false);
+        res.status(400).json({
+          error: 'Echec de connexion OpenAI',
+          details: err instanceof Error ? err.message : 'Erreur inconnue',
+        });
+      }
+    } else if (service === 'mistral') {
+      try {
+        const OpenAI = (await import('openai')).default;
+        const client = new OpenAI({
+          apiKey: connector.config.apiKey as string,
+          baseURL: (connector.config.baseUrl as string) || 'https://api.mistral.ai/v1',
+        });
+        const response = await client.chat.completions.create({
+          model: (connector.config.model as string) || 'mistral-large-latest',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'Dis ok' }],
+        });
+        await db.markConnectorTested(userId, service, true);
+        res.json({ success: true, model: response.model });
+      } catch (err) {
+        await db.markConnectorTested(userId, service, false);
+        res.status(400).json({
+          error: 'Echec de connexion Mistral',
+          details: err instanceof Error ? err.message : 'Erreur inconnue',
+        });
+      }
+    } else if (service === 'scaleway') {
+      try {
+        const OpenAI = (await import('openai')).default;
+        const client = new OpenAI({
+          apiKey: connector.config.apiKey as string,
+          baseURL: connector.config.baseUrl as string,
+        });
+        const response = await client.chat.completions.create({
+          model: (connector.config.chatModel as string) || 'qwen3-32b',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'Say ok' }],
+        });
+        await db.markConnectorTested(userId, service, true);
+        res.json({ success: true, model: response.model });
+      } catch (err) {
+        await db.markConnectorTested(userId, service, false);
+        res.status(400).json({
+          error: 'Echec de connexion Scaleway',
+          details: err instanceof Error ? err.message : 'Erreur inconnue',
+        });
+      }
     } else {
       res.status(400).json({ error: `Test non disponible pour le service: ${service}` });
     }

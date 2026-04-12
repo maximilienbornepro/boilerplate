@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import Anthropic from '@anthropic-ai/sdk';
 import { authMiddleware } from '../../middleware/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
 import { searchSubjects as searchSuivitessSubjects } from '../suivitess/dbService.js';
 import { deriveOverlayTasks, type DerivedDeliveryTask } from './deliveryOverlay.js';
+import { getAnthropicClient } from '../connectors/aiProvider.js';
 
 export async function initDb() {
   await db.initPool();
@@ -173,14 +173,11 @@ export function createRoadmapRoutes(): Router {
       return;
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) { res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' }); return; }
-
-    const client = new Anthropic({ apiKey });
+    const { client, model } = await getAnthropicClient(req.user!.id);
     const subjectList = available.map(s => `[${s.id}] ${s.title} (${s.document_title} › ${s.section_name})`).join('\n');
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model,
       max_tokens: 500,
       messages: [{
         role: 'user',

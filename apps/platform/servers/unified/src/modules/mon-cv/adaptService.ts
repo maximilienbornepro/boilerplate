@@ -5,8 +5,7 @@ import { analyzeMatches } from './pipeline/step2-match.js';
 import { optimizeContent, applyReplacements } from './pipeline/step3-optimize.js';
 import { validateOptimization } from './pipeline/validation.js';
 import type { PipelineStepStatus, TermReplacement as PipelineTermReplacement } from './pipeline/types.js';
-
-const MODEL = 'claude-sonnet-4-20250514';
+import { getAnthropicClient as getAnthropicClientFromProvider } from '../connectors/aiProvider.js';
 
 // Types for adaptation
 export interface AdaptRequest {
@@ -119,14 +118,15 @@ export interface JobAnalysis {
   atsHint: 'workday' | 'taleo' | 'sap' | 'unknown';
 }
 
-// Initialize Anthropic client
-function getAnthropicClient(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY environment variable is required');
-  }
-  return new Anthropic({ apiKey });
+// Initialize Anthropic client — uses per-user connector config or env var fallback.
+// Caller must provide userId. Internally cached per call chain (not module-level).
+let _cachedClient: { client: Anthropic; model: string } | null = null;
+async function getAnthropicClient(userId: number = 1): Promise<{ client: Anthropic; model: string }> {
+  if (_cachedClient) return _cachedClient;
+  _cachedClient = await getAnthropicClientFromProvider(userId);
+  return _cachedClient;
 }
+function resetClientCache() { _cachedClient = null; }
 
 /**
  * Normalize text for ATS token matching (lowercase, trim)
@@ -272,7 +272,7 @@ export function scoreCV(cvData: CVData, jobAnalysis: JobAnalysis): AtsScore {
  * Analyze job offer to extract ATS-relevant requirements (exact tokens, not synonyms)
  */
 export async function analyzeJobOffer(jobOffer: string): Promise<JobAnalysis> {
-  const client = getAnthropicClient();
+  const { client, model: MODEL } = await getAnthropicClient();
 
   const response = await client.messages.create({
     model: MODEL,
@@ -327,7 +327,7 @@ export async function generateMissions(
   jobAnalysis: JobAnalysis,
   customInstructions?: string
 ): Promise<string[]> {
-  const client = getAnthropicClient();
+  const { client, model: MODEL } = await getAnthropicClient();
 
   const atsStyleGuide =
     jobAnalysis.atsHint === 'workday'
@@ -401,7 +401,7 @@ export async function generateProject(
   jobAnalysis: JobAnalysis,
   customInstructions?: string
 ): Promise<Project | null> {
-  const client = getAnthropicClient();
+  const { client, model: MODEL } = await getAnthropicClient();
 
   const sideProjectsContext =
     sideProjects?.items?.map(item => `${item.category}: ${item.projects.join(', ')}`).join('\n') ||
@@ -467,7 +467,7 @@ async function generateGapSuggestions(
   gaps: string[],
   cvLanguage: string,
 ): Promise<GapSuggestions> {
-  const client = getAnthropicClient();
+  const { client, model: MODEL } = await getAnthropicClient();
 
   const experiences = (cvData.experiences || []).map((exp, i) => (
     `[${i}] ${exp.title} @ ${exp.company} (${exp.period})`
@@ -561,7 +561,7 @@ export async function addRelevantSkills(
   },
   jobAnalysis: JobAnalysis
 ): Promise<Record<string, string[]>> {
-  const client = getAnthropicClient();
+  const { client, model: MODEL } = await getAnthropicClient();
 
   const prompt = `You are an ATS expert. Suggest skills to add to each CV category to maximize ATS scoring. Maximum 1 skill per category. Only suggest skills NOT already present.
 
@@ -740,7 +740,7 @@ export async function applyImprovements(
   cvData: CVData,
   jobOffer: string
 ): Promise<ImprovementResult> {
-  const client = getAnthropicClient();
+  const { client, model: MODEL } = await getAnthropicClient();
 
   // Step 1: analyze job offer (reuse existing function)
   const jobAnalysis = await analyzeJobOffer(jobOffer);
@@ -909,7 +909,7 @@ export async function recommendImprovements(
   cvData: CVData,
   jobOffer: string
 ): Promise<AtsRecommendations> {
-  const client = getAnthropicClient();
+  const { client, model: MODEL } = await getAnthropicClient();
 
   // Step 1: analyze job offer (reuse existing function)
   const jobAnalysis = await analyzeJobOffer(jobOffer);
@@ -1439,7 +1439,7 @@ export async function applySelectedActions(
  */
 export async function modifyCV(request: ModifyRequest): Promise<ModifyResponse> {
   const { cvData, modificationRequest } = request;
-  const client = getAnthropicClient();
+  const { client, model: MODEL } = await getAnthropicClient();
 
   const prompt = `Modify this CV according to the user's request. Return the COMPLETE modified CV as JSON.
 
