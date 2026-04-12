@@ -8,6 +8,7 @@ import { HistoryPanel } from './components/HistoryPanel/HistoryPanel';
 import { RecorderBar } from './components/RecorderBar/RecorderBar';
 import { SuggestionsPanel } from './components/SuggestionsPanel/SuggestionsPanel';
 import { TranscriptionImportModal } from './components/TranscriptionImportModal/TranscriptionImportModal';
+import { MergeTranscriptionModal } from './components/MergeTranscriptionModal/MergeTranscriptionModal';
 
 function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void }) {
   const { docId } = useParams<{ docId: string }>();
@@ -22,6 +23,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const [showRecorder, setShowRecorder] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showTranscriptionImport, setShowTranscriptionImport] = useState(false);
+  const [showMergeTranscription, setShowMergeTranscription] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showExports, setShowExports] = useState(false);
@@ -94,6 +96,13 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           title="Importer une transcription (Fathom, Otter...)"
         >
           Transcription
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={() => setShowMergeTranscription(true)}
+          title="Fusionner une transcription importée avec les sujets existants"
+        >
+          Fusionner
         </button>
         {(exportJsonFn || copyFn) && (
           <div ref={exportsRef} className="suivitess-exports">
@@ -196,6 +205,13 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           documentId={docId}
           onClose={() => setShowTranscriptionImport(false)}
           onImported={() => setRefreshKey(k => k + 1)}
+        />
+      )}
+      {showMergeTranscription && docId && (
+        <MergeTranscriptionModal
+          documentId={docId}
+          onClose={() => setShowMergeTranscription(false)}
+          onMerged={() => setRefreshKey(k => k + 1)}
         />
       )}
     </Layout>

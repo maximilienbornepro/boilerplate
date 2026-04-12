@@ -745,5 +745,149 @@ ${transcriptText.slice(0, 30000)}`,
     });
   }));
 
+  // Merge transcription subjects into existing document subjects using AI.
+  // Reads subjects from a "Fathom — ..." / "Otter — ..." section AND the
+  // rest of the document, then asks the AI to:
+  //   - Update existing subjects with new info from the transcription
+  //   - Create new subjects if important topics were discussed
+  //   - Return a list of changes applied
+  router.post('/documents/:docId/transcript-merge', asyncHandler(async (req, res) => {
+    const { docId } = req.params;
+    const { sectionId } = req.body; // the transcription section to merge from
+
+    if (!sectionId) {
+      res.status(400).json({ error: 'sectionId est requis' });
+      return;
+    }
+
+    const doc = await db.getDocumentWithSections(docId);
+    if (!doc) {
+      res.status(404).json({ error: 'Document non trouvé' });
+      return;
+    }
+
+    // Find the transcription source section
+    const sourceSection = doc.sections.find(s => s.id === sectionId);
+    if (!sourceSection) {
+      res.status(404).json({ error: 'Section source non trouvée' });
+      return;
+    }
+
+    // Build context: existing sections + subjects (excluding the source section)
+    const existingSections = doc.sections.filter(s => s.id !== sectionId);
+    const existingContext = existingSections.map(s => {
+      const subjectsText = s.subjects.map(sub =>
+        `  - [${sub.status}] "${sub.title}" (responsable: ${sub.responsibility || 'non assigné'})\n    Situation: ${sub.situation || '(vide)'}`
+      ).join('\n');
+      return `Section "${s.name}":\n${subjectsText || '  (vide)'}`;
+    }).join('\n\n');
+
+    // Build transcription subjects text
+    const transcriptionSubjects = sourceSection.subjects.map(sub =>
+      `- "${sub.title}"\n  ${sub.situation || ''}`
+    ).join('\n');
+
+    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
+    const { client, model } = await getAnthropicClient(req.user!.id);
+
+    const aiResponse = await client.messages.create({
+      model,
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: `Tu es un assistant de suivi de réunion. Tu dois fusionner les sujets extraits d'une transcription avec les sujets existants d'un document de suivi.
+
+## Document existant :
+${existingContext || '(aucun sujet existant)'}
+
+## Sujets extraits de la transcription :
+${transcriptionSubjects}
+
+## Instructions :
+1. Pour chaque sujet de la transcription, détermine s'il correspond à un sujet existant ou s'il est nouveau.
+2. Si un sujet existant correspond, propose une mise à jour de sa "situation" en y ajoutant les nouvelles informations.
+3. Si c'est un nouveau sujet important, propose sa création dans la section la plus pertinente.
+4. Ignore les sujets triviaux ou hors-sujet.
+
+Retourne UNIQUEMENT un tableau JSON :
+[
+  {
+    "action": "update",
+    "subjectId": "uuid-du-sujet-existant",
+    "newSituation": "Situation mise à jour avec les nouvelles infos...",
+    "reason": "Pourquoi cette mise à jour"
+  },
+  {
+    "action": "create",
+    "sectionId": "uuid-de-la-section-cible",
+    "title": "Nouveau sujet",
+    "situation": "Description du sujet...",
+    "responsibility": "Personne responsable ou null",
+    "status": "🔴 à faire",
+    "reason": "Pourquoi ce nouveau sujet"
+  }
+]
+
+Retourne [] si rien ne mérite d'être fusionné.`,
+      }],
+    });
+
+    const responseText = aiResponse.content
+      .filter(c => c.type === 'text')
+      .map(c => (c as { type: 'text'; text: string }).text)
+      .join('');
+
+    // Parse AI response
+    let changes: Array<{
+      action: 'update' | 'create';
+      subjectId?: string;
+      newSituation?: string;
+      sectionId?: string;
+      title?: string;
+      situation?: string;
+      responsibility?: string | null;
+      status?: string;
+      reason?: string;
+    }> = [];
+
+    try {
+      let jsonText = responseText.trim();
+      if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
+      if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
+      if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
+      changes = JSON.parse(jsonText.trim());
+    } catch {
+      const match = responseText.match(/\[[\s\S]*\]/);
+      if (match) changes = JSON.parse(match[0]);
+    }
+
+    // Apply changes
+    let updatedCount = 0;
+    let createdCount = 0;
+
+    for (const change of changes) {
+      if (change.action === 'update' && change.subjectId && change.newSituation) {
+        await db.updateSubject(change.subjectId, { situation: change.newSituation });
+        updatedCount++;
+      } else if (change.action === 'create' && change.sectionId && change.title) {
+        await db.createSubject(
+          change.sectionId,
+          change.title,
+          change.situation || '',
+          change.status || '🔴 à faire',
+          change.responsibility || null,
+        );
+        createdCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      updatedCount,
+      createdCount,
+      changes: changes.map(c => ({ action: c.action, reason: c.reason })),
+    });
+  }));
+
   return router;
 }
