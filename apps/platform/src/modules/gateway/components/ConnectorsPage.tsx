@@ -172,10 +172,32 @@ const ALL_SERVICES = SERVICE_GROUPS.flatMap(g => g.services);
 
 const API_BASE = '/api/connectors';
 
+interface AIUsageSummary {
+  provider: string;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  totalCalls: number;
+  lastUsed: string | null;
+}
+
 async function fetchConnectors(): Promise<ConnectorData[]> {
   const res = await fetch(API_BASE, { credentials: 'include' });
   if (!res.ok) throw new Error('Erreur lors du chargement des connecteurs');
   return res.json();
+}
+
+async function fetchAIUsage(): Promise<AIUsageSummary[]> {
+  try {
+    const res = await fetch(`${API_BASE}/ai-usage`, { credentials: 'include' });
+    if (!res.ok) return [];
+    return res.json();
+  } catch { return []; }
+}
+
+function formatTokenCount(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  return String(count);
 }
 
 async function saveConnector(service: string, config: Record<string, string>): Promise<ConnectorData> {
@@ -834,11 +856,13 @@ function AIProviderForm({
 function AIProviderCard({
   service,
   connector,
+  usage,
   onSaved,
   onDeleted,
 }: {
   service: ServiceDefinition;
   connector: ConnectorData | null;
+  usage?: AIUsageSummary | null;
   onSaved: () => void;
   onDeleted: () => void;
 }) {
@@ -858,6 +882,12 @@ function AIProviderCard({
           </div>
         </div>
         <div className="connector-card-right">
+          {usage && usage.totalCalls > 0 && (
+            <div className="connector-usage-badge" title={`${usage.totalCalls} appels — ${formatTokenCount(usage.totalTokensIn + usage.totalTokensOut)} tokens (30j)`}>
+              <span className="connector-usage-calls">{usage.totalCalls} appels</span>
+              <span className="connector-usage-tokens">{formatTokenCount(usage.totalTokensIn + usage.totalTokensOut)} tokens</span>
+            </div>
+          )}
           <div className={`connector-status ${isActive ? 'active' : 'inactive'}`}>
             <span className="connector-status-dot" />
             {isActive ? 'Connecte' : connector ? 'Configure' : 'Non configure'}
@@ -883,11 +913,13 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [oauthAvailable, setOauthAvailable] = useState(false);
+  const [aiUsage, setAiUsage] = useState<AIUsageSummary[]>([]);
 
   const loadConnectors = useCallback(async () => {
     try {
-      const data = await fetchConnectors();
+      const [data, usage] = await Promise.all([fetchConnectors(), fetchAIUsage()]);
       setConnectors(data);
+      setAiUsage(usage);
       setError('');
     } catch {
       setError('Impossible de charger les connecteurs');
@@ -900,6 +932,10 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
     loadConnectors();
     checkOAuthAvailable().then(setOauthAvailable);
   }, [loadConnectors]);
+
+  const getUsageForProvider = (provider: string): AIUsageSummary | null => {
+    return aiUsage.find(u => u.provider === provider) || null;
+  };
 
   const getConnectorForService = (serviceId: string): ConnectorData | null => {
     return connectors.find(c => c.service === serviceId) || null;
@@ -951,6 +987,7 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
                     key={service.id}
                     service={service}
                     connector={getConnectorForService(service.id)}
+                    usage={AI_SERVICE_IDS.has(service.id) ? getUsageForProvider(service.id) : null}
                     onSaved={loadConnectors}
                     onDeleted={loadConnectors}
                   />

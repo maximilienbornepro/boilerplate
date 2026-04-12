@@ -13,7 +13,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import { getConnector } from './dbService.js';
+import { getConnector, logAIUsage } from './dbService.js';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -104,14 +104,41 @@ export async function getAIConfig(userId: number, provider: AIProvider): Promise
 // ── Client factories ──────────────────────────────────────────────────
 
 /**
+ * Log AI usage after an Anthropic messages.create call.
+ * Call this with the response.usage object.
+ */
+export function logAnthropicUsage(
+  userId: number,
+  model: string,
+  usage: { input_tokens?: number; output_tokens?: number },
+  module?: string,
+): void {
+  logAIUsage(userId, 'anthropic', model, usage.input_tokens ?? 0, usage.output_tokens ?? 0, module);
+}
+
+/**
+ * Log AI usage after an OpenAI chat.completions.create call.
+ */
+export function logOpenAIUsage(
+  userId: number,
+  provider: 'openai' | 'scaleway' | 'mistral',
+  model: string,
+  usage: { prompt_tokens?: number; completion_tokens?: number } | null | undefined,
+  module?: string,
+): void {
+  logAIUsage(userId, provider, model, usage?.prompt_tokens ?? 0, usage?.completion_tokens ?? 0, module);
+}
+
+/**
  * Create an Anthropic client configured for a user.
  * Falls back to env var if user has no connector configured.
  */
-export async function getAnthropicClient(userId: number): Promise<{ client: Anthropic; model: string }> {
+export async function getAnthropicClient(userId: number): Promise<{ client: Anthropic; model: string; userId: number }> {
   const config = await getAIConfig(userId, 'anthropic');
   return {
     client: new Anthropic({ apiKey: config.apiKey }),
     model: config.model || DEFAULT_MODELS.anthropic,
+    userId,
   };
 }
 

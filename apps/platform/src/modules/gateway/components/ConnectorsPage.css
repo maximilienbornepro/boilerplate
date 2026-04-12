@@ -147,6 +147,29 @@
   gap: var(--spacing-md);
 }
 
+/* AI usage badge */
+.connector-usage-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+}
+
+.connector-usage-calls {
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+}
+
+.connector-usage-tokens {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
 /* Status badge */
 .connector-status {
   display: flex;

@@ -223,5 +223,13 @@ export function createConnectorsRoutes(): Router {
     }
   }));
 
+  // GET /ai-usage — AI consumption summary per provider (last 30 days)
+  router.get('/ai-usage', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const days = parseInt(req.query.days as string) || 30;
+    const usage = await db.getAIUsageByPeriod(userId, days);
+    res.json(usage);
+  }));
+
   return router;
 }
