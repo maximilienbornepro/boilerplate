@@ -896,7 +896,7 @@ Retourne UNIQUEMENT un tableau JSON :
         const newSituation = currentSituation
           ? `${currentSituation}\n\n---\n📝 Ajouté depuis transcription :\n${p.appendText}`
           : p.appendText;
-        await db.updateSubject(p.subjectId, { situation: newSituation });
+        await db.updateSubjectFields(p.subjectId, ['situation = $1'], [newSituation]);
         enriched++;
 
       } else if (p.action === 'create_subject' && p.sectionId && p.title) {
