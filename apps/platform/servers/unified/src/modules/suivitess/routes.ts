@@ -745,44 +745,29 @@ ${transcriptText.slice(0, 30000)}`,
     });
   }));
 
-  // Merge transcription subjects into existing document subjects using AI.
-  // Reads subjects from a "Fathom — ..." / "Otter — ..." section AND the
-  // rest of the document, then asks the AI to:
-  //   - Update existing subjects with new info from the transcription
-  //   - Create new subjects if important topics were discussed
-  //   - Return a list of changes applied
-  router.post('/documents/:docId/transcript-merge', asyncHandler(async (req, res) => {
+  // ── Step 1: AI proposes changes (preview, nothing applied yet) ──
+  router.post('/documents/:docId/transcript-propose', asyncHandler(async (req, res) => {
     const { docId } = req.params;
-    const { sectionId } = req.body; // the transcription section to merge from
+    const { sectionId } = req.body;
 
-    if (!sectionId) {
-      res.status(400).json({ error: 'sectionId est requis' });
-      return;
-    }
+    if (!sectionId) { res.status(400).json({ error: 'sectionId est requis' }); return; }
 
     const doc = await db.getDocumentWithSections(docId);
-    if (!doc) {
-      res.status(404).json({ error: 'Document non trouvé' });
-      return;
-    }
+    if (!doc) { res.status(404).json({ error: 'Document non trouvé' }); return; }
 
-    // Find the transcription source section
     const sourceSection = doc.sections.find(s => s.id === sectionId);
-    if (!sourceSection) {
-      res.status(404).json({ error: 'Section source non trouvée' });
-      return;
-    }
+    if (!sourceSection) { res.status(404).json({ error: 'Section source non trouvée' }); return; }
 
-    // Build context: existing sections + subjects (excluding the source section)
     const existingSections = doc.sections.filter(s => s.id !== sectionId);
+
+    // Build context with section IDs so the AI can reference them
     const existingContext = existingSections.map(s => {
       const subjectsText = s.subjects.map(sub =>
-        `  - [${sub.status}] "${sub.title}" (responsable: ${sub.responsibility || 'non assigné'})\n    Situation: ${sub.situation || '(vide)'}`
+        `  - [id:${sub.id}] [${sub.status}] "${sub.title}" (responsable: ${sub.responsibility || '-'})\n    Situation: ${sub.situation || '(vide)'}`
       ).join('\n');
-      return `Section "${s.name}":\n${subjectsText || '  (vide)'}`;
+      return `Section [id:${s.id}] "${s.name}":\n${subjectsText || '  (vide)'}`;
     }).join('\n\n');
 
-    // Build transcription subjects text
     const transcriptionSubjects = sourceSection.subjects.map(sub =>
       `- "${sub.title}"\n  ${sub.situation || ''}`
     ).join('\n');
@@ -795,40 +780,56 @@ ${transcriptText.slice(0, 30000)}`,
       max_tokens: 4096,
       messages: [{
         role: 'user',
-        content: `Tu es un assistant de suivi de réunion. Tu dois fusionner les sujets extraits d'une transcription avec les sujets existants d'un document de suivi.
+        content: `Tu es un assistant de suivi de réunion. Analyse la transcription et propose des changements à apporter au document existant.
 
-## Document existant :
+## Document existant (avec IDs) :
 ${existingContext || '(aucun sujet existant)'}
 
 ## Sujets extraits de la transcription :
 ${transcriptionSubjects}
 
-## Instructions :
-1. Pour chaque sujet de la transcription, détermine s'il correspond à un sujet existant ou s'il est nouveau.
-2. Si un sujet existant correspond, propose une mise à jour de sa "situation" en y ajoutant les nouvelles informations.
-3. Si c'est un nouveau sujet important, propose sa création dans la section la plus pertinente.
-4. Ignore les sujets triviaux ou hors-sujet.
+## Types d'actions possibles :
+
+1. "enrich" — Enrichir l'état de la situation d'un sujet existant. N'écrase PAS l'existant, AJOUTE du texte.
+2. "create_subject" — Créer un nouveau sujet dans une section existante.
+3. "create_section" — Créer une nouvelle section avec ses sujets (si le thème ne correspond à aucune section existante).
+
+## Règles :
+- Pour "enrich" : retourne le texte à AJOUTER (pas la situation complète)
+- Pour "create_subject" : indique dans quelle section existante le placer (via sectionId)
+- Pour "create_section" : inclus les sujets à créer dedans
+- Ignore les sujets triviaux, bavardage, ou hors-sujet
+- Maximum 10 propositions
 
 Retourne UNIQUEMENT un tableau JSON :
 [
   {
-    "action": "update",
-    "subjectId": "uuid-du-sujet-existant",
-    "newSituation": "Situation mise à jour avec les nouvelles infos...",
-    "reason": "Pourquoi cette mise à jour"
+    "action": "enrich",
+    "subjectId": "uuid",
+    "subjectTitle": "titre du sujet (pour affichage)",
+    "sectionName": "nom de la section (pour affichage)",
+    "appendText": "Nouveau texte à ajouter à la situation existante",
+    "reason": "Justification courte"
   },
   {
-    "action": "create",
-    "sectionId": "uuid-de-la-section-cible",
-    "title": "Nouveau sujet",
-    "situation": "Description du sujet...",
-    "responsibility": "Personne responsable ou null",
+    "action": "create_subject",
+    "sectionId": "uuid",
+    "sectionName": "nom de la section (pour affichage)",
+    "title": "Titre du nouveau sujet",
+    "situation": "Description...",
+    "responsibility": "Responsable ou null",
     "status": "🔴 à faire",
-    "reason": "Pourquoi ce nouveau sujet"
+    "reason": "Justification"
+  },
+  {
+    "action": "create_section",
+    "sectionName": "Nom de la nouvelle section",
+    "subjects": [
+      { "title": "...", "situation": "...", "responsibility": null, "status": "🔴 à faire" }
+    ],
+    "reason": "Justification"
   }
-]
-
-Retourne [] si rien ne mérite d'être fusionné.`,
+]`,
       }],
     });
 
@@ -837,55 +838,101 @@ Retourne [] si rien ne mérite d'être fusionné.`,
       .map(c => (c as { type: 'text'; text: string }).text)
       .join('');
 
-    // Parse AI response
-    let changes: Array<{
-      action: 'update' | 'create';
-      subjectId?: string;
-      newSituation?: string;
-      sectionId?: string;
-      title?: string;
-      situation?: string;
-      responsibility?: string | null;
-      status?: string;
-      reason?: string;
-    }> = [];
-
+    let proposals: Array<Record<string, unknown>> = [];
     try {
       let jsonText = responseText.trim();
       if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
       if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
       if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
-      changes = JSON.parse(jsonText.trim());
+      proposals = JSON.parse(jsonText.trim());
     } catch {
       const match = responseText.match(/\[[\s\S]*\]/);
-      if (match) changes = JSON.parse(match[0]);
+      if (match) proposals = JSON.parse(match[0]);
     }
 
-    // Apply changes
-    let updatedCount = 0;
-    let createdCount = 0;
+    // Add an index to each proposal for selection
+    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
 
-    for (const change of changes) {
-      if (change.action === 'update' && change.subjectId && change.newSituation) {
-        await db.updateSubject(change.subjectId, { situation: change.newSituation });
-        updatedCount++;
-      } else if (change.action === 'create' && change.sectionId && change.title) {
+    res.json({ proposals: indexed });
+  }));
+
+  // ── Step 2: Apply selected proposals ──
+  router.post('/documents/:docId/transcript-apply', asyncHandler(async (req, res) => {
+    const { docId } = req.params;
+    const { proposals } = req.body as {
+      proposals: Array<{
+        action: 'enrich' | 'create_subject' | 'create_section';
+        subjectId?: string;
+        appendText?: string;
+        sectionId?: string;
+        sectionName?: string;
+        title?: string;
+        situation?: string;
+        responsibility?: string | null;
+        status?: string;
+        subjects?: Array<{ title: string; situation: string; responsibility?: string | null; status?: string }>;
+      }>;
+    };
+
+    if (!proposals || proposals.length === 0) {
+      res.json({ success: true, applied: 0 });
+      return;
+    }
+
+    let enriched = 0;
+    let created = 0;
+    let sectionsCreated = 0;
+
+    for (const p of proposals) {
+      if (p.action === 'enrich' && p.subjectId && p.appendText) {
+        // Fetch current situation, append new text
+        const doc = await db.getDocumentWithSections(docId);
+        if (!doc) continue;
+        let currentSituation = '';
+        for (const s of doc.sections) {
+          const sub = s.subjects.find(sub => sub.id === p.subjectId);
+          if (sub) { currentSituation = sub.situation || ''; break; }
+        }
+        const newSituation = currentSituation
+          ? `${currentSituation}\n\n---\n📝 Ajouté depuis transcription :\n${p.appendText}`
+          : p.appendText;
+        await db.updateSubject(p.subjectId, { situation: newSituation });
+        enriched++;
+
+      } else if (p.action === 'create_subject' && p.sectionId && p.title) {
         await db.createSubject(
-          change.sectionId,
-          change.title,
-          change.situation || '',
-          change.status || '🔴 à faire',
-          change.responsibility || null,
+          p.sectionId,
+          p.title,
+          p.situation || '',
+          p.status || '🔴 à faire',
+          p.responsibility || null,
         );
-        createdCount++;
+        created++;
+
+      } else if (p.action === 'create_section' && p.sectionName) {
+        const section = await db.createSection(docId, p.sectionName);
+        sectionsCreated++;
+        if (p.subjects) {
+          for (const sub of p.subjects) {
+            await db.createSubject(
+              section.id,
+              sub.title,
+              sub.situation || '',
+              sub.status || '🔴 à faire',
+              sub.responsibility || null,
+            );
+            created++;
+          }
+        }
       }
     }
 
     res.json({
       success: true,
-      updatedCount,
-      createdCount,
-      changes: changes.map(c => ({ action: c.action, reason: c.reason })),
+      enriched,
+      created,
+      sectionsCreated,
+      applied: enriched + created + sectionsCreated,
     });
   }));
 

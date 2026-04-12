@@ -8,16 +8,34 @@ interface Section {
   subjects: Array<{ id: string; title: string }>;
 }
 
-interface AIProviderOption {
-  id: string;
-  label: string;
+interface Proposal {
+  id: number;
+  action: 'enrich' | 'create_subject' | 'create_section';
+  // enrich
+  subjectId?: string;
+  subjectTitle?: string;
+  sectionName?: string;
+  appendText?: string;
+  // create_subject
+  sectionId?: string;
+  title?: string;
+  situation?: string;
+  responsibility?: string | null;
+  status?: string;
+  // create_section
+  subjects?: Array<{ title: string; situation: string; responsibility?: string | null; status?: string }>;
+  // shared
+  reason?: string;
 }
 
-interface MergeResult {
-  updatedCount: number;
-  createdCount: number;
-  changes: Array<{ action: string; reason: string }>;
-}
+const AI_PROVIDERS = [
+  { id: 'anthropic', label: 'Claude (Anthropic)' },
+  { id: 'openai', label: 'OpenAI' },
+  { id: 'mistral', label: 'Mistral' },
+  { id: 'scaleway', label: 'Scaleway' },
+];
+
+const API_BASE = '/suivitess-api';
 
 interface MergeTranscriptionModalProps {
   documentId: string;
@@ -25,48 +43,31 @@ interface MergeTranscriptionModalProps {
   onMerged: () => void;
 }
 
-const API_BASE = '/suivitess-api';
-
-const AI_PROVIDERS: AIProviderOption[] = [
-  { id: 'anthropic', label: 'Claude (Anthropic)' },
-  { id: 'openai', label: 'OpenAI' },
-  { id: 'mistral', label: 'Mistral' },
-  { id: 'scaleway', label: 'Scaleway' },
-];
-
 export function MergeTranscriptionModal({ documentId, onClose, onMerged }: MergeTranscriptionModalProps) {
   const [connectedAI, setConnectedAI] = useState<string[]>([]);
-  const [selectedAI, setSelectedAI] = useState<string>('');
-  const [selectedSection, setSelectedSection] = useState<string>('');
-  const [merging, setMerging] = useState(false);
-  const [result, setResult] = useState<MergeResult | null>(null);
-  const [error, setError] = useState('');
+  const [selectedAI, setSelectedAI] = useState('');
+  const [selectedSection, setSelectedSection] = useState('');
   const [sections, setSections] = useState<Section[]>([]);
   const [loadingSections, setLoadingSections] = useState(true);
 
-  // Fetch document sections
+  // Step 2: proposals
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [analyzing, setAnalyzing] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<{ enriched: number; created: number; sectionsCreated: number } | null>(null);
+
+  // Fetch document + AI providers
   useEffect(() => {
     fetch(`${API_BASE}/documents/${documentId}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(doc => {
-        if (doc?.sections) {
-          setSections(doc.sections.map((s: { id: string; name: string; subjects: Array<{ id: string; title: string }> }) => ({
-            id: s.id,
-            name: s.name,
-            subjects: s.subjects || [],
-          })));
-        }
+        if (doc?.sections) setSections(doc.sections);
       })
       .catch(() => {})
       .finally(() => setLoadingSections(false));
-  }, [documentId]);
 
-  // Filter sections that come from transcription imports (Fathom, Otter, etc.)
-  const transcriptionSections = sections.filter(s =>
-    /^(Fathom|Otter|Transcription)\s*[—–-]/i.test(s.name)
-  );
-
-  useEffect(() => {
     fetch('/api/connectors', { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
       .then((connectors: Array<{ service: string; isActive: boolean }>) => {
@@ -77,40 +78,199 @@ export function MergeTranscriptionModal({ documentId, onClose, onMerged }: Merge
         if (active.length > 0) setSelectedAI(active[0]);
       })
       .catch(() => {});
-  }, []);
+  }, [documentId]);
+
+  const transcriptionSections = sections.filter(s =>
+    /^(Fathom|Otter|Transcription)\s*[—–-]/i.test(s.name)
+  );
 
   useEffect(() => {
     if (transcriptionSections.length > 0 && !selectedSection) {
       setSelectedSection(transcriptionSections[0].id);
     }
-  }, [transcriptionSections]);
+  }, [sections]);
 
-  const handleMerge = async () => {
+  const handleAnalyze = async () => {
     if (!selectedSection || !selectedAI) return;
-    setMerging(true);
+    setAnalyzing(true);
     setError('');
+    setProposals([]);
     setResult(null);
     try {
-      const res = await fetch(`${API_BASE}/documents/${documentId}/transcript-merge`, {
+      const res = await fetch(`${API_BASE}/documents/${documentId}/transcript-propose`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ sectionId: selectedSection }),
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || `Erreur ${res.status}`);
-      }
-      const data: MergeResult = await res.json();
-      setResult(data);
-      onMerged();
+      if (!res.ok) throw new Error((await res.json()).error || `Erreur ${res.status}`);
+      const data = await res.json();
+      setProposals(data.proposals || []);
+      // All selected by default
+      setSelected(new Set((data.proposals || []).map((p: Proposal) => p.id)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur lors de la fusion');
+      setError(err instanceof Error ? err.message : 'Erreur');
     } finally {
-      setMerging(false);
+      setAnalyzing(false);
     }
   };
 
+  const toggleProposal = (id: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === proposals.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(proposals.map(p => p.id)));
+    }
+  };
+
+  const handleApply = async () => {
+    const toApply = proposals.filter(p => selected.has(p.id));
+    if (toApply.length === 0) return;
+    setApplying(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/documents/${documentId}/transcript-apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ proposals: toApply }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || `Erreur ${res.status}`);
+      const data = await res.json();
+      setResult(data);
+      onMerged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const renderProposal = (p: Proposal) => {
+    const isSelected = selected.has(p.id);
+
+    if (p.action === 'enrich') {
+      return (
+        <label key={p.id} className={`${styles.proposal} ${isSelected ? styles.selected : ''}`}>
+          <input type="checkbox" checked={isSelected} onChange={() => toggleProposal(p.id)} />
+          <div className={styles.proposalContent}>
+            <div className={styles.proposalAction}>
+              <span className={styles.actionEnrich}>↻ Enrichir</span>
+              <span className={styles.proposalTarget}>
+                {p.subjectTitle || 'sujet'} <span className={styles.inSection}>dans {p.sectionName}</span>
+              </span>
+            </div>
+            <div className={styles.proposalDetail}>{p.appendText}</div>
+            {p.reason && <div className={styles.proposalReason}>{p.reason}</div>}
+          </div>
+        </label>
+      );
+    }
+
+    if (p.action === 'create_subject') {
+      return (
+        <label key={p.id} className={`${styles.proposal} ${isSelected ? styles.selected : ''}`}>
+          <input type="checkbox" checked={isSelected} onChange={() => toggleProposal(p.id)} />
+          <div className={styles.proposalContent}>
+            <div className={styles.proposalAction}>
+              <span className={styles.actionCreate}>+ Sujet</span>
+              <span className={styles.proposalTarget}>
+                {p.title} <span className={styles.inSection}>→ {p.sectionName}</span>
+              </span>
+            </div>
+            {p.situation && <div className={styles.proposalDetail}>{p.situation}</div>}
+            {p.reason && <div className={styles.proposalReason}>{p.reason}</div>}
+          </div>
+        </label>
+      );
+    }
+
+    if (p.action === 'create_section') {
+      return (
+        <label key={p.id} className={`${styles.proposal} ${isSelected ? styles.selected : ''}`}>
+          <input type="checkbox" checked={isSelected} onChange={() => toggleProposal(p.id)} />
+          <div className={styles.proposalContent}>
+            <div className={styles.proposalAction}>
+              <span className={styles.actionSection}>+ Section</span>
+              <span className={styles.proposalTarget}>{p.sectionName}</span>
+            </div>
+            {p.subjects && p.subjects.length > 0 && (
+              <ul className={styles.subjectsList}>
+                {p.subjects.map((s, i) => (
+                  <li key={i}>{s.title}</li>
+                ))}
+              </ul>
+            )}
+            {p.reason && <div className={styles.proposalReason}>{p.reason}</div>}
+          </div>
+        </label>
+      );
+    }
+
+    return null;
+  };
+
+  // ── Result view ──
+  if (result) {
+    return (
+      <Modal title="Fusion terminée" onClose={onClose}>
+        <div className={styles.body}>
+          <div className={styles.resultBox}>
+            <p><strong>{result.enriched}</strong> sujets enrichis</p>
+            <p><strong>{result.created}</strong> sujets créés</p>
+            {result.sectionsCreated > 0 && <p><strong>{result.sectionsCreated}</strong> sections créées</p>}
+          </div>
+          <div className={styles.actions}>
+            <Button variant="primary" onClick={onClose}>Fermer</Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  // ── Proposals view ──
+  if (proposals.length > 0) {
+    return (
+      <Modal title="Propositions de fusion" onClose={() => setProposals([])}>
+        <div className={styles.body}>
+          <div className={styles.selectAllRow}>
+            <label className={styles.selectAll}>
+              <input type="checkbox" checked={selected.size === proposals.length} onChange={toggleAll} />
+              <span>{selected.size === proposals.length ? 'Tout désélectionner' : 'Tout sélectionner'}</span>
+            </label>
+            <span className={styles.selectionCount}>{selected.size}/{proposals.length} sélectionnés</span>
+          </div>
+
+          <div className={styles.proposalList}>
+            {proposals.map(renderProposal)}
+          </div>
+
+          {error && <div className={styles.error}>{error}</div>}
+
+          <div className={styles.actions}>
+            <Button variant="secondary" onClick={() => setProposals([])}>Annuler</Button>
+            <Button
+              variant="primary"
+              onClick={handleApply}
+              disabled={applying || selected.size === 0}
+            >
+              {applying ? 'Application...' : `Appliquer (${selected.size})`}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  // ── Initial config view ──
   return (
     <Modal title="Fusionner la transcription" onClose={onClose}>
       <div className={styles.body}>
@@ -118,86 +278,46 @@ export function MergeTranscriptionModal({ documentId, onClose, onMerged }: Merge
           <LoadingSpinner message="Chargement..." />
         ) : transcriptionSections.length === 0 ? (
           <div className={styles.empty}>
-            Aucune section de transcription trouvée dans ce document.
+            Aucune section de transcription trouvée.
             <br />
-            <span className={styles.emptyHint}>
-              Importez d'abord une transcription via le bouton "Transcription".
-            </span>
+            <span className={styles.emptyHint}>Importez d'abord via le bouton "Transcription".</span>
           </div>
         ) : (
           <>
             <div className={styles.field}>
               <label>Section à fusionner</label>
-              <select
-                value={selectedSection}
-                onChange={e => setSelectedSection(e.target.value)}
-              >
+              <select value={selectedSection} onChange={e => setSelectedSection(e.target.value)}>
                 {transcriptionSections.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.subjects.length} sujets)
-                  </option>
+                  <option key={s.id} value={s.id}>{s.name} ({s.subjects.length} sujets)</option>
                 ))}
               </select>
-              <span className={styles.hint}>
-                Les sujets de cette section seront analysés et fusionnés avec les sujets existants.
-              </span>
             </div>
 
             <div className={styles.field}>
               <label>IA à utiliser</label>
               {connectedAI.length > 0 ? (
-                <select
-                  value={selectedAI}
-                  onChange={e => setSelectedAI(e.target.value)}
-                >
+                <select value={selectedAI} onChange={e => setSelectedAI(e.target.value)}>
                   {connectedAI.map(id => {
                     const ai = AI_PROVIDERS.find(a => a.id === id);
                     return <option key={id} value={id}>{ai?.label || id}</option>;
                   })}
                 </select>
               ) : (
-                <span className={styles.noAI}>
-                  Aucune IA configurée. Ajoutez une clé API dans Réglages &gt; Connecteurs.
-                </span>
+                <span className={styles.noAI}>Aucune IA configurée.</span>
               )}
             </div>
 
             {error && <div className={styles.error}>{error}</div>}
 
-            {result && (
-              <div className={styles.result}>
-                <div className={styles.resultSummary}>
-                  <strong>{result.updatedCount}</strong> sujets mis à jour,{' '}
-                  <strong>{result.createdCount}</strong> sujets créés
-                </div>
-                {result.changes.length > 0 && (
-                  <ul className={styles.changeList}>
-                    {result.changes.map((c, i) => (
-                      <li key={i}>
-                        <span className={c.action === 'create' ? styles.actionCreate : styles.actionUpdate}>
-                          {c.action === 'create' ? '+ Créé' : '↻ Mis à jour'}
-                        </span>
-                        {' '}{c.reason}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-
             <div className={styles.actions}>
-              <Button variant="secondary" onClick={onClose}>
-                {result ? 'Fermer' : 'Annuler'}
+              <Button variant="secondary" onClick={onClose}>Annuler</Button>
+              <Button
+                variant="primary"
+                onClick={handleAnalyze}
+                disabled={analyzing || !selectedAI || !selectedSection}
+              >
+                {analyzing ? 'Analyse en cours...' : 'Analyser'}
               </Button>
-              {!result && (
-                <Button
-                  variant="primary"
-                  onClick={handleMerge}
-                  disabled={merging || !selectedAI || !selectedSection}
-                >
-                  {merging ? 'Analyse en cours...' : 'Fusionner avec l\'IA'}
-                </Button>
-              )}
             </div>
           </>
         )}
