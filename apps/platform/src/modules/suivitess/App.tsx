@@ -84,13 +84,6 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           Historique
         </button>
         <button
-          className={`module-header-btn${showRecorder ? ' module-header-btn-active' : ''}`}
-          onClick={() => setShowRecorder(v => !v)}
-          title="Connecter un call Teams"
-        >
-          Teams
-        </button>
-        <button
           className="module-header-btn"
           onClick={() => setShowTranscriptionImport(true)}
           title="Importer une transcription (Fathom, Otter...)"
