@@ -62,6 +62,18 @@
 .containerHeader {
   display: flex;
   align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.containerDaysBadge {
+  background: #0ea5e9;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: var(--font-weight-bold);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .containerTitle {
@@ -330,6 +342,14 @@
   font-weight: var(--font-weight-bold);
   flex-shrink: 0;
   letter-spacing: 0.02em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+a.jiraKeyBadge:hover {
+  opacity: 0.8;
+  text-decoration: underline;
 }
 
 .daysBadge {

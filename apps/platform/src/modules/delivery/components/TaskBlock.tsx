@@ -331,6 +331,12 @@ export function TaskBlock({
         <div className={styles.containerContent}>
           <div className={styles.containerHeader}>
             <span className={styles.containerTitle}>{task.title}</span>
+            {(() => {
+              const totalDays = children.reduce((sum, c) => sum + (c.estimatedDays || 0), 0);
+              return totalDays > 0 ? (
+                <span className={styles.containerDaysBadge}>{totalDays}j</span>
+              ) : null;
+            })()}
           </div>
 
           {task.description && (
@@ -405,9 +411,23 @@ export function TaskBlock({
               const jiraKey = extractJiraKey(task.title);
               const project = jiraKey?.split('-')[0];
               const badgeColor = project ? PROJECT_BADGE_COLORS[project] || '#6b7280' : undefined;
-              return jiraKey ? (
+              if (!jiraKey) return null;
+              const jiraUrl = jiraKey && jiraBaseUrl ? buildJiraUrl(jiraBaseUrl, jiraKey) : null;
+              return jiraUrl ? (
+                <a
+                  href={jiraUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.jiraKeyBadge}
+                  style={{ background: badgeColor }}
+                  onClick={e => e.stopPropagation()}
+                  onMouseDown={e => e.stopPropagation()}
+                >
+                  {jiraKey}
+                </a>
+              ) : (
                 <span className={styles.jiraKeyBadge} style={{ background: badgeColor }}>{jiraKey}</span>
-              ) : null;
+              );
             })()}
             {task.estimatedDays && <span className={styles.daysBadge}>{task.estimatedDays}j</span>}
             {task.type === 'tech' && <span className={styles.techBadge}>TECH</span>}
