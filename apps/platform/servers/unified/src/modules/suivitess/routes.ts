@@ -283,6 +283,123 @@ export function createRoutes(): Router {
     res.json(updated);
   }));
 
+  // Reformulate a subject's situation using AI
+  router.post('/subjects/:subjectId/reformulate', asyncHandler(async (req, res) => {
+    const subject = await db.getSubject(req.params.subjectId);
+    if (!subject) { res.status(404).json({ error: 'Sujet non trouvé' }); return; }
+
+    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
+    const { client, model } = await getAnthropicClient(req.user!.id);
+
+    const aiResponse = await client.messages.create({
+      model,
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: `Reformule ce sujet de suivi de réunion pour qu'il soit plus clair, structuré et professionnel.
+
+Titre : ${subject.title}
+État de la situation : ${subject.situation || '(vide)'}
+Responsable : ${subject.responsibility || 'Non assigné'}
+Statut : ${subject.status}
+
+Retourne UNIQUEMENT un JSON :
+{
+  "title": "Titre reformulé (concis, max 100 caractères)",
+  "situation": "Situation reformulée (bullet points, structurée, factuelle)"
+}
+
+Garde le sens original, améliore la clarté et la structure. Utilise des bullet points (lignes commençant par •). Ne change pas le fond, seulement la forme.`,
+      }],
+    });
+
+    const text = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
+    let result: { title?: string; situation?: string } = {};
+    try {
+      let json = text.trim();
+      if (json.startsWith('```json')) json = json.slice(7);
+      if (json.startsWith('```')) json = json.slice(3);
+      if (json.endsWith('```')) json = json.slice(0, -3);
+      result = JSON.parse(json.trim());
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) result = JSON.parse(match[0]);
+    }
+
+    res.json({
+      title: result.title || subject.title,
+      situation: result.situation || subject.situation,
+    });
+  }));
+
+  // Generate an email summary for one or all subjects
+  router.post('/email-summary', asyncHandler(async (req, res) => {
+    const { documentId, subjectId, template } = req.body as {
+      documentId?: string;
+      subjectId?: string; // optional — if set, only this subject
+      template: 'listing' | 'situation-cible' | 'actions' | 'executive';
+    };
+
+    if (!documentId) { res.status(400).json({ error: 'documentId requis' }); return; }
+
+    const doc = await db.getDocumentWithSections(documentId);
+    if (!doc) { res.status(404).json({ error: 'Document non trouvé' }); return; }
+
+    // Build content — single subject or full document
+    let content = '';
+    if (subjectId) {
+      for (const s of doc.sections) {
+        const sub = s.subjects.find(sub => sub.id === subjectId);
+        if (sub) {
+          content = `Section : ${s.name}\nSujet : ${sub.title}\nStatut : ${sub.status}\nResponsable : ${sub.responsibility || '-'}\nSituation :\n${sub.situation || '(vide)'}`;
+          break;
+        }
+      }
+    } else {
+      content = doc.sections.map(s => {
+        const subs = s.subjects.map(sub =>
+          `  - [${sub.status}] ${sub.title} (resp: ${sub.responsibility || '-'})\n    ${sub.situation || '(vide)'}`
+        ).join('\n');
+        return `Section "${s.name}" :\n${subs}`;
+      }).join('\n\n');
+    }
+
+    const templatePrompts: Record<string, string> = {
+      'listing': `Génère un email de récap sous forme de listing clair et concis. Chaque point = 1 ligne avec un bullet. Regroupe par section. Ton professionnel mais direct.`,
+      'situation-cible': `Génère un email structuré en 2 parties par sujet :
+- **Situation actuelle** : ce qui est en place aujourd'hui
+- **Situation cible** : ce qu'on vise
+Ton professionnel.`,
+      'actions': `Génère un email orienté actions. Pour chaque sujet, liste :
+- L'action à réaliser
+- Le responsable
+- La deadline estimée (si mentionnée)
+Format tableau ou liste numérotée. Ton direct et actionnable.`,
+      'executive': `Génère un résumé exécutif de 5-10 lignes max. Synthétise les points clés, les risques et les prochaines étapes. Ton senior management — concis, stratégique, pas de détails opérationnels.`,
+    };
+
+    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
+    const { client, model } = await getAnthropicClient(req.user!.id);
+
+    const aiResponse = await client.messages.create({
+      model,
+      max_tokens: 3000,
+      messages: [{
+        role: 'user',
+        content: `${templatePrompts[template] || templatePrompts.listing}
+
+Document : "${doc.title}"
+${content}
+
+Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En français.`,
+      }],
+    });
+
+    const emailBody = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
+
+    res.json({ email: emailBody, template });
+  }));
+
   // Delete subject
   router.delete('/subjects/:subjectId', asyncHandler(async (req, res) => {
     const { subjectId } = req.params;

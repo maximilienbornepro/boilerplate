@@ -66,6 +66,29 @@
   flex: 1;
 }
 
+.actionBtn {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.actionBtn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.actionBtn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 .subjectCollapseBtn {
   display: inline-flex;
   align-items: center;

@@ -59,6 +59,45 @@ export function SubjectReview({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [focusLineIndex, setFocusLineIndex] = useState<number | null>(null);
+  const [reformulating, setReformulating] = useState(false);
+  const [generatingEmail, setGeneratingEmail] = useState(false);
+
+  const handleReformulate = async () => {
+    setReformulating(true);
+    try {
+      const res = await fetch(`/suivitess-api/subjects/${subject.id}/reformulate`, {
+        method: 'POST', credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      const data = await res.json();
+      if (data.title) setTitle(data.title);
+      if (data.situation) setSituation(data.situation);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erreur de reformulation');
+    } finally {
+      setReformulating(false);
+    }
+  };
+
+  const handleCopyEmail = async () => {
+    setGeneratingEmail(true);
+    try {
+      const res = await fetch('/suivitess-api/email-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ documentId, subjectId: subject.id, template: 'listing' }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      const data = await res.json();
+      await navigator.clipboard.writeText(data.email);
+      alert('Email copié !');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setGeneratingEmail(false);
+    }
+  };
 
   // Track the currently focused/editing line to sync content before save
   const editingLineRef = useRef<number | null>(null);
@@ -539,6 +578,24 @@ export function SubjectReview({
               </div>
             )}
           </div>
+
+          <button
+            className={styles.actionBtn}
+            onClick={handleReformulate}
+            disabled={reformulating}
+            title="Reformuler avec l'IA"
+          >
+            {reformulating ? '...' : '✨'}
+          </button>
+
+          <button
+            className={styles.actionBtn}
+            onClick={handleCopyEmail}
+            disabled={generatingEmail}
+            title="Copier email pour ce sujet"
+          >
+            {generatingEmail ? '...' : '✉'}
+          </button>
 
           {onDelete && (
             <button

@@ -22,10 +22,31 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const [showRecorder, setShowRecorder] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showTranscriptionWizard, setShowTranscriptionWizard] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedAI, setSelectedAI] = useState('');
+  const [connectedAIs, setConnectedAIs] = useState<Array<{ id: string; label: string }>>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showExports, setShowExports] = useState(false);
   const exportsRef = useRef<HTMLDivElement>(null);
+
+  const AI_LABELS: Record<string, string> = {
+    anthropic: 'Claude', openai: 'OpenAI', mistral: 'Mistral', scaleway: 'Scaleway',
+  };
+
+  // Load connected AI providers
+  useEffect(() => {
+    fetch('/api/connectors', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then((connectors: Array<{ service: string; isActive: boolean }>) => {
+        const ais = connectors
+          .filter(c => c.isActive && AI_LABELS[c.service])
+          .map(c => ({ id: c.service, label: AI_LABELS[c.service] }));
+        setConnectedAIs(ais);
+        if (ais.length > 0 && !selectedAI) setSelectedAI(ais[0].id);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!showExports) return;
@@ -65,8 +86,25 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   }, [saveFn, isSaving]);
 
   const handleRestore = () => {
-    // Trigger a refresh of the ReviewWizard
     setRefreshKey(k => k + 1);
+  };
+
+  const handleEmailExport = async (template: string) => {
+    if (!docId) return;
+    try {
+      const res = await fetch('/suivitess-api/email-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ documentId: docId, template }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      const data = await res.json();
+      await navigator.clipboard.writeText(data.email);
+      alert('Email copié dans le presse-papiers !');
+    } catch (err) {
+      alert(`Erreur : ${err instanceof Error ? err.message : 'Impossible de générer l\'email'}`);
+    }
   };
 
   return (
@@ -88,6 +126,19 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
         >
           Transcription
         </button>
+        {connectedAIs.length > 0 && (
+          <select
+            className="module-header-btn"
+            value={selectedAI}
+            onChange={e => setSelectedAI(e.target.value)}
+            title="Connecteur IA utilisé pour la reformulation"
+            style={{ maxWidth: 120 }}
+          >
+            {connectedAIs.map(ai => (
+              <option key={ai.id} value={ai.id}>{ai.label}</option>
+            ))}
+          </select>
+        )}
         {(exportJsonFn || copyFn) && (
           <div ref={exportsRef} className="suivitess-exports">
             <button
@@ -121,6 +172,15 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
                   >
                     Tableau
                   </button>
+                )}
+                {connectedAIs.length > 0 && docId && (
+                  <>
+                    <div className="suivitess-exports-divider" />
+                    <button type="button" className="suivitess-exports-item" onClick={() => { handleEmailExport('listing'); setShowExports(false); }}>Email — Listing</button>
+                    <button type="button" className="suivitess-exports-item" onClick={() => { handleEmailExport('situation-cible'); setShowExports(false); }}>Email — Situation / Cible</button>
+                    <button type="button" className="suivitess-exports-item" onClick={() => { handleEmailExport('actions'); setShowExports(false); }}>Email — Actions</button>
+                    <button type="button" className="suivitess-exports-item" onClick={() => { handleEmailExport('executive'); setShowExports(false); }}>Email — Résumé exécutif</button>
+                  </>
                 )}
               </div>
             )}
