@@ -51,6 +51,13 @@ export interface Task {
    * roadmap tasks (those track progress as a 0-100 percentage instead).
    */
   status?: string;
+  /** Jira metadata for hover card (virtual delivery tasks only) */
+  jiraKey?: string;
+  boardName?: string;
+  estimatedDays?: number | null;
+  assignee?: string | null;
+  version?: string | null;
+  source?: 'manual' | 'jira';
 }
 
 export interface LinkedDeliveryBoard {

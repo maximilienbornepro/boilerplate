@@ -61,6 +61,7 @@ export function TaskBar({
   // Compact mode: thin row with a minimal 4px bar and a single-line name.
   // Used for virtual delivery leaves so hundreds of tickets fit on screen.
   const isCompact = task.compact === true;
+  const [showHoverCard, setShowHoverCard] = useState(false);
   // Section header: the top-level virtual "Delivery" row. Rendered as a
   // visually distinct group header (no timeline bar, tinted background,
   // uppercase label) so users can tell it's a grouping, not a task.
@@ -287,6 +288,8 @@ export function TaskBar({
         onMouseDown={effectiveReadOnly ? undefined : handleMouseDown}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onMouseEnter={isCompact && task.isVirtual ? () => setShowHoverCard(true) : undefined}
+        onMouseLeave={isCompact && task.isVirtual ? () => setShowHoverCard(false) : undefined}
       >
         {!effectiveReadOnly && !isCompact && <div className={`${styles.resizeHandle} ${styles.left}`} data-resize-handle onMouseDown={(e) => handleResizeStart(e, 'left')} />}
         {!isCompact && (
@@ -297,6 +300,28 @@ export function TaskBar({
                 {task.name}
               </span>
             )}
+          </div>
+        )}
+
+        {/* Jira hover card — shown on compact delivery overlay bars */}
+        {showHoverCard && isCompact && task.isVirtual && (
+          <div className={styles.hoverCard}>
+            <div className={styles.hoverCardHeader}>
+              {task.jiraKey && (
+                <span className={styles.hoverCardKey} style={{ background: task.color }}>{task.jiraKey}</span>
+              )}
+              {task.status && (
+                <span className={styles.hoverCardStatus} style={{ background: getStatusColor(task.status) }}>
+                  {task.status === 'done' ? 'Terminé' : task.status === 'in_progress' ? 'En cours' : 'À faire'}
+                </span>
+              )}
+            </div>
+            <div className={styles.hoverCardTitle}>{task.name}</div>
+            <div className={styles.hoverCardMeta}>
+              {task.boardName && <span>{task.boardName}</span>}
+              <span>{task.startDate} → {task.endDate}</span>
+              {task.source && <span>{task.source === 'jira' ? 'Jira' : 'Manuel'}</span>}
+            </div>
           </div>
         )}
         {!effectiveReadOnly && !isCompact && <div className={`${styles.resizeHandle} ${styles.right}`} data-resize-handle onMouseDown={(e) => handleResizeStart(e, 'right')} />}

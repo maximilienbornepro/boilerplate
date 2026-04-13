@@ -156,6 +156,13 @@ export function buildEnhancedTasks(
       virtualSource: 'delivery',
       compact: true,
       status: simpleStatus,
+      // Jira metadata for hover card
+      jiraKey: (() => {
+        const match = o.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+        return match ? match[1] : undefined;
+      })(),
+      boardName: o.boardName,
+      source: o.source,
     };
   };
 
