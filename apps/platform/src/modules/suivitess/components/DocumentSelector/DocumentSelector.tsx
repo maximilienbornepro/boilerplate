@@ -168,6 +168,28 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
       </ModuleHeader>
 
       <div className={styles.container}>
+        {/* Chrome Extension Banner */}
+        <div className={styles.extensionBanner}>
+          <div className={styles.extensionIcon}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+              <polyline points="22,6 12,13 2,6" />
+            </svg>
+          </div>
+          <div className={styles.extensionText}>
+            <strong>Extension Chrome disponible</strong>
+            <span>Importez vos mails Outlook et messages Slack directement dans vos reviews</span>
+          </div>
+          <a
+            href="https://github.com/maximilienbornepro/boilerplate/tree/main/apps/platform/extensions/suivitess-importer"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles.extensionLink}
+          >
+            Installer
+          </a>
+        </div>
+
         {documents.length === 0 ? (
           <Card className={styles.emptyCard}>
             <div className={styles.emptyContent}>

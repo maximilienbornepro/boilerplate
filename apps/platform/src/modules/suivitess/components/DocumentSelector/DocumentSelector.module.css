@@ -32,6 +32,69 @@
   margin: 0;
 }
 
+/* Extension Banner */
+.extensionBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+  max-width: 50rem;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--accent-primary);
+}
+
+.extensionIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+  flex-shrink: 0;
+}
+
+.extensionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.extensionText strong {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.extensionText span {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.extensionLink {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-md);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all var(--transition-normal);
+}
+
+.extensionLink:hover {
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+}
+
 /* Document grid */
 .grid {
   display: grid;
