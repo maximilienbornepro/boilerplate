@@ -257,5 +257,23 @@ export function createConnectorsRoutes(): Router {
     res.json(usage);
   }));
 
+  // ==================== CREDITS ====================
+
+  // GET /credits — current user's credit balance + recent transactions
+  router.get('/credits', asyncHandler(async (req, res) => {
+    const { getBalance, getRecentTransactions, isCreditSystemEnabled, getCreditCosts } = await import('./creditService.js');
+    const userId = req.user!.id;
+    const enabled = await isCreditSystemEnabled();
+    const balance = await getBalance(userId);
+    const transactions = await getRecentTransactions(userId, 20);
+    res.json({ enabled, ...balance, transactions });
+  }));
+
+  // GET /credits/costs — full cost table
+  router.get('/credits/costs', asyncHandler(async (_req, res) => {
+    const { getCreditCosts } = await import('./creditService.js');
+    res.json(getCreditCosts());
+  }));
+
   return router;
 }

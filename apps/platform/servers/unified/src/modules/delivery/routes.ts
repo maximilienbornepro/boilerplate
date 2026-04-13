@@ -128,6 +128,11 @@ export function createDeliveryRoutes(): Router {
     const vis = visibility === 'public' ? 'public' : 'private';
     if (!name?.trim()) return res.status(400).json({ error: 'Le nom est obligatoire' });
 
+    // Credit check
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'delivery', 'create_board'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
     const type = (boardType === 'calendaire' ? 'calendaire' : 'agile') as db.BoardType;
 
     // Validation per type

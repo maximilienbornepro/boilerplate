@@ -42,6 +42,11 @@ export function createRoutes(): Router {
       return;
     }
 
+    // Credit check
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'create_document'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
     // Generate base slug from title (kebab-case). Documents may share the same
     // name — we keep a readable slug in the URL by appending -2, -3, ... when
     // the base slug collides with an existing primary key.
@@ -294,6 +299,10 @@ export function createRoutes(): Router {
     const subject = await db.getSubject(req.params.subjectId);
     if (!subject) { res.status(404).json({ error: 'Sujet non trouvé' }); return; }
 
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'reformulation'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 
@@ -383,6 +392,10 @@ Ton professionnel.`,
 Format tableau ou liste numérotée. Ton direct et actionnable.`,
       'executive': `Génère un résumé exécutif de 5-10 lignes max. Synthétise les points clés, les risques et les prochaines étapes. Ton senior management — concis, stratégique, pas de détails opérationnels.`,
     };
+
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'email_generation'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
@@ -805,6 +818,10 @@ Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En fran
     if (useAI) {
       // ── AI-powered extraction: send transcript to LLM to extract structured subjects ──
       try {
+        const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+        try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'transcript_analysis'); }
+        catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
         const { getAnthropicClient } = await import('../connectors/aiProvider.js');
         const { client, model } = await getAnthropicClient(req.user!.id);
 
@@ -939,6 +956,10 @@ ${transcriptText.slice(0, 30000)}`,
     const transcriptionSubjects = sourceSection.subjects.map(sub =>
       `- "${sub.title}"\n  ${sub.situation || ''}`
     ).join('\n');
+
+    const { deductCredits: deductCr, InsufficientCreditsError: InsCrErr } = await import('../connectors/creditService.js');
+    try { await deductCr(req.user!.id, req.user!.isAdmin, 'suivitess', 'transcript_merge'); }
+    catch (e) { if (e instanceof InsCrErr) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
@@ -1140,7 +1161,11 @@ Retourne UNIQUEMENT un tableau JSON :
       return `Section [id:${s.id}] "${s.name}":\n${subjectsText || '  (vide)'}`;
     }).join('\n\n');
 
-    // 3. AI analysis
+    // 3. AI analysis — credit check
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'transcript_analysis'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 

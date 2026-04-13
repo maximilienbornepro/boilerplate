@@ -921,12 +921,75 @@ interface ConnectorsPageProps {
   onBack: () => void;
 }
 
+interface CreditInfo {
+  enabled: boolean;
+  balance: number;
+  monthlyAllocation: number;
+  transactions: Array<{
+    id: number;
+    amount: number;
+    balanceAfter: number;
+    type: string;
+    module: string | null;
+    operation: string | null;
+    description: string | null;
+    createdAt: string;
+  }>;
+}
+
+function CreditSection({ credits }: { credits: CreditInfo }) {
+  if (!credits.enabled) return null;
+
+  const pct = credits.monthlyAllocation > 0
+    ? Math.max(0, Math.min(100, (credits.balance / credits.monthlyAllocation) * 100))
+    : 0;
+  const barColor = pct > 30 ? 'var(--color-accent)' : pct > 10 ? 'var(--color-warning)' : 'var(--color-error)';
+
+  return (
+    <div className="connectors-group">
+      <h3 className="connectors-group-title">Credits</h3>
+      <p className="connectors-group-desc">Solde de credits pour les operations IA et creations de ressources.</p>
+      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: 'var(--spacing-lg)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--spacing-sm)' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xl)', fontWeight: 'var(--font-weight-bold)', color: 'var(--text-primary)' }}>
+            {credits.balance}
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
+            / {credits.monthlyAllocation} credits
+          </span>
+        </div>
+        <div style={{ height: 6, background: 'var(--bg-primary)', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3, transition: 'width 0.3s' }} />
+        </div>
+        {credits.transactions.length > 0 && (
+          <details style={{ marginTop: 'var(--spacing-md)' }}>
+            <summary style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Historique recent ({credits.transactions.length})
+            </summary>
+            <div style={{ marginTop: 'var(--spacing-sm)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
+              {credits.transactions.slice(0, 10).map(tx => (
+                <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', padding: '2px 0' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>{tx.description || tx.operation || tx.type}</span>
+                  <span style={{ color: tx.amount < 0 ? 'var(--color-error)' : 'var(--color-success)', fontWeight: 'var(--font-weight-semibold)' }}>
+                    {tx.amount > 0 ? '+' : ''}{tx.amount}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
   const [connectors, setConnectors] = useState<ConnectorData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [oauthAvailable, setOauthAvailable] = useState(false);
   const [aiUsage, setAiUsage] = useState<AIUsageSummary[]>([]);
+  const [credits, setCredits] = useState<CreditInfo | null>(null);
 
   const loadConnectors = useCallback(async () => {
     try {
@@ -944,6 +1007,10 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
   useEffect(() => {
     loadConnectors();
     checkOAuthAvailable().then(setOauthAvailable);
+    fetch('/connectors-api/credits', { credentials: 'include' })
+      .then(r => r.json())
+      .then(setCredits)
+      .catch(() => {});
   }, [loadConnectors]);
 
   const getUsageForProvider = (provider: string): AIUsageSummary | null => {
@@ -975,6 +1042,8 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
       </p>
 
       {error && <div className="connectors-error">{error}</div>}
+
+      {credits && <CreditSection credits={credits} />}
 
       {SERVICE_GROUPS.map(group => (
         <div key={group.title} className="connectors-group">

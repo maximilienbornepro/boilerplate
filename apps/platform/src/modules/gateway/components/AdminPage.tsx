@@ -21,11 +21,20 @@ interface PlatformSetting {
 
 const INTEGRATION_LABELS: Record<string, string> = {
   integration_roadmap_suivitess: 'Roadmap ↔ SuiviTess',
+  credits_enabled: 'Systeme de credits',
 };
 
 const INTEGRATION_DESCRIPTIONS: Record<string, string> = {
   integration_roadmap_suivitess: 'Lier des tâches Roadmap à des sujets SuiviTess et les éditer depuis Roadmap',
+  credits_enabled: 'Limiter l\'usage des services IA et la creation de ressources via un systeme de credits par utilisateur',
 };
+
+interface CreditBalance {
+  userId: number;
+  email: string;
+  balance: number;
+  monthlyAllocation: number;
+}
 
 const APP_LABELS: Record<string, string> = Object.fromEntries(
   APPS.map(app => [app.id, app.name])
@@ -38,6 +47,9 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [platformSettings, setPlatformSettings] = useState<PlatformSetting[]>([]);
+  const [creditBalances, setCreditBalances] = useState<CreditBalance[]>([]);
+  const [rechargeUserId, setRechargeUserId] = useState<number | null>(null);
+  const [rechargeAmount, setRechargeAmount] = useState('100');
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
   const addToast = (toast: Omit<ToastData, 'id'>) => {
@@ -70,6 +82,45 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
     }
   }, []);
 
+  const loadCredits = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/credits', { credentials: 'include' });
+      if (res.ok) setCreditBalances(await res.json());
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleRecharge = useCallback(async (userId: number, amount: number) => {
+    try {
+      const res = await fetch(`/api/admin/credits/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ addAmount: amount }),
+      });
+      if (!res.ok) throw new Error();
+      addToast({ type: 'success', message: `+${amount} credits ajoutes` });
+      setRechargeUserId(null);
+      loadCredits();
+    } catch {
+      addToast({ type: 'error', message: 'Erreur lors du rechargement' });
+    }
+  }, [loadCredits]);
+
+  const handleResetMonthly = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/credits/reset-monthly', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      addToast({ type: 'success', message: `Credits réinitialisés pour ${data.usersReset} utilisateurs` });
+      loadCredits();
+    } catch {
+      addToast({ type: 'error', message: 'Erreur lors du reset' });
+    }
+  }, [loadCredits]);
+
   const toggleIntegration = useCallback(async (key: string, currentValue: string) => {
     const newValue = currentValue === 'true' ? 'false' : 'true';
     try {
@@ -92,7 +143,8 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     loadUsers();
     loadPlatformSettings();
-  }, [loadPlatformSettings]);
+    loadCredits();
+  }, [loadPlatformSettings, loadCredits]);
 
   const toggleUserStatus = async (userId: number, currentStatus: boolean) => {
     try {
@@ -229,13 +281,13 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
           </div>
         </section>
 
-        {/* Platform Integrations */}
+        {/* Platform Settings */}
         <section className="admin-section">
-          <SectionTitle>Intégrations inter-modules</SectionTitle>
-          <p className="admin-section-description">Activez ou désactivez les liaisons entre modules.</p>
+          <SectionTitle>Parametres plateforme</SectionTitle>
+          <p className="admin-section-description">Activez ou desactivez les fonctionnalites de la plateforme.</p>
 
           <div className="admin-integrations">
-            {platformSettings.filter(s => s.key.startsWith('integration_')).map(setting => (
+            {platformSettings.filter(s => s.key.startsWith('integration_') || s.key === 'credits_enabled').map(setting => (
               <Card key={setting.key} className="admin-integration-row">
                 <div className="admin-integration-info">
                   <span className="shared-card__title">
@@ -258,6 +310,66 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
             )}
           </div>
         </section>
+
+        {/* Credits Management */}
+        {platformSettings.find(s => s.key === 'credits_enabled' && s.value === 'true') && (
+          <section className="admin-section">
+            <SectionTitle>Gestion des credits</SectionTitle>
+            <p className="admin-section-description">Gerez les credits des utilisateurs. Rechargez ou reinitialisez les soldes.</p>
+
+            <div style={{ marginBottom: 'var(--spacing-md)' }}>
+              <Button variant="secondary" onClick={handleResetMonthly}>
+                Reset mensuel (tous les utilisateurs)
+              </Button>
+            </div>
+
+            <div className="admin-users">
+              {creditBalances.map(cb => {
+                const pct = cb.monthlyAllocation > 0 ? Math.min(100, (cb.balance / cb.monthlyAllocation) * 100) : 0;
+                return (
+                  <Card key={cb.userId} className="admin-user-card">
+                    <div className="admin-user-row">
+                      <div className="admin-user-info">
+                        <div className="admin-user-name-row">
+                          <span className="shared-card__title">{cb.email}</span>
+                          <Badge type={cb.balance > 0 ? 'success' : 'error'}>
+                            {cb.balance} / {cb.monthlyAllocation}
+                          </Badge>
+                        </div>
+                        <div style={{ height: 4, background: 'var(--bg-primary)', borderRadius: 2, marginTop: 'var(--spacing-xs)', maxWidth: 200 }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: pct > 30 ? 'var(--color-accent)' : pct > 10 ? 'var(--color-warning)' : 'var(--color-error)', borderRadius: 2 }} />
+                        </div>
+                      </div>
+                      <div className="admin-user-actions">
+                        {rechargeUserId === cb.userId ? (
+                          <div style={{ display: 'flex', gap: 'var(--spacing-xs)', alignItems: 'center' }}>
+                            <input
+                              type="number"
+                              value={rechargeAmount}
+                              onChange={e => setRechargeAmount(e.target.value)}
+                              style={{ width: 80, padding: '4px 8px', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)' }}
+                              min="1"
+                            />
+                            <Button variant="primary" onClick={() => handleRecharge(cb.userId, parseInt(rechargeAmount) || 0)}>
+                              OK
+                            </Button>
+                            <Button variant="secondary" onClick={() => setRechargeUserId(null)}>
+                              x
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button variant="primary" onClick={() => { setRechargeUserId(cb.userId); setRechargeAmount('100'); }}>
+                            Recharger
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </div>
 
       {userToDelete && (
