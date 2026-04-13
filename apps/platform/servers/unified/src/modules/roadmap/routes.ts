@@ -65,16 +65,17 @@ export function createRoadmapRoutes(): Router {
   }));
 
   router.post('/plannings', asyncHandler(async (req, res) => {
-    const { name, description, startDate, endDate } = req.body;
+    const { name, description, startDate, endDate, visibility } = req.body;
     if (!name || !startDate || !endDate) {
       res.status(400).json({ error: 'name, startDate et endDate sont requis' });
       return;
     }
+    const vis = visibility === 'public' ? 'public' : 'private';
     const planning = await db.createPlanning(name, startDate, endDate, description);
-    // Create sharing entry (private by default, owned by current user)
+    // Create sharing entry (owned by current user)
     try {
       const { ensureOwnership } = await import('../shared/resourceSharing.js');
-      await ensureOwnership('roadmap', planning.id, req.user!.id, 'private');
+      await ensureOwnership('roadmap', planning.id, req.user!.id, vis);
     } catch { /* ignore if sharing table not ready */ }
     res.status(201).json(planning);
   }));

@@ -34,7 +34,8 @@ export function createRoutes(): Router {
 
   // Create document
   router.post('/documents', asyncHandler(async (req, res) => {
-    const { title, description } = req.body;
+    const { title, description, visibility } = req.body;
+    const vis = visibility === 'public' ? 'public' : 'private';
 
     if (!title || !title.trim()) {
       res.status(400).json({ error: 'Title is required' });
@@ -62,7 +63,7 @@ export function createRoutes(): Router {
         // Create sharing entry (private by default)
         try {
           const { ensureOwnership } = await import('../shared/resourceSharing.js');
-          await ensureOwnership('suivitess', doc.id, req.user!.id, 'private');
+          await ensureOwnership('suivitess', doc.id, req.user!.id, vis);
         } catch { /* ignore */ }
         res.json(doc);
         return;

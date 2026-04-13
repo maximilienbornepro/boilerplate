@@ -82,6 +82,8 @@ export type { TabsProps, TabItem } from './Tabs/Tabs.js';
 // Sharing
 export { SharingModal } from './SharingModal/SharingModal.js';
 export type { SharingModalProps, SharingConfig } from './SharingModal/SharingModal.js';
+export { VisibilityPicker } from './SharingModal/VisibilityPicker.js';
+export type { Visibility, VisibilityPickerProps } from './SharingModal/VisibilityPicker.js';
 
 // Auth hooks
 export { useGatewayUser, GatewayAuthProvider } from '../hooks/useGatewayAuth.js';

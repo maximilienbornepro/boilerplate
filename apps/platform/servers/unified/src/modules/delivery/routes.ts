@@ -124,7 +124,8 @@ export function createDeliveryRoutes(): Router {
   }));
 
   router.post('/boards', asyncHandler(async (req, res) => {
-    const { name, description, boardType, startDate, endDate, durationWeeks } = req.body;
+    const { name, description, boardType, startDate, endDate, durationWeeks, visibility } = req.body;
+    const vis = visibility === 'public' ? 'public' : 'private';
     if (!name?.trim()) return res.status(400).json({ error: 'Le nom est obligatoire' });
 
     const type = (boardType === 'calendaire' ? 'calendaire' : 'agile') as db.BoardType;
@@ -150,7 +151,7 @@ export function createDeliveryRoutes(): Router {
       );
       try {
         const { ensureOwnership } = await import('../shared/resourceSharing.js');
-        await ensureOwnership('delivery', String(board.id), req.user!.id, 'private');
+        await ensureOwnership('delivery', String(board.id), req.user!.id, vis);
       } catch { /* ignore */ }
       res.status(201).json(board);
     } else {
@@ -173,7 +174,7 @@ export function createDeliveryRoutes(): Router {
       );
       try {
         const { ensureOwnership } = await import('../shared/resourceSharing.js');
-        await ensureOwnership('delivery', String(board.id), req.user!.id, 'private');
+        await ensureOwnership('delivery', String(board.id), req.user!.id, vis);
       } catch { /* ignore */ }
       res.status(201).json(board);
     }

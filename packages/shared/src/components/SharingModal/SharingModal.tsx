@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal } from '../Modal/Modal.js';
+import { VisibilityPicker } from './VisibilityPicker.js';
+import type { Visibility } from './VisibilityPicker.js';
 import styles from './SharingModal.module.css';
 
 export interface SharingConfig {
@@ -72,9 +74,8 @@ export function SharingModal({
     );
   }, [email, users, config]);
 
-  const handleToggleVisibility = async () => {
-    if (!config) return;
-    const newVis = config.visibility === 'public' ? 'private' : 'public';
+  const handleSetVisibility = async (newVis: 'public' | 'private') => {
+    if (!config || config.visibility === newVis) return;
     setSaving(true);
     setError('');
     try {
@@ -149,29 +150,23 @@ export function SharingModal({
         <p className={styles.error}>Impossible de charger la configuration de partage</p>
       ) : (
         <div className={styles.content}>
-          {/* Visibility toggle */}
+          {/* Visibility */}
           <div className={styles.visibilitySection}>
-            <label className={styles.label}>Visibilite</label>
-            <button
-              className={`${styles.visibilityToggle} ${config.visibility === 'public' ? styles.public : styles.private}`}
-              onClick={handleToggleVisibility}
+            <label className={styles.label}>Visibilité</label>
+            <VisibilityPicker
+              value={config.visibility as Visibility}
+              onChange={handleSetVisibility}
               disabled={saving}
-              type="button"
-            >
-              <span className={styles.visIcon}>
-                {config.visibility === 'public' ? '\u{1F310}' : '\u{1F512}'}
-              </span>
-              <span>{config.visibility === 'public' ? 'Public' : 'Prive'}</span>
-            </button>
+            />
             <span className={styles.visHint}>
               {config.visibility === 'public'
-                ? 'Visible par tous les utilisateurs'
-                : 'Visible uniquement par vous et les personnes partagees'}
+                ? 'Tous les utilisateurs peuvent voir cet élément'
+                : 'Vous seul y avez accès. Ajouter des personnes ci-dessous pour le partager.'}
             </span>
           </div>
 
-          {/* Share by email */}
-          <div className={styles.shareSection}>
+          {/* Share by email — only when private */}
+          {config.visibility === 'private' && <div className={styles.shareSection}>
             <label className={styles.label}>Partager avec</label>
             <div className={styles.inputRow}>
               <input
@@ -211,13 +206,13 @@ export function SharingModal({
                 ))}
               </ul>
             )}
-          </div>
+          </div>}
 
-          {/* Current shares */}
-          {config.shares.length > 0 && (
+          {/* Current shares — only when private */}
+          {config.visibility === 'private' && config.shares.length > 0 && (
             <div className={styles.sharesList}>
               <label className={styles.label}>
-                Partage avec ({config.shares.length})
+                Partagé avec ({config.shares.length})
               </label>
               {config.shares.map((s) => (
                 <div key={s.userId} className={styles.shareItem}>

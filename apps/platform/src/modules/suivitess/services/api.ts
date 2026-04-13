@@ -30,12 +30,12 @@ export async function fetchDocuments(): Promise<Document[]> {
   return response.json();
 }
 
-export async function createDocument(title: string, description?: string): Promise<Document> {
+export async function createDocument(title: string, description?: string, visibility?: 'private' | 'public'): Promise<Document> {
   const response = await fetch(`${API_BASE}/documents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ title, description }),
+    body: JSON.stringify({ title, description, visibility }),
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));

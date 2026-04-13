@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Modal, FormField, Button } from '@boilerplate/shared/components';
+import { Modal, FormField, Button, VisibilityPicker } from '@boilerplate/shared/components';
+import type { Visibility } from '@boilerplate/shared/components';
 import type { Planning, PlanningFormData, LinkedDeliveryBoard } from '../../types';
 import * as api from '../../services/api';
 import styles from './PlanningList.module.css';
@@ -24,6 +25,7 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
   const [description, setDescription] = useState(planning?.description || '');
   const [startDate, setStartDate] = useState(planning?.startDate || defaultStart);
   const [endDate, setEndDate] = useState(planning?.endDate || defaultEnd);
+  const [visibility, setVisibility] = useState<Visibility>('private');
 
   const [availableBoards, setAvailableBoards] = useState<LinkedDeliveryBoard[]>([]);
   const [selectedBoardIds, setSelectedBoardIds] = useState<Set<string>>(new Set());
@@ -81,7 +83,7 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
     if (!name.trim() || !startDate || !endDate || submitting) return;
     setSubmitting(true);
     try {
-      const saved = await onSubmit({ name: name.trim(), description, startDate, endDate });
+      const saved = await onSubmit({ name: name.trim(), description, startDate, endDate, visibility });
       if (saved) {
         await syncBoardLinks(saved.id);
       }
@@ -149,6 +151,12 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
             rows={2}
           />
         </FormField>
+
+        {!isEdit && (
+          <FormField label="Visibilité">
+            <VisibilityPicker value={visibility} onChange={setVisibility} />
+          </FormField>
+        )}
 
         <div className={styles.modalActions}>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>

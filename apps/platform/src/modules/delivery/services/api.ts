@@ -356,12 +356,13 @@ export async function createBoard(
   startDate: string,
   durationWeeks?: number,
   description?: string,
+  visibility?: 'private' | 'public',
 ): Promise<Board> {
   const res = await fetch(`${API_BASE}/boards`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ name, description, boardType, startDate, durationWeeks }),
+    body: JSON.stringify({ name, description, boardType, startDate, durationWeeks, visibility }),
   });
   return handleResponse<Board>(res);
 }

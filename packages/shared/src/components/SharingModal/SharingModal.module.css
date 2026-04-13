@@ -18,9 +18,8 @@
 .label {
   display: block;
   font-size: var(--font-size-xs);
-  text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--text-muted);
+  color: var(--text-primary);
   margin-bottom: var(--spacing-xs);
   font-family: var(--font-mono);
 }
@@ -32,7 +31,12 @@
   gap: var(--spacing-xs);
 }
 
-.visibilityToggle {
+.visibilityOptions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.visibilityOption {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -40,29 +44,27 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
-  color: var(--text-primary);
+  color: var(--text-muted);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   transition: all var(--transition-normal);
-  width: fit-content;
+  flex: 1;
+  justify-content: center;
 }
 
-.visibilityToggle:hover {
-  border-color: var(--color-accent);
+.visibilityOption:hover:not(.selected) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
-.visibilityToggle.public {
-  border-color: var(--color-success);
-  color: var(--color-success);
+.visibilityOption.selected {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
-.visibilityToggle.private {
-  border-color: var(--text-muted);
-}
-
-.visIcon {
-  font-size: var(--font-size-base);
+.visibilityOption svg {
+  flex-shrink: 0;
 }
 
 .visHint {

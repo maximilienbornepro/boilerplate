@@ -127,6 +127,7 @@ export interface PlanningFormData {
   description: string;
   startDate: string;
   endDate: string;
+  visibility?: 'private' | 'public';
 }
 
 export interface TaskFormData {
