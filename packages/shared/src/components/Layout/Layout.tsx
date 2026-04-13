@@ -31,8 +31,8 @@ export function Layout({
   // Auto-fetch user permissions from AuthContext when not explicitly passed.
   // This ensures the burger menu inside a module only shows modules the
   // current user is allowed to access.
-  const { user } = useGatewayAuth();
-  const effectiveAllowedAppIds = allowedAppIds ?? (noAuth ? undefined : user?.permissions);
+  const { user, loading } = useGatewayAuth();
+  const effectiveAllowedAppIds = allowedAppIds ?? (noAuth ? undefined : (loading ? [] : user?.permissions));
 
   const variantClass = {
     centered: styles.centered,
