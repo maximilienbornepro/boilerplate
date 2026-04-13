@@ -574,7 +574,52 @@ export function createRoutes(): Router {
     res.json({ success: true });
   }));
 
+  // ==================== Transcript Import Tracking ====================
+  // Track which calls have been imported to prevent duplicates.
+  // Auto-created table at route registration time (idempotent).
+  (async () => {
+    try {
+      await db.pool.query(`
+        CREATE TABLE IF NOT EXISTS suivitess_transcript_imports (
+          id SERIAL PRIMARY KEY,
+          document_id VARCHAR(50) NOT NULL,
+          call_id VARCHAR(100) NOT NULL,
+          provider VARCHAR(20) NOT NULL,
+          call_title TEXT,
+          imported_at TIMESTAMPTZ DEFAULT NOW(),
+          UNIQUE(document_id, call_id, provider)
+        )
+      `);
+    } catch { /* already exists */ }
+  })();
+
   // ==================== Transcription Import (Fathom, Otter, etc.) ====================
+
+  // Record that a call has been imported into a document
+  router.post('/documents/:docId/transcript-imports', asyncHandler(async (req, res) => {
+    const { callId, provider, callTitle } = req.body;
+    if (!callId || !provider) { res.status(400).json({ error: 'callId + provider requis' }); return; }
+    await db.pool.query(
+      `INSERT INTO suivitess_transcript_imports (document_id, call_id, provider, call_title)
+       VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+      [req.params.docId, callId, provider, callTitle || null]
+    );
+    res.json({ success: true });
+  }));
+
+  // Get list of already-imported call IDs for a document
+  router.get('/documents/:docId/transcript-imports', asyncHandler(async (req, res) => {
+    const result = await db.pool.query(
+      'SELECT call_id, provider, call_title, imported_at FROM suivitess_transcript_imports WHERE document_id = $1 ORDER BY imported_at DESC',
+      [req.params.docId]
+    );
+    res.json(result.rows.map((r: Record<string, unknown>) => ({
+      callId: r.call_id as string,
+      provider: r.provider as string,
+      callTitle: r.call_title as string,
+      importedAt: (r.imported_at as Date).toISOString(),
+    })));
+  }));
 
   // List recent calls from a transcription provider
   router.get('/transcription/calls', asyncHandler(async (req, res) => {
@@ -934,6 +979,124 @@ Retourne UNIQUEMENT un tableau JSON :
       sectionsCreated,
       applied: enriched + created + sectionsCreated,
     });
+  }));
+
+  // ── Direct transcript analysis: fetch transcript + analyze against document in one step ──
+  // No intermediate section created. Used by the unified TranscriptionWizard "Analyser et fusionner" mode.
+  router.post('/documents/:docId/transcript-analyze-and-propose', asyncHandler(async (req, res) => {
+    const { docId } = req.params;
+    const { callId, callTitle, provider: providerParam } = req.body;
+    const provider = providerParam || 'fathom';
+
+    if (!callId) { res.status(400).json({ error: 'callId est requis' }); return; }
+
+    // 1. Fetch transcript
+    let transcript: Array<{ speaker: string; text: string; timestamp?: number }> = [];
+    if (provider === 'fathom') {
+      const { getFathomTranscript } = await import('./fathomService.js');
+      transcript = await getFathomTranscript(req.user!.id, callId);
+    } else if (provider === 'otter') {
+      const { getOtterTranscript } = await import('./otterService.js');
+      transcript = await getOtterTranscript(req.user!.id, callId);
+    } else {
+      res.status(400).json({ error: `Provider non supporté: ${provider}` }); return;
+    }
+
+    if (transcript.length === 0) { res.status(400).json({ error: 'Transcription vide' }); return; }
+
+    // 2. Fetch existing document
+    const doc = await db.getDocumentWithSections(docId);
+    if (!doc) { res.status(404).json({ error: 'Document non trouvé' }); return; }
+
+    const transcriptText = transcript.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+
+    const existingContext = doc.sections.map(s => {
+      const subjectsText = s.subjects.map(sub =>
+        `  - [id:${sub.id}] [${sub.status}] "${sub.title}" (responsable: ${sub.responsibility || '-'})\n    Situation: ${sub.situation || '(vide)'}`
+      ).join('\n');
+      return `Section [id:${s.id}] "${s.name}":\n${subjectsText || '  (vide)'}`;
+    }).join('\n\n');
+
+    // 3. AI analysis
+    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
+    const { client, model } = await getAnthropicClient(req.user!.id);
+
+    const aiResponse = await client.messages.create({
+      model,
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: `Tu es un assistant de suivi de réunion. Analyse cette transcription et propose des modifications au document de suivi existant.
+
+## Document existant (avec IDs) :
+${existingContext || '(aucun sujet existant)'}
+
+## Transcription du call "${callTitle || 'Call'}" :
+${transcriptText.slice(0, 30000)}
+
+## Types d'actions possibles :
+
+1. "enrich" — Enrichir l'état de la situation d'un sujet existant. N'écrase PAS l'existant, AJOUTE du texte.
+2. "create_subject" — Créer un nouveau sujet dans une section existante.
+3. "create_section" — Créer une nouvelle section avec ses sujets (si le thème ne correspond à aucune section existante).
+
+## Règles :
+- Pour "enrich" : retourne le texte à AJOUTER (pas la situation complète)
+- Pour "create_subject" : indique dans quelle section existante le placer (via sectionId)
+- Pour "create_section" : inclus les sujets à créer dedans
+- Ignore les bavardages, hors-sujet, salutations
+- Maximum 10 propositions, priorise les plus importantes
+
+Retourne UNIQUEMENT un tableau JSON :
+[
+  {
+    "action": "enrich",
+    "subjectId": "uuid",
+    "subjectTitle": "titre du sujet (pour affichage)",
+    "sectionName": "nom de la section (pour affichage)",
+    "appendText": "Nouveau texte à ajouter",
+    "reason": "Justification courte"
+  },
+  {
+    "action": "create_subject",
+    "sectionId": "uuid",
+    "sectionName": "nom de la section (pour affichage)",
+    "title": "Titre du nouveau sujet",
+    "situation": "Description...",
+    "responsibility": "Responsable ou null",
+    "status": "🔴 à faire",
+    "reason": "Justification"
+  },
+  {
+    "action": "create_section",
+    "sectionName": "Nom de la nouvelle section",
+    "subjects": [
+      { "title": "...", "situation": "...", "responsibility": null, "status": "🔴 à faire" }
+    ],
+    "reason": "Justification"
+  }
+]`,
+      }],
+    });
+
+    const responseText = aiResponse.content
+      .filter(c => c.type === 'text')
+      .map(c => (c as { type: 'text'; text: string }).text)
+      .join('');
+
+    let proposals: Array<Record<string, unknown>> = [];
+    try {
+      let jsonText = responseText.trim();
+      if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
+      if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
+      if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
+      proposals = JSON.parse(jsonText.trim());
+    } catch {
+      const match = responseText.match(/\[[\s\S]*\]/);
+      if (match) proposals = JSON.parse(match[0]);
+    }
+
+    res.json({ proposals: proposals.map((p, i) => ({ ...p, id: i })) });
   }));
 
   return router;
