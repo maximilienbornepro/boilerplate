@@ -38,6 +38,7 @@ interface TaskBarProps {
   isFocused?: boolean;
   columns?: TimeColumn[];
   parentColor?: string;
+  onNameClick?: (task: Task) => void;
 }
 
 const DEFAULT_ROW_HEIGHT = 80;
@@ -53,7 +54,7 @@ export function TaskBar({
   onMove, onResize, onNameChange, onClick, onDelete, onAddChild, onToggleCollapse,
   onStartDependency, onEndDependency, isDrawingDependency,
   onParentChange, onReorder, draggedTaskId, onDragStart, onDragEnd, readOnly, isFocused,
-  columns, parentColor,
+  columns, parentColor, onNameClick,
 }: TaskBarProps) {
   // A task can opt out of editing via its own `readOnly` flag (e.g. virtual
   // delivery overlay rows), independently of the global GanttBoard prop.
@@ -197,7 +198,7 @@ export function TaskBar({
         {level > 0 && (
           <div
             className={styles.indentGuides}
-            style={{ width: level * (isCompact ? COMPACT_INDENT_SIZE : INDENT_SIZE) }}
+            style={{ width: level * (isCompact ? COMPACT_INDENT_SIZE : INDENT_SIZE), '--indent-color': parentColor || task.color || 'var(--text-muted)' } as React.CSSProperties}
           >
             {Array.from({ length: level }).map((_, i) => {
               const isLastAtLevel = ancestorIsLast[i + 1] ?? false;
@@ -226,24 +227,17 @@ export function TaskBar({
           </button>
         )}
 
-        {/* Status dot — only rendered when a status is set (virtual delivery
-            overlays carry one, real roadmap tasks don't). Same color source
-            as the bar fill (see `getStatusColor`) so the two stay in sync. */}
-        {task.status && (
-          <span
-            className={styles.statusDot}
-            style={{ background: getStatusColor(task.status) }}
-            title={task.status}
-          />
-        )}
+        {/* Status dot removed — delivery tasks no longer show a colored circle
+            next to their title. The bar fill color already conveys status. */}
 
         {isEditing ? (
           <input ref={inputRef} type="text" className={styles.nameInput} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={handleKeyDown} autoFocus />
         ) : (
           <span
             className={`${styles.nameText} ${level < 2 ? styles.parentName : ''}`}
-            style={compactNameStyle}
-            title={isCompact ? task.name : 'Double-cliquer pour modifier'}
+            style={{ ...compactNameStyle, cursor: 'pointer' }}
+            title={isCompact ? task.name : 'Cliquer pour voir · Double-cliquer pour modifier'}
+            onClick={(e) => { e.stopPropagation(); onNameClick?.(task); }}
             onDoubleClick={startEditing}
           >
             {task.name}

@@ -279,6 +279,18 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
     return map;
   }, [flatTasks]);
 
+  const handleTaskNameClick = useCallback((task: Task) => {
+    const content = contentRef.current;
+    if (!content) return;
+    const taskRow = content.querySelector(`[data-task-id="${task.id}"]`);
+    if (taskRow) {
+      taskRow.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    const taskStart = parseDate(task.startDate);
+    const { left } = calculateTaskPosition(taskStart, taskStart, chartStartDate, effectiveColumnWidth, viewMode, effectiveColumns);
+    content.scrollTo({ left: Math.max(0, left + 250 - content.clientWidth / 2), behavior: 'smooth' });
+  }, [chartStartDate, effectiveColumnWidth, viewMode, effectiveColumns]);
+
   // Top-level parent tasks with row indices (for marker snapping).
   // Virtual overlay rows (e.g. Delivery) are excluded because their synthetic
   // ids are not real UUIDs and would violate the `roadmap_markers.task_id`
@@ -520,6 +532,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
                   onDragEnd={() => setDraggedTaskId(null)}
                   readOnly={readOnly}
                   isFocused={focusedTaskId === task.id}
+                  onNameClick={handleTaskNameClick}
                 />
               );
             })}

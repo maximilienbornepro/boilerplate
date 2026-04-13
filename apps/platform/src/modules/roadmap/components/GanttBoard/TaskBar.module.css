@@ -37,11 +37,11 @@
 
 .indentGuides { display: flex; align-items: center; height: 100%; position: relative; flex-shrink: 0; }
 .indentLine { width: 24px; height: 100%; position: relative; }
-.indentLine::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 1px; background: var(--text-muted); }
+.indentLine::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 1px; background: var(--indent-color, var(--text-muted)); opacity: 0.5; }
 .indentLineHidden, .indentLineHalf, .indentLineCurrent { /* export */ }
 .indentLine.indentLineHidden::before { display: none; }
 .indentLine.indentLineHalf::before { bottom: 50%; }
-.indentLine.indentLineCurrent::after { content: ''; position: absolute; left: 11px; top: 50%; right: 0; height: 1px; background: var(--text-muted); }
+.indentLine.indentLineCurrent::after { content: ''; position: absolute; left: 11px; top: 50%; right: 0; height: 1px; background: var(--indent-color, var(--text-muted)); opacity: 0.5; }
 /* Compact indent (used for virtual delivery overlay rows). Half-width so
    deeply nested overlays don't push the name off-screen. */
 .indentLineCompact { width: 14px; }
@@ -397,5 +397,5 @@
 
 :global(:root:not([data-theme="dark"])) .taskRow { border-bottom-color: var(--border-color); }
 :global(:root:not([data-theme="dark"])) .taskName { background: linear-gradient(90deg, var(--bg-primary) 0%, var(--bg-secondary) 100%); }
-:global(:root:not([data-theme="dark"])) .indentLine::before, :global(:root:not([data-theme="dark"])) .indentLine.indentLineCurrent::after { background: var(--text-light); }
+:global(:root:not([data-theme="dark"])) .indentLine::before, :global(:root:not([data-theme="dark"])) .indentLine.indentLineCurrent::after { background: var(--indent-color, var(--text-light)); }
 :global(:root:not([data-theme="dark"])) .actionButtons { background: var(--bg-card); }
