@@ -24,7 +24,33 @@ const getStatusInfo = (status?: string): { label: string; className: string } | 
   }
 };
 
+// Per-project card background colors (dark theme friendly)
+const PROJECT_CARD_COLORS: Record<string, string> = {
+  TVSMART: '#1e3a5f',   // dark blue
+  TVFREE:  '#2d2d2d',   // dark gray
+  TVORA:   '#4a2c10',   // dark orange
+  TVSFR:   '#4a1010',   // dark red
+  TVFIRE:  '#4a3d10',   // dark yellow
+  PLAYERW: '#2d1a4a',   // dark purple
+  TVAPI:   '#0a3d3d',   // dark cyan
+  TVAPPS:  '#0a3d2d',   // dark teal
+};
+
+const PROJECT_BADGE_COLORS: Record<string, string> = {
+  TVSMART: '#3b82f6', TVFREE: '#6b7280', TVORA: '#f97316',
+  TVSFR: '#dc2626', TVFIRE: '#eab308', PLAYERW: '#8b5cf6',
+  TVAPI: '#06b6d4', TVAPPS: '#14b8a6',
+};
+
 const getTaskColor = (task: Task): string => {
+  // For Jira tasks, use project-based color
+  if (task.source === 'jira') {
+    const key = extractJiraKey(task.title);
+    if (key) {
+      const project = key.split('-')[0];
+      return PROJECT_CARD_COLORS[project] || '#1a1a2e';
+    }
+  }
   if (task.type === 'tech')      return 'var(--task-tech, var(--indigo-200))';
   if (task.type === 'bug')       return 'var(--task-bug, var(--red-200))';
   if (task.type === 'milestone') return 'var(--task-milestone, var(--amber-200))';
@@ -374,10 +400,23 @@ export function TaskBlock({
       ) : (
         /* ── Regular task content ── */
         <div className={styles.content}>
-          {task.estimatedDays && <span className={styles.daysBadge}>{task.estimatedDays}j</span>}
-          {task.type === 'tech' && <span className={styles.techBadge}>TECH</span>}
-          {task.type === 'bug'  && <span className={styles.bugBadge}>BUG</span>}
+          <div className={styles.badgeRow}>
+            {(() => {
+              const jiraKey = extractJiraKey(task.title);
+              const project = jiraKey?.split('-')[0];
+              const badgeColor = project ? PROJECT_BADGE_COLORS[project] || '#6b7280' : undefined;
+              return jiraKey ? (
+                <span className={styles.jiraKeyBadge} style={{ background: badgeColor }}>{jiraKey}</span>
+              ) : null;
+            })()}
+            {task.estimatedDays && <span className={styles.daysBadge}>{task.estimatedDays}j</span>}
+            {task.type === 'tech' && <span className={styles.techBadge}>TECH</span>}
+            {task.type === 'bug'  && <span className={styles.bugBadge}>BUG</span>}
+          </div>
           <span className={styles.taskTitle}>{stripJiraKey(task.title)}</span>
+          {task.description && task.source === 'jira' && /^\d+\.\d+/.test(task.description) && (
+            <span className={styles.versionBadge}>{task.description}</span>
+          )}
         </div>
       )}
 

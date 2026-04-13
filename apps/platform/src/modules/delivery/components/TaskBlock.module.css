@@ -309,20 +309,35 @@
 .content {
   flex: 1;
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  align-content: flex-start;
+  flex-direction: column;
   gap: var(--spacing-xs);
   overflow: hidden;
   min-width: 0;
 }
 
-.daysBadge {
-  background: var(--blue-500);
-  color: var(--text-inverse);
-  padding: var(--spacing-2xs) 6px;
+.badgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.jiraKeyBadge {
+  color: #fff;
+  padding: 1px 6px;
   border-radius: 3px;
-  font-size: 8px;
+  font-size: 9px;
+  font-weight: var(--font-weight-bold);
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+
+.daysBadge {
+  background: #0ea5e9;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
   font-weight: var(--font-weight-bold);
   flex-shrink: 0;
 }
@@ -356,6 +371,19 @@
   white-space: normal;
   line-height: 1.3;
   width: 100%;
+  color: #fff;
+}
+
+.versionBadge {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  background: #10b981;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: var(--font-weight-bold);
 }
 
 /* Status badge - top right */

@@ -183,10 +183,69 @@ export function createDeliveryRoutes(): Router {
 
   // ============ Tasks CRUD ============
 
-  // Get ALL tasks for a board (across all sprints) — used by the new
-  // board-level view where all sprints are visible simultaneously.
+  // Get ALL tasks for a board (across all sprints) + sync Jira metadata.
   router.get('/tasks/board/:boardId', asyncHandler(async (req, res) => {
     const tasks = await db.getAllTasksForBoard(req.params.boardId);
+
+    // Sync Jira statuses, estimates, versions for jira-sourced tasks
+    const jiraTasks = tasks.filter(t => t.source === 'jira');
+    if (jiraTasks.length > 0) {
+      const ctx = await getJiraContext(req.user!.id);
+      if (ctx) {
+        const keyMap = new Map<string, db.TaskRow>();
+        for (const t of jiraTasks) {
+          const match = t.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+          if (match) keyMap.set(match[1], t);
+        }
+        if (keyMap.size > 0) {
+          try {
+            const keys = Array.from(keyMap.keys());
+            // Batch in chunks of 50 (JQL length limit)
+            for (let i = 0; i < keys.length; i += 50) {
+              const batch = keys.slice(i, i + 50);
+              const jql = `key in (${batch.join(',')})`;
+              const params = new URLSearchParams({ jql, maxResults: '50', fields: 'status,customfield_10016,assignee,timetracking,fixVersions,summary' });
+              const searchUrl = `${ctx.baseUrl}/rest/api/3/search/jql?${params}`;
+              const searchResp = await fetch(searchUrl, { headers: ctx.headers });
+              if (searchResp.ok) {
+                const data = await searchResp.json() as { issues: Array<{ key: string; fields: {
+                  status: { name: string };
+                  summary?: string;
+                  customfield_10016?: number;
+                  assignee?: { displayName: string };
+                  timetracking?: { originalEstimateSeconds?: number };
+                  fixVersions?: Array<{ name: string }>;
+                } }> };
+                for (const issue of data.issues || []) {
+                  const task = keyMap.get(issue.key);
+                  if (!task) continue;
+                  const f = issue.fields;
+                  if (f.status?.name) task.status = f.status.name;
+                  if (f.customfield_10016 !== undefined) task.storyPoints = f.customfield_10016;
+                  if (f.assignee?.displayName) task.assignee = f.assignee.displayName;
+                  if (f.timetracking?.originalEstimateSeconds) {
+                    task.estimatedDays = Math.round((f.timetracking.originalEstimateSeconds / (8 * 60 * 60)) * 10) / 10;
+                  }
+                  if (f.fixVersions?.[0]?.name) task.description = f.fixVersions[0].name;
+                  // Update title with real summary if still "(imported)"
+                  if (f.summary && task.title.includes('(imported)')) {
+                    task.title = `[${issue.key}] ${f.summary}`;
+                  }
+                  db.updateTask(task.id, {
+                    status: task.status, storyPoints: task.storyPoints ?? undefined,
+                    assignee: task.assignee ?? undefined, estimatedDays: task.estimatedDays ?? undefined,
+                    description: task.description ?? undefined, title: task.title,
+                  }).catch(() => {});
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('[Delivery] Jira board sync failed:', (err as Error).message);
+          }
+        }
+      }
+    }
+
     res.json(tasks);
   }));
 
@@ -214,21 +273,40 @@ export function createDeliveryRoutes(): Router {
           try {
             const keys = Array.from(keyMap.keys());
             const jql = `key in (${keys.join(',')})`;
-            const params = new URLSearchParams({ jql, maxResults: String(keys.length), fields: 'status,customfield_10016,assignee' });
+            const params = new URLSearchParams({ jql, maxResults: String(keys.length), fields: 'status,customfield_10016,assignee,timetracking,fixVersions' });
             const searchUrl = `${ctx.baseUrl}/rest/api/3/search/jql?${params}`;
             const searchResp = await fetch(searchUrl, { headers: ctx.headers });
             if (searchResp.ok) {
-              const data = await searchResp.json() as { issues: Array<{ key: string; fields: { status: { name: string }; customfield_10016?: number; assignee?: { displayName: string } } }> };
+              const data = await searchResp.json() as { issues: Array<{ key: string; fields: {
+                status: { name: string };
+                customfield_10016?: number;
+                assignee?: { displayName: string };
+                timetracking?: { originalEstimateSeconds?: number };
+                fixVersions?: Array<{ name: string }>;
+              } }> };
               for (const issue of data.issues || []) {
                 const task = keyMap.get(issue.key);
                 if (!task) continue;
                 const newStatus = issue.fields.status?.name;
                 const newPoints = issue.fields.customfield_10016 ?? null;
                 const newAssignee = issue.fields.assignee?.displayName ?? null;
+                // Estimated days from timetracking (8h workday)
+                const estimateSeconds = issue.fields.timetracking?.originalEstimateSeconds;
+                const newEstimatedDays = estimateSeconds ? Math.round((estimateSeconds / (8 * 60 * 60)) * 10) / 10 : null;
+                // Fix version
+                const newDescription = issue.fields.fixVersions?.[0]?.name || task.description;
                 if (newStatus && newStatus !== task.status) task.status = newStatus;
                 if (newPoints !== null && newPoints !== task.storyPoints) task.storyPoints = newPoints;
                 if (newAssignee !== task.assignee) task.assignee = newAssignee;
-                db.updateTask(task.id, { status: newStatus || task.status, storyPoints: newPoints ?? undefined, assignee: newAssignee ?? undefined }).catch(() => {});
+                if (newEstimatedDays !== null) task.estimatedDays = newEstimatedDays;
+                if (newDescription) task.description = newDescription;
+                db.updateTask(task.id, {
+                  status: newStatus || task.status,
+                  storyPoints: newPoints ?? undefined,
+                  assignee: newAssignee ?? undefined,
+                  estimatedDays: newEstimatedDays ?? undefined,
+                  description: newDescription ?? undefined,
+                }).catch(() => {});
               }
             }
           } catch (err) {
