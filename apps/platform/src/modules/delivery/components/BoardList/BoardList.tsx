@@ -86,6 +86,7 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
     d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));
     return d.toISOString().split('T')[0];
   });
+  const [newStartDateTouched, setNewStartDateTouched] = useState(false);
   const [newDurationWeeks, setNewDurationWeeks] = useState(8);
   const [newMonth, setNewMonth] = useState(() => {
     const d = new Date();
@@ -246,11 +247,13 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
                       className="delivery-list-doc-card"
                     >
                       <div className="shared-card__content">
-                        <span className="shared-card__title">{board.name}</span>
-                        <div className="delivery-list-card-meta">
+                        <div className="delivery-list-title-row">
+                          <span className="shared-card__title">{board.name}</span>
                           <span className={`delivery-list-badge-type delivery-list-badge-${board.boardType}`}>
                             {board.boardType === 'calendaire' ? 'Calendaire' : 'Agile'}
                           </span>
+                        </div>
+                        <div className="delivery-list-card-meta">
                           <span className="delivery-list-card-period">{formatBoardPeriod(board)}</span>
                           {formatDuration(board) && (
                             <span className="delivery-list-card-duration">{formatDuration(board)}</span>
@@ -306,7 +309,7 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
       </div>
 
       {showCreateForm && (
-        <Modal title="Nouveau board" onClose={() => { setShowCreateForm(false); setNewName(''); setNewDescription(''); setNewVisibility('private'); }}>
+        <Modal title="Nouveau board" onClose={() => { setShowCreateForm(false); setNewName(''); setNewDescription(''); setNewVisibility('private'); setNewStartDateTouched(false); }}>
           <div className="delivery-list-modal-body">
             <FormField label="Nom du board" required>
               <input
@@ -321,11 +324,11 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
 
             <FormField label="Type">
               <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.875rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 'var(--font-size-sm)' }}>
                   <input type="radio" name="boardType" value="agile" checked={newBoardType === 'agile'} onChange={() => setNewBoardType('agile')} />
                   Agile
                 </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.875rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 'var(--font-size-sm)' }}>
                   <input type="radio" name="boardType" value="calendaire" checked={newBoardType === 'calendaire'} onChange={() => setNewBoardType('calendaire')} />
                   Calendaire
                 </label>
@@ -335,7 +338,13 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
             {newBoardType === 'agile' ? (
               <>
                 <FormField label="Date de début" required>
-                  <input type="date" value={newStartDate} onChange={e => setNewStartDate(e.target.value)} />
+                  <input
+                    type="date"
+                    value={newStartDate}
+                    onChange={e => { setNewStartDate(e.target.value); setNewStartDateTouched(true); }}
+                    onBlur={() => setNewStartDateTouched(true)}
+                    style={newStartDateTouched ? { color: 'var(--text-primary)' } : undefined}
+                  />
                 </FormField>
                 <FormField label="Durée" required>
                   <select value={newDurationWeeks} onChange={e => setNewDurationWeeks(Number(e.target.value))}>
@@ -364,7 +373,7 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
               <VisibilityPicker value={newVisibility} onChange={setNewVisibility} />
             </FormField>
             <div className="delivery-list-modal-actions">
-              <Button variant="secondary" onClick={() => { setShowCreateForm(false); setNewName(''); setNewDescription(''); setNewVisibility('private'); }}>
+              <Button variant="secondary" onClick={() => { setShowCreateForm(false); setNewName(''); setNewDescription(''); setNewVisibility('private'); setNewStartDateTouched(false); }}>
                 Annuler
               </Button>
               <Button variant="primary" onClick={handleCreate} disabled={!newName.trim() || creating}>

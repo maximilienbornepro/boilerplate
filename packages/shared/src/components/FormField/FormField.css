@@ -7,36 +7,119 @@
 .shared-form-field-label {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .shared-form-field-required {
   color: var(--text-primary);
   margin-left: 2px;
+  vertical-align: super;
+  font-size: 0.7em;
 }
 
-.shared-form-field-content input,
+.shared-form-field-content input:not([type="checkbox"]):not([type="radio"]),
 .shared-form-field-content select,
 .shared-form-field-content textarea {
   width: 100%;
   padding: var(--spacing-sm);
   background: var(--bg-input);
   border: 1px solid var(--border-color);
-  color: var(--text-primary);
+  color: var(--text-muted);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
-  transition: border-color var(--transition-fast);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
 }
 
-.shared-form-field-content input:focus,
+.shared-form-field-content input:not([type="checkbox"]):not([type="radio"]):focus,
 .shared-form-field-content select:focus,
 .shared-form-field-content textarea:focus {
   outline: none;
   border-color: var(--accent-primary);
-  box-shadow: var(--shadow-focus);
+  box-shadow: none;
+  color: var(--text-primary);
 }
 
-.shared-form-field--error .shared-form-field-content input,
+.shared-form-field-content input:not([type="checkbox"]):not([type="radio"]):not([type="date"]):not(:placeholder-shown),
+.shared-form-field-content textarea:not(:placeholder-shown) {
+  color: var(--text-primary);
+}
+
+.shared-form-field-content input::placeholder,
+.shared-form-field-content textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Custom radio */
+.shared-form-field-content input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--bg-input);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.shared-form-field-content input[type="radio"]:hover {
+  border-color: var(--accent-primary);
+}
+
+.shared-form-field-content input[type="radio"]:checked {
+  border-color: var(--accent-primary);
+}
+
+.shared-form-field-content input[type="radio"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+
+/* Custom checkbox */
+.shared-form-field-content input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 2px);
+  background: var(--bg-input);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.shared-form-field-content input[type="checkbox"]:hover {
+  border-color: var(--accent-primary);
+}
+
+.shared-form-field-content input[type="checkbox"]:checked {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.shared-form-field-content input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  border: solid var(--bg-primary, #000);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.shared-form-field--error .shared-form-field-content input:not([type="checkbox"]):not([type="radio"]),
 .shared-form-field--error .shared-form-field-content select,
 .shared-form-field--error .shared-form-field-content textarea {
   border-color: var(--error);

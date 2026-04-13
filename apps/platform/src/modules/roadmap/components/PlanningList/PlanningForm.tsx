@@ -25,6 +25,8 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
   const [description, setDescription] = useState(planning?.description || '');
   const [startDate, setStartDate] = useState(planning?.startDate || defaultStart);
   const [endDate, setEndDate] = useState(planning?.endDate || defaultEnd);
+  const [startDateTouched, setStartDateTouched] = useState(!!planning);
+  const [endDateTouched, setEndDateTouched] = useState(!!planning);
   const [visibility, setVisibility] = useState<Visibility>('private');
 
   const [availableBoards, setAvailableBoards] = useState<LinkedDeliveryBoard[]>([]);
@@ -113,7 +115,9 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
           <input
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => { setStartDate(e.target.value); setStartDateTouched(true); }}
+            onBlur={() => setStartDateTouched(true)}
+            style={startDateTouched ? { color: 'var(--text-primary)' } : undefined}
           />
         </FormField>
 
@@ -121,8 +125,10 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
           <input
             type="date"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => { setEndDate(e.target.value); setEndDateTouched(true); }}
+            onBlur={() => setEndDateTouched(true)}
             min={startDate || undefined}
+            style={endDateTouched ? { color: 'var(--text-primary)' } : undefined}
           />
         </FormField>
 

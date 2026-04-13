@@ -21,8 +21,7 @@
 .label {
   font-size: var(--font-size-xs);
   font-weight: 500;
-  color: var(--text-muted);
-  text-transform: uppercase;
+  color: var(--text-primary);
   letter-spacing: 0.04em;
 }
 
@@ -32,16 +31,21 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-primary);
-  color: var(--text-primary);
+  color: var(--text-muted);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
   outline: none;
-  transition: border-color var(--transition-fast);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
 }
 
 .input:focus,
 .select:focus {
   border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
 }
 
 .select {

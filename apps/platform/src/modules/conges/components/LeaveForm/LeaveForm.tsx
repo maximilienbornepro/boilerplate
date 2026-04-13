@@ -25,6 +25,10 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
     return 'full';
   });
   const [reason, setReason] = useState<LeaveReason>(leave?.reason || 'cp');
+  const [startDateTouched, setStartDateTouched] = useState(!!leave);
+  const [endDateTouched, setEndDateTouched] = useState(!!leave);
+  const [periodTouched, setPeriodTouched] = useState(!!leave);
+  const [reasonTouched, setReasonTouched] = useState(!!leave);
 
   // Fix: ensure memberId always matches currentUser for non-admins
   useEffect(() => {
@@ -77,7 +81,9 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
               type="date"
               className={styles.input}
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => { setStartDate(e.target.value); setStartDateTouched(true); }}
+              onBlur={() => setStartDateTouched(true)}
+              style={startDateTouched ? { color: 'var(--text-primary)' } : undefined}
               required
             />
           </div>
@@ -87,9 +93,11 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
               type="date"
               className={styles.input}
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => { setEndDate(e.target.value); setEndDateTouched(true); }}
+              onBlur={() => setEndDateTouched(true)}
               placeholder="Même jour"
               min={startDate || undefined}
+              style={endDateTouched ? { color: 'var(--text-primary)' } : undefined}
             />
           </div>
         </div>
@@ -99,7 +107,8 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
           <select
             className={styles.select}
             value={period}
-            onChange={(e) => setPeriod(e.target.value as 'full' | 'morning' | 'afternoon')}
+            onChange={(e) => { setPeriod(e.target.value as 'full' | 'morning' | 'afternoon'); setPeriodTouched(true); }}
+            style={periodTouched ? { color: 'var(--text-primary)' } : undefined}
           >
             <option value="full">Journée complète</option>
             <option value="morning">Matin</option>
@@ -112,7 +121,8 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
           <select
             className={styles.select}
             value={reason}
-            onChange={(e) => setReason(e.target.value as LeaveReason)}
+            onChange={(e) => { setReason(e.target.value as LeaveReason); setReasonTouched(true); }}
+            style={reasonTouched ? { color: 'var(--text-primary)' } : undefined}
           >
             {LEAVE_REASONS.map((opt) => (
               <option key={opt.id} value={opt.id}>{opt.label}</option>

@@ -75,6 +75,12 @@
   color: var(--text-muted);
 }
 
+.delivery-list-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
 .delivery-list-badge-type {
   display: inline-block;
   padding: 1px 6px;
@@ -85,14 +91,11 @@
   letter-spacing: 0.04em;
 }
 
-.delivery-list-badge-agile {
-  background: var(--info-bg);
-  color: var(--info);
-}
-
+.delivery-list-badge-agile,
 .delivery-list-badge-calendaire {
-  background: var(--success-bg);
-  color: var(--success);
+  background: transparent;
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
 }
 
 .delivery-list-card-period {

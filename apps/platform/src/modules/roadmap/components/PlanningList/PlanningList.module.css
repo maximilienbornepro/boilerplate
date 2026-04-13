@@ -201,6 +201,12 @@
   cursor: pointer;
   font-size: var(--font-size-sm);
   padding: var(--spacing-xs) 0;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+
+.boardCheckbox:has(input:checked) {
+  color: var(--text-primary);
 }
 
 .boardCheckbox input[type="checkbox"] {
