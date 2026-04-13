@@ -79,11 +79,16 @@
   // ==================== API HELPERS ====================
 
   async function apiFetch(path, options = {}) {
+    if (!jwtToken) {
+      // Try to refresh token
+      jwtToken = await getTokenFromCookie(serverUrl);
+      if (!jwtToken) throw new Error('Non connecte — ouvrez le serveur et connectez-vous');
+    }
     const res = await fetch(`${serverUrl}${path}`, {
       ...options,
-      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${jwtToken}`,
         ...(options.headers || {}),
       },
     });

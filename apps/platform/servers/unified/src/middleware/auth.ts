@@ -17,8 +17,17 @@ declare global {
   }
 }
 
+function extractToken(req: Request): string | undefined {
+  // 1. Cookie (primary — browser sessions)
+  if (req.cookies.auth_token) return req.cookies.auth_token;
+  // 2. Authorization: Bearer (Chrome extension, API clients)
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7);
+  return undefined;
+}
+
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  const token = req.cookies.auth_token;
+  const token = extractToken(req);
 
   if (!token) {
     res.status(401).json({ error: 'Non authentifie' });
@@ -36,7 +45,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
 }
 
 export function optionalAuthMiddleware(req: Request, _res: Response, next: NextFunction) {
-  const token = req.cookies.auth_token;
+  const token = extractToken(req);
 
   if (token) {
     try {
