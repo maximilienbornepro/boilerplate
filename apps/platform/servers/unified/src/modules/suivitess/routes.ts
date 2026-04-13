@@ -309,7 +309,7 @@ Retourne UNIQUEMENT un JSON :
   "situation": "Situation reformulée (bullet points, structurée, factuelle)"
 }
 
-Garde le sens original, améliore la clarté et la structure. Utilise des bullet points (lignes commençant par •). Ne change pas le fond, seulement la forme.`,
+Garde le sens original, améliore la clarté et la structure. Conserve EXACTEMENT le même format que l'original (si c'est des bullet points avec •, garde des •, si c'est du texte libre, garde du texte libre). Ne change pas le fond, seulement la forme. N'ajoute PAS de bullet points si l'original n'en a pas.`,
       }],
     });
 
