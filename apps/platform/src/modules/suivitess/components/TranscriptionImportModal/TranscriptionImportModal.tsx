@@ -51,7 +51,7 @@ function formatDate(iso: string): string {
 }
 
 export function TranscriptionImportModal({ documentId, onClose, onImported }: TranscriptionImportModalProps) {
-  const [provider, setProvider] = useState('fathom');
+  const [provider, setProvider] = useState('');
   const [calls, setCalls] = useState<TranscriptionCall[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -62,16 +62,27 @@ export function TranscriptionImportModal({ documentId, onClose, onImported }: Tr
   const [importing, setImporting] = useState(false);
   const [connectedAI, setConnectedAI] = useState<string[]>([]);
   const [selectedAI, setSelectedAI] = useState<string | null>(null);
+  const [activeProviders, setActiveProviders] = useState<typeof PROVIDERS>([]);
 
   useEffect(() => {
-    loadCalls();
+    if (provider) loadCalls();
   }, [provider]);
 
-  // Load connected AI providers from connectors
+  // Load connected connectors — filter both transcription + AI providers
   useEffect(() => {
     fetch('/api/connectors', { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
       .then((connectors: AIProviderInfo[]) => {
+        // Transcription providers: only show tabs for configured ones
+        const activeTranscription = PROVIDERS.filter(p =>
+          connectors.some(c => c.service === p.id && c.isActive)
+        );
+        setActiveProviders(activeTranscription);
+        if (activeTranscription.length > 0 && !provider) {
+          setProvider(activeTranscription[0].id);
+        }
+
+        // AI providers
         const active = connectors
           .filter(c => c.isActive && AI_PROVIDERS.some(ai => ai.id === c.service))
           .map(c => c.service);
@@ -217,17 +228,27 @@ export function TranscriptionImportModal({ documentId, onClose, onImported }: Tr
   return (
     <Modal title="Importer une transcription" onClose={onClose}>
       <div className={styles.body}>
-        <div className={styles.providerRow}>
-          {PROVIDERS.map(p => (
-            <button
-              key={p.id}
-              className={`${styles.providerBtn} ${provider === p.id ? styles.active : ''}`}
-              onClick={() => setProvider(p.id)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        {activeProviders.length > 0 ? (
+          <div className={styles.providerRow}>
+            {activeProviders.map(p => (
+              <button
+                key={p.id}
+                className={`${styles.providerBtn} ${provider === p.id ? styles.active : ''}`}
+                onClick={() => setProvider(p.id)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className={styles.empty}>
+            Aucun service de transcription configuré.
+            <br />
+            <span className={styles.emptyHint}>
+              Ajoutez Fathom ou Otter.ai dans Réglages &gt; Connecteurs.
+            </span>
+          </div>
+        )}
 
         {error && <div className={styles.error}>{error}</div>}
         {success && <div className={styles.success}>{success}</div>}
