@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import type { Subject } from '../../types';
 import { STATUS_OPTIONS, getStatusOption } from '../../types';
 import { updateSubject } from '../../services/api';
+import { EmailPreviewModal } from '../EmailPreviewModal/EmailPreviewModal';
 import styles from './SubjectReview.module.css';
 
 interface Props {
@@ -60,7 +61,7 @@ export function SubjectReview({
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [focusLineIndex, setFocusLineIndex] = useState<number | null>(null);
   const [reformulating, setReformulating] = useState(false);
-  const [generatingEmail, setGeneratingEmail] = useState(false);
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
 
   const handleReformulate = async () => {
     setReformulating(true);
@@ -76,26 +77,6 @@ export function SubjectReview({
       alert(err instanceof Error ? err.message : 'Erreur de reformulation');
     } finally {
       setReformulating(false);
-    }
-  };
-
-  const handleCopyEmail = async () => {
-    setGeneratingEmail(true);
-    try {
-      const res = await fetch('/suivitess-api/email-summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ documentId, subjectId: subject.id, template: 'listing' }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      const data = await res.json();
-      await navigator.clipboard.writeText(data.email);
-      alert('Email copié !');
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erreur');
-    } finally {
-      setGeneratingEmail(false);
     }
   };
 
@@ -594,11 +575,13 @@ export function SubjectReview({
 
           <button
             className={styles.actionBtn}
-            onClick={handleCopyEmail}
-            disabled={generatingEmail}
-            title="Copier email pour ce sujet"
+            onClick={() => setShowEmailPreview(true)}
+            title="Générer un email pour ce sujet"
           >
-            {generatingEmail ? '...' : '✉'}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+              <polyline points="22,6 12,13 2,6" />
+            </svg>
           </button>
 
           {onDelete && (
@@ -871,6 +854,13 @@ export function SubjectReview({
               : 'Sujet suivant'}
           </button>
         </div>
+      )}
+      {showEmailPreview && (
+        <EmailPreviewModal
+          documentId={documentId}
+          subjectId={subject.id}
+          onClose={() => setShowEmailPreview(false)}
+        />
       )}
     </div>
   );

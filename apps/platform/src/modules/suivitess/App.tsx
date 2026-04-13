@@ -8,6 +8,7 @@ import { HistoryPanel } from './components/HistoryPanel/HistoryPanel';
 import { RecorderBar } from './components/RecorderBar/RecorderBar';
 import { SuggestionsPanel } from './components/SuggestionsPanel/SuggestionsPanel';
 import { TranscriptionWizard } from './components/TranscriptionWizard/TranscriptionWizard';
+import { EmailPreviewModal } from './components/EmailPreviewModal/EmailPreviewModal';
 
 function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void }) {
   const { docId } = useParams<{ docId: string }>();
@@ -89,23 +90,6 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
     setRefreshKey(k => k + 1);
   };
 
-  const handleEmailExport = async (template: string) => {
-    if (!docId) return;
-    try {
-      const res = await fetch('/suivitess-api/email-summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ documentId: docId, template }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      const data = await res.json();
-      await navigator.clipboard.writeText(data.email);
-      alert('Email copié dans le presse-papiers !');
-    } catch (err) {
-      alert(`Erreur : ${err instanceof Error ? err.message : 'Impossible de générer l\'email'}`);
-    }
-  };
 
   return (
     <Layout appId="suivitess" variant="full-width" onNavigate={onNavigate}>
@@ -176,10 +160,9 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
                 {connectedAIs.length > 0 && docId && (
                   <>
                     <div className="suivitess-exports-divider" />
-                    <button type="button" className="suivitess-exports-item" onClick={() => { handleEmailExport('listing'); setShowExports(false); }}>Email — Listing</button>
-                    <button type="button" className="suivitess-exports-item" onClick={() => { handleEmailExport('situation-cible'); setShowExports(false); }}>Email — Situation / Cible</button>
-                    <button type="button" className="suivitess-exports-item" onClick={() => { handleEmailExport('actions'); setShowExports(false); }}>Email — Actions</button>
-                    <button type="button" className="suivitess-exports-item" onClick={() => { handleEmailExport('executive'); setShowExports(false); }}>Email — Résumé exécutif</button>
+                    <button type="button" className="suivitess-exports-item" onClick={() => { setShowEmailModal(true); setShowExports(false); }}>
+                      Email (avec preview)
+                    </button>
                   </>
                 )}
               </div>
@@ -242,6 +225,12 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           documentId={docId}
           onClose={() => setShowHistory(false)}
           onRestore={handleRestore}
+        />
+      )}
+      {showEmailModal && docId && (
+        <EmailPreviewModal
+          documentId={docId}
+          onClose={() => setShowEmailModal(false)}
         />
       )}
       {showTranscriptionWizard && docId && (
