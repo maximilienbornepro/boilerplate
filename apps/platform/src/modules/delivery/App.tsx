@@ -285,21 +285,40 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   };
 
   const handleTaskResize = async (taskId: string, newStartCol: number, newEndCol: number) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const taskRow = task.row ?? 0;
+    const taskRowSpan = task.rowSpan ?? 1;
+
+    // Check if the new size would overlap another task on the same row
+    const wouldOverlap = tasks.some(t => {
+      if (t.id === taskId || t.parentTaskId) return false;
+      const tStart = t.startCol ?? 0;
+      const tEnd = t.endCol ?? (tStart + 1);
+      const tRow = t.row ?? 0;
+      const tRowSpan = t.rowSpan ?? 1;
+      const colOverlap = newStartCol < tEnd && newEndCol > tStart;
+      const rowOverlap = taskRow < (tRow + tRowSpan) && (taskRow + taskRowSpan) > tRow;
+      return colOverlap && rowOverlap;
+    });
+
+    if (wouldOverlap) return; // Block the resize
+
     setTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId ? { ...task, startCol: newStartCol, endCol: newEndCol } : task
+      prev.map((t) =>
+        t.id === taskId ? { ...t, startCol: newStartCol, endCol: newEndCol } : t
       )
     );
 
     try {
-      const task = tasks.find((t) => t.id === taskId);
       await saveTaskPosition({
         taskId,
         incrementId: defaultSprintId,
         startCol: newStartCol,
         endCol: newEndCol,
-        row: task?.row ?? 0,
-        rowSpan: task?.rowSpan ?? 1,
+        row: taskRow,
+        rowSpan: taskRowSpan,
       });
     } catch (err) {
       console.error('Failed to save position:', err);
@@ -312,10 +331,37 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
 
     const taskWidth = (task.endCol ?? 1) - (task.startCol ?? 0);
     const newEndCol = newStartCol + taskWidth;
+    const taskRowSpan = task.rowSpan ?? 1;
+
+    // ── Collision check: find a free row if the target is occupied ──
+    // Only check top-level tasks (not children nested inside containers).
+    const otherTasks = tasks.filter(t =>
+      t.id !== taskId && !t.parentTaskId
+    );
+
+    const isOccupied = (r: number): boolean => {
+      return otherTasks.some(t => {
+        const tStart = t.startCol ?? 0;
+        const tEnd = t.endCol ?? (tStart + 1);
+        const tRow = t.row ?? 0;
+        const tRowSpan = t.rowSpan ?? 1;
+        // Check column overlap
+        const colOverlap = newStartCol < tEnd && newEndCol > tStart;
+        // Check row overlap
+        const rowOverlap = r < (tRow + tRowSpan) && (r + taskRowSpan) > tRow;
+        return colOverlap && rowOverlap;
+      });
+    };
+
+    let finalRow = newRow;
+    // If the target position is occupied, find the next free row
+    while (isOccupied(finalRow)) {
+      finalRow++;
+    }
 
     setTasks((prev) =>
       prev.map((t) =>
-        t.id === taskId ? { ...t, startCol: newStartCol, endCol: newEndCol, row: newRow } : t
+        t.id === taskId ? { ...t, startCol: newStartCol, endCol: newEndCol, row: finalRow } : t
       )
     );
 
@@ -325,8 +371,8 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
         incrementId: defaultSprintId,
         startCol: newStartCol,
         endCol: newEndCol,
-        row: newRow,
-        rowSpan: task.rowSpan ?? 1,
+        row: finalRow,
+        rowSpan: taskRowSpan,
       });
     } catch (err) {
       console.error('Failed to save position:', err);
