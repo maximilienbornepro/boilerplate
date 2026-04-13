@@ -27,6 +27,24 @@ export const config = {
   // Database
   appDatabaseUrl: process.env.APP_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/app',
 
+  // Outlook OAuth (Microsoft Graph)
+  outlook: {
+    oauth: {
+      clientId: process.env.OUTLOOK_OAUTH_CLIENT_ID || '',
+      clientSecret: process.env.OUTLOOK_OAUTH_CLIENT_SECRET || '',
+      redirectUri: process.env.OUTLOOK_OAUTH_CALLBACK_URL || 'http://localhost:3010/api/auth/outlook/callback',
+    },
+  },
+
+  // Gmail OAuth (Google)
+  gmail: {
+    oauth: {
+      clientId: process.env.GMAIL_OAUTH_CLIENT_ID || '',
+      clientSecret: process.env.GMAIL_OAUTH_CLIENT_SECRET || '',
+      redirectUri: process.env.GMAIL_OAUTH_CALLBACK_URL || 'http://localhost:3010/api/auth/gmail/callback',
+    },
+  },
+
   // Jira (optional - for OAuth connector)
   jira: {
     baseUrl: process.env.JIRA_BASE_URL || '',

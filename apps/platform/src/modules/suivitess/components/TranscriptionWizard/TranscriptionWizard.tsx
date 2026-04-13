@@ -34,7 +34,11 @@ interface Section {
 const PROVIDERS = [
   { id: 'fathom', label: 'Fathom' },
   { id: 'otter', label: 'Otter.ai' },
+  { id: 'outlook', label: 'Outlook' },
+  { id: 'gmail', label: 'Gmail' },
 ];
+
+const EMAIL_PROVIDERS = new Set(['outlook', 'gmail']);
 
 const AI_PROVIDERS = [
   { id: 'anthropic', label: 'Claude (Anthropic)' },
@@ -92,10 +96,18 @@ export function TranscriptionWizard({ documentId, onClose, onDone }: Props) {
   const [importedCallIds, setImportedCallIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetch('/api/connectors', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : [])
-      .then((connectors: Array<{ service: string; isActive: boolean }>) => {
-        const activeTrans = PROVIDERS.filter(p => connectors.some(c => c.service === p.id && c.isActive));
+    // Load connectors (Fathom, Otter, AI) + email OAuth status (Outlook, Gmail)
+    Promise.all([
+      fetch('/api/connectors', { credentials: 'include' }).then(r => r.ok ? r.json() : []),
+      fetch('/api/auth/outlook/status', { credentials: 'include' }).then(r => r.ok ? r.json() : { connected: false }).catch(() => ({ connected: false })),
+      fetch('/api/auth/gmail/status', { credentials: 'include' }).then(r => r.ok ? r.json() : { connected: false }).catch(() => ({ connected: false })),
+    ]).then(([connectors, outlookStatus, gmailStatus]: [Array<{ service: string; isActive: boolean }>, { connected: boolean }, { connected: boolean }]) => {
+        // Transcription providers (Fathom, Otter — from connectors)
+        const activeTrans = PROVIDERS.filter(p => {
+          if (p.id === 'outlook') return outlookStatus.connected;
+          if (p.id === 'gmail') return gmailStatus.connected;
+          return connectors.some(c => c.service === p.id && c.isActive);
+        });
         setActiveProviders(activeTrans);
         if (activeTrans.length > 0) setProvider(activeTrans[0].id);
         const activeAI = connectors.filter(c => c.isActive && AI_PROVIDERS.some(ai => ai.id === c.service)).map(c => c.service);
@@ -120,9 +132,25 @@ export function TranscriptionWizard({ documentId, onClose, onDone }: Props) {
   useEffect(() => {
     if (!provider) return;
     setLoadingCalls(true); setError(''); setCalls([]);
-    fetch(`${API_BASE}/transcription/calls?provider=${provider}&days=30`, { credentials: 'include' })
+    const isEmail = EMAIL_PROVIDERS.has(provider);
+    const url = isEmail
+      ? `${API_BASE}/email/list?provider=${provider}&days=7`
+      : `${API_BASE}/transcription/calls?provider=${provider}&days=30`;
+    fetch(url, { credentials: 'include' })
       .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(setCalls)
+      .then((data) => {
+        if (isEmail) {
+          // Map email items to TranscriptionCall format
+          setCalls(data.map((e: { id: string; subject: string; date: string; sender: string; preview: string }) => ({
+            id: e.id,
+            title: `${e.subject} (${e.sender})`,
+            date: e.date,
+            duration: undefined,
+          })));
+        } else {
+          setCalls(data);
+        }
+      })
       .catch(() => setError('Erreur de chargement'))
       .finally(() => setLoadingCalls(false));
   }, [provider]);
@@ -141,17 +169,36 @@ export function TranscriptionWizard({ documentId, onClose, onDone }: Props) {
 
   // ── Actions ──
 
+  // Fetch email body for email providers
+  const fetchEmailContent = async (call: TranscriptionCall): Promise<string> => {
+    const bodyRes = await fetch(`${API_BASE}/email/body/${encodeURIComponent(call.id)}?provider=${provider}`, { credentials: 'include' });
+    if (!bodyRes.ok) return call.title; // fallback to title
+    const { body } = await bodyRes.json();
+    return `=== ${call.title} ===\n${body || ''}`;
+  };
+
   const handleImportRaw = async () => {
     if (!selectedCall) return;
     setImporting(true); setError('');
     try {
-      const res = await fetch(`${API_BASE}/documents/${documentId}/transcript-import`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ callId: selectedCall.id, callTitle: selectedCall.title, provider, useAI: false }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      const data = await res.json();
-      setResult({ enriched: 0, created: data.subjectCount, sectionsCreated: 1 });
+      if (EMAIL_PROVIDERS.has(provider)) {
+        const content = await fetchEmailContent(selectedCall);
+        const res = await fetch(`${API_BASE}/documents/${documentId}/content-import`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ content, source: provider, sourceTitle: selectedCall.title, useAI: false, itemIds: [selectedCall.id] }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        const data = await res.json();
+        setResult({ enriched: 0, created: data.subjectCount, sectionsCreated: 1 });
+      } else {
+        const res = await fetch(`${API_BASE}/documents/${documentId}/transcript-import`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ callId: selectedCall.id, callTitle: selectedCall.title, provider, useAI: false }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        const data = await res.json();
+        setResult({ enriched: 0, created: data.subjectCount, sectionsCreated: 1 });
+      }
       await recordImport(selectedCall.id, selectedCall.title);
       setStep('result'); onDone();
     } catch (err) { setError(err instanceof Error ? err.message : 'Erreur'); }
@@ -162,13 +209,24 @@ export function TranscriptionWizard({ documentId, onClose, onDone }: Props) {
     if (!selectedCall) return;
     setImporting(true); setError('');
     try {
-      const res = await fetch(`${API_BASE}/documents/${documentId}/transcript-import`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ callId: selectedCall.id, callTitle: selectedCall.title, provider, useAI: true }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      const data = await res.json();
-      setResult({ enriched: 0, created: data.subjectCount, sectionsCreated: 1 });
+      if (EMAIL_PROVIDERS.has(provider)) {
+        const content = await fetchEmailContent(selectedCall);
+        const res = await fetch(`${API_BASE}/documents/${documentId}/content-import`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ content, source: provider, sourceTitle: selectedCall.title, useAI: true, itemIds: [selectedCall.id] }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        const data = await res.json();
+        setResult({ enriched: 0, created: data.subjectCount, sectionsCreated: 1 });
+      } else {
+        const res = await fetch(`${API_BASE}/documents/${documentId}/transcript-import`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ callId: selectedCall.id, callTitle: selectedCall.title, provider, useAI: true }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        const data = await res.json();
+        setResult({ enriched: 0, created: data.subjectCount, sectionsCreated: 1 });
+      }
       await recordImport(selectedCall.id, selectedCall.title);
       setStep('result'); onDone();
     } catch (err) { setError(err instanceof Error ? err.message : 'Erreur'); }
@@ -179,14 +237,26 @@ export function TranscriptionWizard({ documentId, onClose, onDone }: Props) {
     if (!selectedCall) return;
     setAnalyzing(true); setError('');
     try {
-      const res = await fetch(`${API_BASE}/documents/${documentId}/transcript-analyze-and-propose`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ callId: selectedCall.id, callTitle: selectedCall.title, provider }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      const data = await res.json();
-      setProposals(data.proposals || []);
-      setSelected(new Set((data.proposals || []).map((p: Proposal) => p.id)));
+      if (EMAIL_PROVIDERS.has(provider)) {
+        const content = await fetchEmailContent(selectedCall);
+        const res = await fetch(`${API_BASE}/documents/${documentId}/content-analyze-and-propose`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ content, source: provider, sourceTitle: selectedCall.title, itemIds: [selectedCall.id] }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        const data = await res.json();
+        setProposals(data.proposals || []);
+        setSelected(new Set((data.proposals || []).map((p: Proposal) => p.id)));
+      } else {
+        const res = await fetch(`${API_BASE}/documents/${documentId}/transcript-analyze-and-propose`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ callId: selectedCall.id, callTitle: selectedCall.title, provider }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        const data = await res.json();
+        setProposals(data.proposals || []);
+        setSelected(new Set((data.proposals || []).map((p: Proposal) => p.id)));
+      }
       setStep('proposals');
     } catch (err) { setError(err instanceof Error ? err.message : 'Erreur'); }
     finally { setAnalyzing(false); }

@@ -757,6 +757,52 @@ Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En fran
     })));
   }));
 
+  // List recent emails from Outlook or Gmail (via OAuth)
+  router.get('/email/list', asyncHandler(async (req, res) => {
+    const provider = (req.query.provider as string) || 'outlook';
+    const days = parseInt(req.query.days as string) || 7;
+
+    try {
+      if (provider === 'outlook') {
+        const { listOutlookEmails } = await import('./emailService.js');
+        const emails = await listOutlookEmails(req.user!.id, days);
+        res.json(emails);
+      } else if (provider === 'gmail') {
+        const { listGmailEmails } = await import('./emailService.js');
+        const emails = await listGmailEmails(req.user!.id, days);
+        res.json(emails);
+      } else {
+        res.status(400).json({ error: `Provider email non supporte: ${provider}` });
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erreur inconnue';
+      res.status(400).json({ error: message });
+    }
+  }));
+
+  // Get email body
+  router.get('/email/body/:messageId', asyncHandler(async (req, res) => {
+    const provider = (req.query.provider as string) || 'outlook';
+    const { messageId } = req.params;
+
+    try {
+      if (provider === 'outlook') {
+        const { getOutlookEmailBody } = await import('./emailService.js');
+        const body = await getOutlookEmailBody(req.user!.id, messageId);
+        res.json({ body });
+      } else if (provider === 'gmail') {
+        const { getGmailEmailBody } = await import('./emailService.js');
+        const body = await getGmailEmailBody(req.user!.id, messageId);
+        res.json({ body });
+      } else {
+        res.status(400).json({ error: `Provider email non supporte: ${provider}` });
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erreur inconnue';
+      res.status(400).json({ error: message });
+    }
+  }));
+
   // List recent calls from a transcription provider
   router.get('/transcription/calls', asyncHandler(async (req, res) => {
     const provider = (req.query.provider as string) || 'fathom';

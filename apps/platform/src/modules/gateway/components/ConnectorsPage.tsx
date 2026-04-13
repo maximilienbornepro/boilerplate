@@ -76,6 +76,20 @@ const FathomIcon = () => (
   </svg>
 );
 
+// Outlook icon (envelope)
+const OutlookIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 13L2 7V5l10 6 10-6v2l-10 6zm10-8H2C.9 5 0 5.9 0 7v10c0 1.1.9 2 2 2h20c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2z"/>
+  </svg>
+);
+
+// Gmail icon (envelope with G)
+const GmailIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor">
+    <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+  </svg>
+);
+
 // ── Section 1: Gestion de projet ──
 // Ces connecteurs permettent de récupérer les projets, tickets et sprints
 // qui seront associés aux delivery boards.
@@ -171,7 +185,31 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       },
     ],
   },
+  {
+    title: 'Messagerie',
+    description: 'Connectez vos boites mail pour importer des mails dans SuiviTess et alimenter vos reviews automatiquement.',
+    services: [
+      {
+        id: 'outlook',
+        name: 'Outlook',
+        description: 'Microsoft 365 / Outlook.com — importez vos mails dans SuiviTess',
+        color: '#0078D4',
+        icon: <OutlookIcon />,
+        enabled: true,
+      },
+      {
+        id: 'gmail',
+        name: 'Gmail',
+        description: 'Google Workspace / Gmail — importez vos mails dans SuiviTess',
+        color: '#EA4335',
+        icon: <GmailIcon />,
+        enabled: true,
+      },
+    ],
+  },
 ];
+
+const EMAIL_SERVICE_IDS = new Set(['outlook', 'gmail']);
 
 // Flat list of all services (for backward compat with getConnectorForService)
 const ALL_SERVICES = SERVICE_GROUPS.flatMap(g => g.services);
@@ -983,6 +1021,99 @@ function CreditSection({ credits }: { credits: CreditInfo }) {
   );
 }
 
+// ==================== Email OAuth Card (Outlook / Gmail) ====================
+
+function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
+  const [status, setStatus] = useState<{ connected: boolean; emailAddress?: string; isExpired?: boolean } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [oauthAvail, setOauthAvail] = useState(false);
+
+  const provider = service.id; // 'outlook' | 'gmail'
+
+  useEffect(() => {
+    fetch(`/connectors-api/${provider}/oauth-available`).then(r => r.json()).then(d => setOauthAvail(d.available)).catch(() => {});
+    fetch(`/api/auth/${provider}/status`, { credentials: 'include' }).then(r => r.json()).then(setStatus).catch(() => setStatus({ connected: false }));
+    setLoading(false);
+
+    // Detect URL params
+    const params = new URLSearchParams(window.location.search);
+    if (params.get(`${provider}_connected`) === '1') {
+      fetch(`/api/auth/${provider}/status`, { credentials: 'include' }).then(r => r.json()).then(setStatus).catch(() => {});
+      const url = new URL(window.location.href);
+      url.searchParams.delete(`${provider}_connected`);
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [provider]);
+
+  const handleConnect = () => {
+    const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/api/auth/${provider}?returnUrl=${returnUrl}`;
+  };
+
+  const handleDisconnect = async () => {
+    await fetch(`/api/auth/${provider}`, { method: 'DELETE', credentials: 'include' });
+    setStatus({ connected: false });
+  };
+
+  return (
+    <div className="connector-card">
+      <div className="connector-card-header" onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }}>
+        <div className="connector-card-left">
+          <div className="connector-card-icon" style={{ background: service.color, color: '#fff' }}>
+            {service.icon}
+          </div>
+          <div className="connector-card-info">
+            <div className="connector-card-name">{service.name}</div>
+            <div className="connector-card-desc">{service.description}</div>
+          </div>
+        </div>
+        <div className="connector-card-right">
+          {status?.connected ? (
+            <span className="connector-status active">Connecte</span>
+          ) : (
+            <span className="connector-status inactive">Non connecte</span>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="connector-card-body" style={{ padding: 'var(--spacing-md)' }}>
+          {loading ? (
+            <div className="connector-loading"><span className="connector-spinner" /><span>Chargement...</span></div>
+          ) : !oauthAvail ? (
+            <div className="connectors-error">OAuth {service.name} non configure sur le serveur. Ajoutez les variables {provider.toUpperCase()}_OAUTH_CLIENT_ID et {provider.toUpperCase()}_OAUTH_CLIENT_SECRET.</div>
+          ) : status?.connected ? (
+            <div>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', margin: '0 0 var(--spacing-sm)' }}>
+                Compte : <strong style={{ color: 'var(--text-primary)' }}>{status.emailAddress || '—'}</strong>
+              </p>
+              {status.isExpired && (
+                <p style={{ color: 'var(--color-warning)', fontSize: 'var(--font-size-xs)', margin: '0 0 var(--spacing-sm)' }}>
+                  Token expire — reconnectez-vous
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                <button className="connector-btn connector-btn-primary" onClick={handleConnect}>Reconnecter</button>
+                <button className="connector-btn connector-btn-danger" onClick={handleDisconnect}>Deconnecter</button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', margin: '0 0 var(--spacing-md)' }}>
+                Connectez votre compte {service.name} pour importer vos mails dans SuiviTess.
+              </p>
+              <button className="connector-btn connector-btn-primary" onClick={handleConnect}>
+                Connecter via OAuth
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
   const [connectors, setConnectors] = useState<ConnectorData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1061,6 +1192,9 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
                     onDeleted={loadConnectors}
                   />
                 );
+              }
+              if (EMAIL_SERVICE_IDS.has(service.id)) {
+                return <EmailOAuthCard key={service.id} service={service} />;
               }
               if (AI_SERVICE_IDS.has(service.id) || service.id === 'fathom' || service.id === 'otter') {
                 if (!service.enabled) return <ConnectorCardDisabled key={service.id} service={service} />;

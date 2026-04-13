@@ -66,6 +66,12 @@ export default defineConfig({
       '/api/admin/credits': {
         target: UNIFIED_SERVER,
       },
+      '/api/auth/outlook': {
+        target: UNIFIED_SERVER,
+      },
+      '/api/auth/gmail': {
+        target: UNIFIED_SERVER,
+      },
     },
   },
   build: {

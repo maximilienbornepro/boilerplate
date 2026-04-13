@@ -13,6 +13,18 @@ export function createConnectorsRoutes(): Router {
     res.json({ available });
   });
 
+  // GET /outlook/oauth-available
+  router.get('/outlook/oauth-available', (_req, res) => {
+    const available = !!(config.outlook.oauth.clientId && config.outlook.oauth.clientSecret);
+    res.json({ available });
+  });
+
+  // GET /gmail/oauth-available
+  router.get('/gmail/oauth-available', (_req, res) => {
+    const available = !!(config.gmail.oauth.clientId && config.gmail.oauth.clientSecret);
+    res.json({ available });
+  });
+
   router.use(authMiddleware);
 
   // GET / — List all connectors for current user
