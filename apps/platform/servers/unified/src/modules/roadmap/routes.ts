@@ -10,6 +10,21 @@ export async function initDb() {
   await db.initPool();
   await db.ensureTaskSubjectsTable();
   await db.ensurePlanningDeliveryBoardsTable();
+
+  // Migration: add owner_id to plannings (rétro-compat: nullable, backfill to admin)
+  try {
+    await db.rawQuery('ALTER TABLE roadmap_plannings ADD COLUMN IF NOT EXISTS owner_id INTEGER');
+    await db.rawQuery('UPDATE roadmap_plannings SET owner_id = 1 WHERE owner_id IS NULL');
+  } catch { /* already done */ }
+
+  // Backfill resource_sharing entries for existing plannings
+  try {
+    const { ensureOwnership } = await import('../shared/resourceSharing.js');
+    const plannings = await db.getAllPlannings();
+    for (const p of plannings) {
+      await ensureOwnership('roadmap', p.id, 1, 'public'); // Existing plannings default to public
+    }
+  } catch { /* sharing table may not exist yet */ }
 }
 
 export function createRoadmapRoutes(): Router {
@@ -44,8 +59,8 @@ export function createRoadmapRoutes(): Router {
 
   // --- Plannings ---
 
-  router.get('/plannings', asyncHandler(async (_req, res) => {
-    const plannings = await db.getAllPlannings();
+  router.get('/plannings', asyncHandler(async (req, res) => {
+    const plannings = await db.getAllPlannings(req.user!.id, req.user!.isAdmin);
     res.json(plannings);
   }));
 
@@ -56,6 +71,11 @@ export function createRoadmapRoutes(): Router {
       return;
     }
     const planning = await db.createPlanning(name, startDate, endDate, description);
+    // Create sharing entry (private by default, owned by current user)
+    try {
+      const { ensureOwnership } = await import('../shared/resourceSharing.js');
+      await ensureOwnership('roadmap', planning.id, req.user!.id, 'private');
+    } catch { /* ignore if sharing table not ready */ }
     res.status(201).json(planning);
   }));
 

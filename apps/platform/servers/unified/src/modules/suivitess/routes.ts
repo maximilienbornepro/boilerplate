@@ -27,8 +27,8 @@ export function createRoutes(): Router {
   // ==================== DOCUMENTS ====================
 
   // List all documents
-  router.get('/documents', asyncHandler(async (_req, res) => {
-    const docs = await db.getAllDocuments();
+  router.get('/documents', asyncHandler(async (req, res) => {
+    const docs = await db.getAllDocuments(req.user!.id, req.user!.isAdmin);
     res.json(docs);
   }));
 
@@ -59,6 +59,11 @@ export function createRoutes(): Router {
       try {
         const doc = await db.createDocument(id, title.trim(), description?.trim() || null);
         console.log('[SuiVitess] Document created:', id);
+        // Create sharing entry (private by default)
+        try {
+          const { ensureOwnership } = await import('../shared/resourceSharing.js');
+          await ensureOwnership('suivitess', doc.id, req.user!.id, 'private');
+        } catch { /* ignore */ }
         res.json(doc);
         return;
       } catch (error: unknown) {

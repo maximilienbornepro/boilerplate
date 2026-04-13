@@ -633,5 +633,96 @@ export function createGatewayRouter(): Router {
     res.json({ key, value });
   }));
 
+  // ==================== Resource Sharing ====================
+
+  // Get sharing config for a resource
+  router.get('/sharing/:resourceType/:resourceId', authMiddleware, asyncHandler(async (req, res) => {
+    const { getResourceSharing } = await import('./shared/resourceSharing.js');
+    const sharing = await getResourceSharing(
+      req.params.resourceType as 'roadmap' | 'delivery' | 'suivitess',
+      req.params.resourceId
+    );
+    if (!sharing) {
+      res.json({ ownerId: null, visibility: 'private', shares: [] });
+      return;
+    }
+    res.json(sharing);
+  }));
+
+  // Update sharing config (visibility + shares)
+  router.put('/sharing/:resourceType/:resourceId', authMiddleware, asyncHandler(async (req, res) => {
+    const { setVisibility, shareWithEmail, unshare, getResourceSharing, ensureOwnership } = await import('./shared/resourceSharing.js');
+    const resourceType = req.params.resourceType as 'roadmap' | 'delivery' | 'suivitess';
+    const resourceId = req.params.resourceId;
+    const { visibility, sharedEmails, addEmail } = req.body as {
+      visibility?: 'private' | 'public';
+      sharedEmails?: string[];
+      addEmail?: string;
+    };
+
+    // Ensure ownership entry exists
+    await ensureOwnership(resourceType, resourceId, req.user!.id);
+
+    if (visibility) {
+      await setVisibility(resourceType, resourceId, visibility);
+    }
+
+    // Add a single email share
+    if (addEmail) {
+      const result = await shareWithEmail(resourceType, resourceId, addEmail, req.user!.id);
+      if (!result.success) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+    }
+
+    if (sharedEmails !== undefined) {
+      // Get current shares
+      const current = await getResourceSharing(resourceType, resourceId);
+      const currentEmails = new Set(current?.shares.map(s => s.email) || []);
+      const targetEmails = new Set(sharedEmails);
+
+      // Remove shares no longer in the list
+      for (const share of current?.shares || []) {
+        if (!targetEmails.has(share.email)) {
+          await unshare(resourceType, resourceId, share.userId);
+        }
+      }
+
+      // Add new shares
+      const errors: string[] = [];
+      for (const email of sharedEmails) {
+        if (!currentEmails.has(email)) {
+          const result = await shareWithEmail(resourceType, resourceId, email, req.user!.id);
+          if (!result.success && result.error) errors.push(result.error);
+        }
+      }
+
+      if (errors.length > 0) {
+        res.json({ success: true, warnings: errors });
+        return;
+      }
+    }
+
+    res.json({ success: true });
+  }));
+
+  // Remove a single share
+  router.delete('/sharing/:resourceType/:resourceId/:userId', authMiddleware, asyncHandler(async (req, res) => {
+    const { unshare } = await import('./shared/resourceSharing.js');
+    await unshare(
+      req.params.resourceType as 'roadmap' | 'delivery' | 'suivitess',
+      req.params.resourceId,
+      parseInt(req.params.userId)
+    );
+    res.json({ success: true });
+  }));
+
+  // List all users (for sharing autocomplete)
+  router.get('/users/list', authMiddleware, asyncHandler(async (_req, res) => {
+    const result = await pool.query('SELECT id, email FROM users WHERE is_active = true ORDER BY email');
+    res.json(result.rows.map((r: { id: number; email: string }) => ({ id: r.id, email: r.email })));
+  }));
+
   return router;
 }

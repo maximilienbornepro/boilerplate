@@ -1,4 +1,5 @@
-import { Card, Button } from '@boilerplate/shared/components';
+import { useState } from 'react';
+import { Card, Button, SharingModal } from '@boilerplate/shared/components';
 import type { Planning } from '../../types';
 import styles from './PlanningList.module.css';
 
@@ -19,6 +20,7 @@ export function PlanningList({
   onDelete,
   onAdd,
 }: PlanningListProps) {
+  const [sharingPlanning, setSharingPlanning] = useState<Planning | null>(null);
   return (
     <div className={styles.container}>
       {plannings.length === 0 ? (
@@ -51,6 +53,19 @@ export function PlanningList({
                 <span className="shared-card__title">{p.name}</span>
                 {p.description && <span className="shared-card__subtitle">{p.description}</span>}
               </div>
+              <button
+                className="shared-card__edit-btn"
+                onClick={(e) => { e.stopPropagation(); setSharingPlanning(p); }}
+                title="Partager"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3" />
+                  <circle cx="6" cy="12" r="3" />
+                  <circle cx="18" cy="19" r="3" />
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                </svg>
+              </button>
               {onEdit && (
                 <button
                   className="shared-card__edit-btn"
@@ -81,6 +96,14 @@ export function PlanningList({
             </Card>
           ))}
         </div>
+      )}
+      {sharingPlanning && (
+        <SharingModal
+          resourceType="roadmap"
+          resourceId={sharingPlanning.id}
+          resourceName={sharingPlanning.name}
+          onClose={() => setSharingPlanning(null)}
+        />
       )}
     </div>
   );

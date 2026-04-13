@@ -79,5 +79,9 @@ export type { SectionTitleProps } from './SectionTitle/SectionTitle.js';
 export { Tabs } from './Tabs/Tabs.js';
 export type { TabsProps, TabItem } from './Tabs/Tabs.js';
 
+// Sharing
+export { SharingModal } from './SharingModal/SharingModal.js';
+export type { SharingModalProps, SharingConfig } from './SharingModal/SharingModal.js';
+
 // Auth hooks
 export { useGatewayUser, GatewayAuthProvider } from '../hooks/useGatewayAuth.js';

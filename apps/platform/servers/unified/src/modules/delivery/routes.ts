@@ -113,7 +113,7 @@ export function createDeliveryRoutes(): Router {
   // ============ Boards CRUD ============
 
   router.get('/boards', asyncHandler(async (req, res) => {
-    const boards = await db.getAllBoards(req.user!.id);
+    const boards = await db.getAllBoards(req.user!.id, req.user!.isAdmin);
     res.json(boards);
   }));
 
@@ -148,6 +148,10 @@ export function createDeliveryRoutes(): Router {
         req.user!.id, name.trim(), description?.trim() || null,
         type, startDate, computedEnd, weeks
       );
+      try {
+        const { ensureOwnership } = await import('../shared/resourceSharing.js');
+        await ensureOwnership('delivery', String(board.id), req.user!.id, 'private');
+      } catch { /* ignore */ }
       res.status(201).json(board);
     } else {
       // Calendaire: startDate = first of month, endDate = last of month.
@@ -167,6 +171,10 @@ export function createDeliveryRoutes(): Router {
         lastOfMonth,
         4 // 4 weeks
       );
+      try {
+        const { ensureOwnership } = await import('../shared/resourceSharing.js');
+        await ensureOwnership('delivery', String(board.id), req.user!.id, 'private');
+      } catch { /* ignore */ }
       res.status(201).json(board);
     }
   }));

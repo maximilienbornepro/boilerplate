@@ -33,6 +33,10 @@ app.get('/health', (_req, res) => {
 async function init() {
   console.log('[Server] Initializing modules...');
 
+  // Resource sharing (ownership + visibility)
+  const { initSharingPool } = await import('./modules/shared/resourceSharing.js');
+  await initSharingPool();
+
   // Gateway (auth)
   await initGateway();
   app.use('/api', createGatewayRouter());

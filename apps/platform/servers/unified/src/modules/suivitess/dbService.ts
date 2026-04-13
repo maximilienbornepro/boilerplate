@@ -112,6 +112,21 @@ export async function initDb(): Promise<void> {
     client.release();
   }
 
+  // Migration: add owner_id (rétro-compat: nullable, backfill to admin)
+  try {
+    await pool.query('ALTER TABLE suivitess_documents ADD COLUMN IF NOT EXISTS owner_id INTEGER');
+    await pool.query('UPDATE suivitess_documents SET owner_id = 1 WHERE owner_id IS NULL');
+  } catch { /* already done */ }
+
+  // Backfill resource_sharing entries for existing documents
+  try {
+    const { ensureOwnership } = await import('../shared/resourceSharing.js');
+    const docs = await pool.query('SELECT id FROM suivitess_documents');
+    for (const d of docs.rows) {
+      await ensureOwnership('suivitess', d.id, 1, 'public');
+    }
+  } catch { /* sharing table may not exist yet */ }
+
   console.log('[SuiVitess] Module initialized');
 }
 
@@ -199,8 +214,19 @@ export async function searchSubjects(q: string): Promise<SubjectSearchResult[]> 
 
 // ==================== DOCUMENT QUERIES ====================
 
-export async function getAllDocuments() {
-  const result = await pool.query('SELECT id, title, description FROM suivitess_documents ORDER BY title');
+export async function getAllDocuments(userId?: number, isAdmin?: boolean) {
+  if (!userId || isAdmin) {
+    const result = await pool.query('SELECT id, title, description FROM suivitess_documents ORDER BY title');
+    return result.rows;
+  }
+  const result = await pool.query(
+    `SELECT d.id, d.title, d.description FROM suivitess_documents d
+     LEFT JOIN resource_sharing rs ON rs.resource_type = 'suivitess' AND rs.resource_id = d.id
+     LEFT JOIN resource_shares rsh ON rsh.resource_type = 'suivitess' AND rsh.resource_id = d.id AND rsh.shared_with_user_id = $1
+     WHERE rs.id IS NULL OR rs.owner_id = $1 OR rs.visibility = 'public' OR rsh.id IS NOT NULL
+     ORDER BY d.title`,
+    [userId]
+  );
   return result.rows;
 }
 

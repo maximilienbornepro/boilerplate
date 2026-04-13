@@ -14,6 +14,10 @@ export async function initPool() {
   }
 }
 
+export async function rawQuery(sql: string, params?: unknown[]) {
+  return pool.query(sql, params);
+}
+
 // Types
 export interface Planning {
   id: string;
@@ -118,8 +122,25 @@ function formatMarker(row: any): Marker {
 
 // ==================== PLANNINGS ====================
 
-export async function getAllPlannings(): Promise<Planning[]> {
-  const result = await pool.query('SELECT * FROM roadmap_plannings ORDER BY created_at DESC');
+export async function getAllPlannings(userId?: number, isAdmin?: boolean): Promise<Planning[]> {
+  if (!userId || isAdmin) {
+    // Admin or no user context → return all
+    const result = await pool.query('SELECT * FROM roadmap_plannings ORDER BY created_at DESC');
+    return result.rows.map(formatPlanning);
+  }
+
+  // Filter by visibility: owned + public + shared
+  const result = await pool.query(
+    `SELECT p.* FROM roadmap_plannings p
+     LEFT JOIN resource_sharing rs ON rs.resource_type = 'roadmap' AND rs.resource_id = p.id::text
+     LEFT JOIN resource_shares rsh ON rsh.resource_type = 'roadmap' AND rsh.resource_id = p.id::text AND rsh.shared_with_user_id = $1
+     WHERE rs.id IS NULL  -- No sharing entry → legacy, show to all
+        OR rs.owner_id = $1
+        OR rs.visibility = 'public'
+        OR rsh.id IS NOT NULL
+     ORDER BY p.created_at DESC`,
+    [userId]
+  );
   return result.rows.map(formatPlanning);
 }
 

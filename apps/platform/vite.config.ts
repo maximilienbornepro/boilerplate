@@ -57,6 +57,12 @@ export default defineConfig({
       '/api/platform': {
         target: UNIFIED_SERVER,
       },
+      '/api/sharing': {
+        target: UNIFIED_SERVER,
+      },
+      '/api/users': {
+        target: UNIFIED_SERVER,
+      },
     },
   },
   build: {

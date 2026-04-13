@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ModuleHeader, Card, Modal, FormField, ConfirmModal, Button, ToastContainer, LoadingSpinner } from '@boilerplate/shared/components';
+import { ModuleHeader, Card, Modal, FormField, ConfirmModal, Button, ToastContainer, LoadingSpinner, SharingModal } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import type { Document } from '../../types';
 import * as api from '../../services/api';
@@ -30,6 +30,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmState>({ show: false, doc: null });
   const [deleting, setDeleting] = useState(false);
   const [toasts, setToasts] = useState<ToastData[]>([]);
+  const [sharingDoc, setSharingDoc] = useState<Document | null>(null);
 
   const addToast = (toast: Omit<ToastData, 'id'>) => {
     setToasts(prev => [...prev, { ...toast, id: Date.now().toString() }]);
@@ -189,6 +190,19 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
                 </div>
                 <button
                   className="shared-card__edit-btn"
+                  onClick={(e) => { e.stopPropagation(); setSharingDoc(doc); }}
+                  title="Partager"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                  </svg>
+                </button>
+                <button
+                  className="shared-card__edit-btn"
                   onClick={(e) => handleEditClick(e, doc)}
                   title="Modifier"
                 >
@@ -296,6 +310,15 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
           />
         )}
       </div>
+
+      {sharingDoc && (
+        <SharingModal
+          resourceType="suivitess"
+          resourceId={sharingDoc.id}
+          resourceName={sharingDoc.title}
+          onClose={() => setSharingDoc(null)}
+        />
+      )}
 
       <ToastContainer toasts={toasts} onDismiss={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
     </>

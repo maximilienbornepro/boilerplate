@@ -570,9 +570,17 @@ function mapBoardRow(row: Record<string, unknown>): BoardRow {
   };
 }
 
-export async function getAllBoards(userId: number): Promise<BoardRow[]> {
+export async function getAllBoards(userId: number, isAdmin?: boolean): Promise<BoardRow[]> {
+  if (isAdmin) {
+    const result = await pool.query('SELECT * FROM delivery_boards ORDER BY created_at DESC');
+    return result.rows.map(mapBoardRow);
+  }
   const result = await pool.query(
-    'SELECT * FROM delivery_boards WHERE user_id = $1 ORDER BY created_at DESC',
+    `SELECT DISTINCT b.* FROM delivery_boards b
+     LEFT JOIN resource_sharing rs ON rs.resource_type = 'delivery' AND rs.resource_id = b.id::text
+     LEFT JOIN resource_shares rsh ON rsh.resource_type = 'delivery' AND rsh.resource_id = b.id::text AND rsh.shared_with_user_id = $1
+     WHERE b.user_id = $1 OR rs.visibility = 'public' OR rsh.id IS NOT NULL
+     ORDER BY b.created_at DESC`,
     [userId]
   );
   return result.rows.map(mapBoardRow);
@@ -695,5 +703,14 @@ export async function initDeliveryDb(): Promise<void> {
     // Columns may already exist — ignore errors
     console.warn('[Delivery] Migration note:', (err as Error).message);
   }
+  // Backfill resource_sharing entries for existing boards
+  try {
+    const { ensureOwnership } = await import('../shared/resourceSharing.js');
+    const boards = await pool.query('SELECT id, user_id FROM delivery_boards');
+    for (const b of boards.rows) {
+      await ensureOwnership('delivery', String(b.id), b.user_id, 'private');
+    }
+  } catch { /* sharing table may not exist yet */ }
+
   console.log('[Delivery] Database service initialized');
 }
