@@ -3,22 +3,22 @@
   "configurations": [
     {
       "name": "platform-client",
-      "runtimeExecutable": "/Users/marinetrehorel/.nvm/versions/node/v24.14.1/bin/npm",
+      "runtimeExecutable": "/Users/francetv/.nvm/versions/node/v24.11.0/bin/npm",
       "runtimeArgs": ["run", "dev:platform:client"],
       "port": 5170,
       "autoPort": false,
       "env": {
-        "PATH": "/Users/marinetrehorel/.nvm/versions/node/v24.14.1/bin:/usr/local/bin:/usr/bin:/bin"
+        "PATH": "/Users/francetv/.nvm/versions/node/v24.11.0/bin:/usr/local/bin:/usr/bin:/bin"
       }
     },
     {
       "name": "unified-server",
-      "runtimeExecutable": "/Users/marinetrehorel/.nvm/versions/node/v24.14.1/bin/npm",
+      "runtimeExecutable": "/Users/francetv/.nvm/versions/node/v24.11.0/bin/npm",
       "runtimeArgs": ["run", "dev:unified:server"],
       "port": 3010,
       "autoPort": false,
       "env": {
-        "PATH": "/Users/marinetrehorel/.nvm/versions/node/v24.14.1/bin:/usr/local/bin:/usr/bin:/bin"
+        "PATH": "/Users/francetv/.nvm/versions/node/v24.11.0/bin:/usr/local/bin:/usr/bin:/bin"
       }
     }
   ]

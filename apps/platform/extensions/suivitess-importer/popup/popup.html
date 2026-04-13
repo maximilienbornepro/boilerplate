@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SuiviTess Importer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header id="header">
+      <span class="logo">&gt;_</span>
+      <span class="title">SuiviTess Importer</span>
+    </header>
+
+    <!-- Config section (shown if no server URL) -->
+    <div id="config-section" class="section hidden">
+      <label class="field-label">URL du serveur</label>
+      <input id="server-url" type="url" placeholder="https://boilerplate.vitess.tech" />
+      <div id="auth-status" class="auth-status"></div>
+      <button id="save-config" class="btn btn-primary">Sauvegarder</button>
+    </div>
+
+    <!-- Status -->
+    <div id="status" class="section">
+      <div id="provider-badge" class="badge">Detection...</div>
+      <div id="error-msg" class="error hidden"></div>
+    </div>
+
+    <!-- Document selector -->
+    <div id="doc-section" class="section hidden">
+      <label class="field-label">Document SuiviTess cible</label>
+      <select id="doc-select">
+        <option value="">Chargement...</option>
+      </select>
+    </div>
+
+    <!-- Import mode -->
+    <div id="mode-section" class="section hidden">
+      <label class="field-label">Mode d'import</label>
+      <div class="radio-group">
+        <label><input type="radio" name="mode" value="analyze" checked /> Analyser et fusionner (IA)</label>
+        <label><input type="radio" name="mode" value="raw" /> Import brut</label>
+        <label><input type="radio" name="mode" value="ai-section" /> Extraction IA (nouvelle section)</label>
+      </div>
+    </div>
+
+    <!-- Items list -->
+    <div id="items-section" class="section hidden">
+      <div class="items-header">
+        <label class="field-label" id="items-count">0 elements</label>
+        <button id="select-all" class="btn btn-small">Tout selectionner</button>
+      </div>
+      <div id="items-list" class="items-list"></div>
+    </div>
+
+    <!-- Actions -->
+    <div id="actions-section" class="section hidden">
+      <button id="refresh-btn" class="btn btn-secondary">Actualiser</button>
+      <button id="import-btn" class="btn btn-primary" disabled>Importer la selection</button>
+    </div>
+
+    <!-- Progress -->
+    <div id="progress-section" class="section hidden">
+      <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+      <div id="progress-text" class="progress-text">Import en cours...</div>
+    </div>
+
+    <!-- Result -->
+    <div id="result-section" class="section hidden">
+      <div id="result-msg" class="result-msg"></div>
+      <button id="done-btn" class="btn btn-primary">OK</button>
+    </div>
+
+    <!-- Config toggle -->
+    <div class="footer">
+      <button id="toggle-config" class="btn-link">Parametres</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

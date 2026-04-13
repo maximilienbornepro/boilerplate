@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "SuiviTess Importer",
+  "description": "Importer des mails Outlook et messages Slack dans SuiviTess",
+  "version": "1.0.0",
+  "permissions": ["activeTab", "storage", "scripting", "cookies"],
+  "host_permissions": [
+    "https://outlook.office.com/*",
+    "https://outlook.office365.com/*",
+    "https://outlook.live.com/*",
+    "https://outlook.cloud.microsoft/*",
+    "https://app.slack.com/*",
+    "https://*.slack.com/*",
+    "https://*.vitess.tech/*",
+    "http://localhost/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://outlook.office.com/*",
+        "https://outlook.office365.com/*",
+        "https://outlook.live.com/*",
+        "https://outlook.cloud.microsoft/*"
+      ],
+      "js": ["content/outlook.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://app.slack.com/*",
+        "https://*.slack.com/*"
+      ],
+      "js": ["content/slack.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

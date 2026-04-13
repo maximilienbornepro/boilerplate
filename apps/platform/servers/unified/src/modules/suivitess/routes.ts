@@ -1247,5 +1247,288 @@ Retourne UNIQUEMENT un tableau JSON :
     res.json({ proposals: proposals.map((p, i) => ({ ...p, id: i })) });
   }));
 
+  // ==================== CONTENT IMPORT (Email/Slack via Chrome extension) ====================
+
+  // POST /documents/:docId/content-import
+  // Imports raw text content (aggregated emails or Slack messages) into a new section
+  router.post('/documents/:docId/content-import', asyncHandler(async (req, res) => {
+    const { docId } = req.params;
+    const { content, source, sourceTitle, useAI, itemIds } = req.body as {
+      content: string;
+      source: 'outlook' | 'slack';
+      sourceTitle: string;
+      useAI?: boolean;
+      itemIds?: string[];
+    };
+
+    if (!content?.trim()) {
+      res.status(400).json({ error: 'Contenu vide' });
+      return;
+    }
+
+    const doc = await db.getDocumentWithSections(docId);
+    if (!doc) { res.status(404).json({ error: 'Document non trouve' }); return; }
+
+    // Dedup: check which items have already been imported
+    let skipped = 0;
+    let filteredContent = content;
+    if (itemIds && itemIds.length > 0) {
+      const { rows: existing } = await db.pool.query(
+        `SELECT call_id FROM suivitess_transcript_imports WHERE document_id = $1 AND provider = $2 AND call_id = ANY($3)`,
+        [docId, source, itemIds]
+      );
+      const existingIds = new Set(existing.map((r: { call_id: string }) => r.call_id));
+      skipped = existingIds.size;
+
+      if (skipped === itemIds.length) {
+        res.json({ success: true, subjectCount: 0, skipped, mode: useAI ? 'ai' : 'raw', sectionName: '', message: 'Tous les elements ont deja ete importes' });
+        return;
+      }
+
+      // Filter out already-imported blocks from content
+      if (skipped > 0) {
+        const blocks = content.split(/(?==== )/);
+        const newBlocks: string[] = [];
+        let idx = 0;
+        for (const block of blocks) {
+          if (idx < itemIds.length && existingIds.has(itemIds[idx])) {
+            // skip this block
+          } else {
+            newBlocks.push(block);
+          }
+          idx++;
+        }
+        filteredContent = newBlocks.join('');
+      }
+    }
+
+    const sourceLabel = source === 'outlook' ? 'Outlook' : 'Slack';
+    const sectionName = `${sourceLabel} — ${sourceTitle || 'Import'}`;
+    const section = await db.createSection(docId, sectionName);
+
+    if (useAI) {
+      const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+      try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'content_import'); }
+      catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Credits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
+      try {
+        const { getAnthropicClient } = await import('../connectors/aiProvider.js');
+        const { client, model } = await getAnthropicClient(req.user!.id);
+
+        const aiResponse = await client.messages.create({
+          model,
+          max_tokens: 4096,
+          messages: [{
+            role: 'user',
+            content: `Tu es un assistant de suivi de projet. Analyse ce contenu (${source === 'outlook' ? 'emails' : 'messages Slack'}) et extrais les sujets cles discutes.
+
+Pour chaque sujet, fournis :
+- title: titre concis du sujet
+- situation: resume de la situation/discussion
+- responsibility: personne responsable si identifiable (sinon null)
+- status: un des statuts suivants: "a faire", "en cours", "fait", "bloque"
+
+Reponds UNIQUEMENT avec un JSON valide : { "subjects": [...] }
+Maximum 15 sujets. Ignore les messages trivaux (salutations, remerciements).
+
+Contenu :
+${filteredContent.slice(0, 30000)}`,
+          }],
+        });
+
+        const text = aiResponse.content[0]?.type === 'text' ? aiResponse.content[0].text : '';
+        let subjects: Array<{ title: string; situation?: string; responsibility?: string; status?: string }> = [];
+        try {
+          const match = text.match(/\{[\s\S]*\}/);
+          if (match) {
+            const parsed = JSON.parse(match[0]);
+            subjects = parsed.subjects || [];
+          }
+        } catch { /* parse error — fallback to raw */ }
+
+        let pos = 0;
+        for (const sub of subjects) {
+          await db.createSubject(section.id, sub.title, sub.situation || null, sub.status || 'a faire', sub.responsibility || null, pos++);
+        }
+
+        // Record imported items for dedup
+        if (itemIds) {
+          const { rows: existing } = await db.pool.query(
+            `SELECT call_id FROM suivitess_transcript_imports WHERE document_id = $1 AND provider = $2 AND call_id = ANY($3)`,
+            [docId, source, itemIds]
+          );
+          const existingIds = new Set(existing.map((r: { call_id: string }) => r.call_id));
+          for (const id of itemIds) {
+            if (!existingIds.has(id)) {
+              await db.pool.query(
+                `INSERT INTO suivitess_transcript_imports (document_id, call_id, provider, call_title) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+                [docId, id, source, sourceTitle]
+              );
+            }
+          }
+        }
+
+        res.json({ success: true, sectionId: section.id, sectionName, subjectCount: subjects.length, skipped, mode: 'ai' });
+      } catch (err) {
+        console.error('[SuiviTess] AI content analysis failed:', err);
+        res.status(500).json({ error: 'Analyse IA echouee' });
+      }
+    } else {
+      // Raw import: split by === delimiter
+      const blocks = filteredContent.split(/===\s*/).filter(b => b.trim());
+      let pos = 0;
+      for (const block of blocks) {
+        const lines = block.trim().split('\n');
+        const title = lines[0]?.trim().replace(/===\s*$/, '').slice(0, 200) || `Import ${pos + 1}`;
+        const situation = lines.slice(1).join('\n').trim();
+        if (title || situation) {
+          await db.createSubject(section.id, title, situation || null, 'a faire', null, pos++);
+        }
+      }
+
+      // Record imported items for dedup
+      if (itemIds) {
+        const { rows: existing } = await db.pool.query(
+          `SELECT call_id FROM suivitess_transcript_imports WHERE document_id = $1 AND provider = $2 AND call_id = ANY($3)`,
+          [docId, source, itemIds]
+        );
+        const existingIds = new Set(existing.map((r: { call_id: string }) => r.call_id));
+        for (const id of itemIds) {
+          if (!existingIds.has(id)) {
+            await db.pool.query(
+              `INSERT INTO suivitess_transcript_imports (document_id, call_id, provider, call_title) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+              [docId, id, source, sourceTitle]
+            );
+          }
+        }
+      }
+
+      res.json({ success: true, sectionId: section.id, sectionName, subjectCount: pos, skipped, mode: 'raw' });
+    }
+  }));
+
+  // POST /documents/:docId/content-analyze-and-propose
+  // AI analyzes content against existing document and proposes merge/create actions
+  router.post('/documents/:docId/content-analyze-and-propose', asyncHandler(async (req, res) => {
+    const { docId } = req.params;
+    const { content, source, sourceTitle, itemIds } = req.body as {
+      content: string;
+      source: 'outlook' | 'slack';
+      sourceTitle: string;
+      itemIds?: string[];
+    };
+
+    if (!content?.trim()) {
+      res.status(400).json({ error: 'Contenu vide' });
+      return;
+    }
+
+    const doc = await db.getDocumentWithSections(docId);
+    if (!doc) { res.status(404).json({ error: 'Document non trouve' }); return; }
+
+    // Dedup: check which items have already been imported
+    let skipped = 0;
+    let filteredContent = content;
+    if (itemIds && itemIds.length > 0) {
+      const { rows: existing } = await db.pool.query(
+        `SELECT call_id FROM suivitess_transcript_imports WHERE document_id = $1 AND provider = $2 AND call_id = ANY($3)`,
+        [docId, source, itemIds]
+      );
+      const existingIds = new Set(existing.map((r: { call_id: string }) => r.call_id));
+      skipped = existingIds.size;
+
+      if (skipped === itemIds.length) {
+        res.json({ proposals: [], skipped, message: 'Tous les elements ont deja ete importes' });
+        return;
+      }
+
+      // Filter out already-imported blocks
+      if (skipped > 0) {
+        const blocks = content.split(/(?==== )/);
+        const newBlocks: string[] = [];
+        let idx = 0;
+        for (const block of blocks) {
+          if (idx < itemIds.length && existingIds.has(itemIds[idx])) {
+            // skip
+          } else {
+            newBlocks.push(block);
+          }
+          idx++;
+        }
+        filteredContent = newBlocks.join('');
+      }
+
+      // Record imported items now (before AI analysis)
+      for (const id of itemIds) {
+        if (!existing.some((r: { call_id: string }) => r.call_id === id)) {
+          await db.pool.query(
+            `INSERT INTO suivitess_transcript_imports (document_id, call_id, provider, call_title) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+            [docId, id, source, sourceTitle]
+          );
+        }
+      }
+    }
+
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'content_analysis'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Credits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
+    const existingContext = doc.sections.map(s => {
+      const subjectsText = s.subjects.map(sub =>
+        `  - [id:${sub.id}] [${sub.status}] "${sub.title}" (responsable: ${sub.responsibility || '-'})\n    Situation: ${sub.situation || '(vide)'}`
+      ).join('\n');
+      return `Section [id:${s.id}] "${s.name}":\n${subjectsText || '  (vide)'}`;
+    }).join('\n\n');
+
+    const sourceLabel = source === 'outlook' ? 'emails' : 'messages Slack';
+
+    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
+    const { client, model } = await getAnthropicClient(req.user!.id);
+
+    const aiResponse = await client.messages.create({
+      model,
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: `Tu es un assistant de suivi de projet. Analyse ces ${sourceLabel} et propose des modifications au document de suivi existant.
+
+## Document existant :
+${existingContext || '(Document vide)'}
+
+## Contenu a analyser (${sourceLabel}) :
+${filteredContent.slice(0, 30000)}
+
+## Regles :
+- Propose max 10 actions
+- Ignore les messages triviaux (salutations, signatures)
+- Types d'actions possibles :
+  1. "enrich" : enrichir un sujet existant avec de nouvelles informations
+  2. "create_subject" : creer un nouveau sujet dans une section existante
+  3. "create_section" : creer une nouvelle section avec ses sujets
+
+Reponds UNIQUEMENT avec un JSON valide :
+{
+  "proposals": [
+    { "action": "enrich", "subjectId": "uuid", "subjectTitle": "titre actuel", "sectionName": "section", "appendText": "texte a ajouter", "reason": "pourquoi" },
+    { "action": "create_subject", "sectionId": "uuid", "sectionName": "section", "title": "titre", "situation": "description", "responsibility": null, "status": "a faire", "reason": "pourquoi" },
+    { "action": "create_section", "sectionName": "nom section", "subjects": [{ "title": "...", "situation": "...", "status": "..." }], "reason": "pourquoi" }
+  ]
+}`,
+      }],
+    });
+
+    const text = aiResponse.content[0]?.type === 'text' ? aiResponse.content[0].text : '';
+    let proposals: Array<Record<string, unknown>> = [];
+    try {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        proposals = parsed.proposals || [];
+      }
+    } catch { /* parse error */ }
+
+    res.json({ proposals: proposals.map((p, i) => ({ ...p, id: i })), skipped });
+  }));
+
   return router;
 }

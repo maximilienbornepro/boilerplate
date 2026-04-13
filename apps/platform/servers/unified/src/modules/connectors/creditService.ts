@@ -12,6 +12,8 @@ const CREDIT_COSTS: Record<string, Record<string, number>> = {
     email_generation: 6,
     transcript_analysis: 10,
     transcript_merge: 10,
+    content_import: 10,
+    content_analysis: 10,
   },
   roadmap: {
     create_planning: 5,
