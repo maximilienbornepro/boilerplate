@@ -63,6 +63,9 @@ export default defineConfig({
       '/api/users': {
         target: UNIFIED_SERVER,
       },
+      '/api/admin/credits': {
+        target: UNIFIED_SERVER,
+      },
     },
   },
   build: {

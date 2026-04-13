@@ -52,6 +52,12 @@ export async function initGateway() {
     ON CONFLICT (key) DO UPDATE SET
       description = EXCLUDED.description
   `);
+  await pool.query(`
+    INSERT INTO platform_settings (key, value, description)
+    VALUES ('credits_enabled', 'false', 'Système de crédits pour limiter l''usage des services')
+    ON CONFLICT (key) DO UPDATE SET
+      description = EXCLUDED.description
+  `);
 
   // Always create default admin account (admin/admin)
   await createDefaultAdmin();
@@ -631,6 +637,39 @@ export function createGatewayRouter(): Router {
       return;
     }
     res.json({ key, value });
+  }));
+
+  // ==================== CREDITS ADMIN ====================
+
+  // GET /admin/credits — all users' balances
+  router.get('/admin/credits', authMiddleware, adminMiddleware, asyncHandler(async (_req, res) => {
+    const { getAllBalances } = await import('./connectors/creditService.js');
+    const balances = await getAllBalances();
+    res.json(balances);
+  }));
+
+  // PUT /admin/credits/:userId — add credits or set allocation
+  router.put('/admin/credits/:userId', authMiddleware, adminMiddleware, asyncHandler(async (req, res) => {
+    const { addCredits, setMonthlyAllocation, getBalance } = await import('./connectors/creditService.js');
+    const userId = parseInt(req.params.userId);
+    const { addAmount, monthlyAllocation } = req.body as { addAmount?: number; monthlyAllocation?: number };
+
+    if (addAmount && addAmount > 0) {
+      await addCredits(userId, addAmount, `Rechargement admin (+${addAmount})`, 'allocation');
+    }
+    if (monthlyAllocation !== undefined && monthlyAllocation >= 0) {
+      await setMonthlyAllocation(userId, monthlyAllocation);
+    }
+
+    const balance = await getBalance(userId);
+    res.json(balance);
+  }));
+
+  // POST /admin/credits/reset-monthly — reset all users
+  router.post('/admin/credits/reset-monthly', authMiddleware, adminMiddleware, asyncHandler(async (_req, res) => {
+    const { resetMonthlyCredits } = await import('./connectors/creditService.js');
+    const count = await resetMonthlyCredits();
+    res.json({ success: true, usersReset: count });
   }));
 
   // ==================== Resource Sharing ====================

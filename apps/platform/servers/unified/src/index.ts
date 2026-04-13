@@ -37,6 +37,10 @@ async function init() {
   const { initSharingPool } = await import('./modules/shared/resourceSharing.js');
   await initSharingPool();
 
+  // Credits system
+  const { initCreditPool } = await import('./modules/connectors/creditService.js');
+  await initCreditPool();
+
   // Gateway (auth)
   await initGateway();
   app.use('/api', createGatewayRouter());

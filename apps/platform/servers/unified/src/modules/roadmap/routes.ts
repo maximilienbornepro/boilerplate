@@ -70,6 +70,11 @@ export function createRoadmapRoutes(): Router {
       res.status(400).json({ error: 'name, startDate et endDate sont requis' });
       return;
     }
+    // Credit check
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'roadmap', 'create_planning'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
     const planning = await db.createPlanning(name, startDate, endDate, description);
     // Create sharing entry (private by default, owned by current user)
     try {
@@ -192,6 +197,11 @@ export function createRoadmapRoutes(): Router {
       res.json([]);
       return;
     }
+
+    // Credit check
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'roadmap', 'ai_suggestions'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
     const { client, model } = await getAnthropicClient(req.user!.id);
     const subjectList = available.map(s => `[${s.id}] ${s.title} (${s.document_title} › ${s.section_name})`).join('\n');
