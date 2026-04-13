@@ -59,6 +59,22 @@ export async function initGateway() {
       description = EXCLUDED.description
   `);
 
+  // Email OAuth tokens table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS email_oauth_tokens (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider VARCHAR(20) NOT NULL,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT,
+      expires_at TIMESTAMPTZ NOT NULL,
+      email_address TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, provider)
+    )
+  `);
+
   // Always create default admin account (admin/admin)
   await createDefaultAdmin();
 
@@ -511,22 +527,6 @@ export function createGatewayRouter(): Router {
   }));
 
   // ==================== EMAIL OAUTH (Outlook + Gmail) ====================
-
-  // Auto-create email_oauth_tokens table
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS email_oauth_tokens (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      provider VARCHAR(20) NOT NULL,
-      access_token TEXT NOT NULL,
-      refresh_token TEXT,
-      expires_at TIMESTAMPTZ NOT NULL,
-      email_address TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(user_id, provider)
-    )
-  `);
 
   // --- Outlook OAuth ---
   router.get('/auth/outlook', (req: Request, res: Response) => {
