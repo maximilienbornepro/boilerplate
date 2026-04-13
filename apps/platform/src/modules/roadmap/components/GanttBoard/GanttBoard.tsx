@@ -473,7 +473,7 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
         </div>
 
         {/* Sticky opaque cover for task-name column — direct child of scroll container */}
-        <div className={styles.taskAreaCover} />
+        <div className={styles.taskAreaCover} style={{ '--cover-height': `${calendarHeight}px` } as React.CSSProperties} />
 
         <div className={styles.contentInner} style={{ width: totalWidth + 250, minWidth: totalWidth + 250 }}>
           {/* Grid: weekends/holidays + today — limited to calendar zone */}

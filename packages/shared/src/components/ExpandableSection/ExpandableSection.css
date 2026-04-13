@@ -25,9 +25,17 @@
 }
 
 .expandable-section-icon {
-  font-size: 0.7em;
-  color: var(--text-muted);
-  width: 1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  width: 16px;
+  height: 16px;
+  transition: color var(--transition-fast);
+}
+
+.expandable-section-header:hover .expandable-section-icon {
+  color: var(--accent-primary);
 }
 
 .expandable-section-title {

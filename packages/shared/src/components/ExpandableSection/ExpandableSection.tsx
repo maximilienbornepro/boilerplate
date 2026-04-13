@@ -23,7 +23,11 @@ export function ExpandableSection({
         className="expandable-section-header"
         onClick={() => setExpanded(!expanded)}
       >
-        <span className="expandable-section-icon">{expanded ? '▼' : '▶'}</span>
+        <span className="expandable-section-icon" style={{ transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.15s ease' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </span>
         <span className="expandable-section-title">{title}</span>
         {badge !== undefined && (
           <span className="expandable-section-badge">{badge}</span>

@@ -67,21 +67,23 @@
 }
 
 .actionBtn {
-  background: none;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--spacing-xl);
+  height: var(--spacing-xl);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--transition-fast);
   color: var(--text-muted);
-  line-height: 1;
+  flex-shrink: 0;
 }
 
 .actionBtn:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  color: var(--text-primary);
   background: var(--bg-hover);
+  color: var(--accent-primary);
 }
 
 .actionBtn:disabled {
