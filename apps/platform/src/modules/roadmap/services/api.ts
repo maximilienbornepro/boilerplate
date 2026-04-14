@@ -22,7 +22,7 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Erreur inconnue' }));
-    throw new Error(error.error || 'La requete a echoue');
+    throw new Error(error.error || 'La requête a échoué');
   }
   return response.json();
 }

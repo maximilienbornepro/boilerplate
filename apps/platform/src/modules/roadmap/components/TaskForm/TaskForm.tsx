@@ -196,7 +196,7 @@ export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, int
               </button>
             )}
             <button type="button" className={styles.cancelButton} onClick={onCancel}>Annuler</button>
-            <button type="submit" className={styles.submitButton}>{task ? 'Modifier' : 'Creer'}</button>
+            <button type="submit" className={styles.submitButton}>{task ? 'Modifier' : 'Créer'}</button>
           </div>
         </form>
       </div>

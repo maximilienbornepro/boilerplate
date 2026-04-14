@@ -5,32 +5,33 @@ import { fetchDocuments, fetchDocument } from '../../../suivitess/services/api';
 import { fetchPlannings, fetchTasks } from '../../../roadmap/services/api';
 import { fetchBoards, fetchTasksForBoard } from '../../../delivery/services/api';
 import { fetchLeaves } from '../../../conges/services/api';
+import { getLeaveReasonInfo } from '../../../conges/types';
 import styles from './Dashboard.module.css';
 
 interface Props {
   onNavigate?: (path: string) => void;
 }
 
-// Module icons (smaller, monocolor for the dashboard)
+// Module icons — same as LandingPage for visual consistency
 const Icons = {
-  suivitess: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+  conges: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
     </svg>
   ),
   roadmap: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" /><line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" />
     </svg>
   ),
-  delivery: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" /><line x1="15" y1="3" x2="15" y2="21" />
+  suivitess: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" />
     </svg>
   ),
-  conges: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+  delivery: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" /><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" /><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
     </svg>
   ),
 };
@@ -47,7 +48,7 @@ export function Dashboard({ onNavigate }: Props) {
   const userPerms = new Set(user?.permissions || []);
   const isAdmin = user?.isAdmin ?? false;
   const perms = {
-    has: (mod: string) => isAdmin || userPerms.has(mod),
+    has: (mod: string) => userPerms.has(mod),
   };
 
   // ─── Fetch leaves (conges) for next 30 days ───
@@ -69,41 +70,31 @@ export function Dashboard({ onNavigate }: Props) {
 
       {/* === Recent items per module === */}
       <div className={styles.recentGrid}>
-        {perms.has('suivitess') && (
+        {perms.has('conges') && (
           <ModuleRecentBlock
-            appId="suivitess"
-            title="SuiviTess"
-            color={COLORS.suivitess}
-            icon={Icons.suivitess}
-            fetchItems={fetchDocuments}
-            mapItem={(d: { id: string; title: string; description?: string | null; updated_at?: string; updatedAt?: string }) => ({
-              id: d.id,
-              title: d.title,
-              date: (d.updated_at || d.updatedAt || '') as string,
-              href: `/suivitess/${d.id}`,
-              meta: d.description ? d.description.slice(0, 40) : undefined,
-            })}
-            fetchSubItems={async (item) => {
-              const doc = await fetchDocument(String(item.id));
-              if (!doc?.sections) return [];
-              // Flatten all subjects + sort by updated_at DESC
-              const all: Array<{ title: string; updated_at: string; sectionId: string }> = [];
-              for (const sec of doc.sections) {
-                for (const sub of sec.subjects) {
-                  all.push({ title: sub.title, updated_at: sub.updated_at, sectionId: sec.id });
-                }
+            appId="conges"
+            title="Congés"
+            color={COLORS.conges}
+            icon={Icons.conges}
+            fetchItems={fetchUpcomingLeaves}
+            mapItem={(l) => {
+              const fmtFull = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+              const fmtShort = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+              const sameYear = l.startDate.substring(0, 4) === l.endDate.substring(0, 4);
+              let title: string;
+              if (l.endDate === l.startDate) {
+                title = fmtFull(l.startDate);
+              } else if (sameYear) {
+                title = `${fmtShort(l.startDate)} → ${fmtFull(l.endDate)}`;
+              } else {
+                title = `${fmtFull(l.startDate)} → ${fmtFull(l.endDate)}`;
               }
-              all.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-              return all.slice(0, 3).map<SubItem>(s => ({
-                label: s.title,
-                date: s.updated_at,
-                href: `/suivitess/${item.id}?section=${s.sectionId}`,
-              }));
+              return { id: l.id, title, date: l.startDate, href: '/conges', meta: getLeaveReasonInfo(l.reason).label };
             }}
-            seeAllHref="/suivitess"
-            createHref="/suivitess?create=1"
-            createLabel="+ Nouvelle review"
-            emptyMessage="Aucune review pour le moment."
+            seeAllHref="/conges"
+            createHref="/conges?create=1"
+            createLabel="+ Poser un congé"
+            emptyMessage="Aucun congé à venir."
             onNavigate={onNavigate}
           />
         )}
@@ -141,6 +132,44 @@ export function Dashboard({ onNavigate }: Props) {
           />
         )}
 
+        {perms.has('suivitess') && (
+          <ModuleRecentBlock
+            appId="suivitess"
+            title="SuiviTess"
+            color={COLORS.suivitess}
+            icon={Icons.suivitess}
+            fetchItems={fetchDocuments}
+            mapItem={(d: { id: string; title: string; description?: string | null; updated_at?: string; updatedAt?: string }) => ({
+              id: d.id,
+              title: d.title,
+              date: (d.updated_at || d.updatedAt || '') as string,
+              href: `/suivitess/${d.id}`,
+              meta: d.description ? d.description.slice(0, 40) : undefined,
+            })}
+            fetchSubItems={async (item) => {
+              const doc = await fetchDocument(String(item.id));
+              if (!doc?.sections) return [];
+              const all: Array<{ title: string; updated_at: string; sectionId: string }> = [];
+              for (const sec of doc.sections) {
+                for (const sub of sec.subjects) {
+                  all.push({ title: sub.title, updated_at: sub.updated_at, sectionId: sec.id });
+                }
+              }
+              all.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+              return all.slice(0, 3).map<SubItem>(s => ({
+                label: s.title,
+                date: s.updated_at,
+                href: `/suivitess/${item.id}?section=${s.sectionId}`,
+              }));
+            }}
+            seeAllHref="/suivitess"
+            createHref="/suivitess?create=1"
+            createLabel="+ Nouvelle review"
+            emptyMessage="Aucune review pour le moment."
+            onNavigate={onNavigate}
+          />
+        )}
+
         {perms.has('delivery') && (
           <ModuleRecentBlock
             appId="delivery"
@@ -154,6 +183,7 @@ export function Dashboard({ onNavigate }: Props) {
               date: (b.updatedAt || b.createdAt || b.startDate || '') as string,
               href: `/delivery/${b.id}`,
               meta: b.boardType === 'agile' ? 'Agile' : 'Calendaire',
+              metaTag: true,
             })}
             fetchSubItems={async (item) => {
               const tasks = await fetchTasksForBoard(String(item.id));
@@ -172,27 +202,6 @@ export function Dashboard({ onNavigate }: Props) {
           />
         )}
 
-        {perms.has('conges') && (
-          <ModuleRecentBlock
-            appId="conges"
-            title="Conges (a venir)"
-            color={COLORS.conges}
-            icon={Icons.conges}
-            fetchItems={fetchUpcomingLeaves}
-            mapItem={(l) => ({
-              id: l.id,
-              title: `${l.startDate}${l.endDate !== l.startDate ? ` → ${l.endDate}` : ''}`,
-              date: l.startDate,
-              href: '/conges',
-              meta: l.reason,
-            })}
-            seeAllHref="/conges"
-            createHref="/conges?create=1"
-            createLabel="+ Poser un conge"
-            emptyMessage="Aucun conge a venir."
-            onNavigate={onNavigate}
-          />
-        )}
       </div>
     </div>
   );

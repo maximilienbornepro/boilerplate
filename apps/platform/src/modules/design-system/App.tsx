@@ -424,7 +424,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
           <SectionTitle>Toast</SectionTitle>
           <p className="ds-component-path">@boilerplate/shared/components &rarr; Toast, ToastContainer</p>
           <div className="ds-comp-row">
-            <Button variant="secondary" onClick={() => addToast({ type: 'success', message: 'Action reussie !' })}>Success</Button>
+            <Button variant="secondary" onClick={() => addToast({ type: 'success', message: 'Action réussie !' })}>Success</Button>
             <Button variant="secondary" onClick={() => addToast({ type: 'error', message: 'Une erreur est survenue' })}>Error</Button>
             <Button variant="secondary" onClick={() => addToast({ type: 'info', message: 'Information utile' })}>Info</Button>
             <Button variant="secondary" onClick={() => addToast({ type: 'warning', message: 'Attention requise' })}>Warning</Button>

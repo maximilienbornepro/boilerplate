@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { success: true, message: data.message };
     } catch {
-      return { success: false, error: 'Erreur lors de la creation du compte' };
+      return { success: false, error: 'Erreur lors de la création du compte' };
     }
   };
 

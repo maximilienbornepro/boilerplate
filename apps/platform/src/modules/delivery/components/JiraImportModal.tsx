@@ -192,9 +192,9 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
         {step === 'issues' && (
           <div className={styles.body}>
             <div className={styles.issueActions}>
-              <button className={styles.linkBtn} onClick={selectAllIssues}>Tout selectionner</button>
-              <button className={styles.linkBtn} onClick={deselectAllIssues}>Tout deselectionner</button>
-              <span className={styles.counter}>{selectedIssueIds.size} selectionne(s)</span>
+              <button className={styles.linkBtn} onClick={selectAllIssues}>Tout sélectionner</button>
+              <button className={styles.linkBtn} onClick={deselectAllIssues}>Tout désélectionner</button>
+              <span className={styles.counter}>{selectedIssueIds.size} sélectionné(s)</span>
             </div>
             {loadingIssues ? (
               <div className={styles.loading}><span className={styles.spinner} /> Chargement des tickets...</div>

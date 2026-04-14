@@ -147,7 +147,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
         <button
           className="module-header-btn"
           onClick={() => setShowAnalysis(true)}
-          title="Analyser les sujets et proposer la creation de tickets (Jira/Notion/Roadmap)"
+          title="Analyser les sujets et proposer la création de tickets (Jira/Notion/Roadmap)"
         >
           Analyser
         </button>

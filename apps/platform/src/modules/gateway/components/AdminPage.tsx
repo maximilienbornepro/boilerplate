@@ -26,7 +26,7 @@ const INTEGRATION_LABELS: Record<string, string> = {
 
 const INTEGRATION_DESCRIPTIONS: Record<string, string> = {
   integration_roadmap_suivitess: 'Lier des tâches Roadmap à des sujets SuiviTess et les éditer depuis Roadmap',
-  credits_enabled: 'Limiter l\'usage des services IA et la creation de ressources via un systeme de credits par utilisateur',
+  credits_enabled: 'Limiter l\'usage des services IA et la création de ressources via un système de crédits par utilisateur',
 };
 
 interface CreditBalance {

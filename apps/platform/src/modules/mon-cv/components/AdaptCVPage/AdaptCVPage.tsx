@@ -251,7 +251,7 @@ function TreatmentSummary({
             </div>
             {changes.titleChange && (
               <div className="treatment-row">
-                <span className="treatment-row__label">Titre modifie</span>
+                <span className="treatment-row__label">Titre modifié</span>
                 <span className="treatment-row__value">
                   "{changes.titleChange.original}" → "{changes.titleChange.proposed}"
                 </span>
@@ -269,10 +269,10 @@ function TreatmentSummary({
         {!hasPipelineData && (
           <>
             <div className="treatment-row">
-              <span className="treatment-row__label">Missions generees</span>
+              <span className="treatment-row__label">Missions générées</span>
               <span className="treatment-row__value">
                 {changes.newMissions.length > 0
-                  ? `${changes.newMissions.length} mission${changes.newMissions.length > 1 ? 's' : ''} ajoutee${changes.newMissions.length > 1 ? 's' : ''}`
+                  ? `${changes.newMissions.length} mission${changes.newMissions.length > 1 ? 's' : ''} ajoutée${changes.newMissions.length > 1 ? 's' : ''}`
                   : 'aucune'}
               </span>
             </div>

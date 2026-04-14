@@ -304,8 +304,10 @@
 .subjectCollapsedStatus {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--spacing-sm);
   height: 26px;
+  width: 100px;
   padding: 0 10px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);

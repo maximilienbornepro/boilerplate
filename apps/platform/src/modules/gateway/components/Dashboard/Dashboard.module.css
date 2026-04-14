@@ -141,7 +141,7 @@
 .moduleTitle {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
   font-weight: var(--font-weight-bold);
   color: var(--text-primary);
 }
@@ -159,20 +159,20 @@
 }
 
 .createBtn {
-  background: transparent;
-  border: 1px solid;
-  border-radius: var(--radius-sm);
-  padding: 3px 8px;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-normal);
   cursor: pointer;
   transition: opacity var(--transition-normal);
   white-space: nowrap;
+  color: white;
 }
 
 .createBtn:hover {
-  opacity: 0.7;
+  opacity: 0.85;
 }
 
 .seeAllLink {
@@ -243,6 +243,13 @@
   background: var(--bg-primary);
 }
 
+.itemBtnRow {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
 .itemTitle {
   font-size: var(--font-size-sm);
   color: var(--text-primary);
@@ -260,6 +267,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   width: 100%;
+}
+
+.itemMetaTag {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Sub-items (sujets, taches, etc) sous chaque item */
@@ -355,7 +375,7 @@ button.subBtn:hover {
 
 .actionGroupTitle {
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
   font-weight: var(--font-weight-bold);
   color: var(--text-primary);
 }

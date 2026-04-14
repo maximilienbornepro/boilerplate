@@ -79,7 +79,7 @@
 }
 
 .connector-card:hover {
-  border-color: var(--border-hover);
+  border-color: var(--accent-primary);
 }
 
 .connector-card.disabled {
@@ -112,11 +112,11 @@
 .connector-card-icon {
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  background: transparent;
 }
 
 .connector-card-icon svg {
@@ -175,32 +175,21 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-normal);
+  letter-spacing: 0.02em;
 }
 
 .connector-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.connector-status.active .connector-status-dot {
-  background: var(--success);
+  display: none;
 }
 
 .connector-status.active {
-  color: var(--success);
-}
-
-.connector-status.inactive .connector-status-dot {
-  background: var(--text-light);
+  color: var(--accent-primary);
 }
 
 .connector-status.inactive {
-  color: var(--text-light);
+  color: var(--text-muted);
 }
 
 .connector-coming-soon {
@@ -215,13 +204,21 @@
 }
 
 .connector-expand-icon {
-  color: var(--text-light);
-  font-size: var(--font-size-sm);
-  transition: transform var(--transition-normal);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  transition: transform 0.15s ease, color var(--transition-fast);
+  transform: rotate(-90deg);
+  flex-shrink: 0;
 }
 
 .connector-expand-icon.expanded {
-  transform: rotate(180deg);
+  transform: rotate(0deg);
+}
+
+.connector-card-header:hover .connector-expand-icon {
+  color: var(--accent-primary);
 }
 
 /* Tabs */

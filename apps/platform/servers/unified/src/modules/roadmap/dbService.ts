@@ -199,10 +199,19 @@ export async function createTask(
   planningId: string, name: string, startDate: string, endDate: string,
   data?: Partial<{ parentId: string; description: string; color: string; progress: number; sortOrder: number }>
 ): Promise<Task> {
+  // If no explicit sortOrder, place the task last among its siblings
+  let sortOrder = data?.sortOrder;
+  if (sortOrder === undefined || sortOrder === null) {
+    const maxResult = await pool.query(
+      `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order FROM roadmap_tasks WHERE planning_id = $1 AND ${data?.parentId ? 'parent_id = $2' : 'parent_id IS NULL'}`,
+      data?.parentId ? [planningId, data.parentId] : [planningId]
+    );
+    sortOrder = maxResult.rows[0].next_order;
+  }
   const result = await pool.query(
     `INSERT INTO roadmap_tasks (planning_id, parent_id, name, description, start_date, end_date, color, progress, sort_order)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-    [planningId, data?.parentId || null, name, data?.description || null, startDate, endDate, data?.color || '#00bcd4', data?.progress || 0, data?.sortOrder || 0]
+    [planningId, data?.parentId || null, name, data?.description || null, startDate, endDate, data?.color || '#00bcd4', data?.progress || 0, sortOrder]
   );
   return formatTask(result.rows[0]);
 }

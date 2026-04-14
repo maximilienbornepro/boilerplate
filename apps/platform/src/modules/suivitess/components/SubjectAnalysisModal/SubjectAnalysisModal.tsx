@@ -220,7 +220,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
       if (c.createJira) tasks.push({ subjectId: id, type: 'jira' });
       if (c.createRoadmap) tasks.push({ subjectId: id, type: 'roadmap' });
     }
-    if (tasks.length === 0) { setError('Aucun element a creer — cochez Jira ou Roadmap pour au moins un sujet'); return; }
+    if (tasks.length === 0) { setError('Aucun élément à créer — cochez Jira ou Roadmap pour au moins un sujet'); return; }
 
     setError('');
     setCreating(true);
@@ -293,7 +293,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
   // ============== Render ==============
 
   return (
-    <Modal title="Analyse IA — Creation de tickets" onClose={onClose} size="xl">
+    <Modal title="Analyse IA — Création de tickets" onClose={onClose} size="xl">
       <div className={styles.content}>
         {/* STEP 1: Selection */}
         {step === 'select' && (
@@ -307,7 +307,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
             ) : (
               <>
                 <p className={styles.intro}>
-                  {suggestions.length} sujet{suggestions.length > 1 ? 's' : ''} pourrai{suggestions.length > 1 ? 'ent' : 't'} beneficier d'un ticket. Selectionnez ceux que vous voulez traiter.
+                  {suggestions.length} sujet{suggestions.length > 1 ? 's' : ''} pourrai{suggestions.length > 1 ? 'ent' : 't'} bénéficier d'un ticket. Sélectionnez ceux que vous voulez traiter.
                 </p>
                 <div className={styles.list}>
                   {suggestions.map(s => (
@@ -320,7 +320,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
                       <div className={styles.itemContent}>
                         <div className={styles.itemTitle}>{s.subjectTitle}</div>
                         <p className={styles.reason}>{s.reason}</p>
-                        <p className={styles.suggested}>→ Suggere : <strong>{s.suggestedTitle}</strong></p>
+                        <p className={styles.suggested}>→ Suggéré : <strong>{s.suggestedTitle}</strong></p>
                       </div>
                     </label>
                   ))}
@@ -340,7 +340,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
         {step === 'configure' && (
           <>
             <p className={styles.intro}>
-              Pour chaque sujet, choisissez de creer un ticket Jira et/ou une position Roadmap. Personnalisez les champs si necessaire.
+              Pour chaque sujet, choisissez de créer un ticket Jira et/ou une position Roadmap. Personnalisez les champs si nécessaire.
             </p>
             <div className={styles.subjectList}>
               {Array.from(selectedIds).map(id => {
@@ -383,7 +383,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
                           />
                           <span className={styles.serviceLabel}>
                             <span className={styles.badgeJira}>Jira</span>
-                            Creer un ticket
+                            Créer un ticket
                           </span>
                         </label>
                         {c.createJira && (
@@ -474,7 +474,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
                         />
                         <span className={styles.serviceLabel}>
                           <span className={styles.badgeRoadmap}>Roadmap</span>
-                          Creer une position
+                          Créer une position
                         </span>
                       </label>
                       {c.createRoadmap && (
@@ -521,14 +521,14 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
             {error && <p className={styles.error}>{error}</p>}
             {creating && (
               <p className={styles.loading}>
-                Creation en cours... {creationProgress.done}/{creationProgress.total}
+                Création en cours... {creationProgress.done}/{creationProgress.total}
               </p>
             )}
 
             <div className={styles.actions}>
               <Button variant="secondary" onClick={() => setStep('select')} disabled={creating}>← Retour</Button>
               <Button variant="primary" onClick={handleCreateAll} disabled={creating || totalToCreate === 0}>
-                {creating ? 'Creation...' : `Tout creer (${totalToCreate} element${totalToCreate > 1 ? 's' : ''})`}
+                {creating ? 'Création...' : `Tout créer (${totalToCreate} élément${totalToCreate > 1 ? 's' : ''})`}
               </Button>
             </div>
           </>

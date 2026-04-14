@@ -130,20 +130,20 @@ describe('Connectors Frontend - Change detection', () => {
 
 describe('Connectors Frontend - Connector status display', () => {
   function getStatusLabel(isActive: boolean, hasConnector: boolean): string {
-    if (isActive) return 'Connecte';
-    if (hasConnector) return 'Configure';
-    return 'Non configure';
+    if (isActive) return 'Connecté';
+    if (hasConnector) return 'Configuré';
+    return 'À configurer';
   }
 
-  it('should show "Connecte" when active', () => {
-    expect(getStatusLabel(true, true)).toBe('Connecte');
+  it('should show "Connecté" when active', () => {
+    expect(getStatusLabel(true, true)).toBe('Connecté');
   });
 
-  it('should show "Configure" when has connector but not active', () => {
-    expect(getStatusLabel(false, true)).toBe('Configure');
+  it('should show "Configuré" when has connector but not active', () => {
+    expect(getStatusLabel(false, true)).toBe('Configuré');
   });
 
-  it('should show "Non configure" when no connector', () => {
-    expect(getStatusLabel(false, false)).toBe('Non configure');
+  it('should show "À configurer" when no connector', () => {
+    expect(getStatusLabel(false, false)).toBe('À configurer');
   });
 });

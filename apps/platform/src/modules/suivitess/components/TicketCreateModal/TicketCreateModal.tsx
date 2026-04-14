@@ -252,7 +252,7 @@ export function TicketCreateModal({
   ];
 
   return (
-    <Modal title="Creer un element lie" onClose={onClose} size="md">
+    <Modal title="Créer un élément lié" onClose={onClose} size="md">
       <div className={styles.content}>
         <Tabs tabs={tabs} value={tab} onChange={(v) => setTab(v as TargetService)} />
 
@@ -412,7 +412,7 @@ export function TicketCreateModal({
         <div className={styles.actions}>
           <Button variant="secondary" onClick={onClose} disabled={creating}>Annuler</Button>
           <Button variant="primary" onClick={handleCreate} disabled={!canCreate() || creating}>
-            {creating ? 'Creation...' : 'Creer'}
+            {creating ? 'Création...' : 'Créer'}
           </Button>
         </div>
       </div>

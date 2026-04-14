@@ -81,18 +81,20 @@
   padding: var(--spacing-xs) var(--spacing-md);
   border: 1px solid var(--accent-primary);
   border-radius: var(--radius-md);
-  color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: white;
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-normal);
   text-decoration: none;
   white-space: nowrap;
   transition: all var(--transition-normal);
 }
 
 .extensionLink:hover {
-  background: var(--accent-primary);
-  color: var(--bg-primary);
+  background: var(--accent-primary-hover);
+  border-color: var(--accent-primary-hover);
+  color: white;
 }
 
 /* Document grid */

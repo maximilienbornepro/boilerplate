@@ -48,46 +48,85 @@ const JiraIcon = () => (
 );
 
 const NotionIcon = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor">
+  <svg viewBox="0 0 24 24" fill="currentColor" style={{ background: 'white', borderRadius: 4, padding: 2 }}>
     <path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466l1.823 1.447zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.84-.046.933-.56.933-1.167V6.354c0-.606-.233-.933-.746-.886l-15.177.887c-.56.046-.747.326-.747.933zm14.337.745c.093.42 0 .84-.42.886l-.7.14v10.264c-.607.327-1.167.514-1.634.514-.746 0-.933-.234-1.493-.933l-4.572-7.186v6.953l1.447.327s0 .84-1.167.84l-3.22.186c-.093-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.453-.234 4.759 7.28V9.2l-1.214-.14c-.093-.513.28-.886.747-.933l3.229-.186z"/>
   </svg>
 );
 
 const ClickUpIcon = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor">
-    <path d="M3.986 11.072l2.142 1.736a6.26 6.26 0 0 0 5.872 3.87 6.26 6.26 0 0 0 5.872-3.87l2.142-1.736C18.858 14.725 15.742 17.45 12 17.45c-3.742 0-6.858-2.725-8.014-6.378z"/>
-    <path d="M12 6.556l-3.672 3.332-2.142-1.736L12 2.856l5.814 5.296-2.142 1.736L12 6.556z"/>
+  <svg viewBox="0 0 24 24">
+    <defs>
+      <linearGradient id="cu-top" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stopColor="#ff49a4" />
+        <stop offset="100%" stopColor="#ffad3b" />
+      </linearGradient>
+      <linearGradient id="cu-bot" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stopColor="#7b68ee" />
+        <stop offset="100%" stopColor="#49ccf9" />
+      </linearGradient>
+    </defs>
+    <path d="M12 4l-7 6.5 2.2 1.8L12 8.2l4.8 4.1L19 10.5z" fill="url(#cu-top)" />
+    <path d="M5.5 15.5a8 8 0 0 0 13 0l-2.2-1.8a5 5 0 0 1-8.6 0z" fill="url(#cu-bot)" />
   </svg>
 );
 
 // ==================== Service definitions ====================
 
-// Generic AI icon (brain)
-const AIIcon = ({ color }: { color?: string }) => (
-  <svg viewBox="0 0 24 24" fill={color || 'currentColor'}>
-    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-  </svg>
+// Claude (Anthropic) logo
+import claudeLogo from '../assets/claude-logo.png';
+const ClaudeIcon = () => (
+  <img src={claudeLogo} alt="Claude" width="24" height="24" />
 );
 
-// Fathom icon (microphone)
+// OpenAI logo
+import openaiLogo from '../assets/openai-logo.svg';
+const OpenAIIcon = () => (
+  <img src={openaiLogo} alt="OpenAI" width="24" height="24" style={{ background: 'white', borderRadius: 4, padding: 2 }} />
+);
+
+// Mistral logo
+import mistralLogo from '../assets/mistral-logo.svg';
+const MistralIcon = () => (
+  <img src={mistralLogo} alt="Mistral" width="24" height="24" />
+);
+
+// Scaleway logo
+import scalewayLogo from '../assets/scaleway-logo.svg';
+const ScalewayIcon = () => (
+  <img src={scalewayLogo} alt="Scaleway" width="24" height="24" />
+);
+
+// Fathom icon — brand logo
+import fathomLogo from '../assets/fathom-logo.webp';
 const FathomIcon = () => (
+  <img src={fathomLogo} alt="Fathom" width="24" height="24" style={{ borderRadius: 4 }} />
+);
+
+// Otter.ai icon — "O" with audio bars
+const OtterIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+    <circle cx="7" cy="12" r="5" />
+    <circle cx="7" cy="12" r="2" fill="white" />
+    <rect x="14" y="4" width="2.5" height="16" rx="1.25" />
+    <rect x="18" y="6" width="2.5" height="12" rx="1.25" />
+    <rect x="22" y="9" width="2" height="6" rx="1" />
   </svg>
 );
 
-// Outlook icon (envelope)
+// Outlook icon — blue envelope with O
 const OutlookIcon = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 13L2 7V5l10 6 10-6v2l-10 6zm10-8H2C.9 5 0 5.9 0 7v10c0 1.1.9 2 2 2h20c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2z"/>
+  <svg viewBox="0 0 24 24">
+    <rect x="1" y="4" width="22" height="16" rx="2" fill="#0078D4" />
+    <path d="M1 6l11 7 11-7" fill="none" stroke="white" strokeWidth="1.5" />
+    <ellipse cx="8" cy="14" rx="4" ry="3.5" fill="#005A9E" />
+    <text x="8" y="16" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold" fontFamily="Arial">O</text>
   </svg>
 );
 
-// Gmail icon (envelope with G)
+// Gmail icon — brand logo
+import gmailLogo from '../assets/gmail-logo.png';
 const GmailIcon = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor">
-    <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-  </svg>
+  <img src={gmailLogo} alt="Gmail" width="24" height="24" />
 );
 
 // ── Section 1: Gestion de projet ──
@@ -103,7 +142,7 @@ interface ServiceGroup {
 const SERVICE_GROUPS: ServiceGroup[] = [
   {
     title: 'Gestion de projet',
-    description: 'Recuperez vos projets, tickets et sprints pour les associer a vos delivery boards. Les donnees sont synchronisees automatiquement.',
+    description: 'Récupérez vos projets, tickets et sprints pour les associer à vos delivery boards. Les données sont synchronisées automatiquement.',
     services: [
       {
         id: 'jira',
@@ -126,13 +165,13 @@ const SERVICE_GROUPS: ServiceGroup[] = [
         name: 'Otter.ai',
         description: 'Importer les transcriptions Otter dans vos sessions SuiviTess',
         color: '#3b82f6',
-        icon: <FathomIcon />,
+        icon: <OtterIcon />,
         enabled: true,
       },
       {
         id: 'notion',
         name: 'Notion',
-        description: 'Creer des pages Notion depuis vos sujets SuiviTess',
+        description: 'Créer des pages Notion depuis vos sujets SuiviTess',
         color: '#000000',
         icon: <NotionIcon />,
         enabled: true,
@@ -140,7 +179,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'clickup',
         name: 'ClickUp',
-        description: 'Importer vos taches et sprints ClickUp',
+        description: 'Importer vos tâches et sprints ClickUp',
         color: '#7B68EE',
         icon: <ClickUpIcon />,
         enabled: false,
@@ -149,45 +188,45 @@ const SERVICE_GROUPS: ServiceGroup[] = [
   },
   {
     title: 'Intelligence artificielle',
-    description: 'Configurez vos cles API pour activer les fonctionnalites IA : reformulation SuiviTess, adaptation de CV, suggestions intelligentes, RAG et embeddings.',
+    description: 'Configurez vos clés API pour activer les fonctionnalités IA : reformulation SuiviTess, adaptation de CV, suggestions intelligentes, RAG et embeddings.',
     services: [
       {
         id: 'anthropic',
         name: 'Anthropic (Claude)',
         description: 'Reformulation SuiviTess, adaptation CV, suggestions de sujets',
         color: '#D97757',
-        icon: <AIIcon color="#D97757" />,
+        icon: <ClaudeIcon />,
         enabled: true,
       },
       {
         id: 'openai',
         name: 'OpenAI',
-        description: 'Embeddings pour le RAG, generation de texte alternative',
+        description: 'Embeddings pour le RAG, génération de texte alternative',
         color: '#10a37f',
-        icon: <AIIcon color="#10a37f" />,
+        icon: <OpenAIIcon />,
         enabled: true,
       },
       {
         id: 'mistral',
         name: 'Mistral',
-        description: 'IA francaise performante, alternative a Claude et GPT',
+        description: 'IA française performante, alternative à Claude et GPT',
         color: '#F7D046',
-        icon: <AIIcon color="#F7D046" />,
+        icon: <MistralIcon />,
         enabled: true,
       },
       {
         id: 'scaleway',
         name: 'Scaleway',
-        description: 'LLM et embeddings heberges en Europe (API compatible OpenAI)',
+        description: 'LLM et embeddings hébergés en Europe (API compatible OpenAI)',
         color: '#4F0599',
-        icon: <AIIcon color="#4F0599" />,
+        icon: <ScalewayIcon />,
         enabled: true,
       },
     ],
   },
   {
     title: 'Messagerie',
-    description: 'Connectez vos boites mail pour importer des mails dans SuiviTess et alimenter vos reviews automatiquement.',
+    description: 'Connectez vos boîtes mail pour importer des mails dans SuiviTess et alimenter vos reviews automatiquement.',
     services: [
       {
         id: 'outlook',
@@ -306,7 +345,7 @@ async function disconnectOAuth(): Promise<void> {
   });
   if (!res.ok) {
     const data = await res.json();
-    throw new Error(data.error || 'Erreur lors de la deconnexion');
+    throw new Error(data.error || 'Erreur lors de la déconnexion');
   }
 }
 
@@ -324,7 +363,7 @@ function JiraOAuthTab({ onChanged }: { onChanged: () => void }) {
       const s = await fetchOAuthStatus();
       setStatus(s);
     } catch {
-      setError('Impossible de verifier le statut OAuth');
+      setError('Impossible de vérifier le statut OAuth');
     } finally {
       setLoading(false);
     }
@@ -338,7 +377,7 @@ function JiraOAuthTab({ onChanged }: { onChanged: () => void }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('jira_connected') === '1') {
-      setSuccessMessage('Connexion Jira OAuth reussie !');
+      setSuccessMessage('Connexion Jira OAuth réussie !');
       // Clean URL
       const url = new URL(window.location.href);
       url.searchParams.delete('jira_connected');
@@ -398,7 +437,7 @@ function JiraOAuthTab({ onChanged }: { onChanged: () => void }) {
           <div className="connector-oauth-info">
             <div className="connector-oauth-connected">
               <span className="connector-status-dot active" />
-              Connecte via OAuth
+              Connecté via OAuth
             </div>
             {status.siteUrl && (
               <div className="connector-oauth-detail">
@@ -407,7 +446,7 @@ function JiraOAuthTab({ onChanged }: { onChanged: () => void }) {
             )}
             {status.connectedAt && (
               <div className="connector-oauth-detail">
-                Connecte le : {new Date(status.connectedAt).toLocaleDateString('fr-FR')}
+                Connecté le : {new Date(status.connectedAt).toLocaleDateString('fr-FR')}
               </div>
             )}
             {status.isExpired && (
@@ -430,7 +469,7 @@ function JiraOAuthTab({ onChanged }: { onChanged: () => void }) {
       ) : (
         <div className="connector-oauth-connect">
           <p className="connector-oauth-desc">
-            Connectez votre compte Jira via OAuth 2.0. Vous serez redirige vers Atlassian pour autoriser l'acces.
+            Connectez votre compte Jira via OAuth 2.0. Vous serez redirigé vers Atlassian pour autoriser l'accès.
           </p>
           <div className="connector-actions">
             <button className="connector-btn primary" onClick={handleConnect}>
@@ -506,7 +545,7 @@ function JiraForm({
       const result = await testConnector('jira');
       setTestResult({
         success: true,
-        message: `Connexion reussie ! Connecte en tant que ${result.user?.displayName}`,
+        message: `Connexion réussie ! Connecte en tant que ${result.user?.displayName}`,
         userName: result.user?.displayName,
       });
       onSaved();
@@ -568,7 +607,7 @@ function JiraForm({
             placeholder="vous@example.com"
           />
           <span className="connector-field-hint">
-            L'adresse email associee a votre compte Atlassian
+            L'adresse email associée à votre compte Atlassian
           </span>
         </div>
 
@@ -666,9 +705,14 @@ function JiraCard({
         onClick={() => setExpanded(!expanded)}
       >
         <div className="connector-card-left">
+          <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
           <div
             className="connector-card-icon"
-            style={{ background: service.color, color: '#fff' }}
+            style={{ color: service.color }}
           >
             {service.icon}
           </div>
@@ -679,13 +723,10 @@ function JiraCard({
         </div>
 
         <div className="connector-card-right">
-          <div className={`connector-status ${isActive ? 'active' : 'inactive'}`}>
+          <div className={`connector-status ${isActive ? 'active' : connector ? 'active' : 'inactive'}`}>
             <span className="connector-status-dot" />
-            {isActive ? 'Connecte' : connector ? 'Configure' : 'Non configure'}
+            {isActive ? 'Connecté' : connector ? 'Configuré' : 'À configurer'}
           </div>
-          <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>
-            &#x25BC;
-          </span>
         </div>
       </div>
 
@@ -720,7 +761,7 @@ function ConnectorCardDisabled({ service }: { service: ServiceDefinition }) {
     <div className="connector-card disabled">
       <div className="connector-card-header">
         <div className="connector-card-left">
-          <div className="connector-card-icon" style={{ background: service.color, color: '#fff' }}>
+          <div className="connector-card-icon" style={{ color: service.color }}>
             {service.icon}
           </div>
           <div className="connector-card-info">
@@ -783,7 +824,7 @@ AI_FIELDS['otter'] = [
 ];
 
 AI_FIELDS['notion'] = [
-  { key: 'apiKey', label: 'Token d\'integration Notion', type: 'password', required: true, placeholder: 'secret_...', hint: 'Creer une integration sur https://www.notion.so/profile/integrations puis partager les databases avec elle' },
+  { key: 'apiKey', label: 'Token d\'intégration Notion', type: 'password', required: true, placeholder: 'secret_...', hint: 'Créer une intégration sur https://www.notion.so/profile/integrations puis partager les databases avec elle' },
 ];
 
 // ==================== Generic AI Form ====================
@@ -841,7 +882,7 @@ function AIProviderForm({
     setError('');
     try {
       const result = await testConnector(service.id);
-      setTestResult({ success: true, message: `Connexion reussie ! Modele : ${result.model || '?'}` });
+      setTestResult({ success: true, message: `Connexion réussie ! Modele : ${result.model || '?'}` });
       onSaved();
     } catch (err) {
       setTestResult({ success: false, message: err instanceof Error ? err.message : 'Erreur' });
@@ -970,7 +1011,12 @@ function AIProviderCard({
     <div className="connector-card">
       <div className="connector-card-header" onClick={() => setExpanded(!expanded)}>
         <div className="connector-card-left">
-          <div className="connector-card-icon" style={{ background: service.color, color: '#fff' }}>
+          <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
+          <div className="connector-card-icon" style={{ color: service.color }}>
             {service.icon}
           </div>
           <div className="connector-card-info">
@@ -985,11 +1031,10 @@ function AIProviderCard({
               <span className="connector-usage-tokens">{formatTokenCount(usage.totalTokensIn + usage.totalTokensOut)} tokens</span>
             </div>
           )}
-          <div className={`connector-status ${(isActive || oauthConnected) ? 'active' : 'inactive'}`}>
+          <div className={`connector-status ${(isActive || oauthConnected) ? 'active' : connector ? 'active' : 'inactive'}`}>
             <span className="connector-status-dot" />
-            {oauthConnected ? 'Connecte (OAuth)' : isActive ? 'Connecte' : connector ? 'Configure' : 'Non configure'}
+            {oauthConnected ? 'Connecté (OAuth)' : isActive ? 'Connecté' : connector ? 'Configuré' : 'À configurer'}
           </div>
-          <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>&#x25BC;</span>
         </div>
       </div>
       {expanded && (
@@ -1010,7 +1055,7 @@ function AIProviderCard({
             <div style={{ padding: 'var(--spacing-md)' }}>
               {!oauthAvail && !oauthConnected ? (
                 <div className="connectors-error">
-                  OAuth {service.name} non configure sur le serveur. Ajoutez {oauthProvider.toUpperCase()}_OAUTH_CLIENT_ID et {oauthProvider.toUpperCase()}_OAUTH_CLIENT_SECRET.
+                  OAuth {service.name} non configuré sur le serveur. Ajoutez {oauthProvider.toUpperCase()}_OAUTH_CLIENT_ID et {oauthProvider.toUpperCase()}_OAUTH_CLIENT_SECRET.
                 </div>
               ) : oauthConnected ? (
                 <div>
@@ -1030,7 +1075,7 @@ function AIProviderCard({
               ) : (
                 <div>
                   <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', margin: '0 0 var(--spacing-md)' }}>
-                    Connectez-vous via OAuth pour acceder a vos donnees {service.name}.
+                    Connectez-vous via OAuth pour accéder à vos données {service.name}.
                   </p>
                   <button className="connector-btn connector-btn-primary" onClick={handleOAuthConnect}>
                     Connecter via OAuth
@@ -1160,7 +1205,7 @@ function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
     <div className="connector-card">
       <div className="connector-card-header" onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }}>
         <div className="connector-card-left">
-          <div className="connector-card-icon" style={{ background: service.color, color: '#fff' }}>
+          <div className="connector-card-icon" style={{ color: service.color }}>
             {service.icon}
           </div>
           <div className="connector-card-info">
@@ -1170,9 +1215,9 @@ function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
         </div>
         <div className="connector-card-right">
           {status?.connected ? (
-            <span className="connector-status active">Connecte</span>
+            <span className="connector-status active">Connecté</span>
           ) : (
-            <span className="connector-status inactive">Non connecte</span>
+            <span className="connector-status inactive">Non connecté</span>
           )}
         </div>
       </div>
@@ -1182,7 +1227,7 @@ function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
           {loading ? (
             <div className="connector-loading"><span className="connector-spinner" /><span>Chargement...</span></div>
           ) : !oauthAvail && !status?.connected ? (
-            <div className="connectors-error">OAuth {service.name} non configure sur le serveur. Ajoutez les variables {provider.toUpperCase()}_OAUTH_CLIENT_ID et {provider.toUpperCase()}_OAUTH_CLIENT_SECRET.</div>
+            <div className="connectors-error">OAuth {service.name} non configuré sur le serveur. Ajoutez les variables {provider.toUpperCase()}_OAUTH_CLIENT_ID et {provider.toUpperCase()}_OAUTH_CLIENT_SECRET.</div>
           ) : status?.connected ? (
             <div>
               <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', margin: '0 0 var(--spacing-sm)' }}>
@@ -1269,7 +1314,7 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
       <div className="connectors-page">
 
       <p className="connectors-subtitle">
-        Configurez vos connexions aux services externes. Les identifiants sont stockes par utilisateur.
+        Configurez vos connexions aux services externes. Les identifiants sont stockés par utilisateur.
       </p>
 
       {error && <div className="connectors-error">{error}</div>}

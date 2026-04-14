@@ -608,7 +608,7 @@ export function SubjectReview({
             className={styles.actionBtn}
             onClick={handleReformulate}
             disabled={reformulating}
-            title="Reformuler avec l'IA"
+            data-tooltip="Reformuler avec l'IA"
           >
             {reformulating ? '...' : (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -620,7 +620,7 @@ export function SubjectReview({
           <button
             className={styles.actionBtn}
             onClick={() => setShowEmailPreview(true)}
-            title="Générer un email pour ce sujet"
+            data-tooltip="Générer un email"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
@@ -631,7 +631,7 @@ export function SubjectReview({
           <button
             className={styles.actionBtn}
             onClick={() => setShowTicketModal(true)}
-            title="Creer un ticket lie a ce sujet (Jira / Notion / Roadmap)"
+            data-tooltip="Créer un ticket"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
@@ -641,9 +641,9 @@ export function SubjectReview({
 
           {onDelete && (
             <button
-              className="shared-card__delete-btn"
+              className={`shared-card__delete-btn ${styles.actionBtn}`}
               onClick={onDelete}
-              title="Supprimer ce sujet"
+              data-tooltip="Supprimer"
               style={{ opacity: 1 }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

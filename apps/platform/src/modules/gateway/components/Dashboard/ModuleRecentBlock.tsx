@@ -7,6 +7,7 @@ interface Item {
   date: string;
   href: string;
   meta?: string;
+  metaTag?: boolean;
 }
 
 export interface SubItem {
@@ -95,24 +96,26 @@ export function ModuleRecentBlock<T>({
         <span className={styles.moduleIcon} style={{ background: color, color: '#fff' }}>{icon}</span>
         <div className={styles.moduleTitleGroup}>
           <h3 className={styles.moduleTitle}>{title}</h3>
-          <span className={styles.moduleSubtitle}>Modifications récentes</span>
         </div>
         <div className={styles.moduleActions}>
           {createLabel && (
             <button
               className={styles.createBtn}
               onClick={() => navigate(createHref || seeAllHref)}
-              style={{ color, borderColor: color }}
+              style={{ backgroundColor: color, color: 'white' }}
               title={createLabel}
             >
               {createLabel}
             </button>
           )}
-          {total > 3 && (
-            <button className={styles.seeAllLink} onClick={() => navigate(seeAllHref)}>
-              Voir tout ({total})
-            </button>
-          )}
+          <button
+            className={styles.seeAllLink}
+            onClick={() => navigate(seeAllHref)}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = color; e.currentTarget.style.color = 'white'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
+          >
+            Voir tout
+          </button>
         </div>
       </div>
 
@@ -129,9 +132,9 @@ export function ModuleRecentBlock<T>({
               const subs = subItemsMap[String(item.id)] || [];
               return (
                 <li key={item.id} className={styles.item}>
-                  <button className={styles.itemBtn} onClick={() => navigate(item.href)}>
+                  <button className={`${styles.itemBtn} ${item.metaTag ? styles.itemBtnRow : ''}`} onClick={() => navigate(item.href)}>
                     <span className={styles.itemTitle}>{item.title}</span>
-                    {item.meta && <span className={styles.itemMeta}>{item.meta}</span>}
+                    {item.meta && <span className={item.metaTag ? styles.itemMetaTag : styles.itemMeta} style={item.metaTag ? { color, borderColor: color } : undefined}>{item.meta}</span>}
                   </button>
                   {subs.length > 0 && (
                     <ul className={styles.subList}>
