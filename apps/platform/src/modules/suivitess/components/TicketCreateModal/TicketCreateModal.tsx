@@ -57,6 +57,13 @@ export function TicketCreateModal({
   const [jiraSprint, setJiraSprint] = useState('');
   const [jiraIssueType, setJiraIssueType] = useState('Task');
   const [loadingJira, setLoadingJira] = useState(false);
+  // Dynamic required fields (from Jira createmeta)
+  const [jiraDynamicFields, setJiraDynamicFields] = useState<Array<{
+    id: string; name: string; required: boolean; type: string;
+    items: string | null; allowedValues: Array<{ id: string; label: string }> | null;
+  }>>([]);
+  const [jiraFieldValues, setJiraFieldValues] = useState<Record<string, unknown>>({});
+  const [loadingMeta, setLoadingMeta] = useState(false);
 
   // Notion state
   const [notionDbs, setNotionDbs] = useState<NotionDatabase[]>([]);
@@ -126,6 +133,42 @@ export function TicketCreateModal({
       .catch(() => setJiraSprints([]));
   }, [jiraProject]);
 
+  // Load required dynamic fields when project + issue type change
+  useEffect(() => {
+    if (!jiraProject || !jiraIssueType || tab !== 'jira') {
+      setJiraDynamicFields([]);
+      setJiraFieldValues({});
+      return;
+    }
+    setLoadingMeta(true);
+    fetch(`${SUIVITESS_API}/jira/createmeta?projectKey=${encodeURIComponent(jiraProject)}&issueType=${encodeURIComponent(jiraIssueType)}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { fields: [] })
+      .then((data: { fields: typeof jiraDynamicFields }) => {
+        setJiraDynamicFields(data.fields || []);
+        setJiraFieldValues({});
+      })
+      .catch(() => { setJiraDynamicFields([]); })
+      .finally(() => setLoadingMeta(false));
+  }, [jiraProject, jiraIssueType, tab]);
+
+  // Convert raw input value to Jira field format based on schema
+  const buildJiraFieldValue = (field: typeof jiraDynamicFields[0], rawValue: unknown): unknown => {
+    if (rawValue === '' || rawValue === null || rawValue === undefined) return null;
+    // Single option (option, priority, etc) — { id }
+    if (field.allowedValues && field.type !== 'array') {
+      return { id: String(rawValue) };
+    }
+    // Array of options — [{ id }]
+    if (field.allowedValues && field.type === 'array') {
+      const ids = Array.isArray(rawValue) ? rawValue : [rawValue];
+      return ids.filter(Boolean).map(id => ({ id: String(id) }));
+    }
+    // Number
+    if (field.type === 'number') return Number(rawValue);
+    // String, date, datetime
+    return rawValue;
+  };
+
   // Load Notion databases
   useEffect(() => {
     if (tab !== 'notion' || !notionAvailable || notionDbs.length > 0) return;
@@ -139,11 +182,19 @@ export function TicketCreateModal({
 
   const canCreate = useCallback((): boolean => {
     if (!title.trim()) return false;
-    if (tab === 'jira') return !!jiraProject && !!jiraIssueType;
+    if (tab === 'jira') {
+      if (!jiraProject || !jiraIssueType) return false;
+      // Verify all required dynamic fields are filled
+      for (const f of jiraDynamicFields) {
+        const v = jiraFieldValues[f.id];
+        if (v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) return false;
+      }
+      return true;
+    }
     if (tab === 'notion') return !!notionDb;
     if (tab === 'roadmap') return !!planning && !!startDate && !!endDate;
     return false;
-  }, [tab, title, jiraProject, jiraIssueType, notionDb, planning, startDate, endDate]);
+  }, [tab, title, jiraProject, jiraIssueType, jiraDynamicFields, jiraFieldValues, notionDb, planning, startDate, endDate]);
 
   const handleCreate = async () => {
     setCreating(true); setError('');
@@ -153,12 +204,19 @@ export function TicketCreateModal({
 
       if (tab === 'jira') {
         url = `${SUIVITESS_API}/subjects/${subjectId}/create-jira-ticket`;
+        // Build customFields dict in Jira format
+        const customFields: Record<string, unknown> = {};
+        for (const f of jiraDynamicFields) {
+          const formatted = buildJiraFieldValue(f, jiraFieldValues[f.id]);
+          if (formatted !== null) customFields[f.id] = formatted;
+        }
         body = {
           projectKey: jiraProject,
           sprintId: jiraSprint || undefined,
           issueType: jiraIssueType,
           summary: title,
           description,
+          customFields,
         };
       } else if (tab === 'notion') {
         url = `${SUIVITESS_API}/subjects/${subjectId}/create-notion-page`;
@@ -230,6 +288,65 @@ export function TicketCreateModal({
                     {ISSUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </FormField>
+
+                {/* Dynamic required fields */}
+                {loadingMeta && <p className={styles.loading}>Chargement des champs requis...</p>}
+                {jiraDynamicFields.map(field => (
+                  <FormField key={field.id} label={field.name} required>
+                    {field.allowedValues ? (
+                      field.type === 'array' ? (
+                        <select
+                          multiple
+                          value={(jiraFieldValues[field.id] as string[]) || []}
+                          onChange={e => {
+                            const values = Array.from(e.target.selectedOptions, o => o.value);
+                            setJiraFieldValues(prev => ({ ...prev, [field.id]: values }));
+                          }}
+                          style={{ minHeight: 80 }}
+                        >
+                          {field.allowedValues.map(av => (
+                            <option key={av.id} value={av.id}>{av.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <select
+                          value={(jiraFieldValues[field.id] as string) || ''}
+                          onChange={e => setJiraFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))}
+                        >
+                          <option value="">-- Choisir --</option>
+                          {field.allowedValues.map(av => (
+                            <option key={av.id} value={av.id}>{av.label}</option>
+                          ))}
+                        </select>
+                      )
+                    ) : field.type === 'number' ? (
+                      <input
+                        type="number"
+                        value={(jiraFieldValues[field.id] as string) || ''}
+                        onChange={e => setJiraFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))}
+                      />
+                    ) : field.type === 'date' ? (
+                      <input
+                        type="date"
+                        value={(jiraFieldValues[field.id] as string) || ''}
+                        onChange={e => setJiraFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))}
+                      />
+                    ) : field.type === 'datetime' ? (
+                      <input
+                        type="datetime-local"
+                        value={(jiraFieldValues[field.id] as string) || ''}
+                        onChange={e => setJiraFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={(jiraFieldValues[field.id] as string) || ''}
+                        onChange={e => setJiraFieldValues(prev => ({ ...prev, [field.id]: e.target.value }))}
+                        placeholder={`${field.name} (${field.type})`}
+                      />
+                    )}
+                  </FormField>
+                ))}
               </>
             )}
           </div>

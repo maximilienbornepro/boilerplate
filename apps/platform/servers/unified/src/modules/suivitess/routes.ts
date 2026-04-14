@@ -6,6 +6,36 @@ import type { DocumentWithSections } from './dbService.js';
 import * as recorder from './recorderService.js';
 import { acceptSuggestion } from './suggestionsService.js';
 
+// Fields we control directly via the modal — skip these in createmeta output
+const STANDARD_JIRA_FIELDS = new Set(['summary', 'description', 'project', 'issuetype', 'reporter', 'attachment', 'issuelinks']);
+
+interface JiraFieldMeta {
+  name?: string;
+  required: boolean;
+  schema?: { type: string; items?: string };
+  allowedValues?: Array<{ id: string; name?: string; value?: string }>;
+}
+
+function serializeFields(fields: Record<string, JiraFieldMeta>): Array<{
+  id: string;
+  name: string;
+  required: boolean;
+  type: string;
+  items: string | null;
+  allowedValues: Array<{ id: string; label: string }> | null;
+}> {
+  return Object.entries(fields)
+    .filter(([id, f]) => f.required && !STANDARD_JIRA_FIELDS.has(id))
+    .map(([id, f]) => ({
+      id,
+      name: f.name || id,
+      required: f.required,
+      type: f.schema?.type || 'string',
+      items: f.schema?.items || null,
+      allowedValues: f.allowedValues ? f.allowedValues.map(v => ({ id: v.id, label: v.name || v.value || v.id })) : null,
+    }));
+}
+
 export function createRoutes(): Router {
   const router = Router();
 
@@ -1592,16 +1622,69 @@ Reponds UNIQUEMENT avec un JSON valide :
     res.json({ success: true });
   }));
 
+  // GET /jira/createmeta?projectKey=X&issueType=Task
+  // Returns required + creatable fields for a project + issue type, with allowed values
+  router.get('/jira/createmeta', asyncHandler(async (req, res) => {
+    const projectKey = String(req.query.projectKey || '');
+    const issueType = String(req.query.issueType || '');
+    if (!projectKey || !issueType) { res.status(400).json({ error: 'projectKey et issueType requis' }); return; }
+
+    const { getJiraContext } = await import('../jiraAuth.js');
+    const ctx = await getJiraContext(req.user!.id);
+    if (!ctx) { res.status(400).json({ error: 'Jira non connecte' }); return; }
+
+    try {
+      // Step 1: get the issuetype id for this project + name
+      const projRes = await fetch(`${ctx.baseUrl}/rest/api/3/project/${projectKey}`, { headers: ctx.headers });
+      if (!projRes.ok) { res.status(400).json({ error: `Projet introuvable: ${projectKey}` }); return; }
+      const project = await projRes.json() as { issueTypes?: Array<{ id: string; name: string }> };
+      const it = project.issueTypes?.find(t => t.name.toLowerCase() === issueType.toLowerCase());
+      if (!it) { res.status(400).json({ error: `Type "${issueType}" non disponible pour ${projectKey}` }); return; }
+
+      // Step 2: get fields for this project + issuetype
+      const metaRes = await fetch(
+        `${ctx.baseUrl}/rest/api/3/issue/createmeta/${projectKey}/issuetypes/${it.id}?maxResults=200`,
+        { headers: ctx.headers }
+      );
+      if (!metaRes.ok) {
+        // Fallback: legacy createmeta endpoint
+        const legacyRes = await fetch(
+          `${ctx.baseUrl}/rest/api/3/issue/createmeta?projectKeys=${projectKey}&issuetypeIds=${it.id}&expand=projects.issuetypes.fields`,
+          { headers: ctx.headers }
+        );
+        if (!legacyRes.ok) { res.status(400).json({ error: 'Impossible de recuperer les metadonnees' }); return; }
+        const legacy = await legacyRes.json() as {
+          projects: Array<{ issuetypes: Array<{ fields: Record<string, { name?: string; required: boolean; schema?: { type: string; items?: string }; allowedValues?: Array<{ id: string; name?: string; value?: string }> }> }> }>;
+        };
+        const fields = legacy.projects?.[0]?.issuetypes?.[0]?.fields || {};
+        res.json({ fields: serializeFields(fields) });
+        return;
+      }
+      const meta = await metaRes.json() as {
+        fields: Array<{ fieldId: string; name: string; required: boolean; schema?: { type: string; items?: string }; allowedValues?: Array<{ id: string; name?: string; value?: string }> }>;
+      };
+      // Convert array form to object form for unified handling
+      const obj: Record<string, { name?: string; required: boolean; schema?: { type: string; items?: string }; allowedValues?: Array<{ id: string; name?: string; value?: string }> }> = {};
+      for (const f of meta.fields || []) {
+        obj[f.fieldId] = { name: f.name, required: f.required, schema: f.schema, allowedValues: f.allowedValues };
+      }
+      res.json({ fields: serializeFields(obj) });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message || 'Erreur createmeta' });
+    }
+  }));
+
   // POST /subjects/:subjectId/create-jira-ticket
   router.post('/subjects/:subjectId/create-jira-ticket', asyncHandler(async (req, res) => {
     const { subjectId } = req.params;
-    const { projectKey, sprintId, issueType, summary, description, storyPoints } = req.body as {
+    const { projectKey, sprintId, issueType, summary, description, storyPoints, customFields } = req.body as {
       projectKey: string;
       sprintId?: string;
       issueType: string;
       summary: string;
       description?: string;
       storyPoints?: number;
+      customFields?: Record<string, unknown>;
     };
 
     if (!projectKey || !summary || !issueType) {
@@ -1637,6 +1720,12 @@ Reponds UNIQUEMENT avec un JSON valide :
       description: descADF,
     };
     if (typeof storyPoints === 'number') fields.customfield_10016 = storyPoints;
+    // Merge dynamic custom fields (already in correct Jira format from frontend)
+    if (customFields && typeof customFields === 'object') {
+      for (const [k, v] of Object.entries(customFields)) {
+        if (v !== null && v !== undefined && v !== '') fields[k] = v;
+      }
+    }
 
     try {
       const createRes = await fetch(`${ctx.baseUrl}/rest/api/3/issue`, {
