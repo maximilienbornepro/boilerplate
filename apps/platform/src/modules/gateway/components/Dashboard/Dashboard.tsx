@@ -63,7 +63,6 @@ export function Dashboard({ onNavigate }: Props) {
       <div className={styles.dashboardHeader}>
         <div>
           <h2 className={styles.dashboardTitle}>Tableau de bord</h2>
-          <p className={styles.dashboardSubtitle}>Vos derniers elements et raccourcis</p>
         </div>
         <CreditBadge onNavigate={onNavigate} />
       </div>
