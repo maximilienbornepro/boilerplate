@@ -256,12 +256,47 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
                     Tableau
                   </button>
                 )}
-                {connectedAIs.length > 0 && docId && (
+                {docId && (
                   <>
                     <div className="suivitess-exports-divider" />
-                    <button type="button" className="suivitess-exports-item" onClick={() => { setShowEmailModal(true); setShowExports(false); }}>
-                      Email (avec preview)
-                    </button>
+                    {connectedAIs.length > 0 ? (
+                      <button
+                        type="button"
+                        className="suivitess-exports-item suivitess-exports-item--featured"
+                        onClick={() => { setShowEmailModal(true); setShowExports(false); }}
+                      >
+                        <span className="suivitess-exports-item__icon" aria-hidden="true">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                            <polyline points="22,6 12,13 2,6" />
+                          </svg>
+                        </span>
+                        <span className="suivitess-exports-item__text">
+                          <strong>Email (avec preview)</strong>
+                          <span className="suivitess-exports-item__hint">Genere un email recap par IA</span>
+                        </span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="suivitess-exports-item suivitess-exports-item--disabled"
+                        onClick={() => { setShowExports(false); navigate('/reglages'); }}
+                        title="Configurez une IA dans Reglages > Connecteurs pour activer l'export email"
+                      >
+                        <span className="suivitess-exports-item__icon" aria-hidden="true">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                            <polyline points="22,6 12,13 2,6" />
+                          </svg>
+                        </span>
+                        <span className="suivitess-exports-item__text">
+                          <strong>Email (avec preview)</strong>
+                          <span className="suivitess-exports-item__hint suivitess-exports-item__hint--cta">
+                            Connecter une IA →
+                          </span>
+                        </span>
+                      </button>
+                    )}
                   </>
                 )}
               </div>

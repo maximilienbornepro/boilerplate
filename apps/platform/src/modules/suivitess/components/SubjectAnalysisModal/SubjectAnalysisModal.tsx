@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button } from '@boilerplate/shared/components';
 import { fetchJiraProjects, fetchJiraSprints } from '../../../delivery/services/api';
 import type { JiraProject, JiraSprint } from '../../../delivery/services/api';
+import { recordJiraProjectUsage, sortJiraProjectsByUsage } from '../../../delivery/services/jiraProjectUsage';
 import styles from './SubjectAnalysisModal.module.css';
 
 interface Suggestion {
@@ -121,7 +122,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
       const isJiraAvail = connectors.some(c => c.service === 'jira' && c.isActive) || jiraStatus.connected;
       setJiraAvailable(isJiraAvail);
       if (isJiraAvail) {
-        fetchJiraProjects().then(setJiraProjects).catch(() => {});
+        fetchJiraProjects().then(projects => setJiraProjects(sortJiraProjectsByUsage(projects))).catch(() => {});
       }
     });
 
@@ -254,6 +255,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
           } else {
             const data = await res.json();
             updateConfig(t.subjectId, { jiraResult: { success: true, key: data.link?.externalId } });
+            if (c.jiraProject) recordJiraProjectUsage(c.jiraProject);
           }
         } else {
           const res = await fetch(`${API_BASE}/subjects/${t.subjectId}/create-roadmap-task`, {

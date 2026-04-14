@@ -656,8 +656,30 @@ function JiraCard({
   const service = ALL_SERVICES.find(s => s.id === 'jira')!;
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'token' | 'oauth'>(oauthAvailable ? 'oauth' : 'token');
+  const [oauthConnected, setOauthConnected] = useState(false);
 
-  const isActive = connector?.isActive ?? false;
+  // Detect OAuth connection so the "Connecte / Configure / Non configure" badge
+  // also reflects OAuth status (not just the Basic Auth user_connectors row).
+  const refreshOAuthStatus = useCallback(async () => {
+    try {
+      const s = await fetchOAuthStatus();
+      setOauthConnected(!!s.connected);
+    } catch {
+      setOauthConnected(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshOAuthStatus();
+  }, [refreshOAuthStatus]);
+
+  const handleChanged = () => {
+    refreshOAuthStatus();
+    onSaved();
+  };
+
+  const isActive = oauthConnected || (connector?.isActive ?? false);
+  const isConfigured = oauthConnected || connector !== null;
 
   return (
     <div className="connector-card">
@@ -681,7 +703,7 @@ function JiraCard({
         <div className="connector-card-right">
           <div className={`connector-status ${isActive ? 'active' : 'inactive'}`}>
             <span className="connector-status-dot" />
-            {isActive ? 'Connecte' : connector ? 'Configure' : 'Non configure'}
+            {isActive ? 'Connecte' : isConfigured ? 'Configure' : 'Non configure'}
           </div>
           <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>
             &#x25BC;
@@ -703,7 +725,7 @@ function JiraCard({
           )}
 
           {activeTab === 'oauth' && oauthAvailable ? (
-            <JiraOAuthTab onChanged={onSaved} />
+            <JiraOAuthTab onChanged={handleChanged} />
           ) : (
             <JiraForm connector={connector} onSaved={onSaved} onDeleted={onDeleted} />
           )}

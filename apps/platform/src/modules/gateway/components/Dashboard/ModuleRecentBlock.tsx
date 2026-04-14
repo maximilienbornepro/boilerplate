@@ -108,9 +108,9 @@ export function ModuleRecentBlock<T>({
               {createLabel}
             </button>
           )}
-          {total > 3 && (
+          {items !== null && (
             <button className={styles.seeAllLink} onClick={() => navigate(seeAllHref)}>
-              Voir tout ({total})
+              {total > 3 ? `Voir tout (${total})` : 'Voir tout'}
             </button>
           )}
         </div>

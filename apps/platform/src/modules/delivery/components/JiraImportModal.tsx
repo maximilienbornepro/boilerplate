@@ -6,6 +6,7 @@ import {
   createTask,
 } from '../services/api';
 import type { JiraProject, JiraSprint, JiraIssue } from '../services/api';
+import { recordJiraProjectUsage, sortJiraProjectsByUsage } from '../services/jiraProjectUsage';
 import { mapIssueType, formatJiraTitle } from '../utils/jiraUtils';
 import styles from './JiraImportModal.module.css';
 
@@ -41,7 +42,7 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
     setLoadingProjects(true);
     setError(null);
     fetchJiraProjects()
-      .then(setProjects)
+      .then(projects => setProjects(sortJiraProjectsByUsage(projects)))
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoadingProjects(false));
   }, []);
@@ -119,6 +120,7 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
     } else if (failed === toImport.length) {
       setError('Echec de l\'import. Verifiez votre connexion Jira.');
     } else {
+      if (selectedProjectKey) recordJiraProjectUsage(selectedProjectKey);
       onImported();
       onClose();
     }
