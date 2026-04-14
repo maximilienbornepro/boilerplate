@@ -96,14 +96,16 @@ export function TranscriptionWizard({ documentId, onClose, onDone }: Props) {
   const [importedCallIds, setImportedCallIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    // Load connectors (Fathom, Otter, AI) + email OAuth status (Outlook, Gmail)
+    // Load connectors (Fathom token, Otter, AI) + OAuth status (Fathom, Outlook, Gmail)
     Promise.all([
       fetch('/api/connectors', { credentials: 'include' }).then(r => r.ok ? r.json() : []),
+      fetch('/api/auth/fathom/status', { credentials: 'include' }).then(r => r.ok ? r.json() : { connected: false }).catch(() => ({ connected: false })),
       fetch('/api/auth/outlook/status', { credentials: 'include' }).then(r => r.ok ? r.json() : { connected: false }).catch(() => ({ connected: false })),
       fetch('/api/auth/gmail/status', { credentials: 'include' }).then(r => r.ok ? r.json() : { connected: false }).catch(() => ({ connected: false })),
-    ]).then(([connectors, outlookStatus, gmailStatus]: [Array<{ service: string; isActive: boolean }>, { connected: boolean }, { connected: boolean }]) => {
-        // Transcription providers (Fathom, Otter — from connectors)
+    ]).then(([connectors, fathomStatus, outlookStatus, gmailStatus]: [Array<{ service: string; isActive: boolean }>, { connected: boolean }, { connected: boolean }, { connected: boolean }]) => {
+        // Transcription providers
         const activeTrans = PROVIDERS.filter(p => {
+          if (p.id === 'fathom') return fathomStatus.connected || connectors.some(c => c.service === 'fathom' && c.isActive);
           if (p.id === 'outlook') return outlookStatus.connected;
           if (p.id === 'gmail') return gmailStatus.connected;
           return connectors.some(c => c.service === p.id && c.isActive);
