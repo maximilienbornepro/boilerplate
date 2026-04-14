@@ -46,8 +46,13 @@ export function ModuleRecentBlock<T>({
     fetchItems()
       .then(rawItems => {
         const mapped = rawItems.map(mapItem)
-          .filter(i => i.date)
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          .sort((a, b) => {
+            // Items with no date go to the bottom
+            if (!a.date && !b.date) return 0;
+            if (!a.date) return 1;
+            if (!b.date) return -1;
+            return new Date(b.date).getTime() - new Date(a.date).getTime();
+          });
         setTotal(mapped.length);
         setItems(mapped.slice(0, 3));
       })

@@ -334,15 +334,15 @@ export async function searchSubjects(q: string): Promise<SubjectSearchResult[]> 
 
 export async function getAllDocuments(userId?: number, isAdmin?: boolean) {
   if (!userId || isAdmin) {
-    const result = await pool.query('SELECT id, title, description FROM suivitess_documents ORDER BY title');
+    const result = await pool.query('SELECT id, title, description, created_at, updated_at FROM suivitess_documents ORDER BY updated_at DESC NULLS LAST, title');
     return result.rows;
   }
   const result = await pool.query(
-    `SELECT d.id, d.title, d.description FROM suivitess_documents d
+    `SELECT d.id, d.title, d.description, d.created_at, d.updated_at FROM suivitess_documents d
      LEFT JOIN resource_sharing rs ON rs.resource_type = 'suivitess' AND rs.resource_id = d.id
      LEFT JOIN resource_shares rsh ON rsh.resource_type = 'suivitess' AND rsh.resource_id = d.id AND rsh.shared_with_user_id = $1
      WHERE rs.id IS NULL OR rs.owner_id = $1 OR rs.visibility = 'public' OR rsh.id IS NOT NULL
-     ORDER BY d.title`,
+     ORDER BY d.updated_at DESC NULLS LAST, d.title`,
     [userId]
   );
   return result.rows;
