@@ -66,11 +66,13 @@ interface Props {
   documentId: string;
   onClose: () => void;
   onDone: () => void;
+  /** Pre-select a provider (e.g. "gmail", "outlook"). Falls back to first active. */
+  initialProvider?: string;
 }
 
 type Step = 'select-call' | 'choose-mode' | 'proposals' | 'result';
 
-export function TranscriptionWizard({ documentId, onClose, onDone }: Props) {
+export function TranscriptionWizard({ documentId, onClose, onDone, initialProvider }: Props) {
   const [step, setStep] = useState<Step>('select-call');
 
   const [provider, setProvider] = useState('');
@@ -111,7 +113,12 @@ export function TranscriptionWizard({ documentId, onClose, onDone }: Props) {
           return connectors.some(c => c.service === p.id && c.isActive);
         });
         setActiveProviders(activeTrans);
-        if (activeTrans.length > 0) setProvider(activeTrans[0].id);
+        if (activeTrans.length > 0) {
+          const preselect = initialProvider && activeTrans.some(p => p.id === initialProvider)
+            ? initialProvider
+            : activeTrans[0].id;
+          setProvider(preselect);
+        }
         const activeAI = connectors.filter(c => c.isActive && AI_PROVIDERS.some(ai => ai.id === c.service)).map(c => c.service);
         setConnectedAI(activeAI);
         if (activeAI.length > 0) setSelectedAI(activeAI[0]);
