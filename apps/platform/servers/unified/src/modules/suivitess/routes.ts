@@ -1646,8 +1646,15 @@ Reponds UNIQUEMENT avec un JSON valide :
       });
       if (!createRes.ok) {
         const errText = await createRes.text();
-        console.error('[Jira create] error:', errText);
-        res.status(500).json({ error: `Creation Jira echouee: ${createRes.status}` });
+        console.error('[Jira create] error:', errText, 'payload:', JSON.stringify(fields));
+        // Try to extract Jira error messages
+        let detail = errText;
+        try {
+          const errJson = JSON.parse(errText);
+          if (errJson.errorMessages?.length) detail = errJson.errorMessages.join(' / ');
+          else if (errJson.errors) detail = Object.entries(errJson.errors).map(([k, v]) => `${k}: ${v}`).join(' / ');
+        } catch { /* not JSON */ }
+        res.status(400).json({ error: `Jira a refuse: ${detail}`, jiraStatus: createRes.status, jiraResponse: errText });
         return;
       }
       const created = await createRes.json() as { id: string; key: string; self: string };
