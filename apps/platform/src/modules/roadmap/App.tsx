@@ -118,6 +118,17 @@ function PlanningListView({ onNavigate }: { onNavigate?: (path: string) => void 
   const [editingPlanningForForm, setEditingPlanningForForm] = useState<Planning | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Planning | null>(null);
 
+  // Auto-open create modal if URL has ?create=1 (from Dashboard)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('create') === '1') {
+      setShowPlanningForm(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('create');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
   useEffect(() => {
     api.fetchPlannings()
       .then(setPlannings)

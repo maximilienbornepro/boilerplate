@@ -70,6 +70,18 @@ function AppContent({ onNavigate: _onNavigate }: { onNavigate?: (path: string) =
     loadData();
   }, [loadData]);
 
+  // Auto-open create modal if URL has ?create=1 (from Dashboard)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('create') === '1') {
+      setEditingLeave(null);
+      setShowLeaveForm(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('create');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
   const handleLeaveClick = useCallback((leave: Leave) => {
     if (!user?.isAdmin && leave.memberId !== user?.id) return;
     setEditingLeave(leave);

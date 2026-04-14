@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { timeAgo } from './timeAgo';
 import styles from './Dashboard.module.css';
 
 interface Item {
@@ -8,6 +7,12 @@ interface Item {
   date: string;
   href: string;
   meta?: string;
+}
+
+export interface SubItem {
+  label: string;
+  date?: string;
+  href?: string;
 }
 
 interface Props<T> {
@@ -23,6 +28,8 @@ interface Props<T> {
   createLabel?: string;
   /** Where the create button navigates (defaults to seeAllHref) */
   createHref?: string;
+  /** Optional: fetch sub-items for each top-level item (e.g. recent subjects per doc) */
+  fetchSubItems?: (item: Item) => Promise<SubItem[]>;
   onNavigate?: (path: string) => void;
 }
 
@@ -36,11 +43,13 @@ export function ModuleRecentBlock<T>({
   emptyMessage = 'Aucun element pour le moment.',
   createLabel,
   createHref,
+  fetchSubItems,
   onNavigate,
 }: Props<T>) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState(false);
   const [total, setTotal] = useState(0);
+  const [subItemsMap, setSubItemsMap] = useState<Record<string, SubItem[]>>({});
 
   useEffect(() => {
     fetchItems()
@@ -54,7 +63,23 @@ export function ModuleRecentBlock<T>({
             return new Date(b.date).getTime() - new Date(a.date).getTime();
           });
         setTotal(mapped.length);
-        setItems(mapped.slice(0, 3));
+        const top = mapped.slice(0, 3);
+        setItems(top);
+
+        // Fetch sub-items for the top items in parallel
+        if (fetchSubItems && top.length > 0) {
+          Promise.all(
+            top.map(item =>
+              fetchSubItems(item)
+                .then(subs => ({ id: String(item.id), subs }))
+                .catch(() => ({ id: String(item.id), subs: [] as SubItem[] }))
+            )
+          ).then(results => {
+            const map: Record<string, SubItem[]> = {};
+            for (const r of results) map[r.id] = r.subs;
+            setSubItemsMap(map);
+          });
+        }
       })
       .catch(() => setError(true));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -68,7 +93,10 @@ export function ModuleRecentBlock<T>({
     <div className={styles.moduleBlock}>
       <div className={styles.moduleHeader} style={{ borderColor: color }}>
         <span className={styles.moduleIcon} style={{ background: color, color: '#fff' }}>{icon}</span>
-        <h3 className={styles.moduleTitle}>{title}</h3>
+        <div className={styles.moduleTitleGroup}>
+          <h3 className={styles.moduleTitle}>{title}</h3>
+          <span className={styles.moduleSubtitle}>Modifications récentes</span>
+        </div>
         <div className={styles.moduleActions}>
           {createLabel && (
             <button
@@ -97,17 +125,36 @@ export function ModuleRecentBlock<T>({
           <p className={styles.moduleEmpty}>{emptyMessage}</p>
         ) : (
           <ul className={styles.itemList}>
-            {items.map(item => (
-              <li key={item.id} className={styles.item}>
-                <button className={styles.itemBtn} onClick={() => navigate(item.href)}>
-                  <span className={styles.itemTitle}>{item.title}</span>
-                  <span className={styles.itemMeta}>
-                    {item.meta && <span>{item.meta} · </span>}
-                    {timeAgo(item.date)}
-                  </span>
-                </button>
-              </li>
-            ))}
+            {items.map(item => {
+              const subs = subItemsMap[String(item.id)] || [];
+              return (
+                <li key={item.id} className={styles.item}>
+                  <button className={styles.itemBtn} onClick={() => navigate(item.href)}>
+                    <span className={styles.itemTitle}>{item.title}</span>
+                    {item.meta && <span className={styles.itemMeta}>{item.meta}</span>}
+                  </button>
+                  {subs.length > 0 && (
+                    <ul className={styles.subList}>
+                      {subs.slice(0, 3).map((sub, idx) => (
+                        <li key={idx} className={styles.subItem}>
+                          {sub.href ? (
+                            <button className={styles.subBtn} onClick={() => navigate(sub.href!)}>
+                              <span className={styles.subBullet} style={{ color }}>›</span>
+                              <span className={styles.subLabel}>{sub.label}</span>
+                            </button>
+                          ) : (
+                            <div className={styles.subBtn}>
+                              <span className={styles.subBullet} style={{ color }}>›</span>
+                              <span className={styles.subLabel}>{sub.label}</span>
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

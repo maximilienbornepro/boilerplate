@@ -1,9 +1,9 @@
 import { useAuth } from '../../context/AuthContext';
 import { CreditBadge } from './CreditBadge';
-import { ModuleRecentBlock } from './ModuleRecentBlock';
-import { fetchDocuments } from '../../../suivitess/services/api';
-import { fetchPlannings } from '../../../roadmap/services/api';
-import { fetchBoards } from '../../../delivery/services/api';
+import { ModuleRecentBlock, type SubItem } from './ModuleRecentBlock';
+import { fetchDocuments, fetchDocument } from '../../../suivitess/services/api';
+import { fetchPlannings, fetchTasks } from '../../../roadmap/services/api';
+import { fetchBoards, fetchTasksForBoard } from '../../../delivery/services/api';
 import { fetchLeaves } from '../../../conges/services/api';
 import styles from './Dashboard.module.css';
 
@@ -84,7 +84,25 @@ export function Dashboard({ onNavigate }: Props) {
               href: `/suivitess/${d.id}`,
               meta: d.description ? d.description.slice(0, 40) : undefined,
             })}
+            fetchSubItems={async (item) => {
+              const doc = await fetchDocument(String(item.id));
+              if (!doc?.sections) return [];
+              // Flatten all subjects + sort by updated_at DESC
+              const all: Array<{ title: string; updated_at: string; sectionId: string }> = [];
+              for (const sec of doc.sections) {
+                for (const sub of sec.subjects) {
+                  all.push({ title: sub.title, updated_at: sub.updated_at, sectionId: sec.id });
+                }
+              }
+              all.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+              return all.slice(0, 3).map<SubItem>(s => ({
+                label: s.title,
+                date: s.updated_at,
+                href: `/suivitess/${item.id}?section=${s.sectionId}`,
+              }));
+            }}
             seeAllHref="/suivitess"
+            createHref="/suivitess?create=1"
             createLabel="+ Nouvelle review"
             emptyMessage="Aucune review pour le moment."
             onNavigate={onNavigate}
@@ -105,7 +123,19 @@ export function Dashboard({ onNavigate }: Props) {
               href: `/roadmap/${p.id}`,
               meta: p.description || undefined,
             })}
+            fetchSubItems={async (item) => {
+              const tasks = await fetchTasks(String(item.id));
+              return tasks
+                .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
+                .slice(0, 3)
+                .map<SubItem>(t => ({
+                  label: t.name,
+                  date: t.updatedAt || t.createdAt,
+                  href: `/roadmap/${item.id}?task=${t.id}`,
+                }));
+            }}
             seeAllHref="/roadmap"
+            createHref="/roadmap?create=1"
             createLabel="+ Nouveau planning"
             emptyMessage="Aucune roadmap pour le moment."
             onNavigate={onNavigate}
@@ -126,7 +156,17 @@ export function Dashboard({ onNavigate }: Props) {
               href: `/delivery/${b.id}`,
               meta: b.boardType === 'agile' ? 'Agile' : 'Calendaire',
             })}
+            fetchSubItems={async (item) => {
+              const tasks = await fetchTasksForBoard(String(item.id));
+              return tasks
+                .slice(0, 3)
+                .map<SubItem>(t => ({
+                  label: t.title,
+                  href: `/delivery/${item.id}`,
+                }));
+            }}
             seeAllHref="/delivery"
+            createHref="/delivery?create=1"
             createLabel="+ Nouveau board"
             emptyMessage="Aucun board pour le moment."
             onNavigate={onNavigate}
@@ -148,6 +188,7 @@ export function Dashboard({ onNavigate }: Props) {
               meta: l.reason,
             })}
             seeAllHref="/conges"
+            createHref="/conges?create=1"
             createLabel="+ Poser un conge"
             emptyMessage="Aucun conge a venir."
             onNavigate={onNavigate}

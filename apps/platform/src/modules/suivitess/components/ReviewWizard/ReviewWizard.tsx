@@ -314,13 +314,25 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
     loadDocument();
   }, [docId]);
 
-  // Scroll to section when coming from Roadmap with ?section= param
+  // Scroll to section when coming from Roadmap with ?section= param.
+  // Retry several times because the DOM may take time to render after data load.
   useEffect(() => {
     if (!scrollToSectionId || sections.length === 0) return;
-    const el = document.querySelector(`[data-section-id="${scrollToSectionId}"]`);
-    if (el) {
-      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
-    }
+    let attempts = 0;
+    const tryScroll = () => {
+      const el = document.querySelector(`[data-section-id="${scrollToSectionId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Highlight briefly
+        (el as HTMLElement).style.transition = 'background-color 0.6s';
+        (el as HTMLElement).style.backgroundColor = 'rgba(102, 126, 234, 0.15)';
+        setTimeout(() => { (el as HTMLElement).style.backgroundColor = ''; }, 1500);
+        return;
+      }
+      attempts++;
+      if (attempts < 10) setTimeout(tryScroll, 200);
+    };
+    setTimeout(tryScroll, 100);
   }, [scrollToSectionId, sections]);
 
   const addToast = (toast: Omit<ToastData, 'id'>) => {

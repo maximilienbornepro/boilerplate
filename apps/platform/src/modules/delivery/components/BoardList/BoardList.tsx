@@ -113,6 +113,17 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
     loadBoards();
   }, []);
 
+  // Auto-open create modal if URL has ?create=1 (from Dashboard)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('create') === '1') {
+      setShowCreateForm(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('create');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
   const loadBoards = async () => {
     setLoading(true);
     try {

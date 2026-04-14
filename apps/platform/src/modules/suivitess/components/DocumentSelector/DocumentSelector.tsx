@@ -53,6 +53,17 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
     load();
   }, []);
 
+  // Auto-open create modal if URL has ?create=1 (from Dashboard)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('create') === '1') {
+      setShowCreateForm(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('create');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
   const handleCreateDocument = async () => {
     if (!newTitle.trim()) return;
 

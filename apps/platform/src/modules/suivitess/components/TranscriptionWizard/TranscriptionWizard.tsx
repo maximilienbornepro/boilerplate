@@ -403,12 +403,6 @@ export function TranscriptionWizard({ documentId, onClose, onDone }: Props) {
                 </>
               ) : <span className={styles.noAI}>Aucune IA configurée.</span>}
             </div>
-            <div className={styles.separator}>ou</div>
-            <div className={styles.importOption}>
-              <strong>Importer comme section</strong>
-              <span className={styles.importOptionDesc}>Transcription brute groupée par intervenant</span>
-              <Button variant="secondary" onClick={handleImportRaw} disabled={busy}>{importing ? 'Import...' : 'Import brut'}</Button>
-            </div>
             {connectedAI.length > 0 && (
               <>
                 <div className={styles.separator}>ou</div>
