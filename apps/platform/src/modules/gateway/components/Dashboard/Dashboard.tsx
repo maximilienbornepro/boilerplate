@@ -1,7 +1,6 @@
 import { useAuth } from '../../context/AuthContext';
 import { CreditBadge } from './CreditBadge';
 import { ModuleRecentBlock } from './ModuleRecentBlock';
-import { QuickActionsSection } from './QuickActionsSection';
 import { fetchDocuments } from '../../../suivitess/services/api';
 import { fetchPlannings } from '../../../roadmap/services/api';
 import { fetchBoards } from '../../../delivery/services/api';
@@ -86,6 +85,7 @@ export function Dashboard({ onNavigate }: Props) {
               meta: d.description ? d.description.slice(0, 40) : undefined,
             })}
             seeAllHref="/suivitess"
+            createLabel="+ Nouvelle review"
             emptyMessage="Aucune review pour le moment."
             onNavigate={onNavigate}
           />
@@ -106,6 +106,7 @@ export function Dashboard({ onNavigate }: Props) {
               meta: p.description || undefined,
             })}
             seeAllHref="/roadmap"
+            createLabel="+ Nouveau planning"
             emptyMessage="Aucune roadmap pour le moment."
             onNavigate={onNavigate}
           />
@@ -126,6 +127,7 @@ export function Dashboard({ onNavigate }: Props) {
               meta: b.boardType === 'agile' ? 'Agile' : 'Calendaire',
             })}
             seeAllHref="/delivery"
+            createLabel="+ Nouveau board"
             emptyMessage="Aucun board pour le moment."
             onNavigate={onNavigate}
           />
@@ -146,58 +148,12 @@ export function Dashboard({ onNavigate }: Props) {
               meta: l.reason,
             })}
             seeAllHref="/conges"
+            createLabel="+ Poser un conge"
             emptyMessage="Aucun conge a venir."
             onNavigate={onNavigate}
           />
         )}
       </div>
-
-      {/* === Quick actions === */}
-      <QuickActionsSection
-        onNavigate={onNavigate}
-        groups={[
-          ...(perms.has('suivitess') ? [{
-            appId: 'suivitess',
-            title: 'SuiviTess',
-            color: COLORS.suivitess,
-            icon: Icons.suivitess,
-            actions: [
-              { label: '+ Nouvelle review', href: '/suivitess', primary: true },
-              { label: 'Mes reviews', href: '/suivitess' },
-            ],
-          }] : []),
-          ...(perms.has('roadmap') ? [{
-            appId: 'roadmap',
-            title: 'Roadmap',
-            color: COLORS.roadmap,
-            icon: Icons.roadmap,
-            actions: [
-              { label: '+ Nouveau planning', href: '/roadmap', primary: true },
-              { label: 'Mes plannings', href: '/roadmap' },
-            ],
-          }] : []),
-          ...(perms.has('delivery') ? [{
-            appId: 'delivery',
-            title: 'Delivery',
-            color: COLORS.delivery,
-            icon: Icons.delivery,
-            actions: [
-              { label: '+ Nouveau board', href: '/delivery', primary: true },
-              { label: 'Mes boards', href: '/delivery' },
-            ],
-          }] : []),
-          ...(perms.has('conges') ? [{
-            appId: 'conges',
-            title: 'Conges',
-            color: COLORS.conges,
-            icon: Icons.conges,
-            actions: [
-              { label: '+ Poser un conge', href: '/conges', primary: true },
-              { label: 'Calendrier', href: '/conges' },
-            ],
-          }] : []),
-        ]}
-      />
     </div>
   );
 }

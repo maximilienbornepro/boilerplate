@@ -1,4 +1,4 @@
-import { APPS, Hero } from '@boilerplate/shared/components';
+import { APPS } from '@boilerplate/shared/components';
 import { useAuth } from '../context/AuthContext';
 import { Dashboard } from './Dashboard/Dashboard';
 
@@ -81,12 +81,7 @@ export function LandingPage({ onNavigate }: LandingPageProps = {}) {
 
   return (
     <div className="landing">
-      <Hero
-        title="Boilerplate"
-        subtitle="Plateforme de gestion avec authentification JWT et design system intégré"
-      />
-
-      {/* Dashboard: derniers elements + credits + raccourcis */}
+      {/* Dashboard: derniers elements + credits */}
       <Dashboard onNavigate={onNavigate} />
 
       {availableApps.length === 0 ? (

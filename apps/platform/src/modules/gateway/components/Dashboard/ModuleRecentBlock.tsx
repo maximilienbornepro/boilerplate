@@ -19,6 +19,10 @@ interface Props<T> {
   mapItem: (item: T) => Item;
   seeAllHref: string;
   emptyMessage?: string;
+  /** Label of the "create new" button shown next to "Voir tout" */
+  createLabel?: string;
+  /** Where the create button navigates (defaults to seeAllHref) */
+  createHref?: string;
   onNavigate?: (path: string) => void;
 }
 
@@ -30,6 +34,8 @@ export function ModuleRecentBlock<T>({
   mapItem,
   seeAllHref,
   emptyMessage = 'Aucun element pour le moment.',
+  createLabel,
+  createHref,
   onNavigate,
 }: Props<T>) {
   const [items, setItems] = useState<Item[] | null>(null);
@@ -58,11 +64,23 @@ export function ModuleRecentBlock<T>({
       <div className={styles.moduleHeader} style={{ borderColor: color }}>
         <span className={styles.moduleIcon} style={{ background: color, color: '#fff' }}>{icon}</span>
         <h3 className={styles.moduleTitle}>{title}</h3>
-        {total > 3 && (
-          <button className={styles.seeAllLink} onClick={() => navigate(seeAllHref)}>
-            Voir tout ({total}) →
-          </button>
-        )}
+        <div className={styles.moduleActions}>
+          {createLabel && (
+            <button
+              className={styles.createBtn}
+              onClick={() => navigate(createHref || seeAllHref)}
+              style={{ color, borderColor: color }}
+              title={createLabel}
+            >
+              {createLabel}
+            </button>
+          )}
+          {total > 3 && (
+            <button className={styles.seeAllLink} onClick={() => navigate(seeAllHref)}>
+              Voir tout ({total})
+            </button>
+          )}
+        </div>
       </div>
 
       <div className={styles.moduleBody}>

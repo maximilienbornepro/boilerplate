@@ -133,6 +133,29 @@
   color: var(--text-primary);
 }
 
+.moduleActions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.createBtn {
+  background: transparent;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: opacity var(--transition-normal);
+  white-space: nowrap;
+}
+
+.createBtn:hover {
+  opacity: 0.7;
+}
+
 .seeAllLink {
   background: transparent;
   border: none;
@@ -141,6 +164,7 @@
   font-size: var(--font-size-xs);
   cursor: pointer;
   padding: 0;
+  white-space: nowrap;
 }
 
 .seeAllLink:hover {
