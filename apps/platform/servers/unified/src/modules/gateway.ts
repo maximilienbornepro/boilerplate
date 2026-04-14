@@ -547,7 +547,7 @@ export function createGatewayRouter(): Router {
       scope: 'public_api',
       state,
     });
-    res.redirect(`https://app.fathom.ai/external/v1/oauth2/authorize?${params}`);
+    res.redirect(`https://fathom.video/external/v1/oauth2/authorize?${params}`);
   });
 
   router.get('/auth/fathom/callback', async (req: Request, res: Response) => {
@@ -559,7 +559,7 @@ export function createGatewayRouter(): Router {
 
     try {
       const { clientId, clientSecret, redirectUri } = config.fathom.oauth;
-      const tokenRes = await fetch('https://api.fathom.ai/external/v1/oauth2/token', {
+      const tokenRes = await fetch('https://fathom.video/external/v1/oauth2/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({

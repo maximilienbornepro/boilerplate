@@ -27,7 +27,7 @@ interface StoredToken {
 async function refreshFathomToken(stored: StoredToken): Promise<string | null> {
   if (!stored.refresh_token) return null;
   try {
-    const res = await fetch('https://api.fathom.ai/external/v1/oauth2/token', {
+    const res = await fetch('https://fathom.video/external/v1/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
