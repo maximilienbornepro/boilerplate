@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Tabs, FormField } from '@boilerplate/shared/components';
 import { fetchJiraProjects, fetchJiraSprints } from '../../../delivery/services/api';
 import type { JiraProject, JiraSprint } from '../../../delivery/services/api';
+import { recordJiraProjectUsage, sortJiraProjectsByUsage } from '../../../delivery/services/jiraProjectUsage';
 import styles from './TicketCreateModal.module.css';
 
 export type TargetService = 'jira' | 'notion' | 'roadmap';
@@ -120,7 +121,7 @@ export function TicketCreateModal({
     if (tab !== 'jira' || !jiraAvailable || jiraProjects.length > 0) return;
     setLoadingJira(true);
     fetchJiraProjects()
-      .then(setJiraProjects)
+      .then(projects => setJiraProjects(sortJiraProjectsByUsage(projects)))
       .catch(() => setError('Impossible de charger les projets Jira'))
       .finally(() => setLoadingJira(false));
   }, [tab, jiraAvailable, jiraProjects.length]);
@@ -236,6 +237,7 @@ export function TicketCreateModal({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Erreur ${res.status}`);
       }
+      if (tab === 'jira' && jiraProject) recordJiraProjectUsage(jiraProject);
       onCreated();
       onClose();
     } catch (err) {

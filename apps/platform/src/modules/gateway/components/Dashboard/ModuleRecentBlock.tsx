@@ -108,14 +108,16 @@ export function ModuleRecentBlock<T>({
               {createLabel}
             </button>
           )}
-          <button
-            className={styles.seeAllLink}
-            onClick={() => navigate(seeAllHref)}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = color; e.currentTarget.style.color = 'white'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
-          >
-            Voir tout
-          </button>
+          {items !== null && (
+            <button
+              className={styles.seeAllLink}
+              onClick={() => navigate(seeAllHref)}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = color; e.currentTarget.style.color = 'white'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
+            >
+              Voir tout
+            </button>
+          )}
         </div>
       </div>
 

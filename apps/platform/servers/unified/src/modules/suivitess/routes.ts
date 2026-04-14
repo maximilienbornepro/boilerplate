@@ -1875,6 +1875,16 @@ Reponds UNIQUEMENT avec un JSON valide :
     }
   }));
 
+  // PATCH /subjects/:subjectId/no-action — Mark a subject as "no action needed"
+  // so it is excluded from future AI ticket-analysis suggestions.
+  router.patch('/subjects/:subjectId/no-action', asyncHandler(async (req, res) => {
+    const { subjectId } = req.params;
+    const value = req.body?.noActionNeeded !== false;
+    const updated = await db.setSubjectNoActionNeeded(subjectId, value);
+    if (!updated) { res.status(404).json({ error: 'Sujet non trouve' }); return; }
+    res.json({ id: updated.id, noActionNeeded: !!updated.no_action_needed });
+  }));
+
   // POST /documents/:docId/analyze-subjects-for-tickets
   router.post('/documents/:docId/analyze-subjects-for-tickets', asyncHandler(async (req, res) => {
     const { docId } = req.params;
@@ -1885,10 +1895,11 @@ Reponds UNIQUEMENT avec un JSON valide :
     try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'ticket_analysis'); }
     catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Credits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
-    // Flatten all subjects
+    // Flatten all subjects — skip those explicitly flagged as not needing action
     const allSubjects: Array<{ id: string; title: string; situation: string | null; status: string; responsibility: string | null }> = [];
     for (const section of doc.sections) {
       for (const sub of section.subjects) {
+        if ((sub as { no_action_needed?: boolean }).no_action_needed) continue;
         allSubjects.push({
           id: sub.id,
           title: sub.title,

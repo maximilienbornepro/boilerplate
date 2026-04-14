@@ -81,6 +81,53 @@
   margin: var(--spacing-xs) 0;
 }
 
+.suivitess-exports-item--featured,
+.suivitess-exports-item--disabled {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 220px;
+}
+
+.suivitess-exports-item__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+  flex-shrink: 0;
+}
+
+.suivitess-exports-item--disabled .suivitess-exports-item__icon {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.suivitess-exports-item__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  text-align: left;
+  flex: 1;
+}
+
+.suivitess-exports-item__hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.suivitess-exports-item__hint--cta {
+  color: var(--accent-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.suivitess-exports-item--disabled:hover .suivitess-exports-item__hint--cta {
+  text-decoration: underline;
+}
+
 /* AI picker — same height/style as .module-header-btn */
 .suivitess-ai-picker {
   display: inline-flex;

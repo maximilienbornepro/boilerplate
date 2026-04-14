@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button } from '@boilerplate/shared/components';
 import { fetchJiraProjects, fetchJiraSprints } from '../../../delivery/services/api';
 import type { JiraProject, JiraSprint } from '../../../delivery/services/api';
+import { recordJiraProjectUsage, sortJiraProjectsByUsage } from '../../../delivery/services/jiraProjectUsage';
 import styles from './SubjectAnalysisModal.module.css';
 
 interface Suggestion {
@@ -121,7 +122,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
       const isJiraAvail = connectors.some(c => c.service === 'jira' && c.isActive) || jiraStatus.connected;
       setJiraAvailable(isJiraAvail);
       if (isJiraAvail) {
-        fetchJiraProjects().then(setJiraProjects).catch(() => {});
+        fetchJiraProjects().then(projects => setJiraProjects(sortJiraProjectsByUsage(projects))).catch(() => {});
       }
     });
 
@@ -137,6 +138,23 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
     setSelectedIds(prev => {
       const n = new Set(prev);
       if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const markNoActionNeeded = async (subjectId: string) => {
+    try {
+      await fetch(`${API_BASE}/subjects/${subjectId}/no-action`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ noActionNeeded: true }),
+      });
+    } catch { /* silent — removal from list is still useful */ }
+    setSuggestions(prev => prev.filter(s => s.subjectId !== subjectId));
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      n.delete(subjectId);
       return n;
     });
   };
@@ -254,6 +272,7 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
           } else {
             const data = await res.json();
             updateConfig(t.subjectId, { jiraResult: { success: true, key: data.link?.externalId } });
+            if (c.jiraProject) recordJiraProjectUsage(c.jiraProject);
           }
         } else {
           const res = await fetch(`${API_BASE}/subjects/${t.subjectId}/create-roadmap-task`, {
@@ -311,18 +330,28 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
                 </p>
                 <div className={styles.list}>
                   {suggestions.map(s => (
-                    <label key={s.subjectId} className={styles.item}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(s.subjectId)}
-                        onChange={() => toggle(s.subjectId)}
-                      />
-                      <div className={styles.itemContent}>
-                        <div className={styles.itemTitle}>{s.subjectTitle}</div>
-                        <p className={styles.reason}>{s.reason}</p>
-                        <p className={styles.suggested}>→ Suggéré : <strong>{s.suggestedTitle}</strong></p>
-                      </div>
-                    </label>
+                    <div key={s.subjectId} className={styles.item}>
+                      <label className={styles.itemLabel}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(s.subjectId)}
+                          onChange={() => toggle(s.subjectId)}
+                        />
+                        <div className={styles.itemContent}>
+                          <div className={styles.itemTitle}>{s.subjectTitle}</div>
+                          <p className={styles.reason}>{s.reason}</p>
+                          <p className={styles.suggested}>→ Suggéré : <strong>{s.suggestedTitle}</strong></p>
+                        </div>
+                      </label>
+                      <button
+                        type="button"
+                        className={styles.noActionBtn}
+                        onClick={() => markNoActionNeeded(s.subjectId)}
+                        title="Marquer comme sans suite — ce sujet ne sera plus proposé dans les prochaines analyses IA"
+                      >
+                        Sans suite
+                      </button>
+                    </div>
                   ))}
                 </div>
                 <div className={styles.actions}>
