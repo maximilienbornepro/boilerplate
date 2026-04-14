@@ -127,7 +127,125 @@ export async function initDb(): Promise<void> {
     }
   } catch { /* sharing table may not exist yet */ }
 
+  // Subject external links table (Jira, Notion, Roadmap)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS subject_external_links (
+        id SERIAL PRIMARY KEY,
+        subject_id UUID NOT NULL REFERENCES suivitess_subjects(id) ON DELETE CASCADE,
+        service VARCHAR(20) NOT NULL,
+        external_id VARCHAR(200) NOT NULL,
+        external_url TEXT NOT NULL,
+        external_title TEXT,
+        external_status TEXT,
+        metadata JSONB,
+        created_by INTEGER REFERENCES users(id),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(subject_id, service, external_id)
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_sel_subject ON subject_external_links(subject_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_sel_service ON subject_external_links(service, external_id)');
+  } catch (err) {
+    console.warn('[SuiVitess] subject_external_links migration failed:', (err as Error).message);
+  }
+
   console.log('[SuiVitess] Module initialized');
+}
+
+// ==================== SUBJECT EXTERNAL LINKS ====================
+
+export interface ExternalLink {
+  id: number;
+  subjectId: string;
+  service: 'jira' | 'notion' | 'roadmap';
+  externalId: string;
+  externalUrl: string;
+  externalTitle: string | null;
+  externalStatus: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function formatLink(row: Record<string, unknown>): ExternalLink {
+  return {
+    id: row.id as number,
+    subjectId: row.subject_id as string,
+    service: row.service as 'jira' | 'notion' | 'roadmap',
+    externalId: row.external_id as string,
+    externalUrl: row.external_url as string,
+    externalTitle: row.external_title as string | null,
+    externalStatus: row.external_status as string | null,
+    metadata: row.metadata as Record<string, unknown> | null,
+    createdAt: (row.created_at as Date).toISOString(),
+    updatedAt: (row.updated_at as Date).toISOString(),
+  };
+}
+
+export async function getSubjectLinks(subjectId: string): Promise<ExternalLink[]> {
+  const { rows } = await pool.query(
+    'SELECT * FROM subject_external_links WHERE subject_id = $1 ORDER BY created_at DESC',
+    [subjectId]
+  );
+  return rows.map(formatLink);
+}
+
+export async function createSubjectLink(
+  subjectId: string,
+  service: 'jira' | 'notion' | 'roadmap',
+  externalId: string,
+  externalUrl: string,
+  externalTitle: string | null,
+  externalStatus: string | null,
+  metadata: Record<string, unknown> | null,
+  createdBy: number,
+): Promise<ExternalLink> {
+  const { rows } = await pool.query(
+    `INSERT INTO subject_external_links
+     (subject_id, service, external_id, external_url, external_title, external_status, metadata, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (subject_id, service, external_id) DO UPDATE SET
+       external_url = EXCLUDED.external_url,
+       external_title = EXCLUDED.external_title,
+       external_status = EXCLUDED.external_status,
+       metadata = EXCLUDED.metadata,
+       updated_at = NOW()
+     RETURNING *`,
+    [subjectId, service, externalId, externalUrl, externalTitle, externalStatus, metadata ? JSON.stringify(metadata) : null, createdBy]
+  );
+  return formatLink(rows[0]);
+}
+
+export async function deleteSubjectLink(linkId: number): Promise<boolean> {
+  const { rowCount } = await pool.query('DELETE FROM subject_external_links WHERE id = $1', [linkId]);
+  return (rowCount ?? 0) > 0;
+}
+
+export async function getSubjectsLinkedToTask(
+  service: 'jira' | 'notion' | 'roadmap',
+  externalId: string,
+): Promise<Array<{ subjectId: string; subjectTitle: string; documentId: string; documentTitle: string; sectionName: string }>> {
+  const { rows } = await pool.query(
+    `SELECT s.id AS subject_id, s.title AS subject_title,
+            d.id AS document_id, d.title AS document_title,
+            sec.name AS section_name
+     FROM subject_external_links sel
+     JOIN suivitess_subjects s ON s.id = sel.subject_id
+     JOIN suivitess_sections sec ON sec.id = s.section_id
+     JOIN suivitess_documents d ON d.id = sec.document_id
+     WHERE sel.service = $1 AND sel.external_id = $2
+     ORDER BY d.title, sec.position, s.position`,
+    [service, externalId]
+  );
+  return rows.map((r: Record<string, unknown>) => ({
+    subjectId: r.subject_id as string,
+    subjectTitle: r.subject_title as string,
+    documentId: r.document_id as string,
+    documentTitle: r.document_title as string,
+    sectionName: r.section_name as string,
+  }));
 }
 
 // ==================== HELPERS ====================

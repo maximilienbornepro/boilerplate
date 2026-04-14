@@ -3,7 +3,29 @@ import type { Subject } from '../../types';
 import { STATUS_OPTIONS, getStatusOption } from '../../types';
 import { updateSubject } from '../../services/api';
 import { EmailPreviewModal } from '../EmailPreviewModal/EmailPreviewModal';
+import { TicketCreateModal } from '../TicketCreateModal/TicketCreateModal';
 import styles from './SubjectReview.module.css';
+
+interface ExternalLink {
+  id: number;
+  service: 'jira' | 'notion' | 'roadmap';
+  externalId: string;
+  externalUrl: string;
+  externalTitle: string | null;
+  externalStatus: string | null;
+}
+
+const SERVICE_COLORS: Record<string, string> = {
+  jira: '#0052CC',
+  notion: '#000000',
+  roadmap: '#8b5cf6',
+};
+
+const SERVICE_LABELS: Record<string, string> = {
+  jira: 'Jira',
+  notion: 'Notion',
+  roadmap: 'Roadmap',
+};
 
 interface Props {
   subject: Subject;
@@ -62,6 +84,28 @@ export function SubjectReview({
   const [focusLineIndex, setFocusLineIndex] = useState<number | null>(null);
   const [reformulating, setReformulating] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [showTicketModal, setShowTicketModal] = useState(false);
+  const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
+
+  const loadLinks = useCallback(async () => {
+    try {
+      const res = await fetch(`/suivitess-api/subjects/${subject.id}/external-links`, { credentials: 'include' });
+      if (res.ok) setExternalLinks(await res.json());
+    } catch { /* ignore */ }
+  }, [subject.id]);
+
+  useEffect(() => {
+    loadLinks();
+  }, [loadLinks]);
+
+  const handleDeleteLink = async (linkId: number) => {
+    try {
+      await fetch(`/suivitess-api/subjects/${subject.id}/external-links/${linkId}`, {
+        method: 'DELETE', credentials: 'include',
+      });
+      setExternalLinks(prev => prev.filter(l => l.id !== linkId));
+    } catch { /* ignore */ }
+  };
 
   const handleReformulate = async () => {
     setReformulating(true);
@@ -584,6 +628,17 @@ export function SubjectReview({
             </svg>
           </button>
 
+          <button
+            className={styles.actionBtn}
+            onClick={() => setShowTicketModal(true)}
+            title="Creer un ticket lie a ce sujet (Jira / Notion / Roadmap)"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+              <line x1="7" y1="7" x2="7.01" y2="7" />
+            </svg>
+          </button>
+
           {onDelete && (
             <button
               className="shared-card__delete-btn"
@@ -839,6 +894,29 @@ export function SubjectReview({
           )}
         </div>
 
+        {/* External links badges (Jira / Notion / Roadmap) */}
+        {externalLinks.length > 0 && (
+          <div className={styles.linksRow}>
+            {externalLinks.map(link => (
+              <span key={link.id} className={styles.linkBadge} style={{ borderColor: SERVICE_COLORS[link.service] }}>
+                <a
+                  href={link.externalUrl}
+                  target={link.service === 'roadmap' ? '_self' : '_blank'}
+                  rel="noopener noreferrer"
+                  style={{ color: SERVICE_COLORS[link.service] }}
+                >
+                  <strong>{SERVICE_LABELS[link.service]}</strong> {link.service === 'jira' ? link.externalId : link.externalTitle || ''}
+                </a>
+                <button
+                  type="button"
+                  className={styles.linkRemove}
+                  onClick={() => handleDeleteLink(link.id)}
+                  title="Retirer ce lien (n'efface pas l'element distant)"
+                >×</button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {!compact && (
@@ -860,6 +938,15 @@ export function SubjectReview({
           documentId={documentId}
           subjectId={subject.id}
           onClose={() => setShowEmailPreview(false)}
+        />
+      )}
+      {showTicketModal && (
+        <TicketCreateModal
+          subjectId={subject.id}
+          subjectTitle={subject.title}
+          subjectSituation={subject.situation}
+          onClose={() => setShowTicketModal(false)}
+          onCreated={loadLinks}
         />
       )}
     </div>

@@ -256,6 +256,19 @@ export function createConnectorsRoutes(): Router {
           details: err instanceof Error ? err.message : 'Erreur inconnue',
         });
       }
+    } else if (service === 'notion') {
+      try {
+        const { listNotionDatabases } = await import('../suivitess/notionService.js');
+        const dbs = await listNotionDatabases(userId);
+        await db.markConnectorTested(userId, service, true);
+        res.json({ success: true, message: `${dbs.length} database${dbs.length > 1 ? 's' : ''} accessible${dbs.length > 1 ? 's' : ''}` });
+      } catch (err) {
+        await db.markConnectorTested(userId, service, false);
+        res.status(400).json({
+          error: 'Echec de connexion Notion',
+          details: err instanceof Error ? err.message : 'Erreur inconnue',
+        });
+      }
     } else {
       res.status(400).json({ error: `Test non disponible pour le service: ${service}` });
     }

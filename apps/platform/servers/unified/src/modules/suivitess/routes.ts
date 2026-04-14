@@ -1576,5 +1576,245 @@ Reponds UNIQUEMENT avec un JSON valide :
     res.json({ proposals: proposals.map((p, i) => ({ ...p, id: i })), skipped });
   }));
 
+  // ==================== SUBJECT EXTERNAL LINKS (Jira/Notion/Roadmap) ====================
+
+  // GET /subjects/:subjectId/external-links
+  router.get('/subjects/:subjectId/external-links', asyncHandler(async (req, res) => {
+    const links = await db.getSubjectLinks(req.params.subjectId);
+    res.json(links);
+  }));
+
+  // DELETE /subjects/:subjectId/external-links/:linkId
+  router.delete('/subjects/:subjectId/external-links/:linkId', asyncHandler(async (req, res) => {
+    const linkId = parseInt(req.params.linkId);
+    const ok = await db.deleteSubjectLink(linkId);
+    if (!ok) { res.status(404).json({ error: 'Lien non trouve' }); return; }
+    res.json({ success: true });
+  }));
+
+  // POST /subjects/:subjectId/create-jira-ticket
+  router.post('/subjects/:subjectId/create-jira-ticket', asyncHandler(async (req, res) => {
+    const { subjectId } = req.params;
+    const { projectKey, sprintId, issueType, summary, description, storyPoints } = req.body as {
+      projectKey: string;
+      sprintId?: string;
+      issueType: string;
+      summary: string;
+      description?: string;
+      storyPoints?: number;
+    };
+
+    if (!projectKey || !summary || !issueType) {
+      res.status(400).json({ error: 'projectKey, summary et issueType requis' });
+      return;
+    }
+
+    // Credit check
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'create_ticket'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Credits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
+    // Get Jira context
+    const { getJiraContext } = await import('../jiraAuth.js');
+    const ctx = await getJiraContext(req.user!.id);
+    if (!ctx) { res.status(400).json({ error: 'Jira non connecte' }); return; }
+
+    // Build Jira issue payload (description as ADF)
+    const descADF = {
+      type: 'doc',
+      version: 1,
+      content: description
+        ? description.split('\n\n').filter(p => p.trim()).map(p => ({
+            type: 'paragraph',
+            content: [{ type: 'text', text: p }],
+          }))
+        : [],
+    };
+    const fields: Record<string, unknown> = {
+      project: { key: projectKey },
+      summary: summary.slice(0, 255),
+      issuetype: { name: issueType },
+      description: descADF,
+    };
+    if (typeof storyPoints === 'number') fields.customfield_10016 = storyPoints;
+
+    try {
+      const createRes = await fetch(`${ctx.baseUrl}/rest/api/3/issue`, {
+        method: 'POST',
+        headers: ctx.headers,
+        body: JSON.stringify({ fields }),
+      });
+      if (!createRes.ok) {
+        const errText = await createRes.text();
+        console.error('[Jira create] error:', errText);
+        res.status(500).json({ error: `Creation Jira echouee: ${createRes.status}` });
+        return;
+      }
+      const created = await createRes.json() as { id: string; key: string; self: string };
+
+      // Add to sprint if specified
+      if (sprintId) {
+        try {
+          await fetch(`${ctx.baseUrl}/rest/agile/1.0/sprint/${sprintId}/issue`, {
+            method: 'POST',
+            headers: ctx.headers,
+            body: JSON.stringify({ issues: [created.key] }),
+          });
+        } catch (err) {
+          console.warn('[Jira create] Sprint assignment failed (non-fatal):', err);
+        }
+      }
+
+      // Build external URL (site URL if available)
+      let siteUrl = '';
+      if (ctx.isOAuth) {
+        const { rows } = await db.pool.query('SELECT site_url FROM jira_tokens WHERE user_id = $1', [req.user!.id]);
+        siteUrl = rows[0]?.site_url || '';
+      } else {
+        const { rows } = await db.pool.query(`SELECT config FROM user_connectors WHERE user_id = $1 AND service = 'jira'`, [req.user!.id]);
+        const cfg = rows[0]?.config as { baseUrl?: string } | undefined;
+        siteUrl = cfg?.baseUrl || '';
+      }
+      const externalUrl = siteUrl ? `${siteUrl.replace(/\/$/, '')}/browse/${created.key}` : created.self;
+
+      // Store link
+      const link = await db.createSubjectLink(
+        subjectId,
+        'jira',
+        created.key,
+        externalUrl,
+        summary,
+        issueType,
+        { projectKey, sprintId: sprintId || null, issueType },
+        req.user!.id,
+      );
+      res.json({ success: true, link });
+    } catch (err) {
+      console.error('[Jira create] exception:', err);
+      res.status(500).json({ error: (err as Error).message || 'Erreur creation Jira' });
+    }
+  }));
+
+  // POST /subjects/:subjectId/create-notion-page
+  router.post('/subjects/:subjectId/create-notion-page', asyncHandler(async (req, res) => {
+    const { subjectId } = req.params;
+    const { databaseId, title, content } = req.body as { databaseId: string; title: string; content?: string };
+
+    if (!databaseId || !title) {
+      res.status(400).json({ error: 'databaseId et title requis' });
+      return;
+    }
+
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'create_ticket'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Credits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
+    try {
+      const { createNotionPage } = await import('./notionService.js');
+      const page = await createNotionPage(req.user!.id, databaseId, title, content || '');
+      const link = await db.createSubjectLink(
+        subjectId,
+        'notion',
+        page.id,
+        page.url,
+        title,
+        null,
+        { databaseId },
+        req.user!.id,
+      );
+      res.json({ success: true, link });
+    } catch (err) {
+      console.error('[Notion create] exception:', err);
+      res.status(500).json({ error: (err as Error).message || 'Erreur creation Notion' });
+    }
+  }));
+
+  // GET /notion/databases — list Notion databases (for the modal dropdown)
+  router.get('/notion/databases', asyncHandler(async (req, res) => {
+    try {
+      const { listNotionDatabases } = await import('./notionService.js');
+      const dbs = await listNotionDatabases(req.user!.id);
+      res.json(dbs);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message || 'Notion non disponible' });
+    }
+  }));
+
+  // POST /subjects/:subjectId/create-roadmap-task
+  router.post('/subjects/:subjectId/create-roadmap-task', asyncHandler(async (req, res) => {
+    const { subjectId } = req.params;
+    const { planningId, title, startDate, endDate, color, description } = req.body as {
+      planningId: string; title: string; startDate: string; endDate: string; color?: string; description?: string;
+    };
+
+    if (!planningId || !title || !startDate || !endDate) {
+      res.status(400).json({ error: 'planningId, title, startDate, endDate requis' });
+      return;
+    }
+
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'create_ticket'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Credits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
+    try {
+      const roadmapDb = await import('../roadmap/dbService.js');
+      const task = await roadmapDb.createTask(planningId, title, startDate, endDate, { description, color });
+      const externalUrl = `/roadmap/${planningId}?task=${task.id}`;
+      const link = await db.createSubjectLink(
+        subjectId,
+        'roadmap',
+        task.id,
+        externalUrl,
+        title,
+        null,
+        { planningId, startDate, endDate },
+        req.user!.id,
+      );
+      res.json({ success: true, link, task });
+    } catch (err) {
+      console.error('[Roadmap create] exception:', err);
+      res.status(500).json({ error: (err as Error).message || 'Erreur creation Roadmap' });
+    }
+  }));
+
+  // POST /documents/:docId/analyze-subjects-for-tickets
+  router.post('/documents/:docId/analyze-subjects-for-tickets', asyncHandler(async (req, res) => {
+    const { docId } = req.params;
+    const doc = await db.getDocumentWithSections(docId);
+    if (!doc) { res.status(404).json({ error: 'Document non trouve' }); return; }
+
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'ticket_analysis'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Credits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
+    // Flatten all subjects
+    const allSubjects: Array<{ id: string; title: string; situation: string | null; status: string; responsibility: string | null }> = [];
+    for (const section of doc.sections) {
+      for (const sub of section.subjects) {
+        allSubjects.push({
+          id: sub.id,
+          title: sub.title,
+          situation: sub.situation,
+          status: sub.status,
+          responsibility: sub.responsibility,
+        });
+      }
+    }
+
+    if (allSubjects.length === 0) {
+      res.json({ suggestions: [] });
+      return;
+    }
+
+    try {
+      const { analyzeSubjectsForTickets } = await import('./ticketAnalysisService.js');
+      const suggestions = await analyzeSubjectsForTickets(req.user!.id, allSubjects);
+      res.json({ suggestions });
+    } catch (err) {
+      console.error('[Ticket analysis] error:', err);
+      res.status(500).json({ error: (err as Error).message || 'Analyse echouee' });
+    }
+  }));
+
   return router;
 }

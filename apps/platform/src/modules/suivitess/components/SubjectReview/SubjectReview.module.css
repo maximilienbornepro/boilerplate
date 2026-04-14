@@ -715,6 +715,48 @@
   margin-bottom: var(--spacing-sm);
 }
 
+/* External links badges */
+.linksRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-sm);
+}
+
+.linkBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 8px;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  background: var(--bg-secondary);
+}
+
+.linkBadge a {
+  text-decoration: none;
+}
+
+.linkBadge a:hover {
+  text-decoration: underline;
+}
+
+.linkRemove {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.linkRemove:hover {
+  color: var(--color-error);
+}
+
 /* Actions */
 .actions {
   display: flex;

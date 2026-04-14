@@ -9,6 +9,7 @@ import { RecorderBar } from './components/RecorderBar/RecorderBar';
 import { SuggestionsPanel } from './components/SuggestionsPanel/SuggestionsPanel';
 import { TranscriptionWizard } from './components/TranscriptionWizard/TranscriptionWizard';
 import { EmailPreviewModal } from './components/EmailPreviewModal/EmailPreviewModal';
+import { SubjectAnalysisModal } from './components/SubjectAnalysisModal/SubjectAnalysisModal';
 
 function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void }) {
   const { docId } = useParams<{ docId: string }>();
@@ -24,6 +25,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showTranscriptionWizard, setShowTranscriptionWizard] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedAI, setSelectedAI] = useState('');
   const [connectedAIs, setConnectedAIs] = useState<Array<{ id: string; label: string }>>([]);
@@ -109,6 +111,13 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           title="Importer et analyser une transcription (Fathom, Otter...)"
         >
           Transcription
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={() => setShowAnalysis(true)}
+          title="Analyser les sujets et proposer la creation de tickets (Jira/Notion/Roadmap)"
+        >
+          Analyser
         </button>
         {connectedAIs.length > 0 && (
           <select
@@ -238,6 +247,13 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           documentId={docId}
           onClose={() => setShowTranscriptionWizard(false)}
           onDone={() => setRefreshKey(k => k + 1)}
+        />
+      )}
+      {showAnalysis && docId && (
+        <SubjectAnalysisModal
+          documentId={docId}
+          onClose={() => setShowAnalysis(false)}
+          onDone={() => { setRefreshKey(k => k + 1); setShowAnalysis(false); }}
         />
       )}
     </Layout>

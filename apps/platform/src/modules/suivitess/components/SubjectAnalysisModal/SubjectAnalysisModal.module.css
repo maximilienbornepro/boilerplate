@@ -1,0 +1,110 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  min-width: 520px;
+  max-width: 720px;
+}
+
+.loading, .empty {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  margin: 0;
+  padding: var(--spacing-md);
+  text-align: center;
+}
+
+.error {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+.intro {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition-normal);
+}
+
+.item:hover {
+  border-color: var(--accent-primary);
+}
+
+.item.processed {
+  opacity: 0.5;
+}
+
+.itemContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.itemHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.itemTitle {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.check {
+  color: var(--color-success);
+  font-weight: bold;
+  font-size: var(--font-size-base);
+}
+
+.reason {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: 0;
+  font-style: italic;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}

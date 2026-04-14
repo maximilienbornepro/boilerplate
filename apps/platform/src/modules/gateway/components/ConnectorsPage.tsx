@@ -132,10 +132,10 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'notion',
         name: 'Notion',
-        description: 'Synchroniser vos pages et bases de donnees Notion',
+        description: 'Creer des pages Notion depuis vos sujets SuiviTess',
         color: '#000000',
         icon: <NotionIcon />,
-        enabled: false,
+        enabled: true,
       },
       {
         id: 'clickup',
@@ -782,6 +782,10 @@ AI_FIELDS['otter'] = [
   { key: 'baseUrl', label: 'URL de base', type: 'text', placeholder: 'https://api.otter.ai/v1', hint: 'Laissez vide pour l\'URL par defaut' },
 ];
 
+AI_FIELDS['notion'] = [
+  { key: 'apiKey', label: 'Token d\'integration Notion', type: 'password', required: true, placeholder: 'secret_...', hint: 'Creer une integration sur https://www.notion.so/profile/integrations puis partager les databases avec elle' },
+];
+
 // ==================== Generic AI Form ====================
 
 function AIProviderForm({
@@ -1196,7 +1200,7 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
               if (EMAIL_SERVICE_IDS.has(service.id)) {
                 return <EmailOAuthCard key={service.id} service={service} />;
               }
-              if (AI_SERVICE_IDS.has(service.id) || service.id === 'fathom' || service.id === 'otter') {
+              if (AI_SERVICE_IDS.has(service.id) || service.id === 'fathom' || service.id === 'otter' || service.id === 'notion') {
                 if (!service.enabled) return <ConnectorCardDisabled key={service.id} service={service} />;
                 return (
                   <AIProviderCard

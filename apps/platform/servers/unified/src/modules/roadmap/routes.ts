@@ -361,5 +361,12 @@ Si aucun sujet n'est pertinent, retourne [].`,
     res.json(overlay);
   }));
 
+  // Reverse view: SuiviTess subjects linked to a roadmap task
+  router.get('/tasks/:taskId/suivitess-links', asyncHandler(async (req, res) => {
+    const { getSubjectsLinkedToTask } = await import('../suivitess/dbService.js');
+    const subjects = await getSubjectsLinkedToTask('roadmap', req.params.taskId);
+    res.json(subjects);
+  }));
+
   return router;
 }
