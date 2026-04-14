@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "predev": "node -e \"const s=require('net').createServer();s.once('error',()=>{process.exit(0)});s.listen(3010,()=>{s.close()})\" 2>/dev/null || pkill -f 'tsx.*unified.*index' 2>/dev/null || true",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "build": "tsc"
