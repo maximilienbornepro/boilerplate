@@ -1759,6 +1759,8 @@ Reponds UNIQUEMENT avec un JSON valide :
     try {
       const roadmapDb = await import('../roadmap/dbService.js');
       const task = await roadmapDb.createTask(planningId, title, startDate, endDate, { description, color });
+      // Also create the bidirectional link via roadmap_task_subjects so the existing SubjectsPanel shows it
+      try { await roadmapDb.linkSubject(task.id, subjectId); } catch { /* table may not exist or already linked */ }
       const externalUrl = `/roadmap/${planningId}?task=${task.id}`;
       const link = await db.createSubjectLink(
         subjectId,
