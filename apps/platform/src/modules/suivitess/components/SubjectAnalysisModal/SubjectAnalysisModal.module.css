@@ -2,8 +2,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
-  min-width: 520px;
-  max-width: 720px;
+  width: min(1000px, 90vw);
+  max-height: calc(90vh - 100px);
+  overflow-y: auto;
 }
 
 .loading, .empty {
@@ -19,19 +20,24 @@
   color: var(--color-error);
   font-size: var(--font-size-sm);
   margin: 0;
+  padding: var(--spacing-sm);
+  background: rgba(220, 38, 38, 0.1);
+  border-radius: var(--radius-md);
 }
 
 .intro {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  margin: 0;
+  margin: 0 0 var(--spacing-sm);
 }
+
+/* === Step 1: List === */
 
 .list {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  max-height: 420px;
+  max-height: 60vh;
   overflow-y: auto;
 }
 
@@ -39,7 +45,7 @@
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-md);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -50,10 +56,6 @@
   border-color: var(--accent-primary);
 }
 
-.item.processed {
-  opacity: 0.5;
-}
-
 .itemContent {
   flex: 1;
   min-width: 0;
@@ -62,37 +64,10 @@
   gap: 4px;
 }
 
-.itemHeader {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
 .itemTitle {
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   font-size: var(--font-size-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  color: #fff;
-  font-size: var(--font-size-xs);
-  font-family: var(--font-mono);
-  font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
-}
-
-.check {
-  color: var(--color-success);
-  font-weight: bold;
-  font-size: var(--font-size-base);
 }
 
 .reason {
@@ -102,9 +77,194 @@
   font-style: italic;
 }
 
+.suggested {
+  font-size: var(--font-size-xs);
+  color: var(--accent-primary);
+  margin: 0;
+}
+
+/* === Step 2: Configure === */
+
+.subjectList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: var(--spacing-xs);
+}
+
+.subjectCard {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  background: var(--bg-secondary);
+}
+
+.subjectHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+
+.subjectName {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: var(--spacing-xs) var(--spacing-sm);
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: var(--spacing-sm);
+  align-items: center;
+  margin-bottom: var(--spacing-xs);
+}
+
+.dateRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+}
+
+.fieldLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fieldInput {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.fieldInput:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.serviceCard {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  background: var(--bg-primary);
+  transition: border-color var(--transition-normal);
+}
+
+.serviceCardActive {
+  border-color: var(--accent-primary);
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.serviceToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.serviceLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.badgeJira {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #0052CC;
+  color: white;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.badgeRoadmap {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #8b5cf6;
+  color: white;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.serviceForm {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px dashed var(--border-color);
+}
+
+/* === Step 3: Result === */
+
+.resultList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.resultCard {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm);
+}
+
+.resultTitle {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.resultRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  padding: 4px 0;
+}
+
+.resultOk {
+  color: var(--color-success);
+}
+
+.resultErr {
+  color: var(--color-error);
+}
+
+/* === Actions === */
+
 .actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-sm);
-  margin-top: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
 }

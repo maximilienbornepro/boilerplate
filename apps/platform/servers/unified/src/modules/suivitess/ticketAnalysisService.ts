@@ -6,7 +6,6 @@ export interface TicketSuggestion {
   subjectId: string;
   subjectTitle: string;
   needsAction: boolean;
-  suggestedService: 'jira' | 'notion' | 'roadmap' | null;
   reason: string;
   suggestedTitle: string;
   suggestedDescription: string;
@@ -37,13 +36,12 @@ export async function analyzeSubjectsForTickets(
     max_tokens: 4096,
     messages: [{
       role: 'user',
-      content: `Tu es un assistant de gestion de projet. Analyse ces sujets de suivi de reunion et determine pour chacun s'il necessite la creation d'un ticket externe.
+      content: `Tu es un assistant de gestion de projet. Analyse ces sujets de suivi de reunion et determine pour chacun s'il necessite une action concrete (ticket, planning, etc.).
 
-## Regles de decision
-- **Jira** : bug technique, feature a developper, tache d'ingenierie, probleme technique a tracer
-- **Notion** : documentation a creer, reference a stocker, note a partager, knowledge base
-- **Roadmap** : milestone, livrable avec echeance, jalon projet, planning strategique
-- **null** : sujet informatif, deja traite (statut terminé), trop vague, pas d'action concrete
+## Regle
+Identifie les sujets qui necessitent une action concrete a tracker (bug, feature, tache, livrable, milestone, etc.). Ignore les sujets purement informatifs, deja terminés, ou trop vagues.
+
+L'utilisateur decidera lui-meme dans quel outil le tracker (Jira, Roadmap, etc.) — tu n'as pas a le suggerer.
 
 ## Sujets a analyser
 ${subjectsList}
@@ -54,15 +52,14 @@ ${subjectsList}
     {
       "subjectId": "uuid",
       "needsAction": true,
-      "suggestedService": "jira",
-      "reason": "Bug technique a corriger en priorite",
-      "suggestedTitle": "Titre clair pour le ticket",
+      "reason": "Pourquoi ce sujet necessite une action",
+      "suggestedTitle": "Titre clair, concis, actionnable",
       "suggestedDescription": "Description detaillee reprenant la situation"
     }
   ]
 }
 
-Ne retourne que les sujets necessitant une action (ignore les sujets terminés ou trop vagues). Maximum 10 suggestions.`,
+Ne retourne que les sujets necessitant une action. Maximum 15 suggestions.`,
     }],
   });
 
@@ -70,7 +67,6 @@ Ne retourne que les sujets necessitant une action (ignore les sujets terminés o
   let suggestions: Array<{
     subjectId: string;
     needsAction?: boolean;
-    suggestedService?: 'jira' | 'notion' | 'roadmap' | null;
     reason?: string;
     suggestedTitle?: string;
     suggestedDescription?: string;
@@ -88,12 +84,11 @@ Ne retourne que les sujets necessitant une action (ignore les sujets terminés o
   // Enrich with subject title from input
   const subjectMap = new Map(subjects.map(s => [s.id, s.title]));
   return suggestions
-    .filter(s => s.needsAction && s.suggestedService)
+    .filter(s => s.needsAction)
     .map(s => ({
       subjectId: s.subjectId,
       subjectTitle: subjectMap.get(s.subjectId) || '',
       needsAction: true,
-      suggestedService: s.suggestedService ?? null,
       reason: s.reason || '',
       suggestedTitle: s.suggestedTitle || subjectMap.get(s.subjectId) || '',
       suggestedDescription: s.suggestedDescription || '',

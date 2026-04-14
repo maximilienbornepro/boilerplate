@@ -246,13 +246,13 @@ export function TicketCreateModal({
   };
 
   const tabs = [
-    { value: 'jira' as const, label: `Jira${jiraAvailable ? '' : ' (non connecte)'}` },
-    { value: 'notion' as const, label: `Notion${notionAvailable ? '' : ' (non connecte)'}` },
+    ...(jiraAvailable ? [{ value: 'jira' as const, label: 'Jira' }] : []),
+    ...(notionAvailable ? [{ value: 'notion' as const, label: 'Notion' }] : []),
     { value: 'roadmap' as const, label: 'Roadmap' },
   ];
 
   return (
-    <Modal title="Creer un element lie" onClose={onClose}>
+    <Modal title="Creer un element lie" onClose={onClose} size="md">
       <div className={styles.content}>
         <Tabs tabs={tabs} value={tab} onChange={(v) => setTab(v as TargetService)} />
 
