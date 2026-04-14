@@ -25,10 +25,14 @@ export function EmailPreviewModal({ documentId, subjectId, onClose }: Props) {
   const [template, setTemplate] = useState('listing');
   const [connectedAIs, setConnectedAIs] = useState<Array<{ id: string; label: string }>>([]);
   const [selectedAI, setSelectedAI] = useState('');
-  const [emailBody, setEmailBody] = useState('');
+  // Cache des emails generes — clef : `${template}::${ai}`
+  const [cache, setCache] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+
+  const cacheKey = `${template}::${selectedAI}`;
+  const emailBody = cache[cacheKey] || '';
 
   // Load AI connectors
   useEffect(() => {
@@ -44,13 +48,16 @@ export function EmailPreviewModal({ documentId, subjectId, onClose }: Props) {
       .catch(() => {});
   }, []);
 
-  // Generate email when template or AI changes
+  // Generate email only if not in cache
   useEffect(() => {
     if (!selectedAI) return;
-    generateEmail();
-  }, [template, selectedAI]);
+    if (cache[cacheKey]) return; // already cached, no token consumption
+    generateEmail(false);
+  }, [template, selectedAI]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const generateEmail = async () => {
+  // force=true to bypass cache (Régénérer button)
+  const generateEmail = async (force: boolean) => {
+    if (!force && cache[cacheKey]) return;
     setLoading(true);
     setError('');
     setCopied(false);
@@ -67,10 +74,9 @@ export function EmailPreviewModal({ documentId, subjectId, onClose }: Props) {
       });
       if (!res.ok) throw new Error((await res.json()).error);
       const data = await res.json();
-      setEmailBody(data.email || '');
+      setCache(prev => ({ ...prev, [cacheKey]: data.email || '' }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur de génération');
-      setEmailBody('');
     } finally {
       setLoading(false);
     }
@@ -142,8 +148,8 @@ export function EmailPreviewModal({ documentId, subjectId, onClose }: Props) {
         {/* Actions */}
         <div className={styles.footer}>
           <Button variant="secondary" onClick={onClose}>Fermer</Button>
-          <Button variant="secondary" onClick={generateEmail} disabled={loading || !selectedAI}>
-            {loading ? 'Génération...' : 'Régénérer'}
+          <Button variant="secondary" onClick={() => generateEmail(true)} disabled={loading || !selectedAI} title="Force la régénération via l'IA (consomme des credits)">
+            {loading ? 'Génération...' : '↻ Régénérer'}
           </Button>
           <Button variant="primary" onClick={handleCopy} disabled={!emailBody || loading}>
             {copied ? 'Copié !' : 'Copier'}
