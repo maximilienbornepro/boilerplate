@@ -142,12 +142,12 @@ interface ServiceGroup {
 const SERVICE_GROUPS: ServiceGroup[] = [
   {
     title: 'Gestion de projet',
-    description: 'Récupérez vos projets, tickets et sprints pour les associer à vos delivery boards. Les données sont synchronisées automatiquement.',
+    description: 'Connectez vos outils de gestion pour importer tickets, sprints et transcriptions dans vos reviews et delivery boards.',
     services: [
       {
         id: 'jira',
         name: 'Jira',
-        description: 'Importer les tickets et sprints Jira dans vos delivery boards',
+        description: 'Importez les tickets Jira dans Delivery, créez des tickets depuis SuiviTess.',
         color: '#0052CC',
         icon: <JiraIcon />,
         enabled: true,
@@ -155,7 +155,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'fathom',
         name: 'Fathom',
-        description: 'Importer les transcriptions Fathom dans vos sessions SuiviTess',
+        description: 'Importez automatiquement vos transcriptions de meetings Fathom dans SuiviTess.',
         color: '#6366f1',
         icon: <FathomIcon />,
         enabled: true,
@@ -163,7 +163,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'otter',
         name: 'Otter.ai',
-        description: 'Importer les transcriptions Otter dans vos sessions SuiviTess',
+        description: 'Importez vos transcriptions Otter.ai dans SuiviTess.',
         color: '#3b82f6',
         icon: <OtterIcon />,
         enabled: true,
@@ -171,7 +171,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'notion',
         name: 'Notion',
-        description: 'Créer des pages Notion depuis vos sujets SuiviTess',
+        description: 'Créez une page Notion à partir d\'un sujet SuiviTess en un clic.',
         color: '#000000',
         icon: <NotionIcon />,
         enabled: true,
@@ -179,7 +179,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'clickup',
         name: 'ClickUp',
-        description: 'Importer vos tâches et sprints ClickUp',
+        description: 'Importez vos tâches et sprints ClickUp (bientôt disponible).',
         color: '#7B68EE',
         icon: <ClickUpIcon />,
         enabled: false,
@@ -188,12 +188,12 @@ const SERVICE_GROUPS: ServiceGroup[] = [
   },
   {
     title: 'Intelligence artificielle',
-    description: 'Configurez vos clés API pour activer les fonctionnalités IA : reformulation SuiviTess, adaptation de CV, suggestions intelligentes, RAG et embeddings.',
+    description: 'Choisissez votre fournisseur d\'IA. Au moins un connecteur doit être actif pour utiliser la reformulation, l\'analyse de sujets, l\'export email et l\'adaptation de CV.',
     services: [
       {
         id: 'anthropic',
         name: 'Anthropic (Claude)',
-        description: 'Reformulation SuiviTess, adaptation CV, suggestions de sujets',
+        description: 'IA polyvalente — recommandée pour SuiviTess et l\'adaptation de CV.',
         color: '#D97757',
         icon: <ClaudeIcon />,
         enabled: true,
@@ -201,7 +201,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'openai',
         name: 'OpenAI',
-        description: 'Embeddings pour le RAG, génération de texte alternative',
+        description: 'Modèles GPT + embeddings (nécessaire pour le RAG si Scaleway n\'est pas utilisé).',
         color: '#10a37f',
         icon: <OpenAIIcon />,
         enabled: true,
@@ -209,7 +209,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'mistral',
         name: 'Mistral',
-        description: 'IA française performante, alternative à Claude et GPT',
+        description: 'IA française — alternative à Claude et GPT.',
         color: '#F7D046',
         icon: <MistralIcon />,
         enabled: true,
@@ -217,7 +217,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'scaleway',
         name: 'Scaleway',
-        description: 'LLM et embeddings hébergés en Europe (API compatible OpenAI)',
+        description: 'LLM et embeddings hébergés en Europe (API compatible OpenAI).',
         color: '#4F0599',
         icon: <ScalewayIcon />,
         enabled: true,
@@ -225,13 +225,13 @@ const SERVICE_GROUPS: ServiceGroup[] = [
     ],
   },
   {
-    title: 'Messagerie',
-    description: 'Connectez vos boîtes mail pour importer des mails dans SuiviTess et alimenter vos reviews automatiquement.',
+    title: 'Emails',
+    description: 'Connectez votre boîte mail pour importer des échanges dans vos reviews SuiviTess en quelques clics.',
     services: [
       {
         id: 'outlook',
         name: 'Outlook',
-        description: 'Microsoft 365 / Outlook.com — importez vos mails dans SuiviTess',
+        description: 'Microsoft 365 ou Outlook.com — importez vos emails dans SuiviTess.',
         color: '#0078D4',
         icon: <OutlookIcon />,
         enabled: true,
@@ -239,7 +239,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
       {
         id: 'gmail',
         name: 'Gmail',
-        description: 'Google Workspace / Gmail — importez vos mails dans SuiviTess',
+        description: 'Google Workspace ou Gmail perso — importez vos emails dans SuiviTess.',
         color: '#EA4335',
         icon: <GmailIcon />,
         enabled: true,
@@ -437,21 +437,23 @@ function JiraOAuthTab({ onChanged }: { onChanged: () => void }) {
           <div className="connector-oauth-info">
             <div className="connector-oauth-connected">
               <span className="connector-status-dot active" />
-              Connecté via OAuth
+              Compte connecté
             </div>
             {status.siteUrl && (
               <div className="connector-oauth-detail">
-                Site : {status.siteUrl}
+                <strong>Site</strong>
+                <a href={status.siteUrl} target="_blank" rel="noopener noreferrer">{status.siteUrl}</a>
               </div>
             )}
             {status.connectedAt && (
               <div className="connector-oauth-detail">
-                Connecté le : {new Date(status.connectedAt).toLocaleDateString('fr-FR')}
+                <strong>Connecté le</strong>
+                <span>{new Date(status.connectedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
               </div>
             )}
             {status.isExpired && (
               <div className="connector-oauth-detail warning">
-                Token expire — sera renouvele automatiquement
+                Session expirée — elle sera renouvelée automatiquement au prochain usage.
               </div>
             )}
           </div>
@@ -462,14 +464,14 @@ function JiraOAuthTab({ onChanged }: { onChanged: () => void }) {
               onClick={handleDisconnect}
               disabled={disconnecting}
             >
-              {disconnecting ? 'Deconnexion...' : 'Deconnecter Jira'}
+              {disconnecting ? 'Déconnexion...' : 'Se déconnecter'}
             </button>
           </div>
         </div>
       ) : (
         <div className="connector-oauth-connect">
           <p className="connector-oauth-desc">
-            Connectez votre compte Jira via OAuth 2.0. Vous serez redirigé vers Atlassian pour autoriser l'accès.
+            Connectez votre compte Atlassian : vous serez redirigé vers Jira pour autoriser l'accès. Aucun mot de passe à saisir.
           </p>
           <div className="connector-actions">
             <button className="connector-btn primary" onClick={handleConnect}>
@@ -545,7 +547,7 @@ function JiraForm({
       const result = await testConnector('jira');
       setTestResult({
         success: true,
-        message: `Connexion réussie ! Connecte en tant que ${result.user?.displayName}`,
+        message: `Connexion Jira réussie — vous êtes identifié en tant que ${result.user?.displayName}.`,
         userName: result.user?.displayName,
       });
       onSaved();
@@ -584,7 +586,7 @@ function JiraForm({
     <div className="connector-card-body">
       <div className="connector-form">
         <div className="connector-field">
-          <label htmlFor="jira-url">URL de l'instance Jira</label>
+          <label htmlFor="jira-url">URL de votre Jira</label>
           <input
             id="jira-url"
             type="url"
@@ -593,12 +595,12 @@ function JiraForm({
             placeholder="https://votre-equipe.atlassian.net"
           />
           <span className="connector-field-hint">
-            L'URL de votre instance Atlassian Jira Cloud
+            Copiez l'URL de votre Jira (ex. https://ma-societe.atlassian.net)
           </span>
         </div>
 
         <div className="connector-field">
-          <label htmlFor="jira-email">Email</label>
+          <label htmlFor="jira-email">Votre email Atlassian</label>
           <input
             id="jira-email"
             type="email"
@@ -607,21 +609,21 @@ function JiraForm({
             placeholder="vous@example.com"
           />
           <span className="connector-field-hint">
-            L'adresse email associée à votre compte Atlassian
+            Utilisez l'email avec lequel vous vous connectez à Jira.
           </span>
         </div>
 
         <div className="connector-field">
-          <label htmlFor="jira-token">Token API</label>
+          <label htmlFor="jira-token">Token API Atlassian</label>
           <input
             id="jira-token"
             type="password"
             value={apiToken}
             onChange={(e) => setApiToken(e.target.value)}
-            placeholder="Votre token API Atlassian"
+            placeholder="Collez votre token ici"
           />
           <span className="connector-field-hint">
-            Generez un token sur https://id.atlassian.net/manage-profile/security/api-tokens
+            Créez un token sur <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noopener noreferrer">id.atlassian.com/manage-profile/security/api-tokens</a>, puis collez-le ici.
           </span>
         </div>
       </div>
@@ -643,10 +645,10 @@ function JiraForm({
           {saving ? (
             <span className="connector-loading">
               <span className="connector-spinner" />
-              Sauvegarde...
+              Enregistrement...
             </span>
           ) : (
-            'Sauvegarder'
+            'Enregistrer'
           )}
         </button>
 
@@ -654,11 +656,12 @@ function JiraForm({
           className="connector-btn secondary"
           onClick={handleTest}
           disabled={testing || !connector}
+          title="Vérifie que les identifiants sont corrects et affiche le nom du compte Jira"
         >
           {testing ? (
             <span className="connector-loading">
               <span className="connector-spinner" />
-              Test en cours...
+              Vérification...
             </span>
           ) : (
             'Tester la connexion'
@@ -670,8 +673,9 @@ function JiraForm({
             className="connector-btn danger"
             onClick={handleDelete}
             disabled={deleting}
+            title="Supprime le connecteur et ses identifiants"
           >
-            {deleting ? 'Suppression...' : 'Supprimer'}
+            {deleting ? 'Suppression...' : 'Supprimer le connecteur'}
           </button>
         )}
       </div>
@@ -747,7 +751,7 @@ function JiraCard({
         <div className="connector-card-right">
           <div className={`connector-status ${isActive ? 'active' : connector ? 'active' : 'inactive'}`}>
             <span className="connector-status-dot" />
-            {isActive ? 'Connecté' : (connector || isConfigured) ? 'Configuré' : 'À configurer'}
+            {isActive ? 'Connecté' : (connector || isConfigured) ? 'À tester' : 'Non connecté'}
           </div>
         </div>
       </div>
@@ -812,24 +816,24 @@ interface AIFieldDef {
 
 const AI_FIELDS: Record<string, AIFieldDef[]> = {
   anthropic: [
-    { key: 'apiKey', label: 'Cle API', type: 'password', required: true, placeholder: 'sk-ant-...' },
-    { key: 'model', label: 'Modele', type: 'text', placeholder: 'claude-sonnet-4-6', hint: 'Laissez vide pour le modele par defaut' },
+    { key: 'apiKey', label: 'Clé API Anthropic', type: 'password', required: true, placeholder: 'sk-ant-...', hint: 'Créez une clé sur console.anthropic.com > Settings > API Keys.' },
+    { key: 'model', label: 'Modèle (optionnel)', type: 'text', placeholder: 'claude-sonnet-4-6', hint: 'Laissez vide pour utiliser le modèle recommandé.' },
   ],
   openai: [
-    { key: 'apiKey', label: 'Cle API', type: 'password', required: true, placeholder: 'sk-...' },
-    { key: 'model', label: 'Modele Chat', type: 'text', placeholder: 'gpt-4o' },
-    { key: 'embeddingModel', label: 'Modele Embedding', type: 'text', placeholder: 'text-embedding-3-small' },
+    { key: 'apiKey', label: 'Clé API OpenAI', type: 'password', required: true, placeholder: 'sk-...', hint: 'Créez une clé sur platform.openai.com > API keys.' },
+    { key: 'model', label: 'Modèle chat (optionnel)', type: 'text', placeholder: 'gpt-4o', hint: 'Laissez vide pour le modèle par défaut.' },
+    { key: 'embeddingModel', label: 'Modèle embedding (optionnel)', type: 'text', placeholder: 'text-embedding-3-small', hint: 'Utilisé par le RAG. Laissez vide pour le modèle par défaut.' },
   ],
   mistral: [
-    { key: 'apiKey', label: 'Cle API', type: 'password', required: true, placeholder: '...' },
-    { key: 'model', label: 'Modele', type: 'text', placeholder: 'mistral-large-latest' },
-    { key: 'baseUrl', label: 'URL de base', type: 'text', placeholder: 'https://api.mistral.ai/v1', hint: 'Laissez vide pour l\'URL par defaut' },
+    { key: 'apiKey', label: 'Clé API Mistral', type: 'password', required: true, placeholder: 'Collez votre clé ici', hint: 'Créez une clé sur console.mistral.ai.' },
+    { key: 'model', label: 'Modèle (optionnel)', type: 'text', placeholder: 'mistral-large-latest', hint: 'Laissez vide pour utiliser le modèle par défaut.' },
+    { key: 'baseUrl', label: 'URL de l\'API (optionnel)', type: 'text', placeholder: 'https://api.mistral.ai/v1', hint: 'Ne modifiez que si vous utilisez un endpoint custom.' },
   ],
   scaleway: [
-    { key: 'apiKey', label: 'Cle API', type: 'password', required: true, placeholder: '...' },
-    { key: 'baseUrl', label: 'URL de base', type: 'text', required: true, placeholder: 'https://api.scaleway.ai/v1' },
-    { key: 'chatModel', label: 'Modele Chat', type: 'text', placeholder: 'qwen3-32b' },
-    { key: 'embeddingModel', label: 'Modele Embedding', type: 'text', placeholder: 'bge-multilingual-gemma2' },
+    { key: 'apiKey', label: 'Clé API Scaleway', type: 'password', required: true, placeholder: 'Collez votre clé ici', hint: 'Disponible dans votre console Scaleway > IAM > Clés API.' },
+    { key: 'baseUrl', label: 'URL de l\'API', type: 'text', required: true, placeholder: 'https://api.scaleway.ai/v1', hint: 'URL de votre projet Scaleway Generative APIs.' },
+    { key: 'chatModel', label: 'Modèle chat (optionnel)', type: 'text', placeholder: 'qwen3-32b' },
+    { key: 'embeddingModel', label: 'Modèle embedding (optionnel)', type: 'text', placeholder: 'bge-multilingual-gemma2' },
   ],
 };
 
@@ -837,16 +841,16 @@ const AI_SERVICE_IDS = new Set(['anthropic', 'openai', 'mistral', 'scaleway']);
 
 // Transcription providers use simple API keys
 AI_FIELDS['fathom'] = [
-  { key: 'apiKey', label: 'Cle API Fathom', type: 'password', required: true, placeholder: 'fathom_...', hint: 'Disponible dans les parametres Fathom > API' },
+  { key: 'apiKey', label: 'Clé API Fathom', type: 'password', required: true, placeholder: 'fathom_...', hint: 'Disponible dans Fathom > Settings > API.' },
 ];
 
 AI_FIELDS['otter'] = [
-  { key: 'apiKey', label: 'Cle API Otter', type: 'password', required: true, placeholder: '...' },
-  { key: 'baseUrl', label: 'URL de base', type: 'text', placeholder: 'https://api.otter.ai/v1', hint: 'Laissez vide pour l\'URL par defaut' },
+  { key: 'apiKey', label: 'Clé API Otter.ai', type: 'password', required: true, placeholder: 'Collez votre clé ici' },
+  { key: 'baseUrl', label: 'URL de l\'API (optionnel)', type: 'text', placeholder: 'https://api.otter.ai/v1', hint: 'Ne modifiez que si vous utilisez un endpoint custom.' },
 ];
 
 AI_FIELDS['notion'] = [
-  { key: 'apiKey', label: 'Token d\'intégration Notion', type: 'password', required: true, placeholder: 'secret_...', hint: 'Créer une intégration sur https://www.notion.so/profile/integrations puis partager les databases avec elle' },
+  { key: 'apiKey', label: 'Token d\'intégration Notion', type: 'password', required: true, placeholder: 'secret_...', hint: 'Créez une intégration sur notion.so/profile/integrations, puis partagez vos bases de données avec elle.' },
 ];
 
 // ==================== Generic AI Form ====================
@@ -954,14 +958,24 @@ function AIProviderForm({
 
       <div className="connector-actions">
         <button className="connector-btn primary" onClick={handleSave} disabled={saving}>
-          {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+          {saving ? 'Enregistrement...' : 'Enregistrer'}
         </button>
-        <button className="connector-btn secondary" onClick={handleTest} disabled={testing || !connector}>
-          {testing ? 'Test...' : 'Tester'}
+        <button
+          className="connector-btn secondary"
+          onClick={handleTest}
+          disabled={testing || !connector}
+          title="Envoie une requête test pour vérifier que la clé fonctionne"
+        >
+          {testing ? 'Vérification...' : 'Tester la connexion'}
         </button>
         {connector && (
-          <button className="connector-btn danger" onClick={handleDelete} disabled={deleting}>
-            {deleting ? 'Suppression...' : 'Supprimer'}
+          <button
+            className="connector-btn danger"
+            onClick={handleDelete}
+            disabled={deleting}
+            title="Supprime le connecteur et ses identifiants"
+          >
+            {deleting ? 'Suppression...' : 'Supprimer le connecteur'}
           </button>
         )}
       </div>
@@ -1055,7 +1069,7 @@ function AIProviderCard({
           )}
           <div className={`connector-status ${(isActive || oauthConnected) ? 'active' : connector ? 'active' : 'inactive'}`}>
             <span className="connector-status-dot" />
-            {oauthConnected ? 'Connecté (OAuth)' : isActive ? 'Connecté' : connector ? 'Configuré' : 'À configurer'}
+            {oauthConnected ? 'Connecté' : isActive ? 'Connecté' : connector ? 'À tester' : 'Non connecté'}
           </div>
         </div>
       </div>
@@ -1077,30 +1091,30 @@ function AIProviderCard({
             <div style={{ padding: 'var(--spacing-md)' }}>
               {!oauthAvail && !oauthConnected ? (
                 <div className="connectors-error">
-                  OAuth {service.name} non configuré sur le serveur. Ajoutez {oauthProvider.toUpperCase()}_OAUTH_CLIENT_ID et {oauthProvider.toUpperCase()}_OAUTH_CLIENT_SECRET.
+                  La connexion {service.name} n'est pas encore activée sur cette instance. Contactez un administrateur pour l'activer.
                 </div>
               ) : oauthConnected ? (
                 <div>
                   <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', margin: '0 0 var(--spacing-sm)' }}>
-                    Compte connecte via OAuth.
+                    Votre compte {service.name} est connecté. Vous pouvez l'utiliser dans les modules.
                   </p>
                   {oauthStatus?.isExpired && (
                     <p style={{ color: 'var(--color-warning)', fontSize: 'var(--font-size-xs)', margin: '0 0 var(--spacing-sm)' }}>
-                      Token expire — reconnectez-vous
+                      Session expirée — cliquez sur « Se reconnecter » pour rafraîchir l'accès.
                     </p>
                   )}
                   <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-                    <button className="connector-btn connector-btn-primary" onClick={handleOAuthConnect}>Reconnecter</button>
-                    <button className="connector-btn connector-btn-danger" onClick={handleOAuthDisconnect}>Deconnecter</button>
+                    <button className="connector-btn connector-btn-primary" onClick={handleOAuthConnect}>Se reconnecter</button>
+                    <button className="connector-btn connector-btn-danger" onClick={handleOAuthDisconnect}>Se déconnecter</button>
                   </div>
                 </div>
               ) : (
                 <div>
                   <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', margin: '0 0 var(--spacing-md)' }}>
-                    Connectez-vous via OAuth pour accéder à vos données {service.name}.
+                    Connectez votre compte {service.name} pour importer vos données. Vous serez redirigé vers {service.name} pour autoriser l'accès — aucun mot de passe à saisir ici.
                   </p>
                   <button className="connector-btn connector-btn-primary" onClick={handleOAuthConnect}>
-                    Connecter via OAuth
+                    Se connecter avec {service.name}
                   </button>
                 </div>
               )}

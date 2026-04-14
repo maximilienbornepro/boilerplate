@@ -91,8 +91,11 @@ export function ModuleRecentBlock<T>({
   };
 
   return (
-    <div className={styles.moduleBlock}>
-      <div className={styles.moduleHeader} style={{ borderColor: color }}>
+    <div
+      className={styles.moduleBlock}
+      style={{ ['--module-color' as string]: color }}
+    >
+      <div className={styles.moduleHeader}>
         <span className={styles.moduleIcon} style={{ background: color, color: '#fff' }}>{icon}</span>
         <div className={styles.moduleTitleGroup}>
           <h3 className={styles.moduleTitle}>{title}</h3>
@@ -112,8 +115,6 @@ export function ModuleRecentBlock<T>({
             <button
               className={styles.seeAllLink}
               onClick={() => navigate(seeAllHref)}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = color; e.currentTarget.style.color = 'white'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = ''; e.currentTarget.style.color = ''; }}
             >
               Voir tout
             </button>

@@ -249,17 +249,21 @@
   border-bottom-color: var(--accent-primary);
 }
 
-/* OAuth status */
+/* OAuth status — highlighted "connected" panel */
 .connector-oauth-status {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border: 1px solid var(--success);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
 }
 
 .connector-oauth-info {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-sm);
 }
 
 .connector-oauth-connected {
@@ -267,18 +271,48 @@
   align-items: center;
   gap: var(--spacing-sm);
   font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-bold);
   color: var(--success);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.connector-oauth-connected::before {
+  content: '✓';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--success);
+  color: var(--bg-primary, #0a0a0a);
+  font-size: 13px;
+  font-weight: var(--font-weight-bold);
+  flex-shrink: 0;
 }
 
 .connector-oauth-connected .connector-status-dot {
-  background: var(--success);
+  display: none;
 }
 
 .connector-oauth-detail {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
   font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  padding-left: calc(22px + var(--spacing-sm));
+}
+
+.connector-oauth-detail > strong {
   color: var(--text-muted);
-  padding-left: calc(8px + var(--spacing-sm));
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: var(--font-weight-semibold);
+  min-width: 80px;
+  flex-shrink: 0;
 }
 
 .connector-oauth-detail.warning {
