@@ -42,6 +42,7 @@ export function TicketCreateModal({
   const [tab, setTab] = useState<TargetService>(initialService || 'jira');
   const [jiraAvailable, setJiraAvailable] = useState(false);
   const [notionAvailable, setNotionAvailable] = useState(false);
+  const [checkingAvailability, setCheckingAvailability] = useState(true);
 
   // Shared
   const [title, setTitle] = useState(subjectTitle);
@@ -72,21 +73,21 @@ export function TicketCreateModal({
     return d.toISOString().slice(0, 10);
   });
 
-  // Detect available services
+  // Detect available services — wait for ALL checks before showing UI
   useEffect(() => {
-    fetch('/api/connectors', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : [])
-      .then((connectors: Array<{ service: string; isActive: boolean }>) => {
-        setJiraAvailable(connectors.some(c => c.service === 'jira' && c.isActive));
-        setNotionAvailable(connectors.some(c => c.service === 'notion' && c.isActive));
-      })
-      .catch(() => {});
-
-    // Also check Jira OAuth
-    fetch('/api/auth/jira/status', { credentials: 'include' })
-      .then(r => r.ok ? r.json() : { connected: false })
-      .then((s: { connected: boolean }) => { if (s.connected) setJiraAvailable(true); })
-      .catch(() => {});
+    setCheckingAvailability(true);
+    Promise.all([
+      fetch('/api/connectors', { credentials: 'include' })
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => []),
+      fetch('/api/auth/jira/status', { credentials: 'include' })
+        .then(r => r.ok ? r.json() : { connected: false })
+        .catch(() => ({ connected: false })),
+    ]).then(([connectors, jiraStatus]: [Array<{ service: string; isActive: boolean }>, { connected: boolean }]) => {
+      const jiraConnector = connectors.some(c => c.service === 'jira' && c.isActive);
+      setJiraAvailable(jiraConnector || jiraStatus.connected);
+      setNotionAvailable(connectors.some(c => c.service === 'notion' && c.isActive));
+    }).finally(() => setCheckingAvailability(false));
 
     // Load plannings (always available)
     fetch(`${ROADMAP_API}/plannings`, { credentials: 'include' })
@@ -94,6 +95,18 @@ export function TicketCreateModal({
       .then(setPlannings)
       .catch(() => {});
   }, []);
+
+  // Auto-switch tab if the requested service is not connected
+  useEffect(() => {
+    if (checkingAvailability) return;
+    if (tab === 'jira' && !jiraAvailable) {
+      if (notionAvailable) setTab('notion');
+      else setTab('roadmap');
+    } else if (tab === 'notion' && !notionAvailable) {
+      if (jiraAvailable) setTab('jira');
+      else setTab('roadmap');
+    }
+  }, [checkingAvailability, jiraAvailable, notionAvailable, tab]);
 
   // Load Jira projects when Jira tab activated
   useEffect(() => {

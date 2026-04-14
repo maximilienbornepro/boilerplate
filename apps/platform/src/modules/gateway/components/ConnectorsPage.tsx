@@ -1036,8 +1036,14 @@ function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
   const provider = service.id; // 'outlook' | 'gmail'
 
   useEffect(() => {
-    fetch(`/connectors-api/${provider}/oauth-available`).then(r => r.json()).then(d => setOauthAvail(d.available)).catch(() => {});
-    fetch(`/api/auth/${provider}/status`, { credentials: 'include' }).then(r => r.json()).then(setStatus).catch(() => setStatus({ connected: false }));
+    fetch(`/api/connectors/${provider}/oauth-available`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { available: false })
+      .then(d => setOauthAvail(!!d.available))
+      .catch(() => {});
+    fetch(`/api/auth/${provider}/status`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { connected: false })
+      .then(setStatus)
+      .catch(() => setStatus({ connected: false }));
     setLoading(false);
 
     // Detect URL params
@@ -1085,7 +1091,7 @@ function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
         <div className="connector-card-body" style={{ padding: 'var(--spacing-md)' }}>
           {loading ? (
             <div className="connector-loading"><span className="connector-spinner" /><span>Chargement...</span></div>
-          ) : !oauthAvail ? (
+          ) : !oauthAvail && !status?.connected ? (
             <div className="connectors-error">OAuth {service.name} non configure sur le serveur. Ajoutez les variables {provider.toUpperCase()}_OAUTH_CLIENT_ID et {provider.toUpperCase()}_OAUTH_CLIENT_SECRET.</div>
           ) : status?.connected ? (
             <div>
