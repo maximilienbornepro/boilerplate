@@ -48,12 +48,40 @@
   padding: var(--spacing-md);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  cursor: pointer;
   transition: border-color var(--transition-normal);
 }
 
 .item:hover {
   border-color: var(--accent-primary);
+}
+
+.itemLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.noActionBtn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  white-space: nowrap;
+  align-self: flex-start;
+}
+
+.noActionBtn:hover {
+  color: var(--error, #dc2626);
+  border-color: var(--error, #dc2626);
 }
 
 .itemContent {

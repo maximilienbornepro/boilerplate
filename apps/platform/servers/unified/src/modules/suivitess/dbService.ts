@@ -118,6 +118,12 @@ export async function initDb(): Promise<void> {
     await pool.query('UPDATE suivitess_documents SET owner_id = 1 WHERE owner_id IS NULL');
   } catch { /* already done */ }
 
+  // Migration: flag subjects that do not need a ticket/roadmap action
+  // (excluded from future AI ticket-analysis suggestions)
+  try {
+    await pool.query('ALTER TABLE suivitess_subjects ADD COLUMN IF NOT EXISTS no_action_needed BOOLEAN DEFAULT FALSE');
+  } catch { /* already done */ }
+
   // Backfill resource_sharing entries for existing documents
   try {
     const { ensureOwnership } = await import('../shared/resourceSharing.js');
@@ -547,6 +553,15 @@ export async function reorderSubjectPositions(sectionId: string, oldPos: number,
 
 export async function getSubject(subjectId: string) {
   const result = await pool.query('SELECT * FROM suivitess_subjects WHERE id = $1', [subjectId]);
+  return result.rows[0] || null;
+}
+
+export async function setSubjectNoActionNeeded(subjectId: string, value: boolean) {
+  const result = await pool.query(
+    `UPDATE suivitess_subjects SET no_action_needed = $2, updated_at = NOW()
+     WHERE id = $1 RETURNING *`,
+    [subjectId, value]
+  );
   return result.rows[0] || null;
 }
 

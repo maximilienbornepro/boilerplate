@@ -142,6 +142,23 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
     });
   };
 
+  const markNoActionNeeded = async (subjectId: string) => {
+    try {
+      await fetch(`${API_BASE}/subjects/${subjectId}/no-action`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ noActionNeeded: true }),
+      });
+    } catch { /* silent — removal from list is still useful */ }
+    setSuggestions(prev => prev.filter(s => s.subjectId !== subjectId));
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      n.delete(subjectId);
+      return n;
+    });
+  };
+
   const goToConfigure = () => {
     // Build initial configs for selected subjects
     const newConfigs: Record<string, SubjectConfig> = {};
@@ -313,18 +330,28 @@ export function SubjectAnalysisModal({ documentId, onClose, onDone }: Props) {
                 </p>
                 <div className={styles.list}>
                   {suggestions.map(s => (
-                    <label key={s.subjectId} className={styles.item}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(s.subjectId)}
-                        onChange={() => toggle(s.subjectId)}
-                      />
-                      <div className={styles.itemContent}>
-                        <div className={styles.itemTitle}>{s.subjectTitle}</div>
-                        <p className={styles.reason}>{s.reason}</p>
-                        <p className={styles.suggested}>→ Suggere : <strong>{s.suggestedTitle}</strong></p>
-                      </div>
-                    </label>
+                    <div key={s.subjectId} className={styles.item}>
+                      <label className={styles.itemLabel}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(s.subjectId)}
+                          onChange={() => toggle(s.subjectId)}
+                        />
+                        <div className={styles.itemContent}>
+                          <div className={styles.itemTitle}>{s.subjectTitle}</div>
+                          <p className={styles.reason}>{s.reason}</p>
+                          <p className={styles.suggested}>→ Suggere : <strong>{s.suggestedTitle}</strong></p>
+                        </div>
+                      </label>
+                      <button
+                        type="button"
+                        className={styles.noActionBtn}
+                        onClick={() => markNoActionNeeded(s.subjectId)}
+                        title="Marquer comme sans suite — ce sujet ne sera plus propose dans les prochaines analyses IA"
+                      >
+                        Sans suite
+                      </button>
+                    </div>
                   ))}
                 </div>
                 <div className={styles.actions}>
