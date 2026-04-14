@@ -66,6 +66,9 @@ export default defineConfig({
       '/api/admin/credits': {
         target: UNIFIED_SERVER,
       },
+      '/api/auth/fathom': {
+        target: UNIFIED_SERVER,
+      },
       '/api/auth/outlook': {
         target: UNIFIED_SERVER,
       },

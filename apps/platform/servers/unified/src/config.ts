@@ -27,6 +27,15 @@ export const config = {
   // Database
   appDatabaseUrl: process.env.APP_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/app',
 
+  // Fathom OAuth (https://developers.fathom.ai/sdks/oauth)
+  fathom: {
+    oauth: {
+      clientId: process.env.FATHOM_OAUTH_CLIENT_ID || '',
+      clientSecret: process.env.FATHOM_OAUTH_CLIENT_SECRET || '',
+      redirectUri: process.env.FATHOM_OAUTH_CALLBACK_URL || 'http://localhost:3010/api/auth/fathom/callback',
+    },
+  },
+
   // Outlook OAuth (Microsoft Graph)
   outlook: {
     oauth: {

@@ -13,6 +13,12 @@ export function createConnectorsRoutes(): Router {
     res.json({ available });
   });
 
+  // GET /fathom/oauth-available
+  router.get('/fathom/oauth-available', (_req, res) => {
+    const available = !!(config.fathom.oauth.clientId && config.fathom.oauth.clientSecret);
+    res.json({ available });
+  });
+
   // GET /outlook/oauth-available
   router.get('/outlook/oauth-available', (_req, res) => {
     const available = !!(config.outlook.oauth.clientId && config.outlook.oauth.clientSecret);

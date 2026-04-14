@@ -912,17 +912,59 @@ function AIProviderCard({
   service,
   connector,
   usage,
+  oauthProvider,
   onSaved,
   onDeleted,
 }: {
   service: ServiceDefinition;
   connector: ConnectorData | null;
   usage?: AIUsageSummary | null;
+  oauthProvider?: string;  // e.g. 'fathom' — enables OAuth tab
   onSaved: () => void;
   onDeleted: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [tab, setTab] = useState<'oauth' | 'token'>('oauth');
+  const [oauthAvail, setOauthAvail] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<{ connected: boolean; expiresAt?: string; isExpired?: boolean } | null>(null);
   const isActive = connector?.isActive ?? false;
+  const oauthConnected = oauthStatus?.connected ?? false;
+
+  useEffect(() => {
+    if (!oauthProvider) return;
+    fetch(`/api/connectors/${oauthProvider}/oauth-available`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { available: false })
+      .then(d => setOauthAvail(!!d.available))
+      .catch(() => {});
+    fetch(`/api/auth/${oauthProvider}/status`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : { connected: false })
+      .then(setOauthStatus)
+      .catch(() => setOauthStatus({ connected: false }));
+
+    // Detect ?<provider>_connected=1
+    const params = new URLSearchParams(window.location.search);
+    if (params.get(`${oauthProvider}_connected`) === '1') {
+      fetch(`/api/auth/${oauthProvider}/status`, { credentials: 'include' })
+        .then(r => r.ok ? r.json() : { connected: false })
+        .then(setOauthStatus)
+        .catch(() => {});
+      const url = new URL(window.location.href);
+      url.searchParams.delete(`${oauthProvider}_connected`);
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [oauthProvider]);
+
+  const handleOAuthConnect = () => {
+    if (!oauthProvider) return;
+    const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/api/auth/${oauthProvider}?returnUrl=${returnUrl}`;
+  };
+
+  const handleOAuthDisconnect = async () => {
+    if (!oauthProvider) return;
+    await fetch(`/api/auth/${oauthProvider}`, { method: 'DELETE', credentials: 'include' });
+    setOauthStatus({ connected: false });
+  };
 
   return (
     <div className="connector-card">
@@ -943,15 +985,63 @@ function AIProviderCard({
               <span className="connector-usage-tokens">{formatTokenCount(usage.totalTokensIn + usage.totalTokensOut)} tokens</span>
             </div>
           )}
-          <div className={`connector-status ${isActive ? 'active' : 'inactive'}`}>
+          <div className={`connector-status ${(isActive || oauthConnected) ? 'active' : 'inactive'}`}>
             <span className="connector-status-dot" />
-            {isActive ? 'Connecte' : connector ? 'Configure' : 'Non configure'}
+            {oauthConnected ? 'Connecte (OAuth)' : isActive ? 'Connecte' : connector ? 'Configure' : 'Non configure'}
           </div>
           <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>&#x25BC;</span>
         </div>
       </div>
       {expanded && (
-        <AIProviderForm service={service} connector={connector} onSaved={onSaved} onDeleted={onDeleted} />
+        <>
+          {oauthProvider && (
+            <div style={{ padding: 'var(--spacing-md) var(--spacing-md) 0' }}>
+              <Tabs
+                tabs={[
+                  { value: 'oauth', label: 'OAuth' },
+                  { value: 'token', label: 'Token API' },
+                ]}
+                value={tab}
+                onChange={v => setTab(v as 'oauth' | 'token')}
+              />
+            </div>
+          )}
+          {oauthProvider && tab === 'oauth' ? (
+            <div style={{ padding: 'var(--spacing-md)' }}>
+              {!oauthAvail && !oauthConnected ? (
+                <div className="connectors-error">
+                  OAuth {service.name} non configure sur le serveur. Ajoutez {oauthProvider.toUpperCase()}_OAUTH_CLIENT_ID et {oauthProvider.toUpperCase()}_OAUTH_CLIENT_SECRET.
+                </div>
+              ) : oauthConnected ? (
+                <div>
+                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', margin: '0 0 var(--spacing-sm)' }}>
+                    Compte connecte via OAuth.
+                  </p>
+                  {oauthStatus?.isExpired && (
+                    <p style={{ color: 'var(--color-warning)', fontSize: 'var(--font-size-xs)', margin: '0 0 var(--spacing-sm)' }}>
+                      Token expire — reconnectez-vous
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                    <button className="connector-btn connector-btn-primary" onClick={handleOAuthConnect}>Reconnecter</button>
+                    <button className="connector-btn connector-btn-danger" onClick={handleOAuthDisconnect}>Deconnecter</button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', margin: '0 0 var(--spacing-md)' }}>
+                    Connectez-vous via OAuth pour acceder a vos donnees {service.name}.
+                  </p>
+                  <button className="connector-btn connector-btn-primary" onClick={handleOAuthConnect}>
+                    Connecter via OAuth
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <AIProviderForm service={service} connector={connector} onSaved={onSaved} onDeleted={onDeleted} />
+          )}
+        </>
       )}
     </div>
   );
@@ -1214,6 +1304,7 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
                     service={service}
                     connector={getConnectorForService(service.id)}
                     usage={AI_SERVICE_IDS.has(service.id) ? getUsageForProvider(service.id) : null}
+                    oauthProvider={service.id === 'fathom' ? 'fathom' : undefined}
                     onSaved={loadConnectors}
                     onDeleted={loadConnectors}
                   />

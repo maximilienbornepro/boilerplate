@@ -526,6 +526,88 @@ export function createGatewayRouter(): Router {
     res.json({ success: true });
   }));
 
+  // ==================== FATHOM OAUTH ====================
+  router.get('/auth/fathom', (req: Request, res: Response) => {
+    const { clientId, redirectUri } = config.fathom.oauth;
+    if (!clientId) { res.status(503).json({ error: 'Fathom OAuth not configured' }); return; }
+
+    let userId: number | null = null;
+    const authToken = req.cookies?.auth_token || req.headers.authorization?.replace('Bearer ', '');
+    if (authToken) {
+      try { const decoded = jwt.verify(authToken, config.jwtSecret) as { id: number }; userId = decoded.id; } catch {}
+    }
+
+    const returnUrl = (req.query.returnUrl as string) || '/';
+    const state = Buffer.from(JSON.stringify({ userId, nonce: Math.random().toString(36).slice(2), returnUrl })).toString('base64url');
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: 'code',
+      redirect_uri: redirectUri,
+      scope: 'public_api',
+      state,
+    });
+    res.redirect(`https://app.fathom.ai/external/v1/oauth2/authorize?${params}`);
+  });
+
+  router.get('/auth/fathom/callback', async (req: Request, res: Response) => {
+    const { code, state, error: oauthError } = req.query as Record<string, string>;
+    let userId: number | undefined;
+    let returnUrl = '/';
+    if (state) { try { const d = JSON.parse(Buffer.from(state, 'base64url').toString()); userId = d.userId; returnUrl = d.returnUrl || '/'; } catch {} }
+    if (oauthError || !code) { res.redirect(`${returnUrl}?fathom_error=${encodeURIComponent(oauthError || 'no_code')}`); return; }
+
+    try {
+      const { clientId, clientSecret, redirectUri } = config.fathom.oauth;
+      const tokenRes = await fetch('https://api.fathom.ai/external/v1/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          redirect_uri: redirectUri,
+        }),
+      });
+      if (!tokenRes.ok) {
+        const errText = await tokenRes.text();
+        console.error('[Fathom OAuth] token exchange failed:', errText);
+        res.redirect(`${returnUrl}?fathom_error=token_exchange_failed`);
+        return;
+      }
+      const tokens = await tokenRes.json() as { access_token: string; refresh_token?: string; expires_in?: number };
+      const expiresAt = new Date(Date.now() + (tokens.expires_in || 3600) * 1000);
+      await pool.query(`
+        INSERT INTO email_oauth_tokens (user_id, provider, access_token, refresh_token, expires_at, email_address)
+        VALUES ($1, 'fathom', $2, $3, $4, NULL)
+        ON CONFLICT (user_id, provider) DO UPDATE SET
+          access_token = EXCLUDED.access_token, refresh_token = COALESCE(EXCLUDED.refresh_token, email_oauth_tokens.refresh_token),
+          expires_at = EXCLUDED.expires_at, updated_at = NOW()
+      `, [userId, tokens.access_token, tokens.refresh_token || null, expiresAt]);
+
+      res.redirect(`${returnUrl}?fathom_connected=1`);
+    } catch (err) {
+      console.error('[Fathom OAuth] Callback error:', err);
+      res.redirect(`${returnUrl}?fathom_error=callback_failed`);
+    }
+  });
+
+  router.get('/auth/fathom/status', authMiddleware, asyncHandler(async (req, res) => {
+    const { rows } = await pool.query(
+      'SELECT expires_at, updated_at FROM email_oauth_tokens WHERE user_id = $1 AND provider = $2',
+      [req.user!.id, 'fathom']
+    );
+    if (!rows.length) { res.json({ connected: false }); return; }
+    const t = rows[0];
+    res.json({ connected: true, expiresAt: t.expires_at, isExpired: new Date(t.expires_at) < new Date(), connectedAt: t.updated_at });
+  }));
+
+  router.delete('/auth/fathom', authMiddleware, asyncHandler(async (req, res) => {
+    await pool.query('DELETE FROM email_oauth_tokens WHERE user_id = $1 AND provider = $2', [req.user!.id, 'fathom']);
+    res.json({ success: true });
+  }));
+
   // ==================== EMAIL OAUTH (Outlook + Gmail) ====================
 
   // --- Outlook OAuth ---
