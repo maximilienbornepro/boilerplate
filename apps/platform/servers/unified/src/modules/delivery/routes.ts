@@ -755,11 +755,13 @@ export function createDeliveryRoutes(): Router {
     if (!board) { res.status(404).json({ error: 'Board non trouvé' }); return; }
 
     const tasks = await db.getAllTasksForBoard(boardId);
-    const jiraTasks = tasks.filter(t => t.source === 'jira');
+    // Any non-manual source is treated as an external ticket that the
+    // sanity check can analyze (jira, clickup, linear, asana, …).
+    const externalTasks = tasks.filter(t => t.source && t.source !== 'manual');
 
-    if (jiraTasks.length === 0) {
+    if (externalTasks.length === 0) {
       res.status(400).json({
-        error: 'Aucun ticket Jira sur ce board, la vérification IA n\'a rien à analyser.',
+        error: 'Aucun ticket externe sur ce board, la vérification IA n\'a rien à analyser.',
       });
       return;
     }
@@ -782,12 +784,16 @@ export function createDeliveryRoutes(): Router {
     }
 
     const {
-      parseJiraKey, computeTodayCol, analyzeSanityCheck, categorizeVersions, categoryOf,
+      parseExternalKey, computeTodayCol, analyzeSanityCheck, categorizeVersions, categoryOf,
     } = await import('./deliveryAISanityService.js');
 
+    // external key → board task id, only for Jira-sourced tasks (the only
+    // provider for which we currently fetch live data). Other sources still
+    // go through the analysis using their DB metadata.
     const jiraKeyToTaskId = new Map<string, string>();
-    for (const t of jiraTasks) {
-      const key = parseJiraKey(t.title);
+    for (const t of externalTasks) {
+      if (t.source !== 'jira') continue;
+      const key = parseExternalKey(t.title);
       if (key) jiraKeyToTaskId.set(key, t.id);
     }
 
@@ -869,7 +875,8 @@ export function createDeliveryRoutes(): Router {
     for (const key of boardJiraKeys) uniqueProjectKeys.add(key.split('-')[0]);
 
     const missingFromBoard: Array<{
-      jiraKey: string;
+      externalKey: string;
+      source: string;
       summary: string;
       status: string;
       storyPoints: number | null;
@@ -877,8 +884,8 @@ export function createDeliveryRoutes(): Router {
       hasEstimation: boolean;
       hasDescription: boolean;
       assignee: string | null;
-      fixVersion: string | null;
-      sprintName: string | null;
+      releaseTag: string | null;
+      iterationName: string | null;
     }> = [];
 
     if (ctx && uniqueProjectKeys.size > 0) {
@@ -923,7 +930,8 @@ export function createDeliveryRoutes(): Router {
               rawVersions.push({ name: firstVersion.name, releaseDate: firstVersion.releaseDate ?? null });
             }
             missingFromBoard.push({
-              jiraKey: issue.key,
+              externalKey: issue.key,
+              source: 'jira',
               summary: f.summary || issue.key,
               status: f.status?.name || 'To Do',
               storyPoints: f.customfield_10016 ?? null,
@@ -931,8 +939,8 @@ export function createDeliveryRoutes(): Router {
               hasEstimation: f.customfield_10016 !== undefined || estDays !== null,
               hasDescription: hasDesc,
               assignee: f.assignee?.displayName || null,
-              fixVersion: firstVersion?.name ?? null,
-              sprintName: activeSprint?.name ?? null,
+              releaseTag: firstVersion?.name ?? null,
+              iterationName: activeSprint?.name ?? null,
             });
           }
         } catch {
@@ -950,7 +958,7 @@ export function createDeliveryRoutes(): Router {
     // Enrich missing tickets with their version category, now that versions are classified
     const missingEnriched = missingFromBoard.map(m => ({
       ...m,
-      versionCategory: categoryOf(m.fixVersion, classifiedVersions),
+      versionCategory: categoryOf(m.releaseTag, classifiedVersions),
     }));
     const MAX_MISSING = 30;
     const missingCapped = missingEnriched.slice(0, MAX_MISSING);
@@ -962,25 +970,28 @@ export function createDeliveryRoutes(): Router {
     const totalCols = board.boardType === 'agile' ? (board.durationWeeks ?? 6) : 4;
     const todayCol = computeTodayCol(board.startDate, board.endDate, totalCols);
 
-    const snapshotTasks = jiraTasks.map(t => {
-      const jiraKey = parseJiraKey(t.title);
+    const snapshotTasks = externalTasks.map(t => {
+      const externalKey = parseExternalKey(t.title);
       const pos = positionByTaskId.get(t.id);
-      const live = jiraKey ? liveJiraByKey.get(jiraKey) : undefined;
-      const fixVersion = live?.fixVersion
+      // Live data is only fetched for Jira right now. Other sources fall
+      // back to the DB metadata — the analysis still works.
+      const live = t.source === 'jira' && externalKey ? liveJiraByKey.get(externalKey) : undefined;
+      const releaseTag = live?.fixVersion
         || (t.description && /^v?\d/.test(t.description) ? t.description : null);
       return {
         id: t.id,
         title: t.title,
-        jiraKey,
+        externalKey,
+        source: t.source,
         boardStatus: t.status,
-        jiraStatus: live?.status ?? null,
+        externalStatus: live?.status ?? null,
         storyPoints: t.storyPoints ?? live?.storyPoints ?? null,
         estimatedDays: t.estimatedDays ?? live?.estimateDays ?? null,
         hasEstimation: !!(t.estimatedDays || t.storyPoints || live?.storyPoints || live?.estimateDays),
         hasDescription: !!(t.description && t.description.trim().length > 0) || !!live?.description,
         hasAssignee: !!(t.assignee || live?.assignee),
-        fixVersion,
-        versionCategory: categoryOf(fixVersion, classifiedVersions),
+        releaseTag,
+        versionCategory: categoryOf(releaseTag, classifiedVersions),
         position: pos
           ? { startCol: pos.startCol, endCol: pos.endCol, row: pos.row }
           : { startCol: 0, endCol: 1, row: 0 },
@@ -1011,12 +1022,17 @@ export function createDeliveryRoutes(): Router {
     const { moves, additions } = req.body as {
       moves?: Array<{ taskId: string; startCol: number; endCol: number; row: number }>;
       additions?: Array<{
-        jiraKey: string;
+        /** external ticket reference (Jira key, ClickUp id, …). Accept legacy `jiraKey` too. */
+        externalKey?: string;
+        jiraKey?: string;
+        /** Source tool name. Defaults to 'jira' for backwards compat. */
+        source?: string;
         summary: string;
         status?: string;
         storyPoints?: number | null;
         estimatedDays?: number | null;
         assignee?: string | null;
+        iterationName?: string | null;
         sprintName?: string | null;
         version?: string | null;
         startCol: number;
@@ -1056,10 +1072,14 @@ export function createDeliveryRoutes(): Router {
     // 1) Create tasks for additions so we have their new ids
     const createdAdditions: Array<{ taskId: string; startCol: number; endCol: number; row: number }> = [];
     for (const add of safeAdditions) {
-      if (!add.jiraKey) continue;
-      // Guard against duplicates: if a task with the same Jira key already
-      // exists on the board, skip and just reposition it instead.
-      const existing = tasks.find(t => t.source === 'jira' && t.title.startsWith(`[${add.jiraKey}]`));
+      const ref = add.externalKey || add.jiraKey;
+      if (!ref) continue;
+      const source = add.source || 'jira';
+      const iterationName = add.iterationName || add.sprintName || undefined;
+      // Guard against duplicates: if a task with the same external ref
+      // already exists on the board (any source), skip creation and just
+      // reposition instead.
+      const existing = tasks.find(t => t.source !== 'manual' && t.title.startsWith(`[${ref}]`));
       if (existing) {
         createdAdditions.push({
           taskId: existing.id,
@@ -1071,7 +1091,7 @@ export function createDeliveryRoutes(): Router {
       }
 
       const created = await db.createTask({
-        title: `[${add.jiraKey}] ${add.summary || add.jiraKey}`,
+        title: `[${ref}] ${add.summary || ref}`,
         type: 'feature',
         status: mapJiraStatus(add.status),
         storyPoints: add.storyPoints ?? undefined,
@@ -1079,8 +1099,8 @@ export function createDeliveryRoutes(): Router {
         assignee: add.assignee ?? undefined,
         priority: 'medium',
         incrementId: boardId,
-        sprintName: add.sprintName ?? undefined,
-        source: 'jira',
+        sprintName: iterationName,
+        source,
         description: add.version ?? null,
       });
       createdAdditions.push({

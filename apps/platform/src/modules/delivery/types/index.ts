@@ -8,7 +8,14 @@ export interface Sprint {
   endDate: string;
 }
 
-export type TaskSource = 'manual' | 'jira';
+/**
+ * Source of a task on the delivery board.
+ * - 'manual' : created by the user directly in the UI.
+ * - Any other string (e.g. 'jira', 'clickup', 'linear', 'asana') : imported
+ *   from an external tool. The sanity-check feature treats every non-'manual'
+ *   source as an external ticket and runs its AI analysis on it.
+ */
+export type TaskSource = 'manual' | 'jira' | 'clickup' | 'linear' | 'asana' | 'trello' | string;
 
 export interface Task {
   id: string;

@@ -589,11 +589,11 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
               </button>
             )}
 
-            {tasks.some(t => t.source === 'jira') && (
+            {tasks.some(t => t.source && t.source !== 'manual') && (
               <button
                 className="module-header-btn"
                 onClick={() => setShowSanityModal(true)}
-                title="Analyser le board avec l'IA et proposer des repositionnements basés sur l'état Jira"
+                title="Analyser le board avec l'IA et proposer des repositionnements (Jira, ClickUp, Linear, Asana…)"
               >
                 ✨ Vérifier avec l'IA
               </button>

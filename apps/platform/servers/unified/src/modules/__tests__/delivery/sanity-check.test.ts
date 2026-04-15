@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseJiraKey,
+  parseExternalKey,
   extractJiraContext,
+  extractExternalContext,
   computeTodayCol,
   categorizeVersions,
   categoryOf,
@@ -9,22 +11,56 @@ import {
 } from '../../delivery/deliveryAISanityService';
 
 describe('Delivery — AI Sanity Check helpers', () => {
-  describe('parseJiraKey', () => {
-    it('extracts the key from a "[KEY-123] Summary" title', () => {
+  describe('parseExternalKey (and legacy parseJiraKey)', () => {
+    it('extracts a Jira-style key', () => {
+      expect(parseExternalKey('[DEV-42] Fix login bug')).toBe('DEV-42');
+    });
+
+    it('works through the backwards-compat alias parseJiraKey', () => {
       expect(parseJiraKey('[DEV-42] Fix login bug')).toBe('DEV-42');
     });
 
-    it('returns null when the title does not start with a key', () => {
-      expect(parseJiraKey('Untracked manual task')).toBeNull();
+    it('extracts a ClickUp-style key with mixed alphanumerics', () => {
+      expect(parseExternalKey('[CU-8abc123] Follow-up')).toBe('CU-8abc123');
+    });
+
+    it('extracts a Linear-style key', () => {
+      expect(parseExternalKey('[ENG-987] Ship release')).toBe('ENG-987');
+    });
+
+    it('returns null when the title does not start with a bracketed key', () => {
+      expect(parseExternalKey('Untracked manual task')).toBeNull();
     });
 
     it('handles underscore-containing project keys', () => {
-      expect(parseJiraKey('[MY_PROJ-7] Something')).toBe('MY_PROJ-7');
+      expect(parseExternalKey('[MY_PROJ-7] Something')).toBe('MY_PROJ-7');
     });
 
-    it('returns null for malformed keys', () => {
-      expect(parseJiraKey('[dev-42] lowercase')).toBeNull();
-      expect(parseJiraKey('[DEV42] missing dash')).toBeNull();
+    it('returns null for lowercase prefixes', () => {
+      expect(parseExternalKey('[dev-42] lowercase')).toBeNull();
+    });
+  });
+
+  describe('extractExternalContext', () => {
+    it('collects project keys, iteration names, and sources across providers', () => {
+      const tasks = [
+        { title: '[DEV-1] A', sprintName: 'Sprint 1', source: 'jira' },
+        { title: '[CU-8xy9] B', sprintName: 'Liste Backlog', source: 'clickup' },
+        { title: '[ENG-4] C', sprintName: 'Cycle 3', source: 'linear' },
+        { title: 'Manual task', sprintName: null, source: 'manual' },
+      ];
+      const ctx = extractExternalContext(tasks);
+      expect(ctx.projectKeys.sort()).toEqual(['CU', 'DEV', 'ENG']);
+      expect(ctx.iterationNames.sort()).toEqual(['Cycle 3', 'Liste Backlog', 'Sprint 1']);
+      expect(ctx.sources.sort()).toEqual(['clickup', 'jira', 'linear']);
+    });
+
+    it('ignores manual tasks entirely', () => {
+      const tasks = [{ title: '[MAN-1] nope', sprintName: 'X', source: 'manual' }];
+      const ctx = extractExternalContext(tasks);
+      expect(ctx.projectKeys).toEqual([]);
+      expect(ctx.iterationNames).toEqual([]);
+      expect(ctx.sources).toEqual([]);
     });
   });
 

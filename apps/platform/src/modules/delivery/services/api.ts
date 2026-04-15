@@ -426,7 +426,10 @@ export interface VersionInfo {
 export interface AnalyzedTask {
   taskId: string;
   taskTitle: string;
-  jiraKey: string | null;
+  /** External reference (Jira key, ClickUp id, Linear ref, …). */
+  externalKey: string | null;
+  /** Source tool (`'jira'`, `'clickup'`, `'linear'`, …). */
+  source: string;
   status: string;
   version: string | null;
   versionCategory: VersionCategory;
@@ -438,7 +441,8 @@ export interface AnalyzedTask {
 }
 
 export interface ProposedAddition {
-  jiraKey: string;
+  externalKey: string;
+  source: string;
   summary: string;
   status: string;
   version: string | null;
@@ -448,7 +452,7 @@ export interface ProposedAddition {
   storyPoints: number | null;
   estimatedDays: number | null;
   assignee: string | null;
-  sprintName: string | null;
+  iterationName: string | null;
   recommended: { startCol: number; endCol: number; row: number };
   reasoning: string;
 }
@@ -496,13 +500,14 @@ export async function runSanityCheck(boardId: string): Promise<SanityCheckRespon
 }
 
 export interface SanityAdditionPayload {
-  jiraKey: string;
+  externalKey: string;
+  source: string;
   summary: string;
   status?: string;
   storyPoints?: number | null;
   estimatedDays?: number | null;
   assignee?: string | null;
-  sprintName?: string | null;
+  iterationName?: string | null;
   version?: string | null;
   startCol: number;
   endCol: number;

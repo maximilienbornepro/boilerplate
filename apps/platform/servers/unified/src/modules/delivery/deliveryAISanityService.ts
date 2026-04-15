@@ -37,18 +37,30 @@ async function loadSkill(): Promise<string> {
 
 export type VersionCategory = 'next' | 'later' | 'past' | 'none';
 
+/**
+ * Source of an external ticket on the board. 'manual' is never analyzed ;
+ * everything else (jira, clickup, linear, asana…) is treated as an external
+ * ticket and goes through the sanity check.
+ */
+export type TaskSource = 'manual' | 'jira' | 'clickup' | 'linear' | 'asana' | 'trello' | string;
+
 export interface TaskSnapshot {
   id: string;
   title: string;
-  jiraKey: string | null;
+  /** External reference (e.g. "DEV-123" for Jira, "CU-12ab34" for ClickUp). null for free-form titles. */
+  externalKey: string | null;
+  /** Name of the origin tool. "jira", "clickup", … */
+  source: string;
   boardStatus: string;
-  jiraStatus: string | null;
+  /** Fresh status from the external tool when available. */
+  externalStatus: string | null;
   storyPoints: number | null;
   estimatedDays: number | null;
   hasEstimation: boolean;
   hasDescription: boolean;
   hasAssignee: boolean;
-  fixVersion: string | null;
+  /** "Fix version" / "Release" / "Cycle" — whatever the external tool calls an upcoming release bucket. */
+  releaseTag: string | null;
   versionCategory: VersionCategory;
   position: { startCol: number; endCol: number; row: number };
 }
@@ -60,7 +72,10 @@ export interface VersionInfo {
 }
 
 export interface MissingTicket {
-  jiraKey: string;
+  /** External reference ("DEV-123", "CU-…"). */
+  externalKey: string;
+  /** Which tool provided this ticket ("jira", "clickup"…). */
+  source: string;
   summary: string;
   status: string;
   storyPoints: number | null;
@@ -68,9 +83,10 @@ export interface MissingTicket {
   hasEstimation: boolean;
   hasDescription: boolean;
   assignee: string | null;
-  fixVersion: string | null;
+  releaseTag: string | null;
   versionCategory: VersionCategory;
-  sprintName: string | null;
+  /** Name of the current iteration / sprint / cycle / list on the source side. */
+  iterationName: string | null;
 }
 
 export interface BoardSnapshot {
@@ -86,7 +102,8 @@ export interface BoardSnapshot {
 export interface AnalyzedTask {
   taskId: string;
   taskTitle: string;
-  jiraKey: string | null;
+  externalKey: string | null;
+  source: string;
   status: string;
   version: string | null;
   versionCategory: VersionCategory;
@@ -94,11 +111,12 @@ export interface AnalyzedTask {
   hasDescription: boolean;
   current: { startCol: number; endCol: number; row: number };
   recommended: { startCol: number; endCol: number; row: number };
-  reasoning: string; // explicit sentence: "status X, version Y, estim Z → I placed it in column N because…"
+  reasoning: string;
 }
 
 export interface ProposedAddition {
-  jiraKey: string;
+  externalKey: string;
+  source: string;
   summary: string;
   status: string;
   version: string | null;
@@ -108,7 +126,7 @@ export interface ProposedAddition {
   storyPoints: number | null;
   estimatedDays: number | null;
   assignee: string | null;
-  sprintName: string | null;
+  iterationName: string | null;
   recommended: { startCol: number; endCol: number; row: number };
   reasoning: string;
 }
@@ -139,36 +157,52 @@ export interface SanityCheckResult {
 // ============ Helpers ============
 
 /**
- * Parse the Jira issue key from a task title (format "[KEY-123] Summary").
- * Returns null if not Jira-sourced or title does not follow the pattern.
+ * Parse an external ticket reference from a task title formatted as
+ * "[REF-123] Summary". Works for Jira (DEV-123), ClickUp (CU-abc123 when
+ * prefixed that way), Linear (ENG-42), etc. — any uppercase+digit prefix.
+ * Returns null if the title does not follow the pattern.
  */
-export function parseJiraKey(title: string): string | null {
-  const match = title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+export function parseExternalKey(title: string): string | null {
+  const match = title.match(/^\[([A-Z][A-Z0-9_]+-[A-Za-z0-9]+)\]/);
   return match ? match[1] : null;
 }
 
+/** Deprecated alias kept for backwards compatibility — use parseExternalKey. */
+export const parseJiraKey = parseExternalKey;
+
 /**
- * Extract the (projectKeys, sprintNames) context present on the board.
+ * Collect unique project keys and iteration (sprint/cycle/list) names
+ * present on the board, excluding manual tasks.
  */
-export function extractJiraContext(tasks: Array<{ title: string; sprintName?: string | null; source?: string }>): {
+export function extractExternalContext(tasks: Array<{ title: string; sprintName?: string | null; source?: string }>): {
   projectKeys: string[];
-  sprintNames: string[];
+  iterationNames: string[];
+  sources: string[];
 } {
   const projectKeys = new Set<string>();
-  const sprintNames = new Set<string>();
+  const iterationNames = new Set<string>();
+  const sources = new Set<string>();
   for (const t of tasks) {
-    if (t.source !== 'jira') continue;
-    const key = parseJiraKey(t.title);
+    if (!t.source || t.source === 'manual') continue;
+    sources.add(t.source);
+    const key = parseExternalKey(t.title);
     if (key) {
       const project = key.split('-')[0];
       if (project) projectKeys.add(project);
     }
-    if (t.sprintName) sprintNames.add(t.sprintName);
+    if (t.sprintName) iterationNames.add(t.sprintName);
   }
   return {
     projectKeys: Array.from(projectKeys),
-    sprintNames: Array.from(sprintNames),
+    iterationNames: Array.from(iterationNames),
+    sources: Array.from(sources),
   };
+}
+
+/** Backwards-compat alias — use extractExternalContext. */
+export function extractJiraContext(tasks: Array<{ title: string; sprintName?: string | null; source?: string }>) {
+  const ctx = extractExternalContext(tasks);
+  return { projectKeys: ctx.projectKeys, sprintNames: ctx.iterationNames };
 }
 
 /**
@@ -260,14 +294,15 @@ export async function analyzeSanityCheck(
   const tasksJson = snapshot.tasks.map(t => ({
     id: t.id,
     title: t.title,
-    jiraKey: t.jiraKey,
-    status: t.jiraStatus ?? t.boardStatus,
+    externalKey: t.externalKey,
+    source: t.source,
+    status: t.externalStatus ?? t.boardStatus,
     storyPoints: t.storyPoints,
     estimatedDays: t.estimatedDays,
     hasEstimation: t.hasEstimation,
     hasDescription: t.hasDescription,
     hasAssignee: t.hasAssignee,
-    version: t.fixVersion,
+    version: t.releaseTag,
     versionCategory: t.versionCategory,
     currentPosition: t.position,
     currentDuration: Math.max(1, t.position.endCol - t.position.startCol),
@@ -278,7 +313,8 @@ export async function analyzeSanityCheck(
     : '(aucune version détectée sur les tickets)';
 
   const missingJson = snapshot.missingFromBoard.map(m => ({
-    jiraKey: m.jiraKey,
+    externalKey: m.externalKey,
+    source: m.source,
     summary: m.summary,
     status: m.status,
     storyPoints: m.storyPoints,
@@ -286,9 +322,9 @@ export async function analyzeSanityCheck(
     hasEstimation: m.hasEstimation,
     hasDescription: m.hasDescription,
     hasAssignee: !!m.assignee,
-    version: m.fixVersion,
+    version: m.releaseTag,
     versionCategory: m.versionCategory,
-    sprintName: m.sprintName,
+    iterationName: m.iterationName,
   }));
 
   // Editable skill rules — loaded from disk on each call.
@@ -313,7 +349,7 @@ ${versionsSummary}
 ## Tickets sur le board (JSON)
 ${JSON.stringify(tasksJson, null, 2)}
 
-## Tickets présents dans les sprints actifs mais ABSENTS du board (JSON)
+## Tickets présents dans l'itération active (sprint / cycle / liste) mais ABSENTS du board (JSON)
 ${missingJson.length > 0 ? JSON.stringify(missingJson, null, 2) : '(aucun ticket manquant détecté)'}
 
 Applique les règles ci-dessus à cet état et réponds uniquement en JSON.`;
@@ -337,7 +373,7 @@ Applique les règles ci-dessus à cet état et réponds uniquement en JSON.`;
   }
 
   const taskById = new Map(snapshot.tasks.map(t => [t.id, t]));
-  const missingByKey = new Map(snapshot.missingFromBoard.map(m => [m.jiraKey, m]));
+  const missingByKey = new Map(snapshot.missingFromBoard.map(m => [m.externalKey, m]));
   const columns: ColumnPlan[] = [];
   const seenTaskIds = new Set<string>();
   const seenAdditionKeys = new Set<string>();
@@ -378,9 +414,10 @@ Applique les règles ci-dessus à cet état et réponds uniquement en JSON.`;
       plan.tasks.push({
         taskId,
         taskTitle: task.title,
-        jiraKey: task.jiraKey,
-        status: task.jiraStatus ?? task.boardStatus,
-        version: task.fixVersion,
+        externalKey: task.externalKey,
+        source: task.source,
+        status: task.externalStatus ?? task.boardStatus,
+        version: task.releaseTag,
         versionCategory: task.versionCategory,
         hasEstimation: task.hasEstimation,
         hasDescription: task.hasDescription,
@@ -393,9 +430,10 @@ Applique les règles ci-dessus à cet état et réponds uniquement en JSON.`;
 
     for (const rawAdd of (rawCol.additions || []) as Array<Record<string, unknown>>) {
       if (seenAdditionKeys.size >= MAX_ADDITIONS) break;
-      const jiraKey = String(rawAdd.jiraKey || '');
-      if (!jiraKey || seenAdditionKeys.has(jiraKey)) continue;
-      const missing = missingByKey.get(jiraKey);
+      // Accept both legacy `jiraKey` and generic `externalKey` field names.
+      const externalKey = String(rawAdd.externalKey || rawAdd.jiraKey || '');
+      if (!externalKey || seenAdditionKeys.has(externalKey)) continue;
+      const missing = missingByKey.get(externalKey);
       if (!missing) continue;
       const rec = rawAdd.recommended as { startCol?: number; row?: number } | undefined;
       if (!rec || typeof rec.startCol !== 'number') continue;
@@ -409,21 +447,22 @@ Applique les règles ci-dessus à cet état et réponds uniquement en JSON.`;
       const row = clampInt(typeof rec.row === 'number' ? rec.row : 0, 0, 99);
 
       plan.additions.push({
-        jiraKey,
+        externalKey,
+        source: missing.source,
         summary: missing.summary,
         status: missing.status,
-        version: missing.fixVersion,
+        version: missing.releaseTag,
         versionCategory: missing.versionCategory,
         hasEstimation: missing.hasEstimation,
         hasDescription: missing.hasDescription,
         storyPoints: missing.storyPoints,
         estimatedDays: missing.estimatedDays,
         assignee: missing.assignee,
-        sprintName: missing.sprintName,
+        iterationName: missing.iterationName,
         recommended: { startCol, endCol, row },
         reasoning: String(rawAdd.reasoning || '').slice(0, 300),
       });
-      seenAdditionKeys.add(jiraKey);
+      seenAdditionKeys.add(externalKey);
     }
 
     if (plan.tasks.length > 0 || plan.additions.length > 0) columns.push(plan);

@@ -19,7 +19,7 @@ type ViewMode = 'list' | 'grid';
 
 /** Keys used in the selection set — prefixes disambiguate tasks vs additions. */
 const taskKey = (id: string) => `t:${id}`;
-const additionKey = (jiraKey: string) => `a:${jiraKey}`;
+const additionKey = (externalKey: string) => `a:${externalKey}`;
 
 export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props) {
   const [loading, setLoading] = useState(true);
@@ -47,7 +47,7 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
         const ids = new Set<string>();
         for (const c of res.columns) {
           for (const tk of c.tasks) ids.add(taskKey(tk.taskId));
-          for (const ad of c.additions) ids.add(additionKey(ad.jiraKey));
+          for (const ad of c.additions) ids.add(additionKey(ad.externalKey));
         }
         setSelected(ids);
         setTasks(t);
@@ -86,7 +86,7 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
     } else {
       const all = new Set<string>();
       for (const t of allTasks) all.add(taskKey(t.taskId));
-      for (const a of allAdditions) all.add(additionKey(a.jiraKey));
+      for (const a of allAdditions) all.add(additionKey(a.externalKey));
       setSelected(all);
     }
   };
@@ -101,15 +101,16 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
         row: t.recommended.row,
       }));
     const additionsPayload: SanityAdditionPayload[] = allAdditions
-      .filter(a => selected.has(additionKey(a.jiraKey)))
+      .filter(a => selected.has(additionKey(a.externalKey)))
       .map(a => ({
-        jiraKey: a.jiraKey,
+        externalKey: a.externalKey,
+        source: a.source,
         summary: a.summary,
         status: a.status,
         storyPoints: a.storyPoints,
         estimatedDays: a.estimatedDays,
         assignee: a.assignee,
-        sprintName: a.sprintName,
+        iterationName: a.iterationName,
         version: a.version,
         startCol: a.recommended.startCol,
         endCol: a.recommended.endCol,
@@ -202,7 +203,7 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
               <div className={styles.columnList}>
                 {allAdditions.length > 0 && (
                   <div className={styles.additionsBanner}>
-                    <strong>{allAdditions.length}</strong> ticket{allAdditions.length > 1 ? 's' : ''} présent{allAdditions.length > 1 ? 's' : ''} dans le sprint actif {allAdditions.length > 1 ? 'sont absents' : 'est absent'} du board et {allAdditions.length > 1 ? 'seront ajoutés' : 'sera ajouté'} (vert ci-dessous).
+                    <strong>{allAdditions.length}</strong> ticket{allAdditions.length > 1 ? 's' : ''} présent{allAdditions.length > 1 ? 's' : ''} dans l'itération active {allAdditions.length > 1 ? 'sont absents' : 'est absent'} du board et {allAdditions.length > 1 ? 'seront ajoutés' : 'sera ajouté'} (vert ci-dessous).
                   </div>
                 )}
                 {columns.map(col => (
@@ -333,10 +334,10 @@ function ColumnSection({
         ))}
         {column.additions.map(a => (
           <AdditionCard
-            key={`a-${a.jiraKey}`}
+            key={`a-${a.externalKey}`}
             addition={a}
-            selected={selected.has(additionKey(a.jiraKey))}
-            onToggle={() => onToggle(additionKey(a.jiraKey))}
+            selected={selected.has(additionKey(a.externalKey))}
+            onToggle={() => onToggle(additionKey(a.externalKey))}
           />
         ))}
       </div>
@@ -396,7 +397,9 @@ function AdditionCard({
       <div className={styles.taskBody}>
         <div className={styles.taskTop}>
           <span className={styles.taskTitle}>
-            <span className={styles.additionBadge}>+ Ajouter</span> [{addition.jiraKey}] {addition.summary}
+            <span className={styles.additionBadge}>+ Ajouter</span>
+            <span className={styles.sourceBadge}>{addition.source}</span>
+            [{addition.externalKey}] {addition.summary}
           </span>
           <span className={styles.taskMeta}>
             <StatusBadge status={addition.status} />
