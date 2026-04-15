@@ -31,8 +31,12 @@ interface Props<T> {
   createHref?: string;
   /** Optional: fetch sub-items for each top-level item (e.g. recent subjects per doc) */
   fetchSubItems?: (item: Item) => Promise<SubItem[]>;
+  /** Optional: compute a dynamic meta string (e.g. "3 en cours") after items load */
+  computeMeta?: (item: Item) => Promise<string | null>;
   onNavigate?: (path: string) => void;
 }
+
+const MAX_VISIBLE = 5;
 
 export function ModuleRecentBlock<T>({
   title,
@@ -45,6 +49,7 @@ export function ModuleRecentBlock<T>({
   createLabel,
   createHref,
   fetchSubItems,
+  computeMeta,
   onNavigate,
 }: Props<T>) {
   const [items, setItems] = useState<Item[] | null>(null);
@@ -64,7 +69,7 @@ export function ModuleRecentBlock<T>({
             return new Date(b.date).getTime() - new Date(a.date).getTime();
           });
         setTotal(mapped.length);
-        const top = mapped.slice(0, 3);
+        const top = mapped.slice(0, MAX_VISIBLE);
         setItems(top);
 
         // Fetch sub-items for the top items in parallel
@@ -79,6 +84,26 @@ export function ModuleRecentBlock<T>({
             const map: Record<string, SubItem[]> = {};
             for (const r of results) map[r.id] = r.subs;
             setSubItemsMap(map);
+          });
+        }
+
+        // Compute dynamic meta (e.g. "3 en cours") for each visible item
+        if (computeMeta && top.length > 0) {
+          Promise.all(
+            top.map(item =>
+              computeMeta(item)
+                .then(meta => ({ id: String(item.id), meta }))
+                .catch(() => ({ id: String(item.id), meta: null as string | null }))
+            )
+          ).then(results => {
+            setItems(prev => {
+              if (!prev) return prev;
+              const metaById = new Map(results.map(r => [r.id, r.meta] as const));
+              return prev.map(it => {
+                const m = metaById.get(String(it.id));
+                return m ? { ...it, meta: m } : it;
+              });
+            });
           });
         }
       })
@@ -161,6 +186,19 @@ export function ModuleRecentBlock<T>({
                 </li>
               );
             })}
+            {total > items.length && (
+              <li className={styles.item}>
+                <button
+                  className={`${styles.itemBtn} ${styles.itemBtnMore}`}
+                  onClick={() => navigate(seeAllHref)}
+                  title={`Voir les ${total - items.length} autre${total - items.length > 1 ? 's' : ''}`}
+                >
+                  <span className={styles.itemMoreLabel}>
+                    … et {total - items.length} autre{total - items.length > 1 ? 's' : ''}
+                  </span>
+                </button>
+              </li>
+            )}
           </ul>
         )}
       </div>

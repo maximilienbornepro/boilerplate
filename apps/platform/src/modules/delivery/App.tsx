@@ -5,6 +5,7 @@ import { BoardList } from './components/BoardList/BoardList';
 import { RestoreModal } from './components/RestoreModal';
 import { SnapshotModal } from './components/SnapshotModal';
 import { ImportModal } from './components/ImportModal';
+import { SanityCheckModal } from './components/SanityCheckModal/SanityCheckModal';
 import { generateSprintsForBoard, type BoardConfig } from './utils/sprintGeneration';
 import { Layout, ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import type { Board } from './services/api';
@@ -98,6 +99,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showSanityModal, setShowSanityModal] = useState(false);
   const [activeConnectors, setActiveConnectors] = useState<ActiveConnector[]>([]);
   const [jiraSiteUrl, setJiraSiteUrl] = useState<string | null>(null);
   const [showAddTask, setShowAddTask] = useState(false);
@@ -587,6 +589,16 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
               </button>
             )}
 
+            {tasks.some(t => t.source === 'jira') && (
+              <button
+                className="module-header-btn"
+                onClick={() => setShowSanityModal(true)}
+                title="Analyser le board avec l'IA et proposer des repositionnements basés sur l'état Jira"
+              >
+                ✨ Vérifier avec l'IA
+              </button>
+            )}
+
             <button
               className="module-header-btn"
               onClick={() => setShowAddTask(!showAddTask)}
@@ -694,6 +706,14 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
               activeConnectors={activeConnectors}
               onImported={loadTasks}
               onClose={() => setShowImportModal(false)}
+            />
+          )}
+
+          {showSanityModal && (
+            <SanityCheckModal
+              boardId={board.id}
+              onClose={() => setShowSanityModal(false)}
+              onApplied={() => { setShowSanityModal(false); loadTasks(); }}
             />
           )}
         </div>

@@ -412,3 +412,113 @@ export async function fetchJiraVersions(
   const res = await fetch(`${API_BASE}/jira/versions?${params}`, { credentials: 'include' });
   return handleResponse(res);
 }
+
+// ============ AI Sanity Check ============
+
+export type VersionCategory = 'next' | 'later' | 'past' | 'none';
+
+export interface VersionInfo {
+  name: string;
+  releaseDate: string | null;
+  category: VersionCategory;
+}
+
+export interface AnalyzedTask {
+  taskId: string;
+  taskTitle: string;
+  jiraKey: string | null;
+  status: string;
+  version: string | null;
+  versionCategory: VersionCategory;
+  hasEstimation: boolean;
+  hasDescription: boolean;
+  current: { startCol: number; endCol: number; row: number };
+  recommended: { startCol: number; endCol: number; row: number };
+  reasoning: string;
+}
+
+export interface ProposedAddition {
+  jiraKey: string;
+  summary: string;
+  status: string;
+  version: string | null;
+  versionCategory: VersionCategory;
+  hasEstimation: boolean;
+  hasDescription: boolean;
+  storyPoints: number | null;
+  estimatedDays: number | null;
+  assignee: string | null;
+  sprintName: string | null;
+  recommended: { startCol: number; endCol: number; row: number };
+  reasoning: string;
+}
+
+export interface ColumnPlan {
+  col: number;
+  label: string;
+  strategy: string;
+  tasks: AnalyzedTask[];
+  additions: ProposedAddition[];
+}
+
+export interface BoardAnalysis {
+  totalJiraTasks: number;
+  byStatus: Record<string, number>;
+  missingEstimation: number;
+  missingDescription: number;
+  missingFromBoard: number;
+  versions: VersionInfo[];
+}
+
+export interface SanityCheckResponse {
+  summary: string;
+  analysis: BoardAnalysis;
+  columns: ColumnPlan[];
+}
+
+/** @deprecated kept for type compatibility with older callers. */
+export interface SanityMoveRecommendation {
+  taskId: string;
+  taskTitle: string;
+  current: { startCol: number; endCol: number; row: number };
+  recommended: { startCol: number; endCol: number; row: number };
+  reasoning: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export async function runSanityCheck(boardId: string): Promise<SanityCheckResponse> {
+  const res = await fetch(`${API_BASE}/boards/${boardId}/ai-sanity-check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+  });
+  return handleResponse<SanityCheckResponse>(res);
+}
+
+export interface SanityAdditionPayload {
+  jiraKey: string;
+  summary: string;
+  status?: string;
+  storyPoints?: number | null;
+  estimatedDays?: number | null;
+  assignee?: string | null;
+  sprintName?: string | null;
+  version?: string | null;
+  startCol: number;
+  endCol: number;
+  row: number;
+}
+
+export async function applySanityMoves(
+  boardId: string,
+  moves: Array<{ taskId: string; startCol: number; endCol: number; row: number }>,
+  additions: SanityAdditionPayload[] = [],
+): Promise<{ applied: number; movesApplied: number; additionsApplied: number }> {
+  const res = await fetch(`${API_BASE}/boards/${boardId}/ai-sanity-check/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ moves, additions }),
+  });
+  return handleResponse<{ applied: number; movesApplied: number; additionsApplied: number }>(res);
+}

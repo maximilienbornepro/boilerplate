@@ -296,6 +296,25 @@
   gap: var(--spacing-sm);
 }
 
+/* "... et N autres" row — last item in the list */
+.itemBtnMore {
+  padding: var(--spacing-xs) var(--spacing-md);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.itemBtnMore:hover {
+  color: var(--module-color, var(--accent-primary));
+}
+
+.itemBtnMore::before {
+  display: none;
+}
+
+.itemMoreLabel {
+  font-size: var(--font-size-xs);
+}
+
 .itemTitle {
   font-size: var(--font-size-sm);
   color: var(--text-primary);

@@ -23,6 +23,7 @@ const CREDIT_COSTS: Record<string, Record<string, number>> = {
   },
   delivery: {
     create_board: 5,
+    sanity_check: 5,
   },
 };
 

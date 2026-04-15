@@ -744,5 +744,391 @@ export function createDeliveryRoutes(): Router {
     res.json(issues);
   }));
 
+  // ============ AI Sanity Check ============
+  // Looks at the current board + live Jira state and returns
+  // repositioning recommendations (never deletes, only moves).
+
+  router.post('/boards/:boardId/ai-sanity-check', asyncHandler(async (req, res) => {
+    const { boardId } = req.params;
+
+    const board = await db.getBoardById(boardId);
+    if (!board) { res.status(404).json({ error: 'Board non trouvé' }); return; }
+
+    const tasks = await db.getAllTasksForBoard(boardId);
+    const jiraTasks = tasks.filter(t => t.source === 'jira');
+
+    if (jiraTasks.length === 0) {
+      res.status(400).json({
+        error: 'Aucun ticket Jira sur ce board, la vérification IA n\'a rien à analyser.',
+      });
+      return;
+    }
+
+    // Deduct credits BEFORE calling the AI
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try {
+      await deductCredits(req.user!.id, req.user!.isAdmin, 'delivery', 'sanity_check');
+    } catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        res.status(402).json({
+          error: 'INSUFFICIENT_CREDITS',
+          message: 'Crédits insuffisants',
+          required: e.required,
+          available: e.available,
+        });
+        return;
+      }
+      throw e;
+    }
+
+    const {
+      parseJiraKey, computeTodayCol, analyzeSanityCheck, categorizeVersions, categoryOf,
+    } = await import('./deliveryAISanityService.js');
+
+    const jiraKeyToTaskId = new Map<string, string>();
+    for (const t of jiraTasks) {
+      const key = parseJiraKey(t.title);
+      if (key) jiraKeyToTaskId.set(key, t.id);
+    }
+
+    // Fetch live Jira state — includes fix versions with release date
+    const liveJiraByKey = new Map<string, {
+      status?: string;
+      storyPoints?: number;
+      assignee?: string;
+      estimateDays?: number;
+      description?: string;
+      fixVersion?: string | null;
+      fixVersionDate?: string | null;
+    }>();
+    const rawVersions: Array<{ name: string; releaseDate: string | null }> = [];
+
+    const ctx = await getJiraContext(req.user!.id);
+    if (ctx && jiraKeyToTaskId.size > 0) {
+      const keys = Array.from(jiraKeyToTaskId.keys());
+      for (let i = 0; i < keys.length; i += 50) {
+        const batch = keys.slice(i, i + 50);
+        const jql = `key in (${batch.join(',')})`;
+        const params = new URLSearchParams({
+          jql,
+          maxResults: '50',
+          fields: 'status,customfield_10016,assignee,timetracking,summary,description,fixVersions',
+        });
+        try {
+          const searchResp = await fetch(`${ctx.baseUrl}/rest/api/3/search/jql?${params}`, {
+            headers: ctx.headers,
+          });
+          if (!searchResp.ok) continue;
+          const data = await searchResp.json() as { issues?: Array<{
+            key: string;
+            fields: {
+              status?: { name: string };
+              customfield_10016?: number;
+              assignee?: { displayName: string };
+              timetracking?: { originalEstimateSeconds?: number };
+              summary?: string;
+              description?: unknown;
+              fixVersions?: Array<{ name: string; releaseDate?: string }>;
+            };
+          }> };
+          for (const issue of data.issues || []) {
+            const f = issue.fields;
+            const firstVersion = f.fixVersions?.[0];
+            if (firstVersion) {
+              rawVersions.push({
+                name: firstVersion.name,
+                releaseDate: firstVersion.releaseDate ?? null,
+              });
+            }
+            liveJiraByKey.set(issue.key, {
+              status: f.status?.name,
+              storyPoints: f.customfield_10016,
+              assignee: f.assignee?.displayName,
+              estimateDays: f.timetracking?.originalEstimateSeconds
+                ? Math.round((f.timetracking.originalEstimateSeconds / (8 * 60 * 60)) * 10) / 10
+                : undefined,
+              description: typeof f.description === 'string' ? f.description : (f.description ? 'yes' : undefined),
+              fixVersion: firstVersion?.name ?? null,
+              fixVersionDate: firstVersion?.releaseDate ?? null,
+            });
+          }
+        } catch {
+          /* ignore — best effort */
+        }
+      }
+    }
+
+    // ---------------- Missing tickets detection ----------------
+    // For each unique project key on the board, fetch the ACTIVE sprint issues
+    // and compare against the board's Jira keys to identify tickets present
+    // in the sprint but absent from the delivery board.
+    const boardJiraKeys = new Set(
+      Array.from(jiraKeyToTaskId.keys()),
+    );
+    const uniqueProjectKeys = new Set<string>();
+    for (const key of boardJiraKeys) uniqueProjectKeys.add(key.split('-')[0]);
+
+    const missingFromBoard: Array<{
+      jiraKey: string;
+      summary: string;
+      status: string;
+      storyPoints: number | null;
+      estimatedDays: number | null;
+      hasEstimation: boolean;
+      hasDescription: boolean;
+      assignee: string | null;
+      fixVersion: string | null;
+      sprintName: string | null;
+    }> = [];
+
+    if (ctx && uniqueProjectKeys.size > 0) {
+      for (const projectKey of uniqueProjectKeys) {
+        try {
+          // Find the active sprint(s) for this project
+          const sprintsJql = `project = "${projectKey}" AND sprint in openSprints()`;
+          const sprintsParams = new URLSearchParams({
+            jql: sprintsJql,
+            maxResults: '100',
+            fields: 'summary,status,assignee,customfield_10016,customfield_10020,timetracking,description,fixVersions',
+          });
+          const resp = await fetch(`${ctx.baseUrl}/rest/api/3/search/jql?${sprintsParams}`, {
+            headers: ctx.headers,
+          });
+          if (!resp.ok) continue;
+          const data = await resp.json() as { issues?: Array<{
+            key: string;
+            fields: {
+              summary?: string;
+              status?: { name: string };
+              assignee?: { displayName: string };
+              customfield_10016?: number;
+              customfield_10020?: Array<{ name: string; state: string }>;
+              timetracking?: { originalEstimateSeconds?: number };
+              description?: unknown;
+              fixVersions?: Array<{ name: string; releaseDate?: string }>;
+            };
+          }> };
+          for (const issue of data.issues || []) {
+            if (boardJiraKeys.has(issue.key)) continue; // already on the board
+            const f = issue.fields;
+            const activeSprint = f.customfield_10020?.find(s => s.state === 'active');
+            const estDays = f.timetracking?.originalEstimateSeconds
+              ? Math.round((f.timetracking.originalEstimateSeconds / (8 * 60 * 60)) * 10) / 10
+              : null;
+            const hasDesc = typeof f.description === 'string'
+              ? f.description.trim().length > 0
+              : !!f.description;
+            const firstVersion = f.fixVersions?.[0];
+            if (firstVersion) {
+              rawVersions.push({ name: firstVersion.name, releaseDate: firstVersion.releaseDate ?? null });
+            }
+            missingFromBoard.push({
+              jiraKey: issue.key,
+              summary: f.summary || issue.key,
+              status: f.status?.name || 'To Do',
+              storyPoints: f.customfield_10016 ?? null,
+              estimatedDays: estDays,
+              hasEstimation: f.customfield_10016 !== undefined || estDays !== null,
+              hasDescription: hasDesc,
+              assignee: f.assignee?.displayName || null,
+              fixVersion: firstVersion?.name ?? null,
+              sprintName: activeSprint?.name ?? null,
+            });
+          }
+        } catch {
+          /* best effort */
+        }
+      }
+    }
+
+    // De-duplicate versions by name and classify them (past / next / later / none)
+    const uniqueVersions = Array.from(
+      new Map(rawVersions.map(v => [v.name, v])).values(),
+    );
+    const classifiedVersions = categorizeVersions(uniqueVersions);
+
+    // Enrich missing tickets with their version category, now that versions are classified
+    const missingEnriched = missingFromBoard.map(m => ({
+      ...m,
+      versionCategory: categoryOf(m.fixVersion, classifiedVersions),
+    }));
+    const MAX_MISSING = 30;
+    const missingCapped = missingEnriched.slice(0, MAX_MISSING);
+
+    // Build the snapshot
+    const positions = await db.getPositionsForBoard(boardId);
+    const positionByTaskId = new Map(positions.map(p => [p.taskId, p]));
+
+    const totalCols = board.boardType === 'agile' ? (board.durationWeeks ?? 6) : 4;
+    const todayCol = computeTodayCol(board.startDate, board.endDate, totalCols);
+
+    const snapshotTasks = jiraTasks.map(t => {
+      const jiraKey = parseJiraKey(t.title);
+      const pos = positionByTaskId.get(t.id);
+      const live = jiraKey ? liveJiraByKey.get(jiraKey) : undefined;
+      const fixVersion = live?.fixVersion
+        || (t.description && /^v?\d/.test(t.description) ? t.description : null);
+      return {
+        id: t.id,
+        title: t.title,
+        jiraKey,
+        boardStatus: t.status,
+        jiraStatus: live?.status ?? null,
+        storyPoints: t.storyPoints ?? live?.storyPoints ?? null,
+        estimatedDays: t.estimatedDays ?? live?.estimateDays ?? null,
+        hasEstimation: !!(t.estimatedDays || t.storyPoints || live?.storyPoints || live?.estimateDays),
+        hasDescription: !!(t.description && t.description.trim().length > 0) || !!live?.description,
+        hasAssignee: !!(t.assignee || live?.assignee),
+        fixVersion,
+        versionCategory: categoryOf(fixVersion, classifiedVersions),
+        position: pos
+          ? { startCol: pos.startCol, endCol: pos.endCol, row: pos.row }
+          : { startCol: 0, endCol: 1, row: 0 },
+      };
+    });
+
+    const MAX_TASKS = 50;
+    const capped = snapshotTasks.slice(0, MAX_TASKS);
+
+    const result = await analyzeSanityCheck(req.user!.id, {
+      boardId,
+      boardName: board.name,
+      totalCols,
+      todayCol,
+      tasks: capped,
+      versions: classifiedVersions,
+      missingFromBoard: missingCapped,
+    });
+
+    res.json(result);
+  }));
+
+  // Apply a list of recommended moves + optional additions. Transactional —
+  // all or nothing. Moves update existing positions ; additions first create
+  // a new Jira-sourced task with the given metadata, then set its position.
+  router.post('/boards/:boardId/ai-sanity-check/apply', asyncHandler(async (req, res) => {
+    const { boardId } = req.params;
+    const { moves, additions } = req.body as {
+      moves?: Array<{ taskId: string; startCol: number; endCol: number; row: number }>;
+      additions?: Array<{
+        jiraKey: string;
+        summary: string;
+        status?: string;
+        storyPoints?: number | null;
+        estimatedDays?: number | null;
+        assignee?: string | null;
+        sprintName?: string | null;
+        version?: string | null;
+        startCol: number;
+        endCol: number;
+        row: number;
+      }>;
+    };
+    const safeMoves = Array.isArray(moves) ? moves : [];
+    const safeAdditions = Array.isArray(additions) ? additions : [];
+
+    if (safeMoves.length === 0 && safeAdditions.length === 0) {
+      res.status(400).json({ error: 'Aucun changement à appliquer' });
+      return;
+    }
+
+    const tasks = await db.getAllTasksForBoard(boardId);
+    const taskById = new Map(tasks.map(t => [t.id, t]));
+    const positions = await db.getPositionsForBoard(boardId);
+    const positionByTaskId = new Map(positions.map(p => [p.taskId, p]));
+
+    // Any move referencing a task not on this board is rejected.
+    const invalid = safeMoves.find(m => !taskById.has(m.taskId));
+    if (invalid) {
+      res.status(400).json({ error: `Tâche ${invalid.taskId} absente du board` });
+      return;
+    }
+
+    // Map board-level status strings to TaskStatus
+    const mapJiraStatus = (jiraStatus?: string): string => {
+      const s = (jiraStatus || '').toLowerCase();
+      if (s.includes('progress') || s.includes('en cours')) return 'in_progress';
+      if (s.includes('block')) return 'blocked';
+      if (s.includes('done') || s.includes('termin')) return 'done';
+      return 'todo';
+    };
+
+    // 1) Create tasks for additions so we have their new ids
+    const createdAdditions: Array<{ taskId: string; startCol: number; endCol: number; row: number }> = [];
+    for (const add of safeAdditions) {
+      if (!add.jiraKey) continue;
+      // Guard against duplicates: if a task with the same Jira key already
+      // exists on the board, skip and just reposition it instead.
+      const existing = tasks.find(t => t.source === 'jira' && t.title.startsWith(`[${add.jiraKey}]`));
+      if (existing) {
+        createdAdditions.push({
+          taskId: existing.id,
+          startCol: Math.max(0, Math.floor(add.startCol)),
+          endCol: Math.max(1, Math.floor(add.endCol)),
+          row: Math.max(0, Math.floor(add.row)),
+        });
+        continue;
+      }
+
+      const created = await db.createTask({
+        title: `[${add.jiraKey}] ${add.summary || add.jiraKey}`,
+        type: 'feature',
+        status: mapJiraStatus(add.status),
+        storyPoints: add.storyPoints ?? undefined,
+        estimatedDays: add.estimatedDays ?? undefined,
+        assignee: add.assignee ?? undefined,
+        priority: 'medium',
+        incrementId: boardId,
+        sprintName: add.sprintName ?? undefined,
+        source: 'jira',
+        description: add.version ?? null,
+      });
+      createdAdditions.push({
+        taskId: created.id,
+        startCol: Math.max(0, Math.floor(add.startCol)),
+        endCol: Math.max(1, Math.floor(add.endCol)),
+        row: Math.max(0, Math.floor(add.row)),
+      });
+    }
+
+    // 2) Build the position upsert list (moves + created additions)
+    const toUpsert: Array<db.TaskPosition> = [];
+
+    for (const m of safeMoves) {
+      const existing = positionByTaskId.get(m.taskId);
+      const incrementId =
+        existing?.incrementId
+        || taskById.get(m.taskId)?.incrementId
+        || boardId;
+      toUpsert.push({
+        taskId: m.taskId,
+        incrementId,
+        startCol: Math.max(0, Math.floor(m.startCol)),
+        endCol: Math.max(1, Math.floor(m.endCol)),
+        row: Math.max(0, Math.floor(m.row)),
+        rowSpan: existing?.rowSpan ?? 1,
+      });
+    }
+
+    for (const a of createdAdditions) {
+      toUpsert.push({
+        taskId: a.taskId,
+        incrementId: boardId,
+        startCol: a.startCol,
+        endCol: a.endCol,
+        row: a.row,
+        rowSpan: 1,
+      });
+    }
+
+    await db.bulkUpsertPositions(toUpsert);
+
+    res.json({
+      applied: toUpsert.length,
+      movesApplied: safeMoves.length,
+      additionsApplied: createdAdditions.length,
+    });
+  }));
+
   return router;
 }
