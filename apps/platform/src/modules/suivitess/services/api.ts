@@ -310,3 +310,134 @@ export async function acceptSuggestion(id: number): Promise<void> {
 export async function rejectSuggestion(id: number): Promise<void> {
   await fetch(`${API_BASE}/suggestions/${id}/reject`, { method: 'POST', credentials: 'include' });
 }
+
+// ============ Bulk transcription import ============
+
+export type SourceProvider = 'fathom' | 'otter' | 'gmail' | 'outlook';
+
+export interface BulkSourceItem {
+  id: string;
+  provider: SourceProvider;
+  title: string;
+  date: string | null;
+  participants?: string[];
+  preview?: string;
+}
+
+export async function fetchBulkSources(days = 30): Promise<BulkSourceItem[]> {
+  const response = await fetch(
+    `${API_BASE}/transcription/bulk-sources?days=${days}`,
+    { credentials: 'include' },
+  );
+  if (!response.ok) throw new Error('Failed to fetch bulk sources');
+  return response.json();
+}
+
+// ============ Subject-level analysis & routing ============
+
+export type ReviewAction = 'existing-review' | 'new-review';
+export type SectionAction = 'existing-section' | 'new-section';
+export type SubjectAction = 'new-subject' | 'update-existing-subject';
+
+export interface AnalyzedSubject {
+  title: string;
+  situation: string;
+  status: string;
+  responsibility: string | null;
+  action: ReviewAction;
+  reviewId: string | null;
+  suggestedNewReviewTitle: string | null;
+  sectionAction: SectionAction;
+  sectionId: string | null;
+  suggestedNewSectionName: string | null;
+  /** 'update-existing-subject' means we update `targetSubjectId` rather than creating. */
+  subjectAction: SubjectAction;
+  targetSubjectId: string | null;
+  updatedSituation: string | null;
+  updatedStatus: string | null;
+  updatedResponsibility: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+}
+
+export interface AvailableReviewSubject {
+  id: string;
+  title: string;
+  status: string | null;
+}
+
+export interface AvailableReview {
+  id: string;
+  title: string;
+  sections: Array<{ id: string; name: string; subjects: AvailableReviewSubject[] }>;
+}
+
+export interface AnalysisResponse {
+  summary: string;
+  subjects: AnalyzedSubject[];
+  availableReviews: AvailableReview[];
+}
+
+/**
+ * Analyse the selected transcription and return extracted subjects, each
+ * routed to a review + section (existing or new). One backend round-trip.
+ */
+export async function analyzeAndRoute(payload: {
+  source: SourceProvider;
+  id: string;
+  title: string;
+  date?: string | null;
+}): Promise<AnalysisResponse> {
+  const response = await fetch(`${API_BASE}/transcription/analyze-and-route`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export interface ApplyRoutingSubject {
+  title: string;
+  situation?: string;
+  status?: string;
+  responsibility?: string | null;
+  targetReviewId?: string | null;
+  newReviewTitle?: string | null;
+  targetSectionId?: string | null;
+  newSectionName?: string | null;
+  subjectAction?: SubjectAction;
+  targetSubjectId?: string | null;
+  updatedSituation?: string | null;
+  updatedStatus?: string | null;
+  updatedResponsibility?: string | null;
+}
+
+export interface ApplyRoutingResponse {
+  reviewsCreated: Array<{ id: string; title: string }>;
+  sectionsCreated: Array<{ id: string; name: string; reviewId: string }>;
+  subjectsCreated: Array<{ id: string; title: string; reviewId: string; sectionId: string }>;
+  subjectsUpdated: Array<{ id: string; title: string }>;
+  errors: Array<{ title: string; error: string }>;
+}
+
+export async function applyRouting(
+  sourceId: string,
+  subjects: ApplyRoutingSubject[],
+): Promise<ApplyRoutingResponse> {
+  const response = await fetch(`${API_BASE}/transcription/apply-routing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ sourceId, subjects }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}

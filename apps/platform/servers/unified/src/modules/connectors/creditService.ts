@@ -16,6 +16,7 @@ const CREDIT_COSTS: Record<string, Record<string, number>> = {
     content_analysis: 10,
     create_ticket: 5,
     ticket_analysis: 10,
+    routing_analysis: 2,
   },
   roadmap: {
     create_planning: 5,
