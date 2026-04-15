@@ -310,3 +310,75 @@ export async function acceptSuggestion(id: number): Promise<void> {
 export async function rejectSuggestion(id: number): Promise<void> {
   await fetch(`${API_BASE}/suggestions/${id}/reject`, { method: 'POST', credentials: 'include' });
 }
+
+// ============ Bulk transcription import ============
+
+export type SourceProvider = 'fathom' | 'otter' | 'gmail' | 'outlook';
+
+export interface BulkSourceItem {
+  id: string;
+  provider: SourceProvider;
+  title: string;
+  date: string | null;
+  participants?: string[];
+  preview?: string;
+}
+
+export async function fetchBulkSources(days = 30): Promise<BulkSourceItem[]> {
+  const response = await fetch(
+    `${API_BASE}/transcription/bulk-sources?days=${days}`,
+    { credentials: 'include' },
+  );
+  if (!response.ok) throw new Error('Failed to fetch bulk sources');
+  return response.json();
+}
+
+export interface RoutingSuggestion {
+  itemId: string;
+  suggestedAction: 'existing' | 'new';
+  suggestedDocId: string | null;
+  suggestedNewTitle: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+}
+
+export interface RoutingResponse {
+  summary: string;
+  suggestions: RoutingSuggestion[];
+}
+
+export async function fetchRoutingSuggestions(items: BulkSourceItem[]): Promise<RoutingResponse> {
+  const response = await fetch(`${API_BASE}/transcription/route-suggestions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ items }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Import a single transcription into a target document.
+ * Thin wrapper around POST /documents/:docId/transcript-import so the new
+ * bulk import modal can reuse it per-item.
+ */
+export async function importTranscriptionIntoDocument(
+  docId: string,
+  payload: { callId: string; callTitle: string; provider: SourceProvider; useAI: boolean; aiProvider?: string },
+): Promise<unknown> {
+  const response = await fetch(`${API_BASE}/documents/${docId}/transcript-import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}

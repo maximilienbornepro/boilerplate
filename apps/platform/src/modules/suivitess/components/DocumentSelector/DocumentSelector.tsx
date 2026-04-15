@@ -3,6 +3,7 @@ import { ModuleHeader, Card, Modal, FormField, ConfirmModal, Button, ToastContai
 import type { ToastData, Visibility } from '@boilerplate/shared/components';
 import type { Document } from '../../types';
 import * as api from '../../services/api';
+import { BulkTranscriptionImportModal } from '../BulkTranscriptionImportModal/BulkTranscriptionImportModal';
 import styles from './DocumentSelector.module.css';
 
 interface DocumentSelectorProps {
@@ -20,6 +21,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newVisibility, setNewVisibility] = useState<Visibility>('private');
@@ -170,6 +172,13 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
   return (
     <>
       <ModuleHeader title="SuiviTess">
+        <button
+          className="module-header-btn"
+          onClick={() => setShowBulkImport(true)}
+          title="Importer les transcriptions et mails récents — l'IA propose la review de destination"
+        >
+          ✨ Importer & ranger
+        </button>
         <button
           className="module-header-btn module-header-btn-primary"
           onClick={() => setShowCreateForm(true)}
@@ -355,6 +364,20 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
           resourceId={sharingDoc.id}
           resourceName={sharingDoc.title}
           onClose={() => setSharingDoc(null)}
+        />
+      )}
+
+      {showBulkImport && (
+        <BulkTranscriptionImportModal
+          onClose={() => setShowBulkImport(false)}
+          onDone={({ imported, createdReviews }) => {
+            const parts: string[] = [];
+            if (imported > 0) parts.push(`${imported} import${imported > 1 ? 's' : ''}`);
+            if (createdReviews > 0) parts.push(`${createdReviews} review${createdReviews > 1 ? 's' : ''} créée${createdReviews > 1 ? 's' : ''}`);
+            if (parts.length > 0) addToast({ type: 'success', message: parts.join(' · ') });
+            // Refresh the list so newly-created reviews appear
+            api.fetchDocuments().then(setDocuments).catch(() => {});
+          }}
         />
       )}
 

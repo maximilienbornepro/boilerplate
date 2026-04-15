@@ -1925,5 +1925,162 @@ Reponds UNIQUEMENT avec un JSON valide :
     }
   }));
 
+  // ==================== Bulk transcription import (list-level) ====================
+
+  // Aggregate calls + emails across every connected provider.
+  // Returns a unified list the UI can show and let the user re-route.
+  router.get('/transcription/bulk-sources', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const days = Math.min(60, Math.max(1, parseInt(req.query.days as string, 10) || 30));
+
+    type Item = {
+      id: string;
+      provider: 'fathom' | 'otter' | 'gmail' | 'outlook';
+      title: string;
+      date: string | null;
+      participants?: string[];
+      preview?: string;
+    };
+    const items: Item[] = [];
+
+    // Try every provider in parallel ; a missing token / unconfigured
+    // connector just yields an empty list without blocking the others.
+    const [fathomCalls, otterCalls, outlookEmails, gmailEmails] = await Promise.all([
+      (async () => {
+        try {
+          const { listFathomCalls } = await import('./fathomService.js');
+          return await listFathomCalls(userId, days);
+        } catch { return []; }
+      })(),
+      (async () => {
+        try {
+          const { listOtterCalls } = await import('./otterService.js');
+          return await listOtterCalls(userId, days);
+        } catch { return []; }
+      })(),
+      (async () => {
+        try {
+          const { listOutlookEmails } = await import('./emailService.js');
+          return await listOutlookEmails(userId, Math.min(14, days));
+        } catch { return []; }
+      })(),
+      (async () => {
+        try {
+          const { listGmailEmails } = await import('./emailService.js');
+          return await listGmailEmails(userId, Math.min(14, days));
+        } catch { return []; }
+      })(),
+    ]);
+
+    for (const c of fathomCalls) {
+      items.push({
+        id: c.id,
+        provider: 'fathom',
+        title: c.title,
+        date: (c as { date?: string | null }).date ?? null,
+        participants: (c as { participants?: string[] }).participants,
+      });
+    }
+    for (const c of otterCalls) {
+      items.push({
+        id: c.id,
+        provider: 'otter',
+        title: c.title,
+        date: (c as { date?: string | null }).date ?? null,
+        participants: (c as { participants?: string[] }).participants,
+      });
+    }
+    for (const e of outlookEmails) {
+      items.push({
+        id: e.id,
+        provider: 'outlook',
+        title: `${e.subject} (${e.sender})`,
+        date: (e as { date?: string | null }).date ?? null,
+        preview: (e as { preview?: string }).preview,
+      });
+    }
+    for (const e of gmailEmails) {
+      items.push({
+        id: e.id,
+        provider: 'gmail',
+        title: `${e.subject} (${e.sender})`,
+        date: (e as { date?: string | null }).date ?? null,
+        preview: (e as { preview?: string }).preview,
+      });
+    }
+
+    // Exclude items already imported into any of this user's documents.
+    try {
+      const { rows } = await db.pool.query(
+        `SELECT call_id FROM suivitess_transcript_imports
+         WHERE document_id IN (SELECT id FROM suivitess_documents WHERE owner_id = $1 OR owner_id IS NULL)`,
+        [userId],
+      );
+      const imported = new Set(rows.map(r => r.call_id as string));
+      for (let i = items.length - 1; i >= 0; i--) {
+        if (imported.has(items[i].id)) items.splice(i, 1);
+      }
+    } catch { /* already-imported table may not exist yet — keep everything */ }
+
+    // Sort by date desc, cap
+    items.sort((a, b) => {
+      const da = a.date ? new Date(a.date).getTime() : 0;
+      const db = b.date ? new Date(b.date).getTime() : 0;
+      return db - da;
+    });
+
+    res.json(items.slice(0, 50));
+  }));
+
+  // POST /transcription/route-suggestions
+  // body: { items: SourceItem[] }
+  // Fetches the user's existing reviews and asks the AI to decide where
+  // each item should be imported. Returns { summary, suggestions }.
+  router.post('/transcription/route-suggestions', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { items } = req.body as { items?: Array<{
+      id: string; provider: string; title: string; date?: string | null;
+      participants?: string[]; preview?: string;
+    }> };
+    if (!Array.isArray(items) || items.length === 0) {
+      res.json({ summary: 'Aucun item.', suggestions: [] });
+      return;
+    }
+
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(userId, req.user!.isAdmin, 'suivitess', 'routing_analysis'); }
+    catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        res.status(402).json({ error: 'INSUFFICIENT_CREDITS', required: e.required, available: e.available });
+        return;
+      }
+      throw e;
+    }
+
+    const existingDocs = await db.getAllDocuments(userId, req.user!.isAdmin);
+    const existingReviews = existingDocs.map((d: { id: string; title: string; description?: string | null }) => ({
+      id: d.id,
+      title: d.title,
+      description: d.description ?? null,
+    }));
+
+    const { suggestRouting } = await import('./transcriptionRoutingService.js');
+    try {
+      const safeItems = items.slice(0, 50).map(it => ({
+        id: String(it.id),
+        provider: (['fathom', 'otter', 'gmail', 'outlook'].includes(it.provider) ? it.provider : 'fathom') as 'fathom' | 'otter' | 'gmail' | 'outlook',
+        title: String(it.title || ''),
+        date: it.date ?? null,
+        participants: it.participants,
+        preview: it.preview,
+      }));
+      const result = await suggestRouting(userId, safeItems, existingReviews);
+      res.json(result);
+    } catch (err) {
+      console.error('[SuiviTess routing] error:', err);
+      res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
+    }
+  }));
+
   return router;
 }
