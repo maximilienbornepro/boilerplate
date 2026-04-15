@@ -1,119 +1,92 @@
 import { describe, it, expect } from 'vitest';
 
-// Pure-logic tests for the bulk import modal flow.
-// We don't mount React here — we validate the state transitions that
-// the modal relies on : destination switching, new-title deduplication,
-// and the "existing" shortcut that keeps multiple items headed to the
-// same freshly-created review in a single create call.
+// Pure-logic tests for the SubjectRow state the modal drives.
 
-type Action = 'existing' | 'new' | 'skip';
+interface Row {
+  subject: {
+    title: string;
+    suggestedNewReviewTitle: string | null;
+    suggestedNewSectionName: string | null;
+  };
+  reviewId: string | null;
+  newReviewTitle: string;
+  sectionId: string | null;
+  newSectionName: string;
+  skipped: boolean;
+}
 
-interface Destination { action: Action; docId: string | null; newTitle: string | null }
-interface Item { id: string; title: string }
+function makeRow(partial: Partial<Row> = {}): Row {
+  return {
+    subject: {
+      title: 'Migration DB',
+      suggestedNewReviewTitle: 'Tech',
+      suggestedNewSectionName: 'Backend',
+    },
+    reviewId: null,
+    newReviewTitle: 'Tech',
+    sectionId: null,
+    newSectionName: 'Backend',
+    skipped: false,
+    ...partial,
+  };
+}
 
-describe('Bulk transcription import — destination state', () => {
-  function initial(items: Item[]): Record<string, Destination> {
-    const out: Record<string, Destination> = {};
-    for (const it of items) {
-      out[it.id] = { action: 'new', docId: null, newTitle: it.title.slice(0, 80) };
+describe('Bulk transcription import — subject row state', () => {
+  it('moving from "new review" to an existing review resets sectionId (next render picks first)', () => {
+    // Simulated select handler for the review dropdown
+    function selectExistingReview(r: Row, docId: string, firstSection: string | null): Row {
+      return { ...r, reviewId: docId, sectionId: firstSection };
     }
-    return out;
-  }
-
-  it('starts every item with a "new" destination', () => {
-    const state = initial([{ id: 'a', title: 'Hebdo Tech' }]);
-    expect(state.a.action).toBe('new');
-    expect(state.a.newTitle).toBe('Hebdo Tech');
+    const r0 = makeRow();
+    const r1 = selectExistingReview(r0, 'doc-1', 'sec-1');
+    expect(r1.reviewId).toBe('doc-1');
+    expect(r1.sectionId).toBe('sec-1');
   });
 
-  it('switching an item to "existing" clears the new-title', () => {
-    const state = initial([{ id: 'a', title: 'Hebdo Tech' }]);
-    state.a = { action: 'existing', docId: 'doc-1', newTitle: null };
-    expect(state.a.action).toBe('existing');
-    expect(state.a.docId).toBe('doc-1');
-    expect(state.a.newTitle).toBeNull();
+  it('switching an existing review back to "new review" clears sectionId', () => {
+    const r0 = makeRow({ reviewId: 'doc-1', sectionId: 'sec-1' });
+    const r1 = { ...r0, reviewId: null, sectionId: null };
+    expect(r1.reviewId).toBeNull();
+    expect(r1.sectionId).toBeNull();
   });
 
-  it('switching an item to "skip" nullifies both fields', () => {
-    const state = initial([{ id: 'a', title: 'Hebdo Tech' }]);
-    state.a = { action: 'skip', docId: null, newTitle: null };
-    expect(state.a.action).toBe('skip');
-  });
-});
-
-describe('Bulk transcription import — apply payload', () => {
-  // Simulate the per-row work the modal does at apply time.
-  interface Row { id: string; dest: Destination; title: string }
-
-  async function simulateApply(
-    rows: Row[],
-    createFn: (title: string) => Promise<string>,
-    importFn: (docId: string, callId: string) => Promise<void>,
-  ) {
-    const createdByTitle = new Map<string, string>();
-    const results: Array<{ id: string; ok: boolean }> = [];
-    for (const r of rows) {
-      if (r.dest.action === 'skip') continue;
-      let target = r.dest.docId;
-      if (r.dest.action === 'new') {
-        const t = (r.dest.newTitle || r.title).trim();
-        target = createdByTitle.get(t) ?? await createFn(t);
-        createdByTitle.set(t, target);
-      }
-      try {
-        await importFn(target!, r.id);
-        results.push({ id: r.id, ok: true });
-      } catch {
-        results.push({ id: r.id, ok: false });
-      }
-    }
-    return { results, createdReviews: createdByTitle.size };
-  }
-
-  it('skips items marked "skip"', async () => {
+  it('skipping excludes the subject from the apply payload', () => {
     const rows: Row[] = [
-      { id: '1', title: 'A', dest: { action: 'skip', docId: null, newTitle: null } },
-      { id: '2', title: 'B', dest: { action: 'existing', docId: 'doc-x', newTitle: null } },
+      makeRow({ reviewId: 'doc-1', sectionId: 'sec-1' }),
+      makeRow({ reviewId: 'doc-2', sectionId: 'sec-2', skipped: true }),
     ];
-    const imports: Array<[string, string]> = [];
-    const { results } = await simulateApply(
-      rows,
-      async t => `new-${t}`,
-      async (d, c) => { imports.push([d, c]); },
-    );
-    expect(results).toHaveLength(1);
-    expect(imports).toEqual([['doc-x', '2']]);
+    const payload = rows.filter(r => !r.skipped).map(r => ({
+      title: r.subject.title,
+      targetReviewId: r.reviewId,
+      targetSectionId: r.sectionId,
+    }));
+    expect(payload).toHaveLength(1);
+    expect(payload[0].targetReviewId).toBe('doc-1');
   });
 
-  it('deduplicates creation when several items target the same new title', async () => {
-    const rows: Row[] = [
-      { id: '1', title: 'X', dest: { action: 'new', docId: null, newTitle: 'Hebdo Tech' } },
-      { id: '2', title: 'Y', dest: { action: 'new', docId: null, newTitle: 'Hebdo Tech' } },
-    ];
-    let createCount = 0;
-    const imports: Array<[string, string]> = [];
-    const { results, createdReviews } = await simulateApply(
-      rows,
-      async () => { createCount++; return `review-${createCount}`; },
-      async (d, c) => { imports.push([d, c]); },
-    );
-    expect(createCount).toBe(1);
-    expect(createdReviews).toBe(1);
-    expect(imports[0][0]).toBe(imports[1][0]);
-    expect(results.every(r => r.ok)).toBe(true);
+  it('apply payload uses the new-review title when no reviewId is set', () => {
+    const row = makeRow({ newReviewTitle: 'Hebdo Tech' });
+    const payload = {
+      targetReviewId: row.reviewId,
+      newReviewTitle: row.reviewId ? null : (row.newReviewTitle || row.subject.suggestedNewReviewTitle),
+      targetSectionId: row.reviewId && row.sectionId ? row.sectionId : null,
+      newSectionName: row.reviewId && row.sectionId ? null : (row.newSectionName || row.subject.suggestedNewSectionName),
+    };
+    expect(payload.targetReviewId).toBeNull();
+    expect(payload.newReviewTitle).toBe('Hebdo Tech');
+    expect(payload.targetSectionId).toBeNull();
+    expect(payload.newSectionName).toBe('Backend');
   });
 
-  it('keeps per-item errors independent', async () => {
-    const rows: Row[] = [
-      { id: '1', title: 'X', dest: { action: 'existing', docId: 'doc-a', newTitle: null } },
-      { id: '2', title: 'Y', dest: { action: 'existing', docId: 'doc-b', newTitle: null } },
-    ];
-    const { results } = await simulateApply(
-      rows,
-      async t => `new-${t}`,
-      async (d) => { if (d === 'doc-b') throw new Error('boom'); },
-    );
-    expect(results.find(r => r.id === '1')!.ok).toBe(true);
-    expect(results.find(r => r.id === '2')!.ok).toBe(false);
+  it('apply payload keeps existing section id when both review and section are known', () => {
+    const row = makeRow({ reviewId: 'doc-1', sectionId: 'sec-5' });
+    const payload = {
+      targetReviewId: row.reviewId,
+      targetSectionId: row.reviewId && row.sectionId ? row.sectionId : null,
+      newSectionName: row.reviewId && row.sectionId ? null : 'default',
+    };
+    expect(payload.targetReviewId).toBe('doc-1');
+    expect(payload.targetSectionId).toBe('sec-5');
+    expect(payload.newSectionName).toBeNull();
   });
 });

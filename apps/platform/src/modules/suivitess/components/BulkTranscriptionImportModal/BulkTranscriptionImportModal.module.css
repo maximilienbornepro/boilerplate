@@ -7,14 +7,6 @@
 }
 
 .loading,
-.importing {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-xl);
-}
-
 .error,
 .done,
 .empty {
@@ -41,7 +33,14 @@
   margin: 0;
 }
 
-.summary {
+.doneError {
+  color: var(--error);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+.summary,
+.summaryBlock {
   padding: var(--spacing-sm) var(--spacing-md);
   background: var(--bg-secondary);
   border-left: 3px solid var(--accent-primary);
@@ -51,82 +50,55 @@
   color: var(--text-primary);
 }
 
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--spacing-sm);
-  padding: 0 var(--spacing-xs);
-}
+/* === Step 1 : source picker === */
 
-.counter {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  display: inline-flex;
-  gap: var(--spacing-xs);
-  flex-wrap: wrap;
-}
-
-.list {
+.sourceList {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-xs);
   overflow-y: auto;
   flex: 1;
   padding-right: var(--spacing-xs);
 }
 
-.row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-primary);
-  transition: all var(--transition-normal);
-}
-
-.rowOk { border-color: var(--success); background: color-mix(in srgb, var(--success) 6%, transparent); }
-.rowError { border-color: var(--error); background: color-mix(in srgb, var(--error) 6%, transparent); }
-
-.rowHead {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-  flex-wrap: wrap;
-}
-
-.rowInfo {
+.sourceItem {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  flex: 1;
-  min-width: 0;
-  flex-wrap: wrap;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition-normal);
+  font-family: var(--font-mono);
 }
 
-.rowTitle {
-  font-family: var(--font-mono);
+.sourceItem:hover {
+  border-color: var(--accent-primary);
+}
+
+.sourceItemSelected {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
+}
+
+.sourceTitle {
+  flex: 1;
+  min-width: 0;
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   word-break: break-word;
 }
 
-.rowDate {
-  font-family: var(--font-mono);
+.sourceDate {
   font-size: 11px;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .providerTag {
   padding: 1px 8px;
   border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: var(--font-weight-bold);
   text-transform: uppercase;
@@ -137,6 +109,61 @@
 .provider_otter   { background: color-mix(in srgb, #3b82f6 18%, transparent); color: #93c5fd; border: 1px solid #3b82f6; }
 .provider_gmail   { background: color-mix(in srgb, #ea4335 18%, transparent); color: #fca5a5; border: 1px solid #ea4335; }
 .provider_outlook { background: color-mix(in srgb, #0078d4 18%, transparent); color: #93c5fd; border: 1px solid #0078d4; }
+
+/* === Step 2 : subject rows === */
+
+.subjectsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  overflow-y: auto;
+  flex: 1;
+  padding-right: var(--spacing-xs);
+}
+
+.subjectRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  transition: opacity var(--transition-normal);
+}
+
+.subjectRowSkipped {
+  opacity: 0.5;
+}
+
+.subjectHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.statusTag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.subjectTitle {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.responsibility {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-primary);
+}
 
 .confidence {
   padding: 1px 6px;
@@ -152,38 +179,50 @@
 .conf_medium { color: var(--accent-primary); border: 1px solid var(--accent-primary); }
 .conf_low    { color: var(--warning); border: 1px solid var(--warning); }
 
+.situation,
 .reasoning {
   margin: 0;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-muted);
-  font-style: italic;
+  line-height: 1.5;
 }
 
-.destination {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.reasoning {
+  font-style: italic;
+  border-left: 2px solid var(--accent-primary);
+  padding-left: var(--spacing-xs);
+}
+
+.routing {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
   padding-top: var(--spacing-xs);
   border-top: 1px dashed var(--border-color);
 }
 
-.radio {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  cursor: pointer;
-  flex-wrap: wrap;
+@media (max-width: 700px) {
+  .routing { grid-template-columns: 1fr; }
 }
 
-.select,
-.input {
-  flex: 1;
-  min-width: 160px;
-  padding: 3px 8px;
+.routingField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.routingField label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.routingField select,
+.routingField input {
+  padding: 4px 8px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-primary);
@@ -192,20 +231,31 @@
   font-size: var(--font-size-sm);
 }
 
-.select:focus,
-.input:focus {
+.routingField select:focus,
+.routingField input:focus {
   border-color: var(--accent-primary);
   outline: none;
 }
 
-.runState {
+.hint {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-muted);
+  font-style: italic;
 }
 
-.runOk    { color: var(--success); }
-.runError { color: var(--error); }
+.skipToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* === actions === */
 
 .actions {
   display: flex;

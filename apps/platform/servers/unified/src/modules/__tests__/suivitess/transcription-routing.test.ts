@@ -1,110 +1,207 @@
 import { describe, it, expect } from 'vitest';
 
-// Pure logic tests for the bulk-import flow. The Claude call is covered by
-// integration tests; here we validate the payload building and the
-// server-side response validation rules.
+// Pure logic tests for the subject-level routing of a single transcription.
+// The Claude call itself is covered by integration tests ; here we validate
+// the validation layer that guards the AI response against bad data.
 
-describe('SuiviTess — bulk transcription routing', () => {
-  describe('Payload sanitation', () => {
-    // Mirror the sanitation done by the /route-suggestions route before
-    // handing items to the AI service.
-    const VALID_PROVIDERS = new Set(['fathom', 'otter', 'gmail', 'outlook']);
+describe('SuiviTess — subject-level transcription routing', () => {
+  describe('Review routing validation', () => {
+    // Mirror the service-side validation : an `existing-review` suggestion
+    // whose `reviewId` is not among the caller's reviews falls back to
+    // `new-review`, with a safe default title.
 
-    function sanitize(items: Array<Record<string, unknown>>): Array<{
-      id: string; provider: string; title: string; date: string | null;
-    }> {
-      return items.slice(0, 50).map(it => ({
-        id: String(it.id || ''),
-        provider: VALID_PROVIDERS.has(String(it.provider)) ? String(it.provider) : 'fathom',
-        title: String(it.title || ''),
-        date: (it.date as string | null) ?? null,
-      }));
+    type Action = 'existing-review' | 'new-review';
+    interface Raw { action: Action; reviewId?: string | null; suggestedNewReviewTitle?: string | null }
+    interface Resolved { action: Action; reviewId: string | null; suggestedNewReviewTitle: string | null }
+
+    function resolveReview(
+      raw: Raw,
+      validIds: Set<string>,
+      fallbackTitle: string,
+    ): Resolved {
+      if (raw.action === 'existing-review') {
+        const id = raw.reviewId ?? '';
+        if (validIds.has(id)) {
+          return { action: 'existing-review', reviewId: id, suggestedNewReviewTitle: null };
+        }
+        return {
+          action: 'new-review',
+          reviewId: null,
+          suggestedNewReviewTitle: raw.suggestedNewReviewTitle || fallbackTitle,
+        };
+      }
+      return {
+        action: 'new-review',
+        reviewId: null,
+        suggestedNewReviewTitle: raw.suggestedNewReviewTitle || fallbackTitle,
+      };
     }
 
-    it('keeps only known providers and defaults the rest to fathom', () => {
-      expect(sanitize([{ id: '1', provider: 'weird', title: 't' }])[0].provider).toBe('fathom');
-      expect(sanitize([{ id: '1', provider: 'gmail', title: 't' }])[0].provider).toBe('gmail');
+    it('keeps a valid existing-review suggestion', () => {
+      expect(resolveReview(
+        { action: 'existing-review', reviewId: 'doc-a' },
+        new Set(['doc-a']),
+        'fallback',
+      )).toEqual({ action: 'existing-review', reviewId: 'doc-a', suggestedNewReviewTitle: null });
     });
 
-    it('caps the payload at 50 items', () => {
-      const many = Array.from({ length: 80 }, (_, i) => ({ id: `${i}`, provider: 'fathom', title: 'x' }));
-      expect(sanitize(many)).toHaveLength(50);
+    it('falls back to new-review when reviewId is unknown', () => {
+      expect(resolveReview(
+        { action: 'existing-review', reviewId: 'ghost' },
+        new Set(['doc-a']),
+        'Nouvelle',
+      )).toEqual({
+        action: 'new-review',
+        reviewId: null,
+        suggestedNewReviewTitle: 'Nouvelle',
+      });
     });
 
-    it('coerces missing fields to safe defaults', () => {
-      const out = sanitize([{ id: 42, provider: 'otter' } as unknown as Record<string, unknown>])[0];
-      expect(out.id).toBe('42');
-      expect(out.title).toBe('');
-      expect(out.date).toBeNull();
+    it('passes through a new-review suggestion with its title', () => {
+      expect(resolveReview(
+        { action: 'new-review', suggestedNewReviewTitle: 'Discovery Q2' },
+        new Set(['doc-a']),
+        'fallback',
+      ).suggestedNewReviewTitle).toBe('Discovery Q2');
     });
   });
 
-  describe('Routing suggestion fallback', () => {
-    // Replicates the server-side fallback: if the AI references a docId
-    // that does not belong to the user, the item should fall back to
-    // "new" with a low-confidence suggestion.
-    interface Sug { itemId: string; suggestedAction: 'existing' | 'new'; suggestedDocId: string | null; confidence: string }
+  describe('Section routing validation', () => {
+    // An `existing-section` suggestion must point to a section of the
+    // resolved review. Otherwise the subject falls back to a new section.
 
-    function validate(
-      suggestions: Sug[],
-      validReviewIds: Set<string>,
-      allItemIds: Set<string>,
-    ): Sug[] {
-      const seen = new Set<string>();
-      const out: Sug[] = [];
-      for (const s of suggestions) {
-        if (!allItemIds.has(s.itemId) || seen.has(s.itemId)) continue;
-        seen.add(s.itemId);
-        if (s.suggestedAction === 'existing' && (!s.suggestedDocId || !validReviewIds.has(s.suggestedDocId))) {
-          out.push({ ...s, suggestedAction: 'new', suggestedDocId: null, confidence: 'low' });
-        } else {
-          out.push(s);
+    type Action = 'existing-review' | 'new-review';
+    type SecAction = 'existing-section' | 'new-section';
+
+    interface Raw { action: Action; reviewId: string | null; sectionAction: SecAction; sectionId?: string | null; suggestedNewSectionName?: string | null }
+    interface Resolved { sectionAction: SecAction; sectionId: string | null; suggestedNewSectionName: string | null }
+
+    function resolveSection(
+      raw: Raw,
+      sectionsByReview: Map<string, Set<string>>,
+      fallbackName: string,
+    ): Resolved {
+      if (raw.action === 'new-review') {
+        return { sectionAction: 'new-section', sectionId: null, suggestedNewSectionName: raw.suggestedNewSectionName || fallbackName };
+      }
+      if (raw.sectionAction === 'existing-section' && raw.sectionId) {
+        const set = raw.reviewId ? sectionsByReview.get(raw.reviewId) : undefined;
+        if (set && set.has(raw.sectionId)) {
+          return { sectionAction: 'existing-section', sectionId: raw.sectionId, suggestedNewSectionName: null };
         }
       }
-      // Fill in missing
-      for (const id of allItemIds) {
-        if (!seen.has(id)) out.push({ itemId: id, suggestedAction: 'new', suggestedDocId: null, confidence: 'low' });
-      }
-      return out;
+      return {
+        sectionAction: 'new-section',
+        sectionId: null,
+        suggestedNewSectionName: raw.suggestedNewSectionName || fallbackName,
+      };
     }
 
-    it('rewrites a suggestion with an unknown docId as "new"', () => {
-      const result = validate(
-        [{ itemId: 'it1', suggestedAction: 'existing', suggestedDocId: 'ghost', confidence: 'high' }],
-        new Set(['doc-a']),
-        new Set(['it1']),
-      );
-      expect(result[0].suggestedAction).toBe('new');
-      expect(result[0].confidence).toBe('low');
+    const sectionsByReview = new Map([
+      ['doc-a', new Set(['sec-1', 'sec-2'])],
+      ['doc-b', new Set(['sec-3'])],
+    ]);
+
+    it('keeps a valid existing section', () => {
+      expect(resolveSection(
+        { action: 'existing-review', reviewId: 'doc-a', sectionAction: 'existing-section', sectionId: 'sec-2' },
+        sectionsByReview,
+        'fallback',
+      )).toEqual({ sectionAction: 'existing-section', sectionId: 'sec-2', suggestedNewSectionName: null });
     });
 
-    it('keeps a valid existing suggestion unchanged', () => {
-      const result = validate(
-        [{ itemId: 'it1', suggestedAction: 'existing', suggestedDocId: 'doc-a', confidence: 'high' }],
-        new Set(['doc-a']),
-        new Set(['it1']),
-      );
-      expect(result[0].suggestedAction).toBe('existing');
-      expect(result[0].suggestedDocId).toBe('doc-a');
+    it('rejects a section id that belongs to another review', () => {
+      expect(resolveSection(
+        { action: 'existing-review', reviewId: 'doc-a', sectionAction: 'existing-section', sectionId: 'sec-3' },
+        sectionsByReview,
+        'fallback',
+      ).sectionAction).toBe('new-section');
     });
 
-    it('fills in missing items with a "new" fallback so every input gets a suggestion', () => {
-      const result = validate([], new Set(), new Set(['a', 'b', 'c']));
-      expect(result).toHaveLength(3);
-      expect(result.every(r => r.suggestedAction === 'new')).toBe(true);
+    it('forces new-section when review is new (no existing sections)', () => {
+      expect(resolveSection(
+        { action: 'new-review', reviewId: null, sectionAction: 'existing-section', sectionId: 'sec-1' },
+        sectionsByReview,
+        'Call hebdo',
+      )).toEqual({ sectionAction: 'new-section', sectionId: null, suggestedNewSectionName: 'Call hebdo' });
+    });
+  });
+
+  describe('Apply — dedup by new review/section title', () => {
+    // When multiple subjects target the same new review title (or same new
+    // section inside the same review), the route creates each only once.
+
+    interface Subject { title: string; newReviewTitle?: string | null; newSectionName?: string | null; reviewId?: string | null; sectionId?: string | null }
+
+    async function apply(
+      subjects: Subject[],
+      createReview: (title: string) => Promise<string>,
+      createSection: (reviewId: string, name: string) => Promise<string>,
+      insertSubject: (reviewId: string, sectionId: string, title: string) => Promise<void>,
+    ) {
+      const reviewByTitle = new Map<string, string>();
+      const sectionByKey = new Map<string, string>();
+      let reviewCreations = 0, sectionCreations = 0;
+      for (const s of subjects) {
+        let reviewId = s.reviewId ?? null;
+        if (!reviewId) {
+          const title = s.newReviewTitle ?? 'Nouvelle';
+          reviewId = reviewByTitle.get(title) ?? null;
+          if (!reviewId) {
+            reviewId = await createReview(title);
+            reviewCreations++;
+            reviewByTitle.set(title, reviewId);
+          }
+        }
+        let sectionId = s.sectionId ?? null;
+        if (!sectionId) {
+          const name = s.newSectionName ?? 'Nouveau';
+          const key = `${reviewId}::${name}`;
+          sectionId = sectionByKey.get(key) ?? null;
+          if (!sectionId) {
+            sectionId = await createSection(reviewId, name);
+            sectionCreations++;
+            sectionByKey.set(key, sectionId);
+          }
+        }
+        await insertSubject(reviewId, sectionId, s.title);
+      }
+      return { reviewCreations, sectionCreations };
+    }
+
+    it('creates a new review only once when multiple subjects share the same new title', async () => {
+      const subjects: Subject[] = [
+        { title: 'A', newReviewTitle: 'Hebdo', newSectionName: 'Point 1' },
+        { title: 'B', newReviewTitle: 'Hebdo', newSectionName: 'Point 1' },
+        { title: 'C', newReviewTitle: 'Hebdo', newSectionName: 'Point 2' },
+      ];
+      let rIdx = 0, sIdx = 0;
+      const inserts: Array<[string, string, string]> = [];
+      const out = await apply(
+        subjects,
+        async () => `review-${++rIdx}`,
+        async () => `section-${++sIdx}`,
+        async (r, s, t) => { inserts.push([r, s, t]); },
+      );
+      expect(out.reviewCreations).toBe(1);
+      expect(out.sectionCreations).toBe(2);
+      expect(inserts.every(i => i[0] === 'review-1')).toBe(true);
     });
 
-    it('ignores duplicate suggestions for the same item', () => {
-      const result = validate(
-        [
-          { itemId: 'it1', suggestedAction: 'existing', suggestedDocId: 'doc-a', confidence: 'high' },
-          { itemId: 'it1', suggestedAction: 'new', suggestedDocId: null, confidence: 'medium' },
-        ],
-        new Set(['doc-a']),
-        new Set(['it1']),
+    it('reuses an existing review and creates only the new section', async () => {
+      const subjects: Subject[] = [
+        { title: 'A', reviewId: 'existing', newSectionName: 'Nouveau point' },
+        { title: 'B', reviewId: 'existing', newSectionName: 'Nouveau point' },
+      ];
+      let sIdx = 0;
+      const out = await apply(
+        subjects,
+        async () => 'should-not-happen',
+        async () => `section-${++sIdx}`,
+        async () => {},
       );
-      expect(result).toHaveLength(1);
-      expect(result[0].suggestedAction).toBe('existing');
+      expect(out.reviewCreations).toBe(0);
+      expect(out.sectionCreations).toBe(1);
     });
   });
 });

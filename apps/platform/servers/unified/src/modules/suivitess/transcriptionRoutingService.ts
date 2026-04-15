@@ -1,11 +1,11 @@
-// SuiviTess — AI-powered routing of calls / emails to existing reviews.
-// Given a batch of source items (Fathom / Otter transcripts or Gmail /
-// Outlook emails) and the list of existing reviews, asks Claude to decide
-// which review is the best destination for each item — or to propose a
-// new review title when nothing matches.
+// SuiviTess — AI analysis of a single transcription.
+// Extracts subjects from the transcript (same idea as the per-document
+// TranscriptionWizard) and adds ONE extra step : for each subject, decide
+// which existing review (or which new review) should host it, and inside
+// that review which section should receive it.
 //
 // Rules live in transcription-routing-skill.md and are reloaded from disk
-// on every call, so the skill file can be tuned without a redeploy.
+// on every call so edits take effect without a redeploy.
 
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -27,72 +27,65 @@ async function loadSkill(): Promise<string> {
 
 // ============ Types ============
 
-export type SourceProvider = 'fathom' | 'otter' | 'gmail' | 'outlook';
+export type ReviewAction = 'existing-review' | 'new-review';
+export type SectionAction = 'existing-section' | 'new-section';
 
-export interface SourceItem {
-  id: string;
-  provider: SourceProvider;
-  title: string;
-  date: string | null;
-  participants?: string[];
-  preview?: string;
-}
-
-export interface ExistingReview {
+export interface ReviewWithSections {
   id: string;
   title: string;
   description: string | null;
+  sections: Array<{
+    id: string;
+    name: string;
+    /** Up to 5 recent subject titles, to help the AI match by theme. */
+    sampleSubjectTitles: string[];
+  }>;
 }
 
-export type RoutingAction = 'existing' | 'new';
-
-export interface RoutingSuggestion {
-  itemId: string;
-  suggestedAction: RoutingAction;
-  suggestedDocId: string | null;
-  suggestedNewTitle: string | null;
+export interface AnalyzedSubject {
+  title: string;
+  situation: string;
+  status: string;
+  responsibility: string | null;
+  action: ReviewAction;
+  reviewId: string | null;
+  suggestedNewReviewTitle: string | null;
+  sectionAction: SectionAction;
+  sectionId: string | null;
+  suggestedNewSectionName: string | null;
   confidence: 'high' | 'medium' | 'low';
   reasoning: string;
 }
 
-export interface RoutingResult {
+export interface AnalysisResult {
   summary: string;
-  suggestions: RoutingSuggestion[];
+  subjects: AnalyzedSubject[];
 }
 
 // ============ Entry point ============
 
-/**
- * Ask Claude to route each source item to either an existing review or a
- * newly-proposed review title. Validates the response so no invalid
- * `suggestedDocId` leaks through and so every input item gets exactly one
- * suggestion (unmatched items are filled in with a `"new"` fallback).
- */
-export async function suggestRouting(
+export async function analyzeTranscriptionAndRoute(
   userId: number,
-  items: SourceItem[],
-  existingReviews: ExistingReview[],
-): Promise<RoutingResult> {
-  if (items.length === 0) {
-    return { summary: 'Aucun item à router.', suggestions: [] };
+  transcript: string,
+  reviews: ReviewWithSections[],
+  callMeta: { title: string; date?: string | null; provider: string },
+): Promise<AnalysisResult> {
+  if (!transcript.trim()) {
+    return { summary: 'Transcription vide.', subjects: [] };
   }
 
   const skill = await loadSkill();
   const { client, model } = await getAnthropicClient(userId);
 
-  const itemsJson = items.map(i => ({
-    id: i.id,
-    provider: i.provider,
-    title: i.title,
-    date: i.date,
-    participants: i.participants ?? [],
-    preview: (i.preview ?? '').slice(0, 300),
-  }));
-
-  const reviewsJson = existingReviews.map(r => ({
+  const reviewsJson = reviews.map(r => ({
     id: r.id,
     title: r.title,
-    description: r.description ?? '',
+    description: (r.description ?? '').slice(0, 200),
+    sections: r.sections.map(s => ({
+      id: s.id,
+      name: s.name,
+      sampleSubjects: s.sampleSubjectTitles.slice(0, 5),
+    })),
   }));
 
   const prompt = `${skill}
@@ -101,11 +94,18 @@ export async function suggestRouting(
 
 # Contexte exécutable (généré automatiquement)
 
-## Reviews SuiviTess existantes (JSON)
+## Transcription sélectionnée
+- Source : **${callMeta.provider}**
+- Titre : ${callMeta.title}
+- Date : ${callMeta.date ?? 'inconnue'}
+
+## Reviews SuiviTess existantes (JSON — avec sections + sujets échantillons)
 ${JSON.stringify(reviewsJson, null, 2)}
 
-## Items à ranger (JSON)
-${JSON.stringify(itemsJson, null, 2)}
+## Contenu de la transcription (tronqué à 30 000 caractères)
+\`\`\`
+${transcript.slice(0, 30000)}
+\`\`\`
 
 Applique les règles ci-dessus et réponds uniquement en JSON.`;
 
@@ -119,88 +119,113 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
     ? (aiResponse.content.find(b => b.type === 'text') as { type: 'text'; text: string }).text
     : '';
 
-  let parsed: { summary?: string; suggestions?: unknown[] } = {};
+  let parsed: { summary?: string; subjects?: unknown[] } = {};
   try {
     const match = text.match(/\{[\s\S]*\}/);
     if (match) parsed = JSON.parse(match[0]);
   } catch {
-    /* fallthrough to fallback */
+    /* fallthrough */
   }
 
-  const reviewIds = new Set(existingReviews.map(r => r.id));
-  const byItemId = new Map<string, RoutingSuggestion>();
+  const reviewsById = new Map(reviews.map(r => [r.id, r]));
+  const sectionsByReview = new Map(reviews.map(r => [r.id, new Set(r.sections.map(s => s.id))]));
+  const subjects: AnalyzedSubject[] = [];
 
-  for (const rawRaw of (parsed.suggestions || []) as Array<Record<string, unknown>>) {
-    const itemId = String(rawRaw.itemId || '');
-    if (!itemId) continue;
-    if (byItemId.has(itemId)) continue;
-    if (!items.some(i => i.id === itemId)) continue;
+  for (const raw of (parsed.subjects || []) as Array<Record<string, unknown>>) {
+    const title = String(raw.title || '').slice(0, 100).trim();
+    if (!title) continue;
 
-    const action: RoutingAction = rawRaw.suggestedAction === 'new' ? 'new' : 'existing';
-    let suggestedDocId: string | null = null;
-    let suggestedNewTitle: string | null = null;
+    const situation = String(raw.situation || '').slice(0, 500);
+    const status = normalizeStatus(String(raw.status || ''));
+    const responsibilityRaw = raw.responsibility;
+    const responsibility = typeof responsibilityRaw === 'string' && responsibilityRaw.trim().length > 0
+      ? responsibilityRaw.slice(0, 80)
+      : null;
 
-    if (action === 'existing') {
-      const candidate = String(rawRaw.suggestedDocId || '');
-      if (reviewIds.has(candidate)) {
-        suggestedDocId = candidate;
+    // --- Review routing ---
+    let action: ReviewAction = raw.action === 'new-review' ? 'new-review' : 'existing-review';
+    let reviewId: string | null = null;
+    let suggestedNewReviewTitle: string | null = null;
+
+    if (action === 'existing-review') {
+      const candidate = String(raw.reviewId || '');
+      if (reviewsById.has(candidate)) {
+        reviewId = candidate;
       } else {
-        // invalid docId → fall back to "new" with the item title as placeholder
-        suggestedNewTitle = String(rawRaw.suggestedNewTitle || '').slice(0, 80)
-          || deriveTitle(items.find(i => i.id === itemId));
-        byItemId.set(itemId, {
-          itemId,
-          suggestedAction: 'new',
-          suggestedDocId: null,
-          suggestedNewTitle,
-          confidence: 'low',
-          reasoning: 'Destination proposée invalide — nouvelle review suggérée par défaut.',
-        });
-        continue;
+        action = 'new-review';
+        suggestedNewReviewTitle = String(raw.suggestedNewReviewTitle || '').slice(0, 80)
+          || callMeta.title.slice(0, 80)
+          || 'Nouvelle review';
       }
     } else {
-      suggestedNewTitle = String(rawRaw.suggestedNewTitle || '').slice(0, 80)
-        || deriveTitle(items.find(i => i.id === itemId));
+      suggestedNewReviewTitle = String(raw.suggestedNewReviewTitle || '').slice(0, 80)
+        || callMeta.title.slice(0, 80)
+        || 'Nouvelle review';
     }
 
-    const confidenceRaw = String(rawRaw.confidence || 'medium').toLowerCase();
+    // --- Section routing ---
+    let sectionAction: SectionAction = raw.sectionAction === 'new-section' ? 'new-section' : 'existing-section';
+    let sectionId: string | null = null;
+    let suggestedNewSectionName: string | null = null;
+
+    if (action === 'new-review') {
+      // Can't reference sections of a review that does not exist yet.
+      sectionAction = 'new-section';
+      suggestedNewSectionName = String(raw.suggestedNewSectionName || '').slice(0, 80)
+        || callMeta.title.slice(0, 80)
+        || 'Nouveau point';
+    } else {
+      if (sectionAction === 'existing-section') {
+        const candidate = String(raw.sectionId || '');
+        if (reviewId && sectionsByReview.get(reviewId)?.has(candidate)) {
+          sectionId = candidate;
+        } else {
+          sectionAction = 'new-section';
+          suggestedNewSectionName = String(raw.suggestedNewSectionName || '').slice(0, 80)
+            || callMeta.title.slice(0, 80)
+            || 'Nouveau point';
+        }
+      } else {
+        suggestedNewSectionName = String(raw.suggestedNewSectionName || '').slice(0, 80)
+          || callMeta.title.slice(0, 80)
+          || 'Nouveau point';
+      }
+    }
+
+    const confidenceRaw = String(raw.confidence || 'medium').toLowerCase();
     const confidence: 'high' | 'medium' | 'low' =
       confidenceRaw === 'high' || confidenceRaw === 'low' ? confidenceRaw : 'medium';
 
-    byItemId.set(itemId, {
-      itemId,
-      suggestedAction: action,
-      suggestedDocId,
-      suggestedNewTitle,
+    subjects.push({
+      title,
+      situation,
+      status,
+      responsibility,
+      action,
+      reviewId,
+      suggestedNewReviewTitle,
+      sectionAction,
+      sectionId,
+      suggestedNewSectionName,
       confidence,
-      reasoning: String(rawRaw.reasoning || '').slice(0, 300),
+      reasoning: String(raw.reasoning || '').slice(0, 300),
     });
-  }
 
-  // Fill in missing items with a "new" fallback so the caller always gets
-  // a suggestion per requested item.
-  const suggestions: RoutingSuggestion[] = [];
-  for (const i of items) {
-    const s = byItemId.get(i.id);
-    if (s) { suggestions.push(s); continue; }
-    suggestions.push({
-      itemId: i.id,
-      suggestedAction: 'new',
-      suggestedDocId: null,
-      suggestedNewTitle: deriveTitle(i),
-      confidence: 'low',
-      reasoning: 'Aucune suggestion IA — proposition par défaut.',
-    });
+    if (subjects.length >= 15) break;
   }
 
   return {
-    summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 500) : `${suggestions.length} item(s) routé(s).`,
-    suggestions,
+    summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 500) : `${subjects.length} sujet(s) extrait(s).`,
+    subjects,
   };
 }
 
-function deriveTitle(item?: SourceItem): string {
-  if (!item) return 'Nouvelle review';
-  const clean = item.title.trim() || `${item.provider} — import`;
-  return clean.slice(0, 80);
+// ============ Helpers ============
+
+function normalizeStatus(raw: string): string {
+  const s = raw.toLowerCase();
+  if (s.includes('terminé') || s.includes('termine') || s.includes('done')) return '🟢 terminé';
+  if (s.includes('en cours') || s.includes('progress')) return '🟡 en cours';
+  if (s.includes('bloqué') || s.includes('bloque') || s.includes('block')) return '🟣 bloqué';
+  return '🔴 à faire';
 }

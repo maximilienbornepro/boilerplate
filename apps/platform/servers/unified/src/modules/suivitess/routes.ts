@@ -2032,23 +2032,55 @@ Reponds UNIQUEMENT avec un JSON valide :
     res.json(items.slice(0, 50));
   }));
 
-  // POST /transcription/route-suggestions
-  // body: { items: SourceItem[] }
-  // Fetches the user's existing reviews and asks the AI to decide where
-  // each item should be imported. Returns { summary, suggestions }.
-  router.post('/transcription/route-suggestions', asyncHandler(async (req, res) => {
+  // POST /transcription/analyze-and-route
+  // body: { source: 'fathom'|'otter'|'gmail'|'outlook', id: string, title: string, date?: string }
+  // Fetches the transcript/email body, loads the user's reviews WITH their
+  // sections + sample subjects, then asks the AI to extract subjects and
+  // suggest a review + section for each.
+  router.post('/transcription/analyze-and-route', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
-    const { items } = req.body as { items?: Array<{
-      id: string; provider: string; title: string; date?: string | null;
-      participants?: string[]; preview?: string;
-    }> };
-    if (!Array.isArray(items) || items.length === 0) {
-      res.json({ summary: 'Aucun item.', suggestions: [] });
+    const { source, id, title, date } = (req.body || {}) as {
+      source?: string; id?: string; title?: string; date?: string | null;
+    };
+    if (!source || !id) {
+      res.status(400).json({ error: 'source et id sont requis' });
       return;
     }
 
+    // 1) Fetch the raw transcript / email body in a provider-agnostic way.
+    let transcript = '';
+    try {
+      if (source === 'fathom') {
+        const { getFathomTranscript } = await import('./fathomService.js');
+        const entries = await getFathomTranscript(userId, id);
+        transcript = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+      } else if (source === 'otter') {
+        const { getOtterTranscript } = await import('./otterService.js');
+        const entries = await getOtterTranscript(userId, id);
+        transcript = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+      } else if (source === 'outlook') {
+        const { getOutlookEmailBody } = await import('./emailService.js');
+        transcript = await getOutlookEmailBody(userId, id);
+      } else if (source === 'gmail') {
+        const { getGmailEmailBody } = await import('./emailService.js');
+        transcript = await getGmailEmailBody(userId, id);
+      } else {
+        res.status(400).json({ error: `Source non supportée : ${source}` });
+        return;
+      }
+    } catch (err) {
+      res.status(502).json({ error: (err as Error).message || 'Récupération de la transcription échouée' });
+      return;
+    }
+
+    if (!transcript.trim()) {
+      res.status(400).json({ error: 'Transcription vide' });
+      return;
+    }
+
+    // 2) Charge credits BEFORE the AI call.
     const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
-    try { await deductCredits(userId, req.user!.isAdmin, 'suivitess', 'routing_analysis'); }
+    try { await deductCredits(userId, req.user!.isAdmin, 'suivitess', 'transcript_analysis'); }
     catch (e) {
       if (e instanceof InsufficientCreditsError) {
         res.status(402).json({ error: 'INSUFFICIENT_CREDITS', required: e.required, available: e.available });
@@ -2057,29 +2089,188 @@ Reponds UNIQUEMENT avec un JSON valide :
       throw e;
     }
 
+    // 3) Build the reviews-with-sections snapshot the AI needs.
     const existingDocs = await db.getAllDocuments(userId, req.user!.isAdmin);
-    const existingReviews = existingDocs.map((d: { id: string; title: string; description?: string | null }) => ({
-      id: d.id,
-      title: d.title,
-      description: d.description ?? null,
-    }));
+    const reviews: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      sections: Array<{ id: string; name: string; sampleSubjectTitles: string[] }>;
+    }> = [];
 
-    const { suggestRouting } = await import('./transcriptionRoutingService.js');
+    for (const d of existingDocs.slice(0, 40)) {
+      try {
+        const doc = await db.getDocumentWithSections(d.id);
+        if (!doc) continue;
+        reviews.push({
+          id: doc.id,
+          title: doc.title,
+          description: (d as { description?: string | null }).description ?? null,
+          sections: (doc.sections || []).map(s => ({
+            id: s.id,
+            name: s.name,
+            sampleSubjectTitles: (s.subjects || []).slice(0, 5).map(sub => sub.title),
+          })),
+        });
+      } catch {
+        /* best effort */
+      }
+    }
+
+    // 4) Run AI.
+    const { analyzeTranscriptionAndRoute } = await import('./transcriptionRoutingService.js');
     try {
-      const safeItems = items.slice(0, 50).map(it => ({
-        id: String(it.id),
-        provider: (['fathom', 'otter', 'gmail', 'outlook'].includes(it.provider) ? it.provider : 'fathom') as 'fathom' | 'otter' | 'gmail' | 'outlook',
-        title: String(it.title || ''),
-        date: it.date ?? null,
-        participants: it.participants,
-        preview: it.preview,
-      }));
-      const result = await suggestRouting(userId, safeItems, existingReviews);
-      res.json(result);
+      const result = await analyzeTranscriptionAndRoute(
+        userId,
+        transcript,
+        reviews,
+        { title: title || '(sans titre)', date: date ?? null, provider: source },
+      );
+      res.json({ ...result, availableReviews: reviews.map(r => ({
+        id: r.id,
+        title: r.title,
+        sections: r.sections.map(s => ({ id: s.id, name: s.name })),
+      })) });
     } catch (err) {
       console.error('[SuiviTess routing] error:', err);
       res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
     }
+  }));
+
+  // POST /transcription/apply-routing
+  // Body: { subjects: [{ title, situation, status, responsibility,
+  //                      targetReviewId?, newReviewTitle?,
+  //                      targetSectionId?, newSectionName? }] }
+  // Applies the user-confirmed routing : creates reviews and sections as
+  // needed, then appends each subject. Sections with the same name inside
+  // the same review are de-duplicated (created once).
+  router.post('/transcription/apply-routing', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { sourceId, subjects } = (req.body || {}) as {
+      sourceId?: string; // external id of the source item (used to mark as imported)
+      subjects?: Array<{
+        title: string;
+        situation?: string;
+        status?: string;
+        responsibility?: string | null;
+        targetReviewId?: string | null;
+        newReviewTitle?: string | null;
+        targetSectionId?: string | null;
+        newSectionName?: string | null;
+      }>;
+    };
+    if (!Array.isArray(subjects) || subjects.length === 0) {
+      res.status(400).json({ error: 'Aucun sujet à appliquer' });
+      return;
+    }
+
+    const newReviewByTitle = new Map<string, string>();
+    const newSectionByKey = new Map<string, string>(); // key = `${reviewId}::${sectionName}`
+
+    const reviewsCreated: Array<{ id: string; title: string }> = [];
+    const sectionsCreated: Array<{ id: string; name: string; reviewId: string }> = [];
+    const subjectsCreated: Array<{ id: string; title: string; reviewId: string; sectionId: string }> = [];
+    const errors: Array<{ title: string; error: string }> = [];
+
+    for (const s of subjects) {
+      const title = (s.title || '').trim();
+      if (!title) continue;
+
+      try {
+        // Resolve review (create if needed)
+        let reviewId = s.targetReviewId || null;
+        if (!reviewId) {
+          const newTitle = (s.newReviewTitle || 'Nouvelle review').trim().slice(0, 100);
+          const cached = newReviewByTitle.get(newTitle);
+          if (cached) {
+            reviewId = cached;
+          } else {
+            const baseSlug = newTitle
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-|-$/g, '') || 'review';
+            let id = baseSlug;
+            let suffix = 1;
+            let created: { id: string } | null = null;
+            for (let attempt = 0; attempt < 50; attempt++) {
+              try {
+                const d = await db.createDocument(id, newTitle, null);
+                created = d;
+                break;
+              } catch (e) {
+                const msg = String((e as Error).message || '');
+                if (msg.includes('duplicate') || msg.includes('unique')) {
+                  suffix++;
+                  id = `${baseSlug}-${suffix}`;
+                  continue;
+                }
+                throw e;
+              }
+            }
+            if (!created) {
+              errors.push({ title, error: 'Impossible de créer la review' });
+              continue;
+            }
+            try {
+              const { ensureOwnership } = await import('../shared/resourceSharing.js');
+              await ensureOwnership('suivitess', created.id, userId, 'private');
+            } catch { /* best effort */ }
+            reviewId = created.id;
+            newReviewByTitle.set(newTitle, reviewId);
+            reviewsCreated.push({ id: reviewId, title: newTitle });
+          }
+        }
+
+        // Resolve section
+        let sectionId = s.targetSectionId || null;
+        if (!sectionId) {
+          const name = (s.newSectionName || 'Nouveau point').trim().slice(0, 80);
+          const key = `${reviewId}::${name}`;
+          const cached = newSectionByKey.get(key);
+          if (cached) {
+            sectionId = cached;
+          } else {
+            const section = await db.createSection(reviewId, name);
+            sectionId = section.id;
+            newSectionByKey.set(key, sectionId);
+            sectionsCreated.push({ id: sectionId, name, reviewId });
+          }
+        }
+
+        const subject = await db.createSubject(
+          sectionId,
+          title,
+          (s.situation ?? null),
+          (s.status || '🔴 à faire'),
+          s.responsibility ?? null,
+        );
+        subjectsCreated.push({ id: subject.id, title, reviewId, sectionId });
+      } catch (err) {
+        errors.push({ title, error: (err as Error).message || 'Échec' });
+      }
+    }
+
+    // Mark the source as imported so it does not appear in bulk-sources again.
+    if (sourceId && subjectsCreated.length > 0) {
+      try {
+        const firstReview = subjectsCreated[0].reviewId;
+        await db.pool.query(
+          `INSERT INTO suivitess_transcript_imports (document_id, call_id, provider, call_title)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT DO NOTHING`,
+          [firstReview, sourceId, 'bulk-router', ''],
+        );
+      } catch { /* ignore — best effort */ }
+    }
+
+    res.json({
+      reviewsCreated,
+      sectionsCreated,
+      subjectsCreated,
+      errors,
+    });
   }));
 
   return router;

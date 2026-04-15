@@ -333,26 +333,53 @@ export async function fetchBulkSources(days = 30): Promise<BulkSourceItem[]> {
   return response.json();
 }
 
-export interface RoutingSuggestion {
-  itemId: string;
-  suggestedAction: 'existing' | 'new';
-  suggestedDocId: string | null;
-  suggestedNewTitle: string | null;
+// ============ Subject-level analysis & routing ============
+
+export type ReviewAction = 'existing-review' | 'new-review';
+export type SectionAction = 'existing-section' | 'new-section';
+
+export interface AnalyzedSubject {
+  title: string;
+  situation: string;
+  status: string;
+  responsibility: string | null;
+  action: ReviewAction;
+  reviewId: string | null;
+  suggestedNewReviewTitle: string | null;
+  sectionAction: SectionAction;
+  sectionId: string | null;
+  suggestedNewSectionName: string | null;
   confidence: 'high' | 'medium' | 'low';
   reasoning: string;
 }
 
-export interface RoutingResponse {
-  summary: string;
-  suggestions: RoutingSuggestion[];
+export interface AvailableReview {
+  id: string;
+  title: string;
+  sections: Array<{ id: string; name: string }>;
 }
 
-export async function fetchRoutingSuggestions(items: BulkSourceItem[]): Promise<RoutingResponse> {
-  const response = await fetch(`${API_BASE}/transcription/route-suggestions`, {
+export interface AnalysisResponse {
+  summary: string;
+  subjects: AnalyzedSubject[];
+  availableReviews: AvailableReview[];
+}
+
+/**
+ * Analyse the selected transcription and return extracted subjects, each
+ * routed to a review + section (existing or new). One backend round-trip.
+ */
+export async function analyzeAndRoute(payload: {
+  source: SourceProvider;
+  id: string;
+  title: string;
+  date?: string | null;
+}): Promise<AnalysisResponse> {
+  const response = await fetch(`${API_BASE}/transcription/analyze-and-route`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ items }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
@@ -361,20 +388,33 @@ export async function fetchRoutingSuggestions(items: BulkSourceItem[]): Promise<
   return response.json();
 }
 
-/**
- * Import a single transcription into a target document.
- * Thin wrapper around POST /documents/:docId/transcript-import so the new
- * bulk import modal can reuse it per-item.
- */
-export async function importTranscriptionIntoDocument(
-  docId: string,
-  payload: { callId: string; callTitle: string; provider: SourceProvider; useAI: boolean; aiProvider?: string },
-): Promise<unknown> {
-  const response = await fetch(`${API_BASE}/documents/${docId}/transcript-import`, {
+export interface ApplyRoutingSubject {
+  title: string;
+  situation?: string;
+  status?: string;
+  responsibility?: string | null;
+  targetReviewId?: string | null;
+  newReviewTitle?: string | null;
+  targetSectionId?: string | null;
+  newSectionName?: string | null;
+}
+
+export interface ApplyRoutingResponse {
+  reviewsCreated: Array<{ id: string; title: string }>;
+  sectionsCreated: Array<{ id: string; name: string; reviewId: string }>;
+  subjectsCreated: Array<{ id: string; title: string; reviewId: string; sectionId: string }>;
+  errors: Array<{ title: string; error: string }>;
+}
+
+export async function applyRouting(
+  sourceId: string,
+  subjects: ApplyRoutingSubject[],
+): Promise<ApplyRoutingResponse> {
+  const response = await fetch(`${API_BASE}/transcription/apply-routing`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ sourceId, subjects }),
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
