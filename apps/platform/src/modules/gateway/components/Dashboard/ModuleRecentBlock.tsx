@@ -33,6 +33,8 @@ interface Props<T> {
   fetchSubItems?: (item: Item) => Promise<SubItem[]>;
   /** Optional: compute a dynamic meta string (e.g. "3 en cours") after items load */
   computeMeta?: (item: Item) => Promise<string | null>;
+  /** Sort direction for the `date` field. Defaults to 'desc' (most recent first). */
+  sortDirection?: 'desc' | 'asc';
   onNavigate?: (path: string) => void;
 }
 
@@ -50,6 +52,7 @@ export function ModuleRecentBlock<T>({
   createHref,
   fetchSubItems,
   computeMeta,
+  sortDirection = 'desc',
   onNavigate,
 }: Props<T>) {
   const [items, setItems] = useState<Item[] | null>(null);
@@ -62,11 +65,12 @@ export function ModuleRecentBlock<T>({
       .then(rawItems => {
         const mapped = rawItems.map(mapItem)
           .sort((a, b) => {
-            // Items with no date go to the bottom
+            // Items with no date always go to the bottom
             if (!a.date && !b.date) return 0;
             if (!a.date) return 1;
             if (!b.date) return -1;
-            return new Date(b.date).getTime() - new Date(a.date).getTime();
+            const delta = new Date(a.date).getTime() - new Date(b.date).getTime();
+            return sortDirection === 'asc' ? delta : -delta;
           });
         setTotal(mapped.length);
         const top = mapped.slice(0, MAX_VISIBLE);

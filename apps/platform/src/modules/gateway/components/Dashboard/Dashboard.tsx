@@ -4,8 +4,9 @@ import { ModuleRecentBlock } from './ModuleRecentBlock';
 import { fetchDocuments, fetchDocument } from '../../../suivitess/services/api';
 import { fetchPlannings, fetchTasks } from '../../../roadmap/services/api';
 import { fetchBoards, fetchTasksForBoard } from '../../../delivery/services/api';
-import { fetchLeaves } from '../../../conges/services/api';
+import { fetchLeaves, fetchMembers } from '../../../conges/services/api';
 import { getLeaveReasonInfo } from '../../../conges/types';
+import type { Leave, Member } from '../../../conges/types';
 import { normalizeStatus } from '../../../roadmap/utils/statusColors';
 import styles from './Dashboard.module.css';
 
@@ -52,12 +53,26 @@ export function Dashboard({ onNavigate }: Props) {
     has: (mod: string) => userPerms.has(mod),
   };
 
-  // ─── Fetch leaves (conges) for next 30 days ───
-  const fetchUpcomingLeaves = () => {
+  // ─── Fetch leaves (conges) for next 30 days, with member names attached ───
+  type LeaveWithMember = Leave & { memberName: string };
+  const fetchUpcomingLeaves = async (): Promise<LeaveWithMember[]> => {
     const today = new Date();
     const in30Days = new Date(today);
     in30Days.setDate(in30Days.getDate() + 30);
-    return fetchLeaves(today.toISOString().slice(0, 10), in30Days.toISOString().slice(0, 10));
+    const [leaves, members] = await Promise.all([
+      fetchLeaves(today.toISOString().slice(0, 10), in30Days.toISOString().slice(0, 10)),
+      fetchMembers().catch(() => [] as Member[]),
+    ]);
+    const byId = new Map(members.map(m => [m.id, m]));
+    return leaves.map(l => {
+      const member = byId.get(l.memberId);
+      // Members only expose an email — derive a readable name from it.
+      const fromEmail = member?.email?.split('@')[0]?.replace(/[._-]+/g, ' ').trim() || '';
+      const memberName = fromEmail
+        ? fromEmail.replace(/\b\w/g, c => c.toUpperCase())
+        : '?';
+      return { ...l, memberName };
+    });
   };
 
   return (
@@ -82,16 +97,19 @@ export function Dashboard({ onNavigate }: Props) {
               const fmtFull = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
               const fmtShort = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
               const sameYear = l.startDate.substring(0, 4) === l.endDate.substring(0, 4);
-              let title: string;
+              let dateRange: string;
               if (l.endDate === l.startDate) {
-                title = fmtFull(l.startDate);
+                dateRange = fmtFull(l.startDate);
               } else if (sameYear) {
-                title = `${fmtShort(l.startDate)} → ${fmtFull(l.endDate)}`;
+                dateRange = `${fmtShort(l.startDate)} → ${fmtFull(l.endDate)}`;
               } else {
-                title = `${fmtFull(l.startDate)} → ${fmtFull(l.endDate)}`;
+                dateRange = `${fmtFull(l.startDate)} → ${fmtFull(l.endDate)}`;
               }
+              // Show the person first so it's immediately readable in the dashboard.
+              const title = `${l.memberName} · ${dateRange}`;
               return { id: l.id, title, date: l.startDate, href: '/conges', meta: getLeaveReasonInfo(l.reason).label };
             }}
+            sortDirection="asc"
             seeAllHref="/conges"
             createHref="/conges?create=1"
             createLabel="+ Poser un congé"
