@@ -22,6 +22,8 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
+  /** Reviews touched by the latest bulk import — each card shows a "mise à jour" badge until cleared. */
+  const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Set<string>>(new Set());
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newVisibility, setNewVisibility] = useState<Visibility>('private');
@@ -207,7 +209,14 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
             {documents.map((doc) => (
               <Card key={doc.id} variant="interactive" onClick={() => onSelect(doc)} className={styles.docCard}>
                 <div className="shared-card__content">
-                  <span className="shared-card__title">{doc.title}</span>
+                  <span className="shared-card__title">
+                    {doc.title}
+                    {recentlyUpdatedIds.has(doc.id) && (
+                      <span className={styles.justUpdatedBadge} title="Mise à jour récente suite à l'import IA">
+                        ✨ mis à jour
+                      </span>
+                    )}
+                  </span>
                   {doc.description && <span className="shared-card__subtitle">{doc.description}</span>}
                 </div>
                 <button
@@ -370,12 +379,15 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
       {showBulkImport && (
         <BulkTranscriptionImportModal
           onClose={() => setShowBulkImport(false)}
-          onDone={({ importedSubjects, updatedSubjects, createdReviews }) => {
+          onDone={({ importedSubjects, updatedSubjects, createdReviews, touchedReviewIds }) => {
             const parts: string[] = [];
             if (importedSubjects > 0) parts.push(`${importedSubjects} sujet${importedSubjects > 1 ? 's' : ''} ajouté${importedSubjects > 1 ? 's' : ''}`);
             if (updatedSubjects > 0) parts.push(`${updatedSubjects} mis à jour`);
             if (createdReviews > 0) parts.push(`${createdReviews} review${createdReviews > 1 ? 's' : ''} créée${createdReviews > 1 ? 's' : ''}`);
             if (parts.length > 0) addToast({ type: 'success', message: parts.join(' · ') });
+            if (touchedReviewIds.length > 0) {
+              setRecentlyUpdatedIds(new Set(touchedReviewIds));
+            }
             api.fetchDocuments().then(setDocuments).catch(() => {});
           }}
         />

@@ -5,7 +5,15 @@ import styles from './BulkTranscriptionImportModal.module.css';
 
 interface Props {
   onClose: () => void;
-  onDone: (summary: { importedSubjects: number; updatedSubjects: number; createdReviews: number; createdSections: number }) => void;
+  onDone: (summary: {
+    importedSubjects: number;
+    updatedSubjects: number;
+    createdReviews: number;
+    createdSections: number;
+    /** Ids of every review touched by this import — used by the list page
+     *  to show a "freshly updated" indicator on the matching cards. */
+    touchedReviewIds: string[];
+  }) => void;
 }
 
 type Phase = 'picking' | 'analyzing' | 'routing' | 'applying' | 'done' | 'error';
@@ -119,11 +127,25 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
       const res = await api.applyRouting(selectedItem.id, subjectsToApply);
       setApplyResult(res);
       setPhase('done');
+
+      // Collect every review id touched by the import : freshly-created
+      // reviews, reviews that received new subjects (reported by the
+      // backend), and reviews that got updates (inferred from the rows
+      // because the backend update path doesn't carry a reviewId).
+      const touched = new Set<string>();
+      for (const r of res.reviewsCreated) touched.add(r.id);
+      for (const s of res.subjectsCreated) touched.add(s.reviewId);
+      for (const row of rows) {
+        if (row.skipped) continue;
+        if (row.subjectAction === 'update' && row.reviewId) touched.add(row.reviewId);
+      }
+
       onDone({
         importedSubjects: res.subjectsCreated.length,
         updatedSubjects: res.subjectsUpdated.length,
         createdReviews: res.reviewsCreated.length,
         createdSections: res.sectionsCreated.length,
+        touchedReviewIds: Array.from(touched),
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Import échoué');
