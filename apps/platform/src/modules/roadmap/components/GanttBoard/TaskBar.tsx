@@ -227,8 +227,28 @@ export function TaskBar({
           </button>
         )}
 
-        {/* Status dot removed — delivery tasks no longer show a colored circle
-            next to their title. The bar fill color already conveys status. */}
+        {/* Status pill — small visual cue for delivery-overlay tasks (and others
+            carrying a status). Color from normalized status (todo/in_progress/done). */}
+        {task.status && !isCompact && (
+          <span
+            className={styles.hoverCardStatus}
+            style={{
+              background: getStatusColor(task.status),
+              fontSize: '9px',
+              padding: '1px 6px',
+              borderRadius: '3px',
+              marginRight: '4px',
+              color: '#fff',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              flexShrink: 0,
+            }}
+            title={`Statut : ${task.status}`}
+          >
+            {task.status === 'done' ? 'Done' : task.status === 'in_progress' ? 'En cours' : task.status === 'blocked' ? 'Bloqué' : 'À faire'}
+          </span>
+        )}
 
         {isEditing ? (
           <input ref={inputRef} type="text" className={styles.nameInput} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={handleKeyDown} autoFocus />

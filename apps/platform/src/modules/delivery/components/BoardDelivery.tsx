@@ -36,8 +36,10 @@ interface BoardDeliveryProps {
 }
 
 /** Vertical pitch between rows on the board grid. Tasks are positioned at
- *  `top: row * ROW_HEIGHT` so this also controls the gap between tasks. */
-const ROW_HEIGHT = 60;
+ *  `top: row * ROW_HEIGHT` so this also controls the gap between tasks.
+ *  Set to tile min-height (80) + 4px gutter so consecutive rows snap
+ *  cleanly without inter-row visual overlap when dragging. */
+const ROW_HEIGHT = 84;
 /** Fallback column count when totalCols prop is not provided (legacy). */
 const DEFAULT_TOTAL_COLS = 6;
 

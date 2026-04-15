@@ -1,13 +1,15 @@
+/* Denser tiles with more breathing room — gives ticket titles space to
+   wrap without cramping. min-height 80 + padding-sm 10px. */
 .taskBlock {
   position: absolute;
-  padding: var(--spacing-xs) var(--spacing-sm);
+  padding: var(--spacing-sm) 10px;
   border-radius: var(--radius-sm);
   font-size: 11px;
   font-weight: var(--font-weight-medium);
   color: var(--text-primary);
   display: flex;
   align-items: flex-start;
-  min-height: 48px;
+  min-height: 80px;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-light);
   z-index: 1;

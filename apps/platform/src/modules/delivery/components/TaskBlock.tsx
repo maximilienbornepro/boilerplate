@@ -15,13 +15,22 @@ const MAX_VISIBLE_CHIPS = 3;
 
 const getStatusInfo = (status?: string): { label: string; className: string } | null => {
   if (!status) return null;
-  switch (status) {
-    case 'in_progress': return { label: 'En cours', className: styles.statusEnCours };
-    case 'blocked':     return { label: 'Bloque',   className: styles.statusBloque };
-    case 'todo':        return { label: 'A faire',  className: styles.statusAFaire };
-    case 'done':        return { label: 'Done',     className: styles.statusDone };
-    default:            return { label: status,     className: styles.statusAFaire };
+  // Normalize: lowercase + strip accents so JIRA-localized labels (Bloqué, En Cours…)
+  // map to the same buckets as the boilerplate codes (in_progress, blocked, todo, done).
+  const norm = status.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  if (/(^|\s)(done|termin|closed|fini|deploy|ferme)/.test(norm)) {
+    return { label: 'Done', className: styles.statusDone };
   }
+  if (/bloqu|blocked/.test(norm)) {
+    return { label: 'Bloqué', className: styles.statusBloque };
+  }
+  if (/in.?progress|en.?cours|en.?revue|review|recette|qa/.test(norm)) {
+    return { label: 'En cours', className: styles.statusEnCours };
+  }
+  if (/^(todo|a.?faire|backlog|refinement|affinage|cadrage|planif)/.test(norm)) {
+    return { label: 'À faire', className: styles.statusAFaire };
+  }
+  return { label: status, className: styles.statusAFaire };
 };
 
 // Per-project card background colors (dark theme friendly)
@@ -454,8 +463,8 @@ export function TaskBlock({
         </span>
       )}
 
-      {/* Context menu — regular tasks only */}
-      {!isContainer && showMenu && !isDragging && (
+      {/* Context menu — works on both regular tasks and manual containers */}
+      {showMenu && !isDragging && (
         <div className={styles.contextMenu} onClick={(e) => e.stopPropagation()}>
           <div className={styles.contextMenuInner}>
             {!readOnly && onUpdate && (
@@ -464,7 +473,7 @@ export function TaskBlock({
                 <span>Renommer</span>
               </button>
             )}
-            {!readOnly && onDelete && (
+            {!readOnly && onDelete && !isContainer && (
               <button className={`${styles.menuItem} ${styles.menuItemDanger}`} onClick={handleHideTask} onMouseDown={(e) => e.stopPropagation()}>
                 <span className={styles.menuIcon}>&#128064;</span>
                 <span>Masquer</span>
@@ -521,6 +530,24 @@ export function TaskBlock({
             )}
 
             <div className={styles.renameButtons}>
+              {/* Container delete: only on manual containers, requires onDelete handler */}
+              {isContainer && !readOnly && onDelete && (
+                <button
+                  className={`${styles.renameCancel} ${styles.menuItemDanger}`}
+                  style={{ marginRight: 'auto' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm('Supprimer ce conteneur ? Les tâches enfants seront détachées.')) {
+                      setIsEditing(false);
+                      onDelete(task.id);
+                    }
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  title="Supprimer le conteneur"
+                >
+                  Supprimer
+                </button>
+              )}
               <button className={styles.renameCancel} onClick={() => setIsEditing(false)} onMouseDown={(e) => e.stopPropagation()}>
                 Annuler
               </button>
