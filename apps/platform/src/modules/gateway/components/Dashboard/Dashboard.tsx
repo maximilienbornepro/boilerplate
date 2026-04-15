@@ -1,11 +1,12 @@
 import { useAuth } from '../../context/AuthContext';
 import { CreditBadge } from './CreditBadge';
-import { ModuleRecentBlock, type SubItem } from './ModuleRecentBlock';
+import { ModuleRecentBlock } from './ModuleRecentBlock';
 import { fetchDocuments, fetchDocument } from '../../../suivitess/services/api';
 import { fetchPlannings, fetchTasks } from '../../../roadmap/services/api';
 import { fetchBoards, fetchTasksForBoard } from '../../../delivery/services/api';
 import { fetchLeaves } from '../../../conges/services/api';
 import { getLeaveReasonInfo } from '../../../conges/types';
+import { normalizeStatus } from '../../../roadmap/utils/statusColors';
 import styles from './Dashboard.module.css';
 
 interface Props {
@@ -113,16 +114,14 @@ export function Dashboard({ onNavigate }: Props) {
               href: `/roadmap/${p.id}`,
               meta: p.description || undefined,
             })}
-            fetchSubItems={async (item) => {
-              const tasks = await fetchTasks(String(item.id));
-              return tasks
-                .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime())
-                .slice(0, 3)
-                .map<SubItem>(t => ({
-                  label: t.name,
-                  date: t.updatedAt || t.createdAt,
-                  href: `/roadmap/${item.id}?task=${t.id}`,
-                }));
+            computeMeta={async (item) => {
+              try {
+                const tasks = await fetchTasks(String(item.id));
+                const inProgress = tasks.filter(t => normalizeStatus(t.status) === 'in_progress').length;
+                return inProgress > 0 ? `${inProgress} tâche${inProgress > 1 ? 's' : ''} en cours` : null;
+              } catch {
+                return null;
+              }
             }}
             seeAllHref="/roadmap"
             createHref="/roadmap?create=1"
@@ -146,21 +145,26 @@ export function Dashboard({ onNavigate }: Props) {
               href: `/suivitess/${d.id}`,
               meta: d.description ? d.description.slice(0, 40) : undefined,
             })}
-            fetchSubItems={async (item) => {
-              const doc = await fetchDocument(String(item.id));
-              if (!doc?.sections) return [];
-              const all: Array<{ title: string; updated_at: string; sectionId: string }> = [];
-              for (const sec of doc.sections) {
-                for (const sub of sec.subjects) {
-                  all.push({ title: sub.title, updated_at: sub.updated_at, sectionId: sec.id });
+            computeMeta={async (item) => {
+              try {
+                const doc = await fetchDocument(String(item.id));
+                if (!doc?.sections) return null;
+                let enCours = 0;
+                let bloque = 0;
+                for (const sec of doc.sections) {
+                  for (const sub of sec.subjects) {
+                    const s = (sub.status || '').toLowerCase();
+                    if (s.includes('en cours')) enCours++;
+                    else if (s.includes('bloqué') || s.includes('bloque')) bloque++;
+                  }
                 }
+                const parts: string[] = [];
+                if (enCours > 0) parts.push(`${enCours} en cours`);
+                if (bloque > 0) parts.push(`${bloque} bloqué${bloque > 1 ? 's' : ''}`);
+                return parts.length > 0 ? parts.join(' · ') : null;
+              } catch {
+                return null;
               }
-              all.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-              return all.slice(0, 3).map<SubItem>(s => ({
-                label: s.title,
-                date: s.updated_at,
-                href: `/suivitess/${item.id}?section=${s.sectionId}`,
-              }));
             }}
             seeAllHref="/suivitess"
             createHref="/suivitess?create=1"
@@ -185,14 +189,14 @@ export function Dashboard({ onNavigate }: Props) {
               meta: b.boardType === 'agile' ? 'Agile' : 'Calendaire',
               metaTag: true,
             })}
-            fetchSubItems={async (item) => {
-              const tasks = await fetchTasksForBoard(String(item.id));
-              return tasks
-                .slice(0, 3)
-                .map<SubItem>(t => ({
-                  label: t.title,
-                  href: `/delivery/${item.id}`,
-                }));
+            computeMeta={async (item) => {
+              try {
+                const tasks = await fetchTasksForBoard(String(item.id));
+                const inProgress = tasks.filter(t => t.status === 'in_progress').length;
+                return inProgress > 0 ? `${inProgress} en cours` : null;
+              } catch {
+                return null;
+              }
             }}
             seeAllHref="/delivery"
             createHref="/delivery?create=1"

@@ -744,5 +744,189 @@ export function createDeliveryRoutes(): Router {
     res.json(issues);
   }));
 
+  // ============ AI Sanity Check ============
+  // Looks at the current board + live Jira state and returns
+  // repositioning recommendations (never deletes, only moves).
+
+  router.post('/boards/:boardId/ai-sanity-check', asyncHandler(async (req, res) => {
+    const { boardId } = req.params;
+
+    const board = await db.getBoardById(boardId);
+    if (!board) { res.status(404).json({ error: 'Board non trouvé' }); return; }
+
+    const tasks = await db.getAllTasksForBoard(boardId);
+    const jiraTasks = tasks.filter(t => t.source === 'jira');
+
+    if (jiraTasks.length === 0) {
+      res.status(400).json({
+        error: 'Aucun ticket Jira sur ce board, la vérification IA n\'a rien à analyser.',
+      });
+      return;
+    }
+
+    // Deduct credits BEFORE calling the AI
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try {
+      await deductCredits(req.user!.id, req.user!.isAdmin, 'delivery', 'sanity_check');
+    } catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        res.status(402).json({
+          error: 'INSUFFICIENT_CREDITS',
+          message: 'Crédits insuffisants',
+          required: e.required,
+          available: e.available,
+        });
+        return;
+      }
+      throw e;
+    }
+
+    // Build Jira key → board task map
+    const {
+      parseJiraKey, extractJiraContext, computeTodayCol, analyzeSanityCheck,
+    } = await import('./deliveryAISanityService.js');
+
+    const jiraKeyToTaskId = new Map<string, string>();
+    for (const t of jiraTasks) {
+      const key = parseJiraKey(t.title);
+      if (key) jiraKeyToTaskId.set(key, t.id);
+    }
+
+    // Fetch live Jira state for those keys (reuse existing pattern)
+    const liveJiraByKey = new Map<string, { status?: string; storyPoints?: number; assignee?: string; estimateDays?: number; description?: string }>();
+    const ctx = await getJiraContext(req.user!.id);
+    if (ctx && jiraKeyToTaskId.size > 0) {
+      const keys = Array.from(jiraKeyToTaskId.keys());
+      for (let i = 0; i < keys.length; i += 50) {
+        const batch = keys.slice(i, i + 50);
+        const jql = `key in (${batch.join(',')})`;
+        const params = new URLSearchParams({
+          jql,
+          maxResults: '50',
+          fields: 'status,customfield_10016,assignee,timetracking,summary,description',
+        });
+        try {
+          const searchResp = await fetch(`${ctx.baseUrl}/rest/api/3/search/jql?${params}`, {
+            headers: ctx.headers,
+          });
+          if (!searchResp.ok) continue;
+          const data = await searchResp.json() as { issues?: Array<{
+            key: string;
+            fields: {
+              status?: { name: string };
+              customfield_10016?: number;
+              assignee?: { displayName: string };
+              timetracking?: { originalEstimateSeconds?: number };
+              summary?: string;
+              description?: unknown;
+            };
+          }> };
+          for (const issue of data.issues || []) {
+            const f = issue.fields;
+            liveJiraByKey.set(issue.key, {
+              status: f.status?.name,
+              storyPoints: f.customfield_10016,
+              assignee: f.assignee?.displayName,
+              estimateDays: f.timetracking?.originalEstimateSeconds
+                ? Math.round((f.timetracking.originalEstimateSeconds / (8 * 60 * 60)) * 10) / 10
+                : undefined,
+              description: typeof f.description === 'string' ? f.description : (f.description ? 'yes' : undefined),
+            });
+          }
+        } catch {
+          /* ignore — best effort */
+        }
+      }
+    }
+
+    // Build the snapshot
+    const positions = await db.getPositionsForBoard(boardId);
+    const positionByTaskId = new Map(positions.map(p => [p.taskId, p]));
+
+    const totalCols = board.boardType === 'agile' ? (board.durationWeeks ?? 6) : 4;
+    const todayCol = computeTodayCol(board.startDate, board.endDate, totalCols);
+
+    const snapshotTasks = jiraTasks.map(t => {
+      const jiraKey = parseJiraKey(t.title);
+      const pos = positionByTaskId.get(t.id);
+      const live = jiraKey ? liveJiraByKey.get(jiraKey) : undefined;
+      return {
+        id: t.id,
+        title: t.title,
+        jiraKey,
+        boardStatus: t.status,
+        jiraStatus: live?.status ?? null,
+        storyPoints: t.storyPoints ?? live?.storyPoints ?? null,
+        estimatedDays: t.estimatedDays ?? live?.estimateDays ?? null,
+        hasEstimation: !!(t.estimatedDays || t.storyPoints || live?.storyPoints || live?.estimateDays),
+        hasDescription: !!(t.description && t.description.trim().length > 0) || !!live?.description,
+        hasAssignee: !!(t.assignee || live?.assignee),
+        position: pos
+          ? { startCol: pos.startCol, endCol: pos.endCol, row: pos.row }
+          : { startCol: 0, endCol: 1, row: 0 },
+      };
+    });
+
+    // Cap at 50 tasks (oldest updated first if too many)
+    const MAX_TASKS = 50;
+    const capped = snapshotTasks.slice(0, MAX_TASKS);
+
+    const { extractJiraContext: _ctxFn } = { extractJiraContext };
+    _ctxFn; // keep import referenced
+
+    const result = await analyzeSanityCheck(req.user!.id, {
+      boardId,
+      boardName: board.name,
+      totalCols,
+      todayCol,
+      tasks: capped,
+    });
+
+    res.json(result);
+  }));
+
+  // Apply a list of recommended moves. Transactional — all or nothing.
+  router.post('/boards/:boardId/ai-sanity-check/apply', asyncHandler(async (req, res) => {
+    const { boardId } = req.params;
+    const { moves } = req.body as { moves?: Array<{ taskId: string; startCol: number; endCol: number; row: number }> };
+    if (!Array.isArray(moves) || moves.length === 0) {
+      res.status(400).json({ error: 'Aucun déplacement à appliquer' });
+      return;
+    }
+
+    const tasks = await db.getAllTasksForBoard(boardId);
+    const taskById = new Map(tasks.map(t => [t.id, t]));
+    const positions = await db.getPositionsForBoard(boardId);
+    const positionByTaskId = new Map(positions.map(p => [p.taskId, p]));
+
+    // Any move referencing a task not on this board is rejected.
+    const invalid = moves.find(m => !taskById.has(m.taskId));
+    if (invalid) {
+      res.status(400).json({ error: `Tâche ${invalid.taskId} absente du board` });
+      return;
+    }
+
+    const toUpsert: Array<db.TaskPosition> = moves.map(m => {
+      const existing = positionByTaskId.get(m.taskId);
+      const incrementId =
+        existing?.incrementId
+        || taskById.get(m.taskId)?.incrementId
+        || boardId; // fall back to the board-level increment
+
+      return {
+        taskId: m.taskId,
+        incrementId,
+        startCol: Math.max(0, Math.floor(m.startCol)),
+        endCol: Math.max(1, Math.floor(m.endCol)),
+        row: Math.max(0, Math.floor(m.row)),
+        rowSpan: existing?.rowSpan ?? 1,
+      };
+    });
+
+    await db.bulkUpsertPositions(toUpsert);
+
+    res.json({ applied: toUpsert.length });
+  }));
+
   return router;
 }

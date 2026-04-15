@@ -252,6 +252,40 @@ export async function deleteTaskPosition(incrementId: string, taskId: string): P
   );
 }
 
+/**
+ * Bulk-upsert positions for multiple tasks in a single transaction.
+ * All entries are written atomically — if one fails, none are applied.
+ * Each entry must provide a resolved `incrementId` (caller decides which
+ * sprint/board increment the task lives in).
+ */
+export async function bulkUpsertPositions(positions: TaskPosition[]): Promise<void> {
+  if (positions.length === 0) return;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const p of positions) {
+      await client.query(
+        `INSERT INTO delivery_positions (task_id, increment_id, start_col, end_col, row, row_span, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+         ON CONFLICT (task_id, increment_id)
+         DO UPDATE SET
+           start_col = EXCLUDED.start_col,
+           end_col = EXCLUDED.end_col,
+           row = EXCLUDED.row,
+           row_span = EXCLUDED.row_span,
+           updated_at = CURRENT_TIMESTAMP`,
+        [p.taskId, p.incrementId, p.startCol, p.endCol, p.row, p.rowSpan || 1]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 // ============ Increment State ============
 
 export interface HiddenTask {

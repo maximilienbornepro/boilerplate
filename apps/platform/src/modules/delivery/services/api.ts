@@ -412,3 +412,41 @@ export async function fetchJiraVersions(
   const res = await fetch(`${API_BASE}/jira/versions?${params}`, { credentials: 'include' });
   return handleResponse(res);
 }
+
+// ============ AI Sanity Check ============
+
+export interface SanityMoveRecommendation {
+  taskId: string;
+  taskTitle: string;
+  current: { startCol: number; endCol: number; row: number };
+  recommended: { startCol: number; endCol: number; row: number };
+  reasoning: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface SanityCheckResponse {
+  summary: string;
+  recommendations: SanityMoveRecommendation[];
+}
+
+export async function runSanityCheck(boardId: string): Promise<SanityCheckResponse> {
+  const res = await fetch(`${API_BASE}/boards/${boardId}/ai-sanity-check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+  });
+  return handleResponse<SanityCheckResponse>(res);
+}
+
+export async function applySanityMoves(
+  boardId: string,
+  moves: Array<{ taskId: string; startCol: number; endCol: number; row: number }>,
+): Promise<{ applied: number }> {
+  const res = await fetch(`${API_BASE}/boards/${boardId}/ai-sanity-check/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ moves }),
+  });
+  return handleResponse<{ applied: number }>(res);
+}
