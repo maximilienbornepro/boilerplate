@@ -370,12 +370,12 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
       {showBulkImport && (
         <BulkTranscriptionImportModal
           onClose={() => setShowBulkImport(false)}
-          onDone={({ imported, createdReviews }) => {
+          onDone={({ importedSubjects, updatedSubjects, createdReviews }) => {
             const parts: string[] = [];
-            if (imported > 0) parts.push(`${imported} import${imported > 1 ? 's' : ''}`);
+            if (importedSubjects > 0) parts.push(`${importedSubjects} sujet${importedSubjects > 1 ? 's' : ''} ajouté${importedSubjects > 1 ? 's' : ''}`);
+            if (updatedSubjects > 0) parts.push(`${updatedSubjects} mis à jour`);
             if (createdReviews > 0) parts.push(`${createdReviews} review${createdReviews > 1 ? 's' : ''} créée${createdReviews > 1 ? 's' : ''}`);
             if (parts.length > 0) addToast({ type: 'success', message: parts.join(' · ') });
-            // Refresh the list so newly-created reviews appear
             api.fetchDocuments().then(setDocuments).catch(() => {});
           }}
         />

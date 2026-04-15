@@ -29,6 +29,16 @@ async function loadSkill(): Promise<string> {
 
 export type ReviewAction = 'existing-review' | 'new-review';
 export type SectionAction = 'existing-section' | 'new-section';
+export type SubjectAction = 'new-subject' | 'update-existing-subject';
+
+export interface ExistingSubjectSample {
+  id: string;
+  title: string;
+  status: string | null;
+  /** Short preview of the current situation — helps the AI detect duplicates. */
+  situationExcerpt: string;
+  responsibility: string | null;
+}
 
 export interface ReviewWithSections {
   id: string;
@@ -37,8 +47,8 @@ export interface ReviewWithSections {
   sections: Array<{
     id: string;
     name: string;
-    /** Up to 5 recent subject titles, to help the AI match by theme. */
-    sampleSubjectTitles: string[];
+    /** Full list of existing subjects with their ids — the AI uses these to propose updates instead of creating duplicates. */
+    subjects: ExistingSubjectSample[];
   }>;
 }
 
@@ -53,6 +63,13 @@ export interface AnalyzedSubject {
   sectionAction: SectionAction;
   sectionId: string | null;
   suggestedNewSectionName: string | null;
+  /** New vs update of an existing subject. */
+  subjectAction: SubjectAction;
+  targetSubjectId: string | null;
+  /** Fields used only when subjectAction === 'update-existing-subject'. */
+  updatedSituation: string | null;
+  updatedStatus: string | null;
+  updatedResponsibility: string | null;
   confidence: 'high' | 'medium' | 'low';
   reasoning: string;
 }
@@ -84,7 +101,13 @@ export async function analyzeTranscriptionAndRoute(
     sections: r.sections.map(s => ({
       id: s.id,
       name: s.name,
-      sampleSubjects: s.sampleSubjectTitles.slice(0, 5),
+      subjects: s.subjects.slice(0, 20).map(sub => ({
+        id: sub.id,
+        title: sub.title,
+        status: sub.status,
+        responsibility: sub.responsibility,
+        situationExcerpt: sub.situationExcerpt.slice(0, 200),
+      })),
     })),
   }));
 
@@ -129,6 +152,13 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
 
   const reviewsById = new Map(reviews.map(r => [r.id, r]));
   const sectionsByReview = new Map(reviews.map(r => [r.id, new Set(r.sections.map(s => s.id))]));
+  // Map sectionId → Set of valid subjectIds within that section.
+  const subjectsBySection = new Map<string, Set<string>>();
+  for (const r of reviews) {
+    for (const s of r.sections) {
+      subjectsBySection.set(s.id, new Set(s.subjects.map(sub => sub.id)));
+    }
+  }
   const subjects: AnalyzedSubject[] = [];
 
   for (const raw of (parsed.subjects || []) as Array<Record<string, unknown>>) {
@@ -192,6 +222,40 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
       }
     }
 
+    // --- Subject-level action (new vs update an existing subject) ---
+    let subjectAction: SubjectAction = raw.subjectAction === 'update-existing-subject'
+      ? 'update-existing-subject'
+      : 'new-subject';
+    let targetSubjectId: string | null = null;
+    let updatedSituation: string | null = null;
+    let updatedStatus: string | null = null;
+    let updatedResponsibility: string | null = null;
+
+    // Updates are only valid on an existing review + existing section.
+    const canUpdate = action === 'existing-review'
+      && sectionAction === 'existing-section'
+      && !!sectionId
+      && subjectsBySection.get(sectionId)?.size;
+
+    if (subjectAction === 'update-existing-subject') {
+      const candidate = String(raw.targetSubjectId || '');
+      if (!canUpdate || !sectionId || !subjectsBySection.get(sectionId)?.has(candidate)) {
+        // Fall back to a new subject — the AI pointed at an unknown/invalid id.
+        subjectAction = 'new-subject';
+      } else {
+        targetSubjectId = candidate;
+        updatedSituation = String(raw.updatedSituation || situation || '').slice(0, 500);
+        const rawStatus = raw.updatedStatus;
+        updatedStatus = typeof rawStatus === 'string' && rawStatus.trim().length > 0
+          ? normalizeStatus(rawStatus)
+          : null;
+        const rawResp = raw.updatedResponsibility;
+        updatedResponsibility = typeof rawResp === 'string' && rawResp.trim().length > 0
+          ? rawResp.slice(0, 80)
+          : null;
+      }
+    }
+
     const confidenceRaw = String(raw.confidence || 'medium').toLowerCase();
     const confidence: 'high' | 'medium' | 'low' =
       confidenceRaw === 'high' || confidenceRaw === 'low' ? confidenceRaw : 'medium';
@@ -207,6 +271,11 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
       sectionAction,
       sectionId,
       suggestedNewSectionName,
+      subjectAction,
+      targetSubjectId,
+      updatedSituation,
+      updatedStatus,
+      updatedResponsibility,
       confidence,
       reasoning: String(raw.reasoning || '').slice(0, 300),
     });

@@ -5,21 +5,22 @@ import styles from './BulkTranscriptionImportModal.module.css';
 
 interface Props {
   onClose: () => void;
-  onDone: (summary: { importedSubjects: number; createdReviews: number; createdSections: number }) => void;
+  onDone: (summary: { importedSubjects: number; updatedSubjects: number; createdReviews: number; createdSections: number }) => void;
 }
 
 type Phase = 'picking' | 'analyzing' | 'routing' | 'applying' | 'done' | 'error';
 
 /** Per-subject user-overridable routing choice. */
 interface Row {
-  key: string; // stable id for React keys (index-based)
+  key: string;
   subject: api.AnalyzedSubject;
-  /** Target review — either an existing id OR null meaning "new review" */
   reviewId: string | null;
-  newReviewTitle: string; // only used when reviewId == null
-  /** Target section — either an existing id OR null meaning "new section" */
+  newReviewTitle: string;
   sectionId: string | null;
-  newSectionName: string; // only used when sectionId == null
+  newSectionName: string;
+  /** 'update' → we patch the targetSubjectId ; 'create' → we append a new subject. */
+  subjectAction: 'update' | 'create';
+  targetSubjectId: string | null;
   skipped: boolean;
 }
 
@@ -74,6 +75,8 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
         newReviewTitle: s.suggestedNewReviewTitle ?? '',
         sectionId: s.sectionAction === 'existing-section' ? s.sectionId : null,
         newSectionName: s.suggestedNewSectionName ?? '',
+        subjectAction: s.subjectAction === 'update-existing-subject' ? 'update' : 'create',
+        targetSubjectId: s.targetSubjectId,
         skipped: false,
       })));
       setPhase('routing');
@@ -91,16 +94,24 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     if (!selectedItem) return;
     const subjectsToApply: api.ApplyRoutingSubject[] = rows
       .filter(r => !r.skipped)
-      .map(r => ({
-        title: r.subject.title,
-        situation: r.subject.situation,
-        status: r.subject.status,
-        responsibility: r.subject.responsibility,
-        targetReviewId: r.reviewId,
-        newReviewTitle: r.reviewId ? null : (r.newReviewTitle || r.subject.suggestedNewReviewTitle || 'Nouvelle review'),
-        targetSectionId: r.reviewId && r.sectionId ? r.sectionId : null,
-        newSectionName: r.reviewId && r.sectionId ? null : (r.newSectionName || r.subject.suggestedNewSectionName || 'Nouveau point'),
-      }));
+      .map(r => {
+        const isUpdate = r.subjectAction === 'update' && r.targetSubjectId;
+        return {
+          title: r.subject.title,
+          situation: r.subject.situation,
+          status: r.subject.status,
+          responsibility: r.subject.responsibility,
+          targetReviewId: r.reviewId,
+          newReviewTitle: r.reviewId ? null : (r.newReviewTitle || r.subject.suggestedNewReviewTitle || 'Nouvelle review'),
+          targetSectionId: r.reviewId && r.sectionId ? r.sectionId : null,
+          newSectionName: r.reviewId && r.sectionId ? null : (r.newSectionName || r.subject.suggestedNewSectionName || 'Nouveau point'),
+          subjectAction: isUpdate ? 'update-existing-subject' : 'new-subject',
+          targetSubjectId: isUpdate ? r.targetSubjectId : null,
+          updatedSituation: isUpdate ? (r.subject.updatedSituation ?? r.subject.situation) : null,
+          updatedStatus: isUpdate ? (r.subject.updatedStatus ?? r.subject.status) : null,
+          updatedResponsibility: isUpdate ? r.subject.updatedResponsibility : null,
+        };
+      });
     if (subjectsToApply.length === 0) return;
 
     setPhase('applying');
@@ -110,6 +121,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
       setPhase('done');
       onDone({
         importedSubjects: res.subjectsCreated.length,
+        updatedSubjects: res.subjectsUpdated.length,
         createdReviews: res.reviewsCreated.length,
         createdSections: res.sectionsCreated.length,
       });
@@ -231,6 +243,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
             <p className={styles.doneTitle}>Import terminé ✓</p>
             <p className={styles.doneHint}>
               {applyResult.subjectsCreated.length} sujet{applyResult.subjectsCreated.length > 1 ? 's' : ''} ajouté{applyResult.subjectsCreated.length > 1 ? 's' : ''}
+              {applyResult.subjectsUpdated.length > 0 && ` · ${applyResult.subjectsUpdated.length} sujet${applyResult.subjectsUpdated.length > 1 ? 's' : ''} mis à jour`}
               {applyResult.reviewsCreated.length > 0 && ` · ${applyResult.reviewsCreated.length} review${applyResult.reviewsCreated.length > 1 ? 's' : ''} créée${applyResult.reviewsCreated.length > 1 ? 's' : ''}`}
               {applyResult.sectionsCreated.length > 0 && ` · ${applyResult.sectionsCreated.length} section${applyResult.sectionsCreated.length > 1 ? 's' : ''} créée${applyResult.sectionsCreated.length > 1 ? 's' : ''}`}
             </p>
@@ -258,15 +271,30 @@ function SubjectRow({
   reviews: api.AvailableReview[];
   onUpdate: (patch: Partial<Row>) => void;
 }) {
-  const { subject, reviewId, newReviewTitle, sectionId, newSectionName, skipped } = row;
+  const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped } = row;
 
   const currentReview = reviewId
     ? reviews.find(r => r.id === reviewId) ?? null
     : null;
+  const currentSection = currentReview && sectionId
+    ? currentReview.sections.find(s => s.id === sectionId) ?? null
+    : null;
+
+  // The existing subject the user might choose to update instead of creating
+  const targetSubject = currentSection && targetSubjectId
+    ? currentSection.subjects.find(s => s.id === targetSubjectId) ?? null
+    : null;
+
+  // When the action is "update" but the selected review/section changed and
+  // no longer contains the target subject → force back to "create".
+  const updateIsPossible = currentSection && currentSection.subjects.length > 0;
 
   return (
-    <div className={`${styles.subjectRow} ${skipped ? styles.subjectRowSkipped : ''}`}>
+    <div className={`${styles.subjectRow} ${skipped ? styles.subjectRowSkipped : ''} ${subjectAction === 'update' ? styles.subjectRowUpdate : ''}`}>
       <div className={styles.subjectHeader}>
+        <span className={`${styles.modeTag} ${subjectAction === 'update' ? styles.modeUpdate : styles.modeCreate}`}>
+          {subjectAction === 'update' ? '↻ Mise à jour' : '+ Nouveau'}
+        </span>
         <span className={styles.statusTag}>{subject.status}</span>
         <span className={styles.subjectTitle}>{subject.title}</span>
         {subject.responsibility && (
@@ -279,6 +307,13 @@ function SubjectRow({
 
       {subject.situation && <p className={styles.situation}>{subject.situation}</p>}
       {subject.reasoning && <p className={styles.reasoning}>{subject.reasoning}</p>}
+
+      {subjectAction === 'update' && targetSubject && (
+        <div className={styles.updateBox}>
+          <strong>Sujet existant ciblé :</strong> <span>{targetSubject.title}</span>
+          {targetSubject.status && <span className={styles.updateStatus}>{targetSubject.status}</span>}
+        </div>
+      )}
 
       <div className={styles.routing}>
         <div className={styles.routingField}>
@@ -319,7 +354,15 @@ function SubjectRow({
             <select
               value={sectionId ?? '__new__'}
               disabled={skipped}
-              onChange={e => onUpdate({ sectionId: e.target.value === '__new__' ? null : e.target.value })}
+              onChange={e => {
+                const val = e.target.value === '__new__' ? null : e.target.value;
+                // If the target subject was in the previous section, clear it
+                onUpdate({
+                  sectionId: val,
+                  subjectAction: 'create',
+                  targetSubjectId: null,
+                });
+              }}
             >
               <option value="__new__">➕ Nouvelle section…</option>
               {currentReview.sections.map(s => (
@@ -340,6 +383,49 @@ function SubjectRow({
             />
           )}
         </div>
+
+        {updateIsPossible && (
+          <div className={`${styles.routingField} ${styles.routingFieldFull}`}>
+            <label>Que faire de ce sujet ?</label>
+            <div className={styles.modeChoice}>
+              <label className={styles.modeRadio}>
+                <input
+                  type="radio"
+                  name={`mode-${row.key}`}
+                  checked={subjectAction === 'create'}
+                  disabled={skipped}
+                  onChange={() => onUpdate({ subjectAction: 'create', targetSubjectId: null })}
+                />
+                <span>Créer un nouveau sujet</span>
+              </label>
+              <label className={styles.modeRadio}>
+                <input
+                  type="radio"
+                  name={`mode-${row.key}`}
+                  checked={subjectAction === 'update'}
+                  disabled={skipped}
+                  onChange={() => onUpdate({
+                    subjectAction: 'update',
+                    targetSubjectId: targetSubjectId ?? currentSection?.subjects[0]?.id ?? null,
+                  })}
+                />
+                <span>Mettre à jour un sujet existant</span>
+              </label>
+              {subjectAction === 'update' && currentSection && (
+                <select
+                  className={styles.select}
+                  value={targetSubjectId ?? ''}
+                  disabled={skipped}
+                  onChange={e => onUpdate({ targetSubjectId: e.target.value })}
+                >
+                  {currentSection.subjects.map(s => (
+                    <option key={s.id} value={s.id}>{s.title}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <label className={styles.skipToggle}>

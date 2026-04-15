@@ -2095,7 +2095,11 @@ Reponds UNIQUEMENT avec un JSON valide :
       id: string;
       title: string;
       description: string | null;
-      sections: Array<{ id: string; name: string; sampleSubjectTitles: string[] }>;
+      sections: Array<{
+        id: string;
+        name: string;
+        subjects: Array<{ id: string; title: string; status: string | null; situationExcerpt: string; responsibility: string | null }>;
+      }>;
     }> = [];
 
     for (const d of existingDocs.slice(0, 40)) {
@@ -2109,7 +2113,13 @@ Reponds UNIQUEMENT avec un JSON valide :
           sections: (doc.sections || []).map(s => ({
             id: s.id,
             name: s.name,
-            sampleSubjectTitles: (s.subjects || []).slice(0, 5).map(sub => sub.title),
+            subjects: (s.subjects || []).slice(0, 20).map(sub => ({
+              id: sub.id,
+              title: sub.title,
+              status: sub.status ?? null,
+              situationExcerpt: (sub.situation || '').slice(0, 200),
+              responsibility: sub.responsibility ?? null,
+            })),
           })),
         });
       } catch {
@@ -2126,11 +2136,18 @@ Reponds UNIQUEMENT avec un JSON valide :
         reviews,
         { title: title || '(sans titre)', date: date ?? null, provider: source },
       );
-      res.json({ ...result, availableReviews: reviews.map(r => ({
-        id: r.id,
-        title: r.title,
-        sections: r.sections.map(s => ({ id: s.id, name: s.name })),
-      })) });
+      res.json({
+        ...result,
+        availableReviews: reviews.map(r => ({
+          id: r.id,
+          title: r.title,
+          sections: r.sections.map(s => ({
+            id: s.id,
+            name: s.name,
+            subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+          })),
+        })),
+      });
     } catch (err) {
       console.error('[SuiviTess routing] error:', err);
       res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
@@ -2147,7 +2164,7 @@ Reponds UNIQUEMENT avec un JSON valide :
   router.post('/transcription/apply-routing', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
     const { sourceId, subjects } = (req.body || {}) as {
-      sourceId?: string; // external id of the source item (used to mark as imported)
+      sourceId?: string;
       subjects?: Array<{
         title: string;
         situation?: string;
@@ -2157,6 +2174,12 @@ Reponds UNIQUEMENT avec un JSON valide :
         newReviewTitle?: string | null;
         targetSectionId?: string | null;
         newSectionName?: string | null;
+        /** If set, the route updates this subject instead of creating a new one. */
+        subjectAction?: 'new-subject' | 'update-existing-subject';
+        targetSubjectId?: string | null;
+        updatedSituation?: string | null;
+        updatedStatus?: string | null;
+        updatedResponsibility?: string | null;
       }>;
     };
     if (!Array.isArray(subjects) || subjects.length === 0) {
@@ -2170,6 +2193,7 @@ Reponds UNIQUEMENT avec un JSON valide :
     const reviewsCreated: Array<{ id: string; title: string }> = [];
     const sectionsCreated: Array<{ id: string; name: string; reviewId: string }> = [];
     const subjectsCreated: Array<{ id: string; title: string; reviewId: string; sectionId: string }> = [];
+    const subjectsUpdated: Array<{ id: string; title: string }> = [];
     const errors: Array<{ title: string; error: string }> = [];
 
     for (const s of subjects) {
@@ -2177,6 +2201,37 @@ Reponds UNIQUEMENT avec un JSON valide :
       if (!title) continue;
 
       try {
+        // ========== UPDATE PATH ==========
+        // If the AI or the user chose "update an existing subject", we call
+        // updateSubjectFields on the target id and skip all the review /
+        // section creation dance. The backend trusts only existing
+        // targetSubjectId — otherwise we fall through to creation.
+        if (s.subjectAction === 'update-existing-subject' && s.targetSubjectId) {
+          const existing = await db.getSubject(s.targetSubjectId);
+          if (existing) {
+            const updateFragments: string[] = [];
+            const updateValues: (string | number | null)[] = [];
+            let idx = 1;
+            if (s.updatedSituation !== undefined && s.updatedSituation !== null) {
+              updateFragments.push(`situation = $${idx++}`);
+              updateValues.push(s.updatedSituation);
+            }
+            if (s.updatedStatus) {
+              updateFragments.push(`status = $${idx++}`);
+              updateValues.push(s.updatedStatus);
+            }
+            if (s.updatedResponsibility !== undefined && s.updatedResponsibility !== null) {
+              updateFragments.push(`responsibility = $${idx++}`);
+              updateValues.push(s.updatedResponsibility);
+            }
+            if (updateFragments.length > 0) {
+              await db.updateSubjectFields(s.targetSubjectId, updateFragments, updateValues);
+            }
+            subjectsUpdated.push({ id: s.targetSubjectId, title });
+            continue;
+          }
+        }
+
         // Resolve review (create if needed)
         let reviewId = s.targetReviewId || null;
         if (!reviewId) {
@@ -2269,6 +2324,7 @@ Reponds UNIQUEMENT avec un JSON valide :
       reviewsCreated,
       sectionsCreated,
       subjectsCreated,
+      subjectsUpdated,
       errors,
     });
   }));

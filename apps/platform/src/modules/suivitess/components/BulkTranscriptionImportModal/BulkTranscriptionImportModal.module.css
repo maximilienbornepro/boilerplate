@@ -264,3 +264,85 @@
   padding-top: var(--spacing-sm);
   border-top: 1px solid var(--border-color);
 }
+
+/* === Update / create mode === */
+
+.subjectRowUpdate {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 4%, transparent);
+}
+
+.modeTag {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.modeCreate {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.modeUpdate {
+  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+}
+
+.updateBox {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  flex-wrap: wrap;
+}
+
+.updateStatus {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.routingFieldFull {
+  grid-column: 1 / -1;
+}
+
+.modeChoice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modeRadio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.select {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  margin-top: 4px;
+}
