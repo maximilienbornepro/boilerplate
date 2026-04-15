@@ -1,10 +1,41 @@
 // AI-powered delivery board sanity check.
-// Compares live Jira state (status/estimation) with current board positions
-// and returns move recommendations — never deletes a task, only repositions.
+// Compares live Jira state (status/estimation/version) with current board
+// positions and returns a column-by-column plan. The AI explains, for each
+// column, which kind of tickets it places there and why — based on status,
+// content, estimation, and fix version.
+//
+// Never deletes a task, never changes a task's duration, only repositions.
 
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { getAnthropicClient } from '../connectors/aiProvider.js';
 
+/**
+ * Path to the editable skill file that holds the rules injected into the
+ * Claude prompt. Co-located with the service so it ships in Docker builds.
+ */
+const SKILL_PATH = (() => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return resolve(here, 'sanity-check-skill.md');
+})();
+
+/**
+ * Load the skill rules from disk on every call so edits to the markdown
+ * file are picked up without restarting the server. Falls back to a minimal
+ * inline ruleset if the file is missing for any reason.
+ */
+async function loadSkill(): Promise<string> {
+  try {
+    return await readFile(SKILL_PATH, 'utf-8');
+  } catch {
+    return 'Tu es un assistant de gestion de projet. Réponds en JSON strict.';
+  }
+}
+
 // ============ Public types ============
+
+export type VersionCategory = 'next' | 'later' | 'past' | 'none';
 
 export interface TaskSnapshot {
   id: string;
@@ -17,29 +48,92 @@ export interface TaskSnapshot {
   hasEstimation: boolean;
   hasDescription: boolean;
   hasAssignee: boolean;
+  fixVersion: string | null;
+  versionCategory: VersionCategory;
   position: { startCol: number; endCol: number; row: number };
+}
+
+export interface VersionInfo {
+  name: string;
+  releaseDate: string | null;
+  category: VersionCategory;
+}
+
+export interface MissingTicket {
+  jiraKey: string;
+  summary: string;
+  status: string;
+  storyPoints: number | null;
+  estimatedDays: number | null;
+  hasEstimation: boolean;
+  hasDescription: boolean;
+  assignee: string | null;
+  fixVersion: string | null;
+  versionCategory: VersionCategory;
+  sprintName: string | null;
 }
 
 export interface BoardSnapshot {
   boardId: string;
   boardName: string;
   totalCols: number;
-  todayCol: number; // -1 if board not in a timeframe that contains today
+  todayCol: number;
   tasks: TaskSnapshot[];
+  versions: VersionInfo[];
+  missingFromBoard: MissingTicket[];
 }
 
-export interface MoveRecommendation {
+export interface AnalyzedTask {
   taskId: string;
   taskTitle: string;
+  jiraKey: string | null;
+  status: string;
+  version: string | null;
+  versionCategory: VersionCategory;
+  hasEstimation: boolean;
+  hasDescription: boolean;
   current: { startCol: number; endCol: number; row: number };
   recommended: { startCol: number; endCol: number; row: number };
+  reasoning: string; // explicit sentence: "status X, version Y, estim Z → I placed it in column N because…"
+}
+
+export interface ProposedAddition {
+  jiraKey: string;
+  summary: string;
+  status: string;
+  version: string | null;
+  versionCategory: VersionCategory;
+  hasEstimation: boolean;
+  hasDescription: boolean;
+  storyPoints: number | null;
+  estimatedDays: number | null;
+  assignee: string | null;
+  sprintName: string | null;
+  recommended: { startCol: number; endCol: number; row: number };
   reasoning: string;
-  priority: 'high' | 'medium' | 'low';
+}
+
+export interface ColumnPlan {
+  col: number;
+  label: string;
+  strategy: string; // explanation of what kind of tickets go in this column
+  tasks: AnalyzedTask[];
+  additions: ProposedAddition[];
+}
+
+export interface BoardAnalysis {
+  totalJiraTasks: number;
+  byStatus: Record<string, number>;
+  missingEstimation: number;
+  missingDescription: number;
+  missingFromBoard: number;
+  versions: VersionInfo[];
 }
 
 export interface SanityCheckResult {
   summary: string;
-  recommendations: MoveRecommendation[];
+  analysis: BoardAnalysis;
+  columns: ColumnPlan[];
 }
 
 // ============ Helpers ============
@@ -55,7 +149,6 @@ export function parseJiraKey(title: string): string | null {
 
 /**
  * Extract the (projectKeys, sprintNames) context present on the board.
- * Used to decide whether the feature can run and which Jira keys to query.
  */
 export function extractJiraContext(tasks: Array<{ title: string; sprintName?: string | null; source?: string }>): {
   projectKeys: string[];
@@ -98,19 +191,62 @@ export function computeTodayCol(
   return Math.round(ratio * (totalCols - 1));
 }
 
+/**
+ * Classify a list of versions into 'past' / 'next' / 'later' / 'none' buckets.
+ * Versions with a release date in the future: the first one (chronologically)
+ * is 'next', the rest are 'later'. Versions without a release date stay 'none'.
+ */
+export function categorizeVersions(
+  versions: Array<{ name: string; releaseDate: string | null }>,
+  today: Date = new Date(),
+): VersionInfo[] {
+  const now = today.getTime();
+  const withDate = versions
+    .filter(v => !!v.releaseDate)
+    .map(v => ({ ...v, _t: new Date(v.releaseDate as string).getTime() }))
+    .filter(v => !isNaN(v._t))
+    .sort((a, b) => a._t - b._t);
+
+  const future = withDate.filter(v => v._t >= now);
+  const past = withDate.filter(v => v._t < now);
+
+  const result: VersionInfo[] = [];
+  for (const v of past) {
+    result.push({ name: v.name, releaseDate: v.releaseDate, category: 'past' });
+  }
+  future.forEach((v, idx) => {
+    result.push({
+      name: v.name,
+      releaseDate: v.releaseDate,
+      category: idx === 0 ? 'next' : 'later',
+    });
+  });
+  const datelessNames = new Set(versions.filter(v => !v.releaseDate).map(v => v.name));
+  for (const name of datelessNames) {
+    if (!result.some(r => r.name === name)) {
+      result.push({ name, releaseDate: null, category: 'none' });
+    }
+  }
+  return result;
+}
+
+/** Category of a specific version name, given the classified set. */
+export function categoryOf(versionName: string | null, versions: VersionInfo[]): VersionCategory {
+  if (!versionName) return 'none';
+  const found = versions.find(v => v.name === versionName);
+  return found?.category ?? 'none';
+}
+
 // ============ AI analysis ============
 
-/**
- * Run the AI sanity check. Expects a BoardSnapshot and returns a
- * SanityCheckResult. Never mutates input data — callers are responsible
- * for persisting the moves if the user accepts them.
- */
 export async function analyzeSanityCheck(
   userId: number,
   snapshot: BoardSnapshot,
 ): Promise<SanityCheckResult> {
-  if (snapshot.tasks.length === 0) {
-    return { summary: 'Aucune tâche à analyser.', recommendations: [] };
+  const stats = computeBoardAnalysis(snapshot);
+
+  if (snapshot.tasks.length === 0 && snapshot.missingFromBoard.length === 0) {
+    return { summary: 'Aucune tâche à analyser.', analysis: stats, columns: [] };
   }
 
   const { client, model } = await getAnthropicClient(userId);
@@ -125,54 +261,62 @@ export async function analyzeSanityCheck(
     id: t.id,
     title: t.title,
     jiraKey: t.jiraKey,
-    boardStatus: t.boardStatus,
-    jiraStatus: t.jiraStatus,
+    status: t.jiraStatus ?? t.boardStatus,
     storyPoints: t.storyPoints,
     estimatedDays: t.estimatedDays,
     hasEstimation: t.hasEstimation,
     hasDescription: t.hasDescription,
     hasAssignee: t.hasAssignee,
-    position: t.position,
+    version: t.fixVersion,
+    versionCategory: t.versionCategory,
+    currentPosition: t.position,
+    currentDuration: Math.max(1, t.position.endCol - t.position.startCol),
   }));
 
-  const prompt = `Tu es un assistant de gestion de projet. Tu analyses l'état d'un delivery board (grille temporelle) pour proposer des repositionnements de tâches.
+  const versionsSummary = snapshot.versions.length > 0
+    ? snapshot.versions.map(v => `- ${v.name} (${v.category}${v.releaseDate ? `, ${v.releaseDate}` : ''})`).join('\n')
+    : '(aucune version détectée sur les tickets)';
 
-## Contexte du board
-- Board "${snapshot.boardName}" avec ${snapshot.totalCols} colonnes (indexées de 0 à ${MAX_COL}).
+  const missingJson = snapshot.missingFromBoard.map(m => ({
+    jiraKey: m.jiraKey,
+    summary: m.summary,
+    status: m.status,
+    storyPoints: m.storyPoints,
+    estimatedDays: m.estimatedDays,
+    hasEstimation: m.hasEstimation,
+    hasDescription: m.hasDescription,
+    hasAssignee: !!m.assignee,
+    version: m.fixVersion,
+    versionCategory: m.versionCategory,
+    sprintName: m.sprintName,
+  }));
+
+  // Editable skill rules — loaded from disk on each call.
+  // Edit apps/platform/servers/unified/src/modules/delivery/sanity-check-skill.md
+  // to tune the AI behaviour without touching code.
+  const skill = await loadSkill();
+
+  const prompt = `${skill}
+
+---
+
+# Contexte exécutable (généré automatiquement à chaque appel)
+
+## Board
+- "${snapshot.boardName}" — ${snapshot.totalCols} colonnes (indexées 0 à ${MAX_COL}), chaque colonne = 1 semaine.
 - Colonne "aujourd'hui" : ${snapshot.todayCol >= 0 ? snapshot.todayCol : '(hors timeframe)'}.
-- Plus la colonne est basse, plus on est tôt dans le temps. Plus elle est haute, plus on est tard.
-- Les rows (lignes) vont de 0 (en haut) à environ ${MAX_ROWS_HINT} (en bas). Une row basse signifie visuellement en bas de la grille.
+- Rows 0 (tout en haut) → ~${MAX_ROWS_HINT} (plus bas).
 
-## Règles de repositionnement (impératives)
-1. Ne jamais supprimer de tâche. Ne propose que des changements de position (startCol, endCol, row).
-2. Ne jamais modifier le statut ni l'estimation — on touche uniquement la position.
-3. Si la tâche est \`in_progress\` côté Jira ET positionnée loin à droite d'"aujourd'hui" → rapproche-la d'"aujourd'hui" (startCol proche de todayCol, legèrement avant).
-4. Si la tâche est \`blocked\` → laisse-la près d'"aujourd'hui" (signal visuel). Priorité high.
-5. Si la tâche est \`done\` mais positionnée sur le futur (startCol > todayCol) → tire-la à gauche (avant todayCol).
-6. Si la tâche est \`todo\` ET sans estimation ET sans description → pousse-la tout à droite (startCol proche de ${MAX_COL}), row basse. MAIS les tâches qui ont encore moins d'infos doivent être plus basses qu'elle. Ordre vertical (row croissante = plus bas) : plus la tâche a d'infos (estimation + description + assignee), plus elle est haute ; moins elle en a, plus elle est basse.
-7. Si la tâche est \`todo\` avec estimation précise ET courte à venir → aligne-la juste avant "aujourd'hui" ou sur todayCol.
-8. Conserve une durée raisonnable : endCol - startCol >= 1. Si la tâche a estimatedDays, essaie d'adapter la durée (1 semaine ≈ 1 colonne sur un board agile).
-9. Pas de chevauchement obligatoire à régler. Tu peux réutiliser les mêmes rows que d'autres tâches.
-10. Réponds UNIQUEMENT avec les tâches qui ont besoin d'un repositionnement. Ne réemet pas celles déjà bien placées.
+## Versions Jira détectées
+${versionsSummary}
 
-## État courant (JSON)
+## Tickets sur le board (JSON)
 ${JSON.stringify(tasksJson, null, 2)}
 
-## Format de réponse (JSON strict, rien d'autre)
-{
-  "summary": "Résumé court en 1-2 phrases en français (ex: '4 tâches à repositionner, dont 1 critique bloquée').",
-  "recommendations": [
-    {
-      "taskId": "uuid-de-la-tache",
-      "current":     { "startCol": 0, "endCol": 1, "row": 0 },
-      "recommended": { "startCol": 2, "endCol": 3, "row": 1 },
-      "reasoning": "Une phrase en français expliquant pourquoi ce déplacement.",
-      "priority": "high" | "medium" | "low"
-    }
-  ]
-}
+## Tickets présents dans les sprints actifs mais ABSENTS du board (JSON)
+${missingJson.length > 0 ? JSON.stringify(missingJson, null, 2) : '(aucun ticket manquant détecté)'}
 
-Limite-toi à 20 recommandations maximum, priorisées. Utilise des priorités 'high' pour les bloqués / en cours mal placés, 'medium' pour les done mal placés, 'low' pour le rangement des todos incomplets.`;
+Applique les règles ci-dessus à cet état et réponds uniquement en JSON.`;
 
   const aiResponse = await client.messages.create({
     model,
@@ -184,7 +328,7 @@ Limite-toi à 20 recommandations maximum, priorisées. Utilise des priorités 'h
     ? (aiResponse.content.find(b => b.type === 'text') as { type: 'text'; text: string }).text
     : '';
 
-  let parsed: { summary?: string; recommendations?: unknown[] } = {};
+  let parsed: { summary?: string; columns?: unknown[] } = {};
   try {
     const match = text.match(/\{[\s\S]*\}/);
     if (match) parsed = JSON.parse(match[0]);
@@ -192,52 +336,128 @@ Limite-toi à 20 recommandations maximum, priorisées. Utilise des priorités 'h
     /* parse error */
   }
 
-  const validTaskIds = new Set(snapshot.tasks.map(t => t.id));
-  const recommendations: MoveRecommendation[] = [];
-  for (const raw of (parsed.recommendations || []) as Array<Record<string, unknown>>) {
-    const taskId = String(raw.taskId || '');
-    if (!validTaskIds.has(taskId)) continue;
-    const current = raw.current as { startCol?: number; endCol?: number; row?: number } | undefined;
-    const recommended = raw.recommended as { startCol?: number; endCol?: number; row?: number } | undefined;
-    if (!recommended || typeof recommended.startCol !== 'number') continue;
+  const taskById = new Map(snapshot.tasks.map(t => [t.id, t]));
+  const missingByKey = new Map(snapshot.missingFromBoard.map(m => [m.jiraKey, m]));
+  const columns: ColumnPlan[] = [];
+  const seenTaskIds = new Set<string>();
+  const seenAdditionKeys = new Set<string>();
+  const MAX_MOVES = 25;
+  const MAX_ADDITIONS = 15;
 
-    const task = snapshot.tasks.find(t => t.id === taskId)!;
-    const startCol = clampInt(recommended.startCol, 0, MAX_COL);
-    const endCol = clampInt(
-      typeof recommended.endCol === 'number' ? recommended.endCol : startCol + 1,
-      startCol + 1,
-      snapshot.totalCols,
-    );
-    const row = clampInt(typeof recommended.row === 'number' ? recommended.row : task.position.row, 0, 99);
+  for (const rawCol of (parsed.columns || []) as Array<Record<string, unknown>>) {
+    const col = clampInt(Number(rawCol.col), 0, MAX_COL);
+    const label = String(rawCol.label || `Semaine ${col + 1}`).slice(0, 60);
+    const strategy = String(rawCol.strategy || '').slice(0, 500);
+    const plan: ColumnPlan = { col, label, strategy, tasks: [], additions: [] };
 
-    // Skip no-op moves
-    if (
-      startCol === task.position.startCol &&
-      endCol === task.position.endCol &&
-      row === task.position.row
-    ) continue;
+    for (const rawTask of (rawCol.tasks || []) as Array<Record<string, unknown>>) {
+      if (seenTaskIds.size >= MAX_MOVES) break;
+      const taskId = String(rawTask.taskId || '');
+      if (seenTaskIds.has(taskId)) continue;
+      const task = taskById.get(taskId);
+      if (!task) continue;
+      const rec = rawTask.recommended as { startCol?: number; row?: number } | undefined;
+      if (!rec || typeof rec.startCol !== 'number') continue;
 
-    const priorityRaw = String(raw.priority || 'medium').toLowerCase();
-    const priority: 'high' | 'medium' | 'low' =
-      priorityRaw === 'high' || priorityRaw === 'low' ? priorityRaw : 'medium';
+      // Width from estimation if available, else keep current duration
+      const estWidth = widthFromEstimation(task.estimatedDays, task.storyPoints);
+      const currentDuration = Math.max(1, task.position.endCol - task.position.startCol);
+      const width = Math.max(1, Math.min(snapshot.totalCols, estWidth ?? currentDuration));
+      const maxStartCol = Math.max(0, snapshot.totalCols - width);
+      const startCol = clampInt(rec.startCol, 0, maxStartCol);
+      const endCol = startCol + width;
+      const row = clampInt(typeof rec.row === 'number' ? rec.row : task.position.row, 0, 99);
 
-    recommendations.push({
-      taskId,
-      taskTitle: task.title,
-      current: current && typeof current.startCol === 'number'
-        ? { startCol: current.startCol, endCol: current.endCol ?? task.position.endCol, row: current.row ?? task.position.row }
-        : task.position,
-      recommended: { startCol, endCol, row },
-      reasoning: String(raw.reasoning || '').slice(0, 300),
-      priority,
-    });
+      // Skip no-op moves
+      if (
+        startCol === task.position.startCol &&
+        endCol === task.position.endCol &&
+        row === task.position.row
+      ) continue;
 
-    if (recommendations.length >= 20) break;
+      plan.tasks.push({
+        taskId,
+        taskTitle: task.title,
+        jiraKey: task.jiraKey,
+        status: task.jiraStatus ?? task.boardStatus,
+        version: task.fixVersion,
+        versionCategory: task.versionCategory,
+        hasEstimation: task.hasEstimation,
+        hasDescription: task.hasDescription,
+        current: task.position,
+        recommended: { startCol, endCol, row },
+        reasoning: String(rawTask.reasoning || '').slice(0, 300),
+      });
+      seenTaskIds.add(taskId);
+    }
+
+    for (const rawAdd of (rawCol.additions || []) as Array<Record<string, unknown>>) {
+      if (seenAdditionKeys.size >= MAX_ADDITIONS) break;
+      const jiraKey = String(rawAdd.jiraKey || '');
+      if (!jiraKey || seenAdditionKeys.has(jiraKey)) continue;
+      const missing = missingByKey.get(jiraKey);
+      if (!missing) continue;
+      const rec = rawAdd.recommended as { startCol?: number; row?: number } | undefined;
+      if (!rec || typeof rec.startCol !== 'number') continue;
+
+      // New tickets: width from estimation, else default to 1 column.
+      const estWidth = widthFromEstimation(missing.estimatedDays, missing.storyPoints);
+      const width = Math.max(1, Math.min(snapshot.totalCols, estWidth ?? 1));
+      const maxStartCol = Math.max(0, snapshot.totalCols - width);
+      const startCol = clampInt(rec.startCol, 0, maxStartCol);
+      const endCol = startCol + width;
+      const row = clampInt(typeof rec.row === 'number' ? rec.row : 0, 0, 99);
+
+      plan.additions.push({
+        jiraKey,
+        summary: missing.summary,
+        status: missing.status,
+        version: missing.fixVersion,
+        versionCategory: missing.versionCategory,
+        hasEstimation: missing.hasEstimation,
+        hasDescription: missing.hasDescription,
+        storyPoints: missing.storyPoints,
+        estimatedDays: missing.estimatedDays,
+        assignee: missing.assignee,
+        sprintName: missing.sprintName,
+        recommended: { startCol, endCol, row },
+        reasoning: String(rawAdd.reasoning || '').slice(0, 300),
+      });
+      seenAdditionKeys.add(jiraKey);
+    }
+
+    if (plan.tasks.length > 0 || plan.additions.length > 0) columns.push(plan);
+    if (seenTaskIds.size >= MAX_MOVES && seenAdditionKeys.size >= MAX_ADDITIONS) break;
   }
 
+  columns.sort((a, b) => a.col - b.col);
+
   return {
-    summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 500) : `${recommendations.length} recommandation(s).`,
-    recommendations,
+    summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 500) : `${seenTaskIds.size} recommandation(s).`,
+    analysis: stats,
+    columns,
+  };
+}
+
+// ============ Pure analysis ============
+
+export function computeBoardAnalysis(snapshot: BoardSnapshot): BoardAnalysis {
+  const byStatus: Record<string, number> = {};
+  let missingEstimation = 0;
+  let missingDescription = 0;
+  for (const t of snapshot.tasks) {
+    const status = (t.jiraStatus ?? t.boardStatus ?? 'inconnu').toLowerCase();
+    byStatus[status] = (byStatus[status] ?? 0) + 1;
+    if (!t.hasEstimation) missingEstimation++;
+    if (!t.hasDescription) missingDescription++;
+  }
+  return {
+    totalJiraTasks: snapshot.tasks.length,
+    byStatus,
+    missingEstimation,
+    missingDescription,
+    missingFromBoard: snapshot.missingFromBoard.length,
+    versions: snapshot.versions,
   };
 }
 
@@ -245,4 +465,23 @@ function clampInt(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   const rounded = Math.round(value);
   return Math.max(min, Math.min(max, rounded));
+}
+
+/**
+ * Convert an estimation (days, or fallback storyPoints treated as days) to a
+ * column width : 1 column per 5 days (1 business week), rounded up.
+ *   0.5 - 5   → 1 column
+ *   5.1 - 10  → 2 columns
+ *   10.1 - 15 → 3 columns …
+ * Returns null when no usable estimation is available.
+ */
+export function widthFromEstimation(
+  estimatedDays: number | null | undefined,
+  storyPoints: number | null | undefined,
+): number | null {
+  const days = typeof estimatedDays === 'number' && estimatedDays > 0
+    ? estimatedDays
+    : (typeof storyPoints === 'number' && storyPoints > 0 ? storyPoints : null);
+  if (days === null) return null;
+  return Math.max(1, Math.ceil(days / 5));
 }

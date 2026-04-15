@@ -63,25 +63,27 @@ describe('Delivery — Sanity check (frontend)', () => {
     });
   });
 
-  describe('Priority grouping', () => {
-    interface R { taskId: string; priority: 'high' | 'medium' | 'low' }
+  describe('Column-based flattening', () => {
+    interface AT { taskId: string; recommended: { startCol: number; endCol: number; row: number } }
+    interface CP { col: number; tasks: AT[] }
 
-    function groupByPriority(list: R[]) {
-      const out: Record<'high' | 'medium' | 'low', R[]> = { high: [], medium: [], low: [] };
-      for (const r of list) out[r.priority].push(r);
-      return out;
+    function flatten(columns: CP[]): AT[] {
+      return columns.flatMap(c => c.tasks);
     }
 
-    it('groups recommendations by priority', () => {
-      const groups = groupByPriority([
-        { taskId: 'a', priority: 'high' },
-        { taskId: 'b', priority: 'low' },
-        { taskId: 'c', priority: 'medium' },
-        { taskId: 'd', priority: 'high' },
-      ]);
-      expect(groups.high.map(r => r.taskId)).toEqual(['a', 'd']);
-      expect(groups.medium.map(r => r.taskId)).toEqual(['c']);
-      expect(groups.low.map(r => r.taskId)).toEqual(['b']);
+    it('returns a flat list of tasks preserving column order', () => {
+      const columns: CP[] = [
+        { col: 0, tasks: [{ taskId: 'a', recommended: { startCol: 0, endCol: 1, row: 0 } }] },
+        { col: 2, tasks: [
+          { taskId: 'b', recommended: { startCol: 2, endCol: 3, row: 0 } },
+          { taskId: 'c', recommended: { startCol: 2, endCol: 3, row: 1 } },
+        ] },
+      ];
+      expect(flatten(columns).map(t => t.taskId)).toEqual(['a', 'b', 'c']);
+    });
+
+    it('returns an empty list when no column has tasks', () => {
+      expect(flatten([])).toEqual([]);
     });
   });
 });

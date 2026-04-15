@@ -3,6 +3,9 @@ import {
   parseJiraKey,
   extractJiraContext,
   computeTodayCol,
+  categorizeVersions,
+  categoryOf,
+  widthFromEstimation,
 } from '../../delivery/deliveryAISanityService';
 
 describe('Delivery — AI Sanity Check helpers', () => {
@@ -81,6 +84,103 @@ describe('Delivery — AI Sanity Check helpers', () => {
 
     it('returns -1 for inverted date range', () => {
       expect(computeTodayCol('2026-02-01', '2026-01-01', 6, new Date('2026-01-15'))).toBe(-1);
+    });
+  });
+
+  describe('categorizeVersions', () => {
+    const FIXED_TODAY = new Date('2026-06-15T00:00:00Z');
+
+    it('returns an empty list when given no versions', () => {
+      expect(categorizeVersions([], FIXED_TODAY)).toEqual([]);
+    });
+
+    it('classifies the earliest future version as "next" and the rest as "later"', () => {
+      const result = categorizeVersions([
+        { name: 'v2.4', releaseDate: '2026-05-01' },
+        { name: 'v2.5', releaseDate: '2026-07-01' },
+        { name: 'v2.6', releaseDate: '2026-09-01' },
+      ], FIXED_TODAY);
+      expect(result).toEqual([
+        { name: 'v2.4', releaseDate: '2026-05-01', category: 'past' },
+        { name: 'v2.5', releaseDate: '2026-07-01', category: 'next' },
+        { name: 'v2.6', releaseDate: '2026-09-01', category: 'later' },
+      ]);
+    });
+
+    it('marks versions with no release date as "none"', () => {
+      const result = categorizeVersions([
+        { name: 'backlog', releaseDate: null },
+      ], FIXED_TODAY);
+      expect(result).toEqual([
+        { name: 'backlog', releaseDate: null, category: 'none' },
+      ]);
+    });
+
+    it('handles duplicate names gracefully (dedup happens upstream; here we take first)', () => {
+      const result = categorizeVersions([
+        { name: 'v2.5', releaseDate: '2026-07-01' },
+        { name: 'v2.5', releaseDate: '2026-07-01' },
+      ], FIXED_TODAY);
+      expect(result).toHaveLength(2); // categorize does not dedup
+    });
+  });
+
+  describe('categoryOf', () => {
+    const versions = [
+      { name: 'v2.4', releaseDate: '2026-05-01', category: 'past' as const },
+      { name: 'v2.5', releaseDate: '2026-07-01', category: 'next' as const },
+    ];
+
+    it('returns "none" for null', () => {
+      expect(categoryOf(null, versions)).toBe('none');
+    });
+
+    it('returns the category of a known version', () => {
+      expect(categoryOf('v2.5', versions)).toBe('next');
+      expect(categoryOf('v2.4', versions)).toBe('past');
+    });
+
+    it('returns "none" for an unknown version', () => {
+      expect(categoryOf('v9.9', versions)).toBe('none');
+    });
+  });
+
+  describe('widthFromEstimation', () => {
+    it('returns null when no estimation nor story points are provided', () => {
+      expect(widthFromEstimation(null, null)).toBeNull();
+      expect(widthFromEstimation(undefined, undefined)).toBeNull();
+      expect(widthFromEstimation(0, 0)).toBeNull();
+    });
+
+    it('rounds 0.5 → 5 days up to 1 column', () => {
+      expect(widthFromEstimation(0.5, null)).toBe(1);
+      expect(widthFromEstimation(3, null)).toBe(1);
+      expect(widthFromEstimation(5, null)).toBe(1);
+    });
+
+    it('rounds 5.1 → 10 days up to 2 columns', () => {
+      expect(widthFromEstimation(5.1, null)).toBe(2);
+      expect(widthFromEstimation(7, null)).toBe(2);
+      expect(widthFromEstimation(10, null)).toBe(2);
+    });
+
+    it('rounds 10.1 → 15 days up to 3 columns', () => {
+      expect(widthFromEstimation(10.1, null)).toBe(3);
+      expect(widthFromEstimation(12, null)).toBe(3);
+      expect(widthFromEstimation(15, null)).toBe(3);
+    });
+
+    it('falls back to story points when estimatedDays is missing', () => {
+      expect(widthFromEstimation(null, 4)).toBe(1);
+      expect(widthFromEstimation(null, 6)).toBe(2);
+    });
+
+    it('prefers estimatedDays when both are provided', () => {
+      expect(widthFromEstimation(8, 3)).toBe(2);
+    });
+
+    it('never returns less than 1', () => {
+      expect(widthFromEstimation(0.1, null)).toBe(1);
     });
   });
 
