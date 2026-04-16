@@ -103,6 +103,8 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [showSanityModal, setShowSanityModal] = useState(false);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
+  const [showHistoryMenu, setShowHistoryMenu] = useState(false);
+  const historyRef = useRef<HTMLDivElement>(null);
   /** Boards with the same type + overlapping/similar date range — shown as a switcher. */
   const [siblingBoards, setSiblingBoards] = useState<Board[]>([]);
   const [activeConnectors, setActiveConnectors] = useState<ActiveConnector[]>([]);
@@ -136,15 +138,16 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   // Default sprint for new tasks (first sprint of the board).
   const defaultSprintId = currentSprints[0]?.id ?? `${board.id}_s1`;
 
-  // Close actions menu on outside click
+  // Close dropdown menus on outside click
   useEffect(() => {
-    if (!showActionsMenu) return;
+    if (!showActionsMenu && !showHistoryMenu) return;
     const handler = (e: MouseEvent) => {
-      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) setShowActionsMenu(false);
+      if (showActionsMenu && actionsRef.current && !actionsRef.current.contains(e.target as Node)) setShowActionsMenu(false);
+      if (showHistoryMenu && historyRef.current && !historyRef.current.contains(e.target as Node)) setShowHistoryMenu(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [showActionsMenu]);
+  }, [showActionsMenu, showHistoryMenu]);
 
   // Load active connectors + Jira site URL + sibling boards on mount
   useEffect(() => {
@@ -716,21 +719,50 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
               )}
             </div>
 
-            <button
-              className="module-header-btn"
-              onClick={() => setShowSnapshotModal(true)}
-            >
-              Historique
-            </button>
-
-            {hiddenTaskCount > 0 && (
+            <div ref={historyRef} className="delivery-actions-dropdown">
               <button
+                type="button"
                 className="module-header-btn"
-                onClick={() => setShowRestoreModal(true)}
+                onClick={() => setShowHistoryMenu(v => !v)}
+                aria-haspopup="menu"
+                aria-expanded={showHistoryMenu}
               >
-                Restaurer ({hiddenTaskCount})
+                Historique
+                {hiddenTaskCount > 0 && <span className="delivery-history-badge">{hiddenTaskCount}</span>}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
               </button>
-            )}
+              {showHistoryMenu && (
+                <div className="delivery-actions-menu" role="menu">
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={() => { setShowHistoryMenu(false); setShowSnapshotModal(true); }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                    </svg>
+                    Snapshots
+                  </button>
+                  {hiddenTaskCount > 0 && (
+                    <>
+                      <div className="delivery-actions-divider" />
+                      <button
+                        type="button"
+                        className="delivery-actions-item"
+                        onClick={() => { setShowHistoryMenu(false); setShowRestoreModal(true); }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                        </svg>
+                        Restaurer ({hiddenTaskCount})
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </ModuleHeader>
 
           {/* Add task form */}

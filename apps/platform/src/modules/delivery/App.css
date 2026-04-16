@@ -178,3 +178,19 @@
   background: var(--border-color);
   margin: var(--spacing-xs) 0;
 }
+
+.delivery-history-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--error);
+  color: var(--text-inverse, #fff);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+}
