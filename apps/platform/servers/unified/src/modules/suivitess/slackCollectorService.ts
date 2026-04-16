@@ -217,6 +217,90 @@ export async function fetchChannelHistory(
       } catch {
         skipped++;
       }
+
+      // Fetch thread replies if this message has a thread
+      if (msg.thread_ts && msg.thread_ts === msg.ts) {
+        try {
+          const threadResult = await fetchThreadReplies(cfg, channelId, channelName, msg.ts);
+          collected += threadResult.collected;
+          skipped += threadResult.skipped;
+        } catch {
+          // Non-blocking — thread fetch failure shouldn't stop the main flow
+        }
+      }
+    }
+
+    hasMore = !!data.has_more;
+    cursor = data.response_metadata?.next_cursor;
+    if (!cursor) hasMore = false;
+  }
+
+  return { collected, skipped };
+}
+
+/**
+ * Fetch all replies in a thread. Each reply is stored as a separate message
+ * with `thread_ts` pointing to the parent, so the transcript builder can
+ * reconstruct the conversation hierarchy.
+ */
+async function fetchThreadReplies(
+  cfg: SlackConfig,
+  channelId: string,
+  channelName: string,
+  threadTs: string,
+): Promise<{ collected: number; skipped: number }> {
+  let collected = 0;
+  let skipped = 0;
+  let cursor: string | undefined;
+  let hasMore = true;
+  let page = 0;
+
+  while (hasMore && page < 5) {
+    page++;
+    const params: Record<string, string> = {
+      channel: channelId,
+      ts: threadTs,
+      limit: '200',
+    };
+    if (cursor) params.cursor = cursor;
+
+    const data = await slackApiFetch(
+      cfg.workspaceUrl, 'conversations.replies', params,
+      cfg.xoxcToken, cfg.xoxdCookie,
+    ) as {
+      messages?: SlackApiMessage[];
+      has_more?: boolean;
+      response_metadata?: { next_cursor?: string };
+    };
+
+    for (const msg of (data.messages || [])) {
+      // Skip the parent message (already stored) — it has ts === thread_ts
+      if (msg.ts === threadTs) continue;
+      if (!msg.text || msg.subtype === 'channel_join') continue;
+
+      const senderName = msg.user
+        ? await resolveUserName(cfg.workspaceUrl, msg.user, cfg.xoxcToken, cfg.xoxdCookie)
+        : 'Bot';
+
+      try {
+        await pool.query(
+          `INSERT INTO slack_messages (config_id, channel_id, channel_name, message_ts, sender_id, sender_name, text, thread_ts, has_files)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (channel_id, message_ts) DO UPDATE SET
+             text = EXCLUDED.text,
+             sender_name = EXCLUDED.sender_name,
+             has_files = EXCLUDED.has_files`,
+          [
+            cfg.id, channelId, channelName, msg.ts,
+            msg.user || null, senderName,
+            msg.text, threadTs,
+            !!(msg.files && msg.files.length > 0),
+          ],
+        );
+        collected++;
+      } catch {
+        skipped++;
+      }
     }
 
     hasMore = !!data.has_more;
