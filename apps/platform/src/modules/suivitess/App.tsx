@@ -146,12 +146,20 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
         </button>
         <button
           className="module-header-btn"
-          onClick={() => setShowAnalysis(true)}
-          title="Analyser les sujets et proposer la création de tickets (Jira/Notion/Roadmap)"
+          onClick={() => {
+            if (connectedAIs.length > 0) {
+              setShowAnalysis(true);
+            } else {
+              navigate('/reglages');
+            }
+          }}
+          title={connectedAIs.length > 0
+            ? 'Analyser les sujets et proposer la création de tickets (Jira/Notion/Roadmap)'
+            : 'Connectez une IA dans Réglages pour activer l\'analyse'}
         >
           Analyser
         </button>
-        {connectedAIs.length > 0 && (
+        {connectedAIs.length > 0 ? (
           <span
             className="suivitess-ai-picker"
             title="IA utilisée pour la reformulation et l'analyse des sujets"
@@ -172,56 +180,83 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
               ))}
             </select>
           </span>
+        ) : (
+          <button
+            className="module-header-btn"
+            onClick={() => navigate('/reglages')}
+            title="Connectez une IA dans Réglages pour activer la reformulation et l'analyse"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
+              <path d="M12 2 L13.5 8.5 L20 10 L13.5 11.5 L12 18 L10.5 11.5 L4 10 L10.5 8.5 Z" />
+            </svg>
+            Connecter une IA →
+          </button>
         )}
-        {(importProviders.transcription || importProviders.gmail || importProviders.outlook) && (
-          <div ref={importsRef} className="suivitess-exports">
-            <button
-              type="button"
-              className="module-header-btn"
-              onClick={() => setShowImports(v => !v)}
-              aria-haspopup="menu"
-              aria-expanded={showImports}
-              title="Importer du contenu dans cette review"
-            >
-              Imports
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            {showImports && (
-              <div className="suivitess-exports-menu" role="menu">
-                {importProviders.transcription && (
-                  <button
-                    type="button"
-                    className="suivitess-exports-item"
-                    onClick={() => openImport()}
-                  >
-                    Transcription
-                  </button>
-                )}
-                {importProviders.transcription && (importProviders.gmail || importProviders.outlook) && <div className="suivitess-exports-divider" />}
-                {importProviders.gmail && (
-                  <button
-                    type="button"
-                    className="suivitess-exports-item"
-                    onClick={() => openImport('gmail')}
-                  >
-                    Gmail
-                  </button>
-                )}
-                {importProviders.outlook && (
-                  <button
-                    type="button"
-                    className="suivitess-exports-item"
-                    onClick={() => openImport('outlook')}
-                  >
-                    Outlook
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        <div ref={importsRef} className="suivitess-exports">
+          <button
+            type="button"
+            className="module-header-btn"
+            onClick={() => {
+              const hasAny = importProviders.transcription || importProviders.gmail || importProviders.outlook;
+              if (hasAny) {
+                setShowImports(v => !v);
+              } else {
+                navigate('/reglages');
+              }
+            }}
+            aria-haspopup="menu"
+            aria-expanded={showImports}
+            title={importProviders.transcription || importProviders.gmail || importProviders.outlook
+              ? 'Importer du contenu dans cette review'
+              : 'Connectez Fathom, Otter, Gmail ou Outlook dans Réglages pour importer du contenu'}
+          >
+            Imports
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {showImports && (
+            <div className="suivitess-exports-menu" role="menu">
+              {importProviders.transcription && (
+                <button
+                  type="button"
+                  className="suivitess-exports-item"
+                  onClick={() => openImport()}
+                >
+                  Transcription
+                </button>
+              )}
+              {importProviders.transcription && (importProviders.gmail || importProviders.outlook) && <div className="suivitess-exports-divider" />}
+              {importProviders.gmail && (
+                <button
+                  type="button"
+                  className="suivitess-exports-item"
+                  onClick={() => openImport('gmail')}
+                >
+                  Gmail
+                </button>
+              )}
+              {importProviders.outlook && (
+                <button
+                  type="button"
+                  className="suivitess-exports-item"
+                  onClick={() => openImport('outlook')}
+                >
+                  Outlook
+                </button>
+              )}
+              {!importProviders.transcription && !importProviders.gmail && !importProviders.outlook && (
+                <button
+                  type="button"
+                  className="suivitess-exports-item"
+                  onClick={() => { setShowImports(false); navigate('/reglages'); }}
+                >
+                  Configurer un import →
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         {(exportJsonFn || copyFn) && (
           <div ref={exportsRef} className="suivitess-exports">
             <button
