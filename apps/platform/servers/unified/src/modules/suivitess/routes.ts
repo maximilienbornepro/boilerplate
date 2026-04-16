@@ -1113,61 +1113,36 @@ ${transcriptText.slice(0, 30000)}`,
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 
+    // Load the editable skill file for intra-document import rules.
+    let importSkill = '';
+    try {
+      const { readFile } = await import('node:fs/promises');
+      const { fileURLToPath } = await import('node:url');
+      const { dirname, resolve } = await import('node:path');
+      const here = dirname(fileURLToPath(import.meta.url));
+      importSkill = await readFile(resolve(here, 'transcription-import-skill.md'), 'utf-8');
+    } catch {
+      importSkill = 'Tu es un assistant de suivi de réunion. Retourne un tableau JSON de propositions.';
+    }
+
     const aiResponse = await client.messages.create({
       model,
       max_tokens: 4096,
       messages: [{
         role: 'user',
-        content: `Tu es un assistant de suivi de réunion. Analyse la transcription et propose des changements à apporter au document existant.
+        content: `${importSkill}
 
-## Document existant (avec IDs) :
+---
+
+# Contexte exécutable
+
+## Document existant (avec IDs)
 ${existingContext || '(aucun sujet existant)'}
 
-## Sujets extraits de la transcription :
+## Contenu de la transcription
 ${transcriptionSubjects}
 
-## Types d'actions possibles :
-
-1. "enrich" — Enrichir l'état de la situation d'un sujet existant. N'écrase PAS l'existant, AJOUTE du texte.
-2. "create_subject" — Créer un nouveau sujet dans une section existante.
-3. "create_section" — Créer une nouvelle section avec ses sujets (si le thème ne correspond à aucune section existante).
-
-## Règles :
-- Pour "enrich" : retourne le texte à AJOUTER (pas la situation complète)
-- Pour "create_subject" : indique dans quelle section existante le placer (via sectionId)
-- Pour "create_section" : inclus les sujets à créer dedans
-- Ignore les sujets triviaux, bavardage, ou hors-sujet
-- Maximum 10 propositions
-
-Retourne UNIQUEMENT un tableau JSON :
-[
-  {
-    "action": "enrich",
-    "subjectId": "uuid",
-    "subjectTitle": "titre du sujet (pour affichage)",
-    "sectionName": "nom de la section (pour affichage)",
-    "appendText": "Nouveau texte à ajouter à la situation existante",
-    "reason": "Justification courte"
-  },
-  {
-    "action": "create_subject",
-    "sectionId": "uuid",
-    "sectionName": "nom de la section (pour affichage)",
-    "title": "Titre du nouveau sujet",
-    "situation": "Description...",
-    "responsibility": "Responsable ou null",
-    "status": "🔴 à faire",
-    "reason": "Justification"
-  },
-  {
-    "action": "create_section",
-    "sectionName": "Nom de la nouvelle section",
-    "subjects": [
-      { "title": "...", "situation": "...", "responsibility": null, "status": "🔴 à faire" }
-    ],
-    "reason": "Justification"
-  }
-]`,
+Applique les règles ci-dessus et réponds uniquement en JSON.`,
       }],
     });
 
