@@ -190,19 +190,6 @@ export function ModuleRecentBlock<T>({
                 </li>
               );
             })}
-            {total > items.length && (
-              <li className={styles.item}>
-                <button
-                  className={`${styles.itemBtn} ${styles.itemBtnMore}`}
-                  onClick={() => navigate(seeAllHref)}
-                  title={`Voir les ${total - items.length} autre${total - items.length > 1 ? 's' : ''}`}
-                >
-                  <span className={styles.itemMoreLabel}>
-                    … et {total - items.length} autre{total - items.length > 1 ? 's' : ''}
-                  </span>
-                </button>
-              </li>
-            )}
           </ul>
         )}
       </div>

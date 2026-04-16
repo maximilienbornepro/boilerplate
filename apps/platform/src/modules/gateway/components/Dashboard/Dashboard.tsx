@@ -96,17 +96,20 @@ export function Dashboard({ onNavigate }: Props) {
             mapItem={(l) => {
               const fmtFull = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
               const fmtShort = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+              const fmtDay = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric' });
               const sameYear = l.startDate.substring(0, 4) === l.endDate.substring(0, 4);
+              const sameMonth = l.startDate.substring(0, 7) === l.endDate.substring(0, 7);
               let dateRange: string;
               if (l.endDate === l.startDate) {
                 dateRange = fmtFull(l.startDate);
+              } else if (sameMonth) {
+                dateRange = `${fmtDay(l.startDate)} → ${fmtFull(l.endDate)}`;
               } else if (sameYear) {
                 dateRange = `${fmtShort(l.startDate)} → ${fmtFull(l.endDate)}`;
               } else {
                 dateRange = `${fmtFull(l.startDate)} → ${fmtFull(l.endDate)}`;
               }
-              // Show the person first so it's immediately readable in the dashboard.
-              const title = `${l.memberName} · ${dateRange}`;
+              const title = l.memberName && l.memberName !== '?' ? `${l.memberName} · ${dateRange}` : dateRange;
               return { id: l.id, title, date: l.startDate, href: '/conges', meta: getLeaveReasonInfo(l.reason).label };
             }}
             sortDirection="asc"
