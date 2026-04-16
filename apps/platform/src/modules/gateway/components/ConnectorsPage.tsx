@@ -1399,7 +1399,211 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
           </div>
         </div>
       ))}
+
+      {/* ==================== Collecteurs automatiques ==================== */}
+      <CollectorsSection />
+
       </div>
     </>
+  );
+}
+
+// ==================== Collectors Section ====================
+
+function CollectorsSection() {
+  const [slackStatus, setSlackStatus] = useState<{
+    configured: boolean;
+    isActive?: boolean;
+    lastSyncAt?: string | null;
+    channelCount?: number;
+    channels?: Array<{ id: string; name: string }>;
+    messageCount?: number;
+    daysToFetch?: number;
+  } | null>(null);
+  const [outlookStatus, setOutlookStatus] = useState<{
+    configured: boolean;
+    messageCount?: number;
+  } | null>(null);
+  const [slackSyncing, setSlackSyncing] = useState(false);
+  const [slackExpanded, setSlackExpanded] = useState(false);
+  const [outlookExpanded, setOutlookExpanded] = useState(false);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const [slack, outlook] = await Promise.all([
+        fetch('/suivitess-api/slack/status', { credentials: 'include' }).then(r => r.ok ? r.json() : { configured: false }).catch(() => ({ configured: false })),
+        fetch('/suivitess-api/outlook/status', { credentials: 'include' }).then(r => r.ok ? r.json() : { configured: false }).catch(() => ({ configured: false })),
+      ]);
+      setSlackStatus(slack);
+      setOutlookStatus(outlook);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  const handleSlackSync = async () => {
+    setSlackSyncing(true);
+    try {
+      await fetch('/suivitess-api/slack/sync-now', { method: 'POST', credentials: 'include' });
+      await loadStatus();
+    } catch { /* ignore */ }
+    setSlackSyncing(false);
+  };
+
+  const handleSlackDisconnect = async () => {
+    try {
+      await fetch('/suivitess-api/slack/configure', { method: 'DELETE', credentials: 'include' });
+      setSlackStatus({ configured: false });
+    } catch { /* ignore */ }
+  };
+
+  const formatTimeAgo = (iso: string | null | undefined): string => {
+    if (!iso) return 'jamais';
+    const diff = Date.now() - new Date(iso).getTime();
+    if (diff < 60_000) return 'à l\'instant';
+    if (diff < 3600_000) return `il y a ${Math.floor(diff / 60_000)} min`;
+    if (diff < 86400_000) return `il y a ${Math.floor(diff / 3600_000)}h`;
+    return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <div className="connectors-group">
+      <h3 className="connectors-group-title">Collecteurs automatiques</h3>
+      <p className="connectors-group-desc">
+        Récupérez automatiquement vos messages Slack et emails Outlook pour les importer dans SuiviTess via « Importer & ranger ».
+      </p>
+      <div className="connectors-list">
+
+        {/* ── Slack Collector Card ── */}
+        <div className="connector-card">
+          <div className="connector-card-header" onClick={() => setSlackExpanded(v => !v)}>
+            <div className="connector-card-left">
+              <div className="connector-card-icon" style={{ background: '#4A154B', color: '#fff' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm6.312 5.852a2.528 2.528 0 0 1 2.521-2.52A2.528 2.528 0 0 1 24 12.165a2.528 2.528 0 0 1-2.333 2.52h-6.521v-2.52zm-1.271 0a2.527 2.527 0 0 1-2.521 2.52 2.527 2.527 0 0 1-2.521-2.52V5.852a2.528 2.528 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313z"/></svg>
+              </div>
+              <div className="connector-card-info">
+                <div className="connector-card-name">Slack</div>
+                <div className="connector-card-desc">
+                  {slackStatus?.configured
+                    ? `${slackStatus.messageCount ?? 0} messages · ${slackStatus.channelCount ?? 0} channel${(slackStatus.channelCount ?? 0) > 1 ? 's' : ''} · sync ${formatTimeAgo(slackStatus.lastSyncAt)}`
+                    : 'Collecte automatique des messages Slack (toutes les heures)'}
+                </div>
+              </div>
+            </div>
+            <div className="connector-card-right">
+              <div className={`connector-status ${slackStatus?.configured ? 'active' : 'inactive'}`}>
+                <span className="connector-status-dot" />
+                {slackStatus?.configured ? 'Connecté' : 'Non connecté'}
+              </div>
+              <span className={`connector-expand-icon${slackExpanded ? ' expanded' : ''}`}>&#x25BC;</span>
+            </div>
+          </div>
+          {slackExpanded && (
+            <div className="connector-card-body" style={{ padding: 'var(--spacing-md)' }}>
+              {slackStatus?.configured ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
+                    <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
+                      Channels surveillés :
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {(slackStatus.channels || []).map(ch => (
+                        <span key={ch.id} style={{
+                          padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+                          background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
+                          fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-primary)',
+                        }}>
+                          #{ch.name}
+                        </span>
+                      ))}
+                    </div>
+                    <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
+                      Récupère les {slackStatus.daysToFetch ?? 7} derniers jours · Sync automatique toutes les heures
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                    <button className="connector-btn connector-btn-primary" onClick={handleSlackSync} disabled={slackSyncing}>
+                      {slackSyncing ? 'Synchronisation...' : 'Synchroniser maintenant'}
+                    </button>
+                    <button className="connector-btn connector-btn-danger" onClick={handleSlackDisconnect}>
+                      Se déconnecter
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                  <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                    Pour connecter Slack, utilisez l'extension Chrome SuiviTess Importer :
+                  </p>
+                  <ol style={{ margin: 0, paddingLeft: 'var(--spacing-lg)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)', lineHeight: 2 }}>
+                    <li>Installez l'extension SuiviTess Importer</li>
+                    <li>Ouvrez <a href="https://app.slack.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)' }}>Slack</a> dans Chrome</li>
+                    <li>Cliquez sur l'extension → « Connecter et synchroniser »</li>
+                  </ol>
+                  <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Le serveur collectera ensuite les messages automatiquement toutes les heures.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Outlook Collector Card ── */}
+        <div className="connector-card">
+          <div className="connector-card-header" onClick={() => setOutlookExpanded(v => !v)}>
+            <div className="connector-card-left">
+              <div className="connector-card-icon" style={{ background: '#0078D4', color: '#fff' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M24 7.387v10.478c0 .23-.08.424-.238.576-.16.156-.354.234-.582.234h-8.39v-6.61l1.612 1.224a.379.379 0 0 0 .479-.005l.005-.005 6.884-5.261c.07-.054.13-.077.163-.077h.005c.074 0 .062.048.062.048v-.602zm-.324-1.063c.07 0 .232.022.324.196l-7.69 5.875-4.92-3.746V7.387c0-.23.08-.424.238-.576.16-.156.354-.234.582-.234h11.466zM13.5 12.61l-1.5 1.142V5.063l3-2.25v8.555l-1.5 1.142V12.61zM0 3.61L8.813 2v20L0 20.39V3.61z"/></svg>
+              </div>
+              <div className="connector-card-info">
+                <div className="connector-card-name">Outlook</div>
+                <div className="connector-card-desc">
+                  {outlookStatus?.configured && (outlookStatus.messageCount ?? 0) > 0
+                    ? `${outlookStatus.messageCount} email${(outlookStatus.messageCount ?? 0) > 1 ? 's' : ''} synchronisé${(outlookStatus.messageCount ?? 0) > 1 ? 's' : ''}`
+                    : 'Synchronisez vos emails Outlook via l\'extension Chrome'}
+                </div>
+              </div>
+            </div>
+            <div className="connector-card-right">
+              <div className={`connector-status ${outlookStatus?.configured && (outlookStatus.messageCount ?? 0) > 0 ? 'active' : 'inactive'}`}>
+                <span className="connector-status-dot" />
+                {outlookStatus?.configured && (outlookStatus.messageCount ?? 0) > 0 ? 'Synchronisé' : 'Non synchronisé'}
+              </div>
+              <span className={`connector-expand-icon${outlookExpanded ? ' expanded' : ''}`}>&#x25BC;</span>
+            </div>
+          </div>
+          {outlookExpanded && (
+            <div className="connector-card-body" style={{ padding: 'var(--spacing-md)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                {outlookStatus?.configured && (outlookStatus.messageCount ?? 0) > 0 ? (
+                  <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--success)' }}>
+                    ✓ {outlookStatus.messageCount} email{(outlookStatus.messageCount ?? 0) > 1 ? 's' : ''} disponible{(outlookStatus.messageCount ?? 0) > 1 ? 's' : ''} dans « Importer & ranger ».
+                  </p>
+                ) : (
+                  <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                    Pour synchroniser vos emails :
+                  </p>
+                )}
+                <ol style={{ margin: 0, paddingLeft: 'var(--spacing-lg)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)', lineHeight: 2 }}>
+                  <li>
+                    <a href="https://outlook.office.com/mail/" target="_blank" rel="noopener noreferrer"
+                       style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>
+                      Ouvrir Outlook →
+                    </a>
+                  </li>
+                  <li>Cliquez sur l'extension SuiviTess Importer dans Chrome</li>
+                  <li>Les emails se synchronisent automatiquement</li>
+                </ol>
+                <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  Les emails synchronisés apparaissent dans SuiviTess {'>'} « Importer {'&'} ranger », groupés par jour.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
   );
 }
