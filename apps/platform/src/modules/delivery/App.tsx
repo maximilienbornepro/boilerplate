@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import { BoardDelivery } from './components/BoardDelivery';
 import { BoardList } from './components/BoardList/BoardList';
@@ -101,6 +101,8 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSanityModal, setShowSanityModal] = useState(false);
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
   /** Boards with the same type + overlapping/similar date range — shown as a switcher. */
   const [siblingBoards, setSiblingBoards] = useState<Board[]>([]);
   const [activeConnectors, setActiveConnectors] = useState<ActiveConnector[]>([]);
@@ -133,6 +135,16 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const boardStateId = board.id;
   // Default sprint for new tasks (first sprint of the board).
   const defaultSprintId = currentSprints[0]?.id ?? `${board.id}_s1`;
+
+  // Close actions menu on outside click
+  useEffect(() => {
+    if (!showActionsMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) setShowActionsMenu(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showActionsMenu]);
 
   // Load active connectors + Jira site URL + sibling boards on mount
   useEffect(() => {
@@ -639,47 +651,70 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
               </select>
             )}
 
-            <button
-              className="module-header-btn"
-              onClick={() => {
-                if (activeConnectors.length > 0) {
-                  setShowImportModal(true);
-                } else if (onNavigate) {
-                  onNavigate('/reglages');
-                }
-              }}
-              title={activeConnectors.length > 0 ? 'Importer des tâches depuis Jira, ClickUp…' : 'Connectez Jira ou un autre outil dans Réglages pour importer des tâches'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              {activeConnectors.length > 0 ? 'Importer taches' : 'Importer taches →'}
-            </button>
-
-            <button
-              className="module-header-btn"
-              onClick={() => {
-                if (tasks.some(t => t.source && t.source !== 'manual')) {
-                  setShowSanityModal(true);
-                } else if (onNavigate) {
-                  onNavigate('/reglages');
-                }
-              }}
-              title={tasks.some(t => t.source && t.source !== 'manual')
-                ? 'Analyser le board avec l\'IA et proposer des repositionnements'
-                : 'Importez des tickets depuis un outil externe pour activer la vérification IA'}
-            >
-              ✨ Vérifier avec l'IA
-            </button>
-
-            <button
-              className="module-header-btn"
-              onClick={() => setShowAddTask(!showAddTask)}
-            >
-              + Tache
-            </button>
+            <div ref={actionsRef} className="delivery-actions-dropdown">
+              <button
+                type="button"
+                className="module-header-btn module-header-btn-primary"
+                onClick={() => setShowActionsMenu(v => !v)}
+                aria-haspopup="menu"
+                aria-expanded={showActionsMenu}
+              >
+                Actions
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {showActionsMenu && (
+                <div className="delivery-actions-menu" role="menu">
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      setShowAddTask(!showAddTask);
+                    }}
+                  >
+                    + Nouvelle tâche
+                  </button>
+                  <div className="delivery-actions-divider" />
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      if (activeConnectors.length > 0) {
+                        setShowImportModal(true);
+                      } else if (onNavigate) {
+                        onNavigate('/reglages');
+                      }
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    {activeConnectors.length > 0 ? 'Importer des tâches' : 'Importer des tâches → Réglages'}
+                  </button>
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      if (tasks.some(t => t.source && t.source !== 'manual')) {
+                        setShowSanityModal(true);
+                      } else if (onNavigate) {
+                        onNavigate('/reglages');
+                      }
+                    }}
+                  >
+                    ✨ {tasks.some(t => t.source && t.source !== 'manual')
+                      ? 'Vérifier avec l\'IA'
+                      : 'Vérifier avec l\'IA → Réglages'}
+                  </button>
+                </div>
+              )}
+            </div>
 
             <button
               className="module-header-btn"
