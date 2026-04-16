@@ -66,16 +66,21 @@ Si c'est le cas :
 - `subjectAction: "update-existing-subject"`
 - `targetSubjectId` = `id` du sujet existant
 - `updatedSituation` : construite en tenant compte de ce qui est **déjà écrit** dans le champ
-  `situationExcerpt` du sujet existant (fourni dans le payload). Règles :
-  - **Compare** d'abord la nouvelle information avec la situation existante.
+  `situationExcerpt` du sujet existant (fourni dans le payload). **Règle fondamentale : ne jamais
+  supprimer ni raccourcir la situation existante.** Règles détaillées :
+  - **Lis attentivement** la situation existante avant d'écrire quoi que ce soit.
+  - **Conserve intégralement** tout le texte existant — c'est le travail de l'utilisateur, il ne
+    doit jamais être perdu ou résumé de force.
+  - **Ajoute à la suite** les informations nouvelles extraites de la transcription. Utilise un
+    séparateur clair (`\n— Mise à jour du JJ/MM : …`) pour distinguer l'existant du nouveau.
+  - Tu peux **reprendre des éléments de la situation existante** dans ta formulation pour mieux
+    contextualiser l'ajout (ex. « Suite aux tests staging mentionnés précédemment, la mise en
+    prod est confirmée pour mercredi. ») — mais le texte d'origine doit rester intact au-dessus.
   - Si la nouvelle info est **déjà mentionnée** dans la situation existante (même fait, même
-    chiffre, même décision) → **ne crée pas de doublon**. N'ajoute que ce qui est réellement
-    nouveau.
-  - Si la nouvelle info apporte un **changement d'état** ou un **fait nouveau** → préfixe avec
-    la date du jour (`Mise à jour du JJ/MM : …`) et complète la situation existante.
-  - Si la situation existante est vide ou très courte → remplace-la intégralement.
-  - Si l'info de la transcription est **identique** à ce qui est déjà écrit → `updatedSituation`
-    doit être `null` (pas de modification inutile).
+    chiffre, même décision) → `updatedSituation` doit être `null` (ne rien changer).
+  - Si la situation existante est **vide** → écris la situation complète (pas besoin de séparer).
+  - **Jamais** de remplacement, de résumé forcé, ni de reformulation qui réduirait le contenu
+    existant. En cas de doute, ajoute plutôt que de réécrire.
 - `updatedStatus` = statut à appliquer **uniquement si la transcription mentionne un changement
   d'état explicite** (par exemple passer de 🔴 à 🟡 si le sujet a commencé, de 🟡 à 🟢 si
   résolu, de 🟡 à 🟣 si bloqué). Si aucun changement de statut n'est évoqué dans la
