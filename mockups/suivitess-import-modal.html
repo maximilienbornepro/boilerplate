@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>SuiviTess — Modal "Analyser & ranger" — Mockup</title>
+<style>
+/* ==========================================================================
+   Theme tokens (extrait de packages/shared/src/styles/theme.css)
+   ========================================================================== */
+:root {
+  --font-family-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+  --font-family-system: var(--font-family-mono);
+
+  --font-size-xs: 0.6875rem;
+  --font-size-sm: 0.75rem;
+  --font-size-base: 0.8125rem;
+  --font-size-md: 0.875rem;
+  --font-size-lg: 1rem;
+  --font-size-xl: 1.125rem;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --spacing-2xs: 2px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+
+  --transition-fast: 0.08s ease;
+  --transition-normal: 0.12s ease;
+
+  /* dark (default) */
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-card: #0d0d0d;
+  --bg-input: #0a0a0a;
+  --bg-hover: #1a1a1a;
+
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --text-muted: #666666;
+  --text-light: #444444;
+  --text-inverse: #ffffff;
+
+  --border-color: #1e1e1e;
+  --border-light: rgba(255,255,255,0.04);
+
+  --accent-primary: #00bcd4;
+  --accent-primary-hover: #00acc1;
+
+  --success: #4caf50;
+  --warning: #ff9800;
+  --error: #f44336;
+
+  --shadow-lg: 0 0 0 1px #1e1e1e;
+  --overlay-light: rgba(0,0,0,0.6);
+
+  /* Tags d'action IA — couleurs neutres, hors palette module */
+  --tag-new:    #a78bfa;  /* violet — "+ Nouveau" */
+  --tag-update: #f59e0b;  /* ambre  — "↻ Mise à jour" */
+}
+
+[data-theme="light"] {
+  --bg-primary: #f0f0f0;
+  --bg-secondary: #fafafa;
+  --bg-card: #ffffff;
+  --bg-input: #f5f5f5;
+  --bg-hover: #e8e8e8;
+
+  --text-primary: #1a1a1a;
+  --text-secondary: #333333;
+  --text-muted: #777777;
+  --text-light: #999999;
+
+  --border-color: #d0d0d0;
+  --border-light: rgba(0,0,0,0.06);
+
+  --accent-primary: #00838f;
+  --accent-primary-hover: #006064;
+
+  --shadow-lg: 0 0 0 1px #d0d0d0;
+  --overlay-light: rgba(0,0,0,0.3);
+
+  /* Tags d'action IA — variantes light un peu plus profondes pour contraster */
+  --tag-new:    #7c3aed;
+  --tag-update: #b45309;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family-system);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   Page layout (mockup container, not part of the real modal)
+   ========================================================================== */
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--spacing-xl);
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.page-title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+}
+.page-sub {
+  margin: var(--spacing-xs) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.theme-toggle {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.theme-toggle:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+
+.case-label {
+  display: inline-block;
+  margin: var(--spacing-xl) 0 var(--spacing-sm);
+  padding: 4px 10px;
+  border: 1px solid var(--accent-primary);
+  color: var(--accent-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: var(--radius-sm);
+}
+.case-desc {
+  margin: 0 0 var(--spacing-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* ==========================================================================
+   Modal shell (extrait de Modal.module.css)
+   ========================================================================== */
+.modal-frame {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 1100px;
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-lg);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+.modal-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.modal-title-source {
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  font-family: inherit;
+}
+.modal-title-source::before {
+  content: "—";
+  margin-right: 8px;
+}
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--spacing-xl);
+  height: var(--spacing-xl);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-xl);
+}
+.modal-close:hover { background: var(--bg-primary); color: var(--accent-primary); }
+
+/* ==========================================================================
+   Bulk import modal styles (mirror BulkTranscriptionImportModal.module.css)
+   ========================================================================== */
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  min-height: 320px;
+}
+
+.loading,
+.error,
+.done,
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--spacing-xl);
+  flex: 1;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.spinner-msg {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+}
+
+.summaryBlock {
+  padding: var(--spacing-sm) 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* === Sommaire des sujets extraits (ancres scroll) === */
+.summaryIntro {
+  margin: 0 0 var(--spacing-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+.summaryIntro strong { color: var(--text-primary); }
+
+.summaryList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 var(--spacing-sm);
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.summaryItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 4px 0;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+.summaryItem:hover {
+  color: var(--accent-primary);
+}
+.summaryItemMode {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.summaryItemMode.modeCreate {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+.summaryItemMode.modeUpdate {
+  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+}
+.summaryItemTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.summaryItemArrow {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.summaryItem:hover .summaryItemArrow { color: var(--accent-primary); }
+
+/* Scroll fluide quand on clique une ancre */
+html { scroll-behavior: smooth; }
+.subjectRow:target {
+  outline: 1px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.subjectsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.subjectRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  transition: opacity var(--transition-normal);
+}
+.subjectRow.is-skipped { opacity: 0.5; }
+.subjectRow.is-update {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 4%, transparent);
+}
+
+.subjectHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.statusTag {
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.subjectTitle {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.subjectMeta {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.subjectMeta strong {
+  color: var(--text-primary); /* "Création d'un sujet" / "Mise à jour de sujet existant" en blanc */
+  font-weight: var(--font-weight-semibold);
+}
+.subjectMetaSep {
+  margin: 0 6px;
+  color: var(--text-light);
+}
+
+.responsibility {
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--accent-primary);
+}
+
+.confidence {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.conf-high   { color: var(--success);        border: 1px solid var(--success); }
+.conf-medium { color: var(--accent-primary); border: 1px solid var(--accent-primary); }
+.conf-low    { color: var(--warning);        border: 1px solid var(--warning); }
+
+.modeTag {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.modeCreate {
+  background: color-mix(in srgb, var(--tag-new) 15%, transparent);
+  color: var(--tag-new);
+  border: 1px solid var(--tag-new);
+}
+.modeUpdate {
+  background: color-mix(in srgb, var(--tag-update) 15%, transparent);
+  color: var(--tag-update);
+  border: 1px solid var(--tag-update);
+}
+
+.situation,
+.reasoning {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.reasoning {
+  font-style: italic;
+  border-left: 2px solid var(--accent-primary);
+  padding-left: var(--spacing-xs);
+}
+
+.updateBox {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  flex-wrap: wrap;
+}
+.updateStatus {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.routing {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-xs);
+  border-top: 1px dashed var(--border-color);
+}
+@media (max-width: 700px) { .routing { grid-template-columns: 1fr; } }
+
+.routingField { display: flex; flex-direction: column; gap: 4px; }
+.routingField label {
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.routingField select,
+.routingField input {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+}
+.routingField select:focus,
+.routingField input:focus {
+  border-color: var(--accent-primary);
+  outline: none;
+}
+.routingFieldFull { grid-column: 1 / -1; }
+
+.hint {
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.modeChoice { display: flex; flex-direction: column; gap: 4px; }
+.modeRadio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.select {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  margin-top: 4px;
+}
+
+.skipToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--border-color);
+}
+
+.btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--transition-normal);
+}
+.btn-primary {
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+  border-color: var(--accent-primary);
+}
+.btn-primary:hover { background: var(--accent-primary-hover); border-color: var(--accent-primary-hover); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+.btn-secondary:hover { border-color: var(--accent-primary); color: var(--accent-primary); }
+
+.doneTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--success);
+  margin: 0;
+}
+.doneHint { color: var(--text-muted); font-size: var(--font-size-sm); margin: 0; }
+.doneError { color: var(--error); font-size: var(--font-size-sm); margin: 0; }
+.errTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--error);
+  margin: 0;
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Modale "Analyser &amp; ranger une transcription"</h1>
+      <p class="page-sub">Mockup statique de tous les cas une fois la source sélectionnée — pour ajustement visuel rapide.</p>
+    </div>
+    <button class="theme-toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'">Toggle dark/light</button>
+  </div>
+
+  <!-- ====================================================================
+       CASE 1 — phase: analyzing
+       ==================================================================== -->
+  <span class="case-label">1 — Phase “analyzing”</span>
+  <p class="case-desc">L'IA lit la transcription juste après le clic sur "Analyser".</p>
+  <div class="modal-frame">
+    <div class="modal-header">
+      <h2 class="modal-title">Analyser &amp; ranger une transcription <span class="modal-title-source">Daily Jeudi 16/04</span></h2>
+      <button class="modal-close" type="button">×</button>
+    </div>
+    <div class="content">
+      <div class="loading">
+        <div class="spinner"></div>
+        <p class="spinner-msg">L'IA lit la transcription et décide où ranger chaque sujet…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       CASE 2 — phase: routing  (CAS NOMINAL — plusieurs sujets variés)
+       ==================================================================== -->
+  <span class="case-label">2 — Phase “routing” (vue principale)</span>
+  <p class="case-desc">Toutes les variantes de subject-row sur une même modale : nouveau / mise à jour / ignoré, confiance haute/moyenne/basse, review existante / nouvelle, section existante / nouvelle.</p>
+  <div class="modal-frame">
+    <div class="modal-header">
+      <h2 class="modal-title">Analyser &amp; ranger une transcription <span class="modal-title-source">Daily Jeudi 16/04</span></h2>
+      <button class="modal-close" type="button">×</button>
+    </div>
+    <div class="content">
+      <p class="summaryIntro">
+        <strong>5 sujets traités</strong>
+      </p>
+      <nav class="summaryList" aria-label="Sommaire des sujets extraits">
+        <a class="summaryItem" href="#subj-a">
+          <span class="summaryItemTitle">Migration de l'API V2 vers le nouveau gateway</span>
+          <span class="summaryItemMode modeCreate">+ Nouveau</span>
+          <span class="summaryItemArrow">↓</span>
+        </a>
+        <a class="summaryItem" href="#subj-b">
+          <span class="summaryItemTitle">Bug lecture HDR sur l'app Android Orange</span>
+          <span class="summaryItemMode modeUpdate">↻ Mise à jour</span>
+          <span class="summaryItemArrow">↓</span>
+        </a>
+        <a class="summaryItem" href="#subj-c">
+          <span class="summaryItemTitle">Préparation du POC de mesure d'audience cross-device</span>
+          <span class="summaryItemMode modeCreate">+ Nouveau</span>
+          <span class="summaryItemArrow">↓</span>
+        </a>
+        <a class="summaryItem" href="#subj-d">
+          <span class="summaryItemTitle">Suivi commercial Free Mobile — premier point</span>
+          <span class="summaryItemMode modeCreate">+ Nouveau</span>
+          <span class="summaryItemArrow">↓</span>
+        </a>
+        <a class="summaryItem" href="#subj-e">
+          <span class="summaryItemTitle">Anecdote sur le café cassé en salle de réunion</span>
+          <span class="summaryItemMode modeCreate">+ Nouveau</span>
+          <span class="summaryItemArrow">↓</span>
+        </a>
+      </nav>
+
+      <div class="subjectsList">
+
+        <!-- Row A : create new + existing review + existing section + high confidence + reasoning + responsibility -->
+        <div class="subjectRow" id="subj-a">
+          <div class="subjectHeader">
+            <span class="modeTag modeCreate">+ Nouveau</span>
+            <span class="statusTag">EN COURS</span>
+            <span class="subjectTitle">Migration de l'API V2 vers le nouveau gateway</span>
+          </div>
+          <p class="subjectMeta">
+            <strong>Création d'un sujet</strong>
+            <span class="subjectMetaSep">·</span>Ajouté le 16/04/2026
+            <span class="subjectMetaSep">·</span>Source : Daily Jeudi 16/04
+          </p>
+          <p class="situation">Le device Android d'Orange ne répond plus correctement après la mise à jour 4.12. Maxime investigue côté gateway.</p>
+          <p class="reasoning">Sujet jamais évoqué auparavant dans la review Orange — création recommandée.</p>
+          <div class="routing">
+            <div class="routingField">
+              <label>Review de destination</label>
+              <select>
+                <option>➕ Nouvelle review…</option>
+                <option selected>Copil ORANGE x FTV</option>
+                <option>Suivi Hebdo TV</option>
+                <option>Copil Amazon</option>
+              </select>
+            </div>
+            <div class="routingField">
+              <label>Section</label>
+              <select>
+                <option>➕ Nouvelle section…</option>
+                <option selected>Tech &amp; Backend</option>
+                <option>Produit</option>
+                <option>RUN</option>
+              </select>
+            </div>
+          </div>
+          <label class="skipToggle">
+            <input type="checkbox" />
+            <span>Ignorer ce sujet</span>
+          </label>
+        </div>
+
+        <!-- Row B : update existing subject + medium confidence + updateBox visible -->
+        <div class="subjectRow is-update" id="subj-b">
+          <div class="subjectHeader">
+            <span class="modeTag modeUpdate">↻ Mise à jour</span>
+            <span class="statusTag">RÉSOLU</span>
+            <span class="subjectTitle">Bug lecture HDR sur l'app Android Orange</span>
+          </div>
+          <p class="subjectMeta">
+            <strong>Mise à jour de sujet existant</strong>
+            <span class="subjectMetaSep">·</span>Mis à jour le 16/04/2026
+            <span class="subjectMetaSep">·</span>Source : Daily Jeudi 16/04
+          </p>
+          <p class="situation">Patch déployé hier soir, à confirmer côté QA Orange.</p>
+          <p class="reasoning">Le sujet "Bug lecture HDR Android" existe déjà dans cette section — l'IA propose une mise à jour de statut.</p>
+          <div class="updateBox">
+            <strong>Sujet existant ciblé :</strong>
+            <span>Bug lecture HDR sur l'app Android Orange</span>
+            <span class="updateStatus">EN COURS</span>
+          </div>
+          <div class="routing">
+            <div class="routingField">
+              <label>Review de destination</label>
+              <select>
+                <option>➕ Nouvelle review…</option>
+                <option selected>Copil ORANGE x FTV</option>
+                <option>Suivi Hebdo TV</option>
+              </select>
+            </div>
+            <div class="routingField">
+              <label>Section</label>
+              <select>
+                <option>➕ Nouvelle section…</option>
+                <option selected>RUN</option>
+                <option>Tech &amp; Backend</option>
+              </select>
+            </div>
+            <div class="routingField routingFieldFull">
+              <label>Que faire de ce sujet ?</label>
+              <div class="modeChoice">
+                <label class="modeRadio"><input type="radio" name="mode-b" /><span>Créer un nouveau sujet</span></label>
+                <label class="modeRadio"><input type="radio" name="mode-b" checked /><span>Mettre à jour un sujet existant</span></label>
+                <select class="select">
+                  <option selected>Bug lecture HDR sur l'app Android Orange</option>
+                  <option>Bug lecture HDR (variant iOS)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <label class="skipToggle">
+            <input type="checkbox" />
+            <span>Ignorer ce sujet</span>
+          </label>
+        </div>
+
+        <!-- Row C : create new + existing review + NEW section input shown + low confidence + no reasoning -->
+        <div class="subjectRow" id="subj-c">
+          <div class="subjectHeader">
+            <span class="modeTag modeCreate">+ Nouveau</span>
+            <span class="statusTag">À CADRER</span>
+            <span class="subjectTitle">Préparation du POC de mesure d'audience cross-device</span>
+          </div>
+          <p class="subjectMeta">
+            <strong>Création d'un sujet</strong>
+            <span class="subjectMetaSep">·</span>Ajouté le 16/04/2026
+            <span class="subjectMetaSep">·</span>Source : Daily Jeudi 16/04
+          </p>
+          <p class="situation">Mentionné brièvement à 32 min : "il faudrait qu'on cadre un POC d'ici fin avril".</p>
+          <div class="routing">
+            <div class="routingField">
+              <label>Review de destination</label>
+              <select>
+                <option>➕ Nouvelle review…</option>
+                <option selected>Copil ORANGE x FTV</option>
+                <option>Suivi Partenariat</option>
+              </select>
+            </div>
+            <div class="routingField">
+              <label>Section</label>
+              <select>
+                <option selected>➕ Nouvelle section…</option>
+                <option>Tech &amp; Backend</option>
+                <option>RUN</option>
+              </select>
+              <input type="text" placeholder="Nom de la nouvelle section" value="POC &amp; Innovation" />
+            </div>
+          </div>
+          <label class="skipToggle">
+            <input type="checkbox" />
+            <span>Ignorer ce sujet</span>
+          </label>
+        </div>
+
+        <!-- Row D : create new + NEW review + new section + medium confidence -->
+        <div class="subjectRow" id="subj-d">
+          <div class="subjectHeader">
+            <span class="modeTag modeCreate">+ Nouveau</span>
+            <span class="statusTag">EN COURS</span>
+            <span class="subjectTitle">Suivi commercial Free Mobile — premier point</span>
+          </div>
+          <p class="subjectMeta">
+            <strong>Création d'un sujet</strong>
+            <span class="subjectMetaSep">·</span>Ajouté le 16/04/2026
+            <span class="subjectMetaSep">·</span>Source : Daily Jeudi 16/04
+          </p>
+          <p class="situation">Free demande un kick-off d'intégration TV avant le 30/04.</p>
+          <p class="reasoning">Aucune review existante ne couvre Free — l'IA propose la création d'une review dédiée.</p>
+          <div class="routing">
+            <div class="routingField">
+              <label>Review de destination</label>
+              <select>
+                <option selected>➕ Nouvelle review…</option>
+                <option>Copil ORANGE x FTV</option>
+                <option>Copil Amazon</option>
+              </select>
+              <input type="text" placeholder="Titre de la nouvelle review" value="Copil Free x FTV" />
+            </div>
+            <div class="routingField">
+              <label>Section</label>
+              <span class="hint">La nouvelle review aura cette section :</span>
+              <input type="text" placeholder="Nom de la nouvelle section" value="Onboarding" />
+            </div>
+          </div>
+          <label class="skipToggle">
+            <input type="checkbox" />
+            <span>Ignorer ce sujet</span>
+          </label>
+        </div>
+
+        <!-- Row E : skipped state -->
+        <div class="subjectRow is-skipped" id="subj-e">
+          <div class="subjectHeader">
+            <span class="modeTag modeCreate">+ Nouveau</span>
+            <span class="statusTag">À RANGER</span>
+            <span class="subjectTitle">Anecdote sur le café cassé en salle de réunion</span>
+          </div>
+          <p class="subjectMeta">
+            <strong>Création d'un sujet</strong>
+            <span class="subjectMetaSep">·</span>Ajouté le 16/04/2026
+            <span class="subjectMetaSep">·</span>Source : Daily Jeudi 16/04
+          </p>
+          <p class="situation">Mentionné en off — pas pertinent pour le suivi.</p>
+          <div class="routing">
+            <div class="routingField">
+              <label>Review de destination</label>
+              <select disabled>
+                <option>➕ Nouvelle review…</option>
+                <option selected>Copil ORANGE x FTV</option>
+              </select>
+            </div>
+            <div class="routingField">
+              <label>Section</label>
+              <select disabled>
+                <option selected>RUN</option>
+              </select>
+            </div>
+          </div>
+          <label class="skipToggle">
+            <input type="checkbox" checked />
+            <span>Ignorer ce sujet</span>
+          </label>
+        </div>
+
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-secondary" type="button">Annuler</button>
+        <button class="btn btn-primary" type="button">Importer (4 sujets)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       CASE 3 — phase: routing — vue VIDE (aucun sujet identifié)
+       ==================================================================== -->
+  <span class="case-label">3 — Phase “routing” — aucun sujet</span>
+  <p class="case-desc">L'IA n'a rien jugé pertinent.</p>
+  <div class="modal-frame">
+    <div class="modal-header">
+      <h2 class="modal-title">Analyser &amp; ranger une transcription <span class="modal-title-source">Impromptu Microsoft Teams Meeting</span></h2>
+      <button class="modal-close" type="button">×</button>
+    </div>
+    <div class="content">
+      <div class="summaryBlock">
+        <strong>Aucun sujet exploitable n'a été détecté dans "Impromptu Microsoft Teams Meeting".</strong>
+      </div>
+      <div class="subjectsList">
+        <p class="hint">L'IA n'a identifié aucun sujet digne d'un suivi dans ce contenu.</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-secondary" type="button">Annuler</button>
+        <button class="btn btn-primary" type="button" disabled>Importer (0 sujet)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       CASE 4 — phase: applying
+       ==================================================================== -->
+  <span class="case-label">4 — Phase “applying”</span>
+  <p class="case-desc">Persistance en cours après clic sur "Importer".</p>
+  <div class="modal-frame">
+    <div class="modal-header">
+      <h2 class="modal-title">Analyser &amp; ranger une transcription <span class="modal-title-source">Daily Jeudi 16/04</span></h2>
+      <button class="modal-close" type="button">×</button>
+    </div>
+    <div class="content">
+      <div class="loading">
+        <div class="spinner"></div>
+        <p class="spinner-msg">Import en cours…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       CASE 5 — phase: done (succès simple)
+       ==================================================================== -->
+  <span class="case-label">5 — Phase “done” — succès</span>
+  <p class="case-desc">Tout s'est bien passé.</p>
+  <div class="modal-frame">
+    <div class="modal-header">
+      <h2 class="modal-title">Analyser &amp; ranger une transcription <span class="modal-title-source">Daily Jeudi 16/04</span></h2>
+      <button class="modal-close" type="button">×</button>
+    </div>
+    <div class="content">
+      <div class="done">
+        <p class="doneTitle">Import terminé ✓</p>
+        <p class="doneHint">3 sujets ajoutés · 1 sujet mis à jour · 1 review créée · 2 sections créées</p>
+        <div class="actions" style="border:none; padding-top: var(--spacing-md);">
+          <button class="btn btn-primary" type="button">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       CASE 6 — phase: done (succès partiel avec erreurs)
+       ==================================================================== -->
+  <span class="case-label">6 — Phase “done” — succès partiel</span>
+  <p class="case-desc">Au moins une erreur lors de l'import.</p>
+  <div class="modal-frame">
+    <div class="modal-header">
+      <h2 class="modal-title">Analyser &amp; ranger une transcription <span class="modal-title-source">Daily Jeudi 16/04</span></h2>
+      <button class="modal-close" type="button">×</button>
+    </div>
+    <div class="content">
+      <div class="done">
+        <p class="doneTitle">Import terminé ✓</p>
+        <p class="doneHint">2 sujets ajoutés · 1 review créée</p>
+        <p class="doneError">2 erreurs — voir la console pour les détails.</p>
+        <div class="actions" style="border:none; padding-top: var(--spacing-md);">
+          <button class="btn btn-primary" type="button">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       CASE 7 — phase: error
+       ==================================================================== -->
+  <span class="case-label">7 — Phase “error”</span>
+  <p class="case-desc">Erreur bloquante (analyse ou import).</p>
+  <div class="modal-frame">
+    <div class="modal-header">
+      <h2 class="modal-title">Analyser &amp; ranger une transcription <span class="modal-title-source">Daily Jeudi 16/04</span></h2>
+      <button class="modal-close" type="button">×</button>
+    </div>
+    <div class="content">
+      <div class="error">
+        <p class="errTitle">Une erreur est survenue</p>
+        <p class="spinner-msg">Le service IA n'a pas répondu dans le temps imparti. Réessaie dans quelques instants.</p>
+        <div class="actions" style="border:none; padding-top: var(--spacing-md);">
+          <button class="btn btn-secondary" type="button">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
