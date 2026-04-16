@@ -27,7 +27,12 @@ export function formatJiraTitle(key: string, summary: string): string {
  * Returns the original title if no prefix found.
  */
 export function stripJiraKey(title: string): string {
-  return title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '');
+  // Remove bracketed format: [KEY-123] Summary
+  const stripped = title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '');
+  if (stripped !== title) return stripped;
+  // Remove bare format: KEY-123 — Summary  or  KEY-123 Summary
+  return title.replace(/^[A-Z][A-Z0-9_]+-\d+\s*[—–\-]\s*/, '')
+              .replace(/^[A-Z][A-Z0-9_]+-\d+\s+/, '');
 }
 
 /**
