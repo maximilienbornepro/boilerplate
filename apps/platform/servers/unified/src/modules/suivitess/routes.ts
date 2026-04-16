@@ -2565,15 +2565,10 @@ Reponds UNIQUEMENT avec un JSON valide :
           }
         }
 
-        // Tag new subjects created from transcript import
-        const situationWithLabel = s.situation
-          ? `📝 Ajouté depuis transcription :\n${s.situation}`
-          : null;
-
         const subject = await db.createSubject(
           sectionId,
           title,
-          situationWithLabel,
+          (s.situation ?? null),
           (s.status || '🔴 à faire'),
           s.responsibility ?? null,
         );
