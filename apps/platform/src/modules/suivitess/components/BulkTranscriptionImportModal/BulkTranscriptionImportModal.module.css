@@ -20,7 +20,13 @@
   flex: 1;
 }
 
-.emptyTitle,
+.emptyTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin: 0;
+}
+
 .doneTitle {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
@@ -43,30 +49,29 @@
 
 .summary,
 .summaryBlock {
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-secondary);
-  border-left: 3px solid var(--accent-primary);
-  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) 0;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  color: var(--text-muted);
+  margin: 0;
 }
 
 /* === Step 1 : source picker === */
 
 .sourceList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
+  display: grid;
+  grid-template-columns: 18px max-content max-content 1fr;
+  gap: var(--spacing-xs) var(--spacing-xl);
   overflow-y: auto;
   flex: 1;
   padding-right: var(--spacing-xs);
 }
 
 .sourceItem {
-  display: flex;
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
   align-items: center;
-  gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -79,38 +84,78 @@
   border-color: var(--accent-primary);
 }
 
+.sourceItem:hover .sourceTitle {
+  color: var(--text-primary);
+}
+
+.sourceItem input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--bg-input);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.sourceItem input[type="radio"]:hover {
+  border-color: var(--accent-primary);
+}
+
+.sourceItem input[type="radio"]:checked {
+  border-color: var(--accent-primary);
+}
+
+.sourceItem input[type="radio"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+
 .sourceItemSelected {
   border-color: var(--accent-primary);
   background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
 }
 
 .sourceTitle {
-  flex: 1;
   min-width: 0;
   font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  word-break: break-word;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sourceDate {
   font-size: 11px;
   color: var(--text-muted);
   white-space: nowrap;
+  text-align: right;
 }
 
 .providerTag {
-  padding: 1px 8px;
+  padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-size: 10px;
   font-weight: var(--font-weight-bold);
+  font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  background: transparent;
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+  flex-shrink: 0;
 }
-
-.provider_fathom  { background: color-mix(in srgb, #6366f1 18%, transparent); color: #a5b4fc; border: 1px solid #6366f1; }
-.provider_otter   { background: color-mix(in srgb, #3b82f6 18%, transparent); color: #93c5fd; border: 1px solid #3b82f6; }
-.provider_gmail   { background: color-mix(in srgb, #ea4335 18%, transparent); color: #fca5a5; border: 1px solid #ea4335; }
-.provider_outlook { background: color-mix(in srgb, #0078d4 18%, transparent); color: #93c5fd; border: 1px solid #0078d4; }
 
 /* === Step 2 : subject rows === */
 

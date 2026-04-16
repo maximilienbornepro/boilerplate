@@ -180,7 +180,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                   Connecte Fathom, Otter, Gmail ou Outlook dans Réglages pour voir tes transcriptions et mails récents apparaître ici.
                 </p>
                 <div className={styles.actions}>
-                  <Button variant="primary" onClick={onClose}>Fermer</Button>
+                  <Button variant="primary" onClick={() => { onClose(); window.location.href = '/reglages'; }}>Connecter une IA</Button>
                 </div>
               </div>
             ) : (
@@ -201,8 +201,8 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                         checked={selectedId === s.id}
                         onChange={() => setSelectedId(s.id)}
                       />
-                      <span className={`${styles.providerTag} ${styles[`provider_${s.provider}`]}`}>{s.provider}</span>
                       <span className={styles.sourceTitle}>{s.title}</span>
+                      <span className={styles.providerTag}>{s.provider}</span>
                       {s.date && <span className={styles.sourceDate}>{formatDate(s.date)}</span>}
                     </label>
                   ))}
@@ -210,7 +210,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                 <div className={styles.actions}>
                   <Button variant="secondary" onClick={onClose}>Annuler</Button>
                   <Button variant="primary" onClick={handleAnalyze} disabled={!selectedId}>
-                    Analyser →
+                    Analyser
                   </Button>
                 </div>
               </>
