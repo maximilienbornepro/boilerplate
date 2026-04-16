@@ -36,6 +36,79 @@ function serializeFields(fields: Record<string, JiraFieldMeta>): Array<{
     }));
 }
 
+/**
+ * Group Slack messages by (channel + day) into digest items.
+ * Each digest aggregates all messages from one channel on one calendar day
+ * so the AI analyses a full conversation context, not individual messages.
+ * The `id` is `slack:channelId:YYYY-MM-DD` and stays stable for dedup.
+ */
+function groupSlackMessagesByDay(
+  messages: Array<{
+    channelId: string;
+    channelName: string | null;
+    messageTs: string;
+    senderName: string | null;
+    text: string;
+  }>,
+): Array<{
+  id: string;
+  provider: 'slack';
+  title: string;
+  date: string;
+  preview: string;
+  participants: string[];
+}> {
+  const groups = new Map<string, typeof messages>();
+
+  for (const m of messages) {
+    const dateStr = new Date(parseFloat(m.messageTs) * 1000)
+      .toISOString().slice(0, 10); // YYYY-MM-DD
+    const key = `${m.channelId}:${dateStr}`;
+    const group = groups.get(key) || [];
+    group.push(m);
+    groups.set(key, group);
+  }
+
+  const items: Array<{
+    id: string;
+    provider: 'slack';
+    title: string;
+    date: string;
+    preview: string;
+    participants: string[];
+  }> = [];
+
+  for (const [key, msgs] of groups) {
+    const [channelId, dateStr] = key.split(':');
+    const channelName = msgs[0]?.channelName || channelId;
+    const participants = [...new Set(msgs.map(m => m.senderName).filter(Boolean) as string[])];
+
+    // Build a readable date label
+    const dateLabel = new Date(dateStr + 'T00:00:00')
+      .toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    // Sort messages chronologically and build a preview
+    const sorted = msgs.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs));
+    const preview = sorted
+      .slice(0, 5)
+      .map(m => `[${m.senderName || '?'}] ${m.text.slice(0, 80)}`)
+      .join('\n');
+
+    items.push({
+      id: `slack:${channelId}:${dateStr}`,
+      provider: 'slack',
+      title: `#${channelName} — ${dateLabel} (${msgs.length} messages)`,
+      date: dateStr + 'T12:00:00.000Z',
+      preview,
+      participants,
+    });
+  }
+
+  // Sort by date desc
+  items.sort((a, b) => b.date.localeCompare(a.date));
+  return items;
+}
+
 export function createRoutes(): Router {
   const router = Router();
 
@@ -2011,16 +2084,9 @@ Reponds UNIQUEMENT avec un JSON valide :
       excludeImportedFor: req.user!.id,
     });
 
-    // Map to BulkSourceItem format
-    const items = messages.map(m => ({
-      id: `${m.channelId}/${m.messageTs}`,
-      provider: 'slack' as const,
-      title: `${m.senderName || 'Inconnu'} · #${m.channelName || m.channelId}`,
-      date: new Date(parseFloat(m.messageTs) * 1000).toISOString(),
-      preview: m.text.slice(0, 300),
-      participants: m.senderName ? [m.senderName] : [],
-    }));
-
+    // Group messages by channel + day into digest items so the AI can
+    // analyse a full day's conversation at once rather than message by message.
+    const items = groupSlackMessagesByDay(messages);
     res.json(items);
   }));
 
@@ -2124,15 +2190,8 @@ Reponds UNIQUEMENT avec un JSON valide :
           days: Math.min(30, days),
           excludeImportedFor: userId,
         });
-        for (const m of slackMsgs) {
-          items.push({
-            id: `${m.channelId}/${m.messageTs}`,
-            provider: 'slack' as const,
-            title: `${m.senderName || 'Inconnu'} · #${m.channelName || m.channelId}`,
-            date: new Date(parseFloat(m.messageTs) * 1000).toISOString(),
-            preview: m.text.slice(0, 300),
-          });
-        }
+        const slackDigests = groupSlackMessagesByDay(slackMsgs);
+        items.push(...slackDigests);
       }
     } catch { /* Slack collector may not be initialized */ }
 
@@ -2192,20 +2251,29 @@ Reponds UNIQUEMENT avec un JSON valide :
         const { getGmailEmailBody } = await import('./emailService.js');
         transcript = await getGmailEmailBody(userId, id);
       } else if (source === 'slack') {
-        // For Slack, the id is "channelId/messageTs". We build a transcript
-        // from stored Slack messages in the same channel, around the same time.
+        // The id is "slack:channelId:YYYY-MM-DD" (digest format).
+        // Build a transcript from all messages of that channel on that day.
         const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
         const slackConfig = await getSlackConfig(userId);
         if (!slackConfig) {
           res.status(400).json({ error: 'Slack non configuré. Utilisez l\'extension Chrome pour connecter Slack.' });
           return;
         }
-        const [channelId] = id.split('/');
+        const parts = id.split(':');
+        const channelId = parts[1] || parts[0];
+        const dateFilter = parts[2]; // YYYY-MM-DD or undefined
         const messages = await getSlackMessages(slackConfig.id, {
           days: slackConfig.daysToFetch,
           channelId,
         });
-        transcript = messages
+        // Filter to the specific day if provided
+        const filtered = dateFilter
+          ? messages.filter(m => {
+              const d = new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10);
+              return d === dateFilter;
+            })
+          : messages;
+        transcript = filtered
           .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
           .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
           .join('\n');
