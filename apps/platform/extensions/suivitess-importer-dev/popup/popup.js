@@ -369,6 +369,10 @@
     } else if (provider === 'slack') {
       providerBadge.textContent = 'Slack';
       providerBadge.className = 'badge badge-slack';
+      // For Slack, skip the old scraping flow entirely — the server-side
+      // collector handles message fetching. Just show the Slack connect
+      // section and hide the doc/mode/items sections.
+      return;
     } else {
       providerBadge.textContent = 'Page non supportee';
       providerBadge.className = 'badge badge-unknown';
@@ -376,10 +380,10 @@
       return;
     }
 
-    // Load documents
+    // Load documents (Outlook only — Slack uses the server-side collector)
     await loadDocuments();
 
-    // Scrape items
+    // Scrape items (Outlook only)
     try {
       items = await scrapeItems();
       if (items.length === 0) {
