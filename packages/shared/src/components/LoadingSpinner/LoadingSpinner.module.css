@@ -3,7 +3,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-3);
+  gap: var(--spacing-sm);
   padding: var(--spacing-lg);
 }
 
@@ -12,40 +12,52 @@
   background: var(--bg-primary);
 }
 
-.spinner {
-  border-radius: var(--radius-full);
-  border-style: solid;
-  border-color: var(--border-color);
-  border-top-color: var(--accent-primary);
-  animation: spin 0.8s linear infinite;
+.logo {
+  color: var(--accent-primary);
 }
 
-.sm {
-  width: var(--spacing-5);
-  height: var(--spacing-5);
-  border-width: var(--spacing-2xs);
+.logo.sm { width: 28px; height: 21px; }
+.logo.md { width: 40px; height: 30px; }
+.logo.lg { width: 56px; height: 42px; }
+
+.logoSvg {
+  width: 100%;
+  height: 100%;
 }
 
-.md {
-  width: var(--spacing-xl);
-  height: var(--spacing-xl);
-  border-width: var(--radius-1);
+/* > chevron: draw stroke */
+.chevron {
+  stroke-dasharray: 44;
+  stroke-dashoffset: 44;
+  animation: drawChevron 1.2s ease forwards infinite;
 }
 
-.lg {
-  width: var(--spacing-2xl);
-  height: var(--spacing-2xl);
-  border-width: var(--spacing-xs);
+/* _ underscore: draw stroke after chevron */
+.underscore {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+  animation: drawUnderscore 1.2s ease forwards infinite;
 }
 
 .message {
   color: var(--text-muted);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-xs);
   margin: 0;
+  font-family: var(--font-mono);
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+@keyframes drawChevron {
+  0% { stroke-dashoffset: 44; opacity: 0.3; }
+  10% { opacity: 1; }
+  50% { stroke-dashoffset: 0; opacity: 1; }
+  80% { stroke-dashoffset: 0; opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0.3; }
+}
+
+@keyframes drawUnderscore {
+  0%, 40% { stroke-dashoffset: 14; opacity: 0.3; }
+  50% { opacity: 1; }
+  70% { stroke-dashoffset: 0; opacity: 1; }
+  80% { stroke-dashoffset: 0; opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0.3; }
 }

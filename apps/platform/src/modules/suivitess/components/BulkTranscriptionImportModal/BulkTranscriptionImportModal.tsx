@@ -155,7 +155,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
   // ============ Render ============
   return (
-    <Modal title="✨ Analyser & ranger une transcription" onClose={onClose} size="xl">
+    <Modal title="Analyser & ranger une transcription" onClose={onClose} size="xl">
       <div className={styles.content}>
         {phase === 'error' && (
           <div className={styles.error}>

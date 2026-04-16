@@ -14,8 +14,10 @@
   flex-direction: column;
   gap: var(--spacing-sm);
   align-items: center;
+  justify-content: center;
   text-align: center;
   padding: var(--spacing-xl);
+  flex: 1;
 }
 
 .emptyTitle,
