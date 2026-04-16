@@ -443,7 +443,7 @@ export function TaskBlock({
             {task.type === 'bug'  && <span className={styles.bugBadge}>BUG</span>}
           </div>
           <span className={styles.taskTitle}>{stripJiraKey(task.title)}</span>
-          {task.description && task.source === 'jira' && /^\d+\.\d+/.test(task.description) && (
+          {task.description && task.source === 'jira' && (
             <span className={styles.versionBadge}>{task.description}</span>
           )}
         </div>
@@ -456,10 +456,10 @@ export function TaskBlock({
         </span>
       )}
 
-      {/* Assignee badge — regular tasks only */}
+      {/* Assignee badge — regular tasks only, green pill with first name */}
       {!isContainer && task.assignee && (
-        <span className={styles.assigneeBadge} title={`Assignee: ${task.assignee}`}>
-          {task.assignee.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+        <span className={styles.assigneeBadge} title={task.assignee}>
+          {task.assignee.split(' ')[0]}
         </span>
       )}
 

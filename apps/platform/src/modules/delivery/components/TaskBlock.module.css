@@ -441,18 +441,22 @@ a.jiraKeyBadge:hover {
   color: var(--text-inverse);
 }
 
-/* Assignee badge */
+/* Assignee badge — green pill with first name */
 .assigneeBadge {
   position: absolute;
-  bottom: 2px;
-  right: 4px;
-  background: var(--gray-600);
-  color: var(--text-inverse);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 7px;
+  bottom: 3px;
+  left: 6px;
+  background: #10b981;
+  color: #fff;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 8px;
   font-weight: var(--font-weight-bold);
   cursor: default;
+  white-space: nowrap;
+  max-width: calc(100% - 80px);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Rename dialog */
