@@ -163,8 +163,12 @@ export interface SanityCheckResult {
  * Returns null if the title does not follow the pattern.
  */
 export function parseExternalKey(title: string): string | null {
-  const match = title.match(/^\[([A-Z][A-Z0-9_]+-[A-Za-z0-9]+)\]/);
-  return match ? match[1] : null;
+  // Bracketed format: [KEY-123]
+  const bracketed = title.match(/^\[([A-Z][A-Z0-9_]+-[A-Za-z0-9]+)\]/);
+  if (bracketed) return bracketed[1];
+  // Bare format: KEY-123 at the start (delivery-process legacy)
+  const bare = title.match(/^([A-Z][A-Z0-9_]+-\d+)\b/);
+  return bare ? bare[1] : null;
 }
 
 /** Deprecated alias kept for backwards compatibility — use parseExternalKey. */

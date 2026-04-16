@@ -33,9 +33,20 @@ export function stripJiraKey(title: string): string {
 /**
  * Extracts the Jira key from a title formatted as "[PROJ-123] Summary".
  */
+/**
+ * Extracts a Jira / external key from a task title.
+ * Supports two formats:
+ *   - "[KEY-123] Summary"   → "KEY-123"  (boilerplate import format)
+ *   - "KEY-123 — Summary"   → "KEY-123"  (delivery-process legacy format)
+ *   - "KEY-123"              → "KEY-123"  (key-only)
+ */
 export function extractJiraKey(title: string): string | null {
-  const match = title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
-  return match ? match[1] : null;
+  // Try bracketed format first : [KEY-123]
+  const bracketed = title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+  if (bracketed) return bracketed[1];
+  // Then try bare format : KEY-123 at the start of the string
+  const bare = title.match(/^([A-Z][A-Z0-9_]+-\d+)\b/);
+  return bare ? bare[1] : null;
 }
 
 /**

@@ -64,7 +64,7 @@ export function createDeliveryRoutes(): Router {
         const endCol = pos?.endCol ?? (startCol + 1);
         const colSpan = endCol - startCol;
 
-        const keyMatch = task.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+        const keyMatch = task.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
         const jiraKey = keyMatch ? keyMatch[1] : task.title.slice(0, 20);
         const titleClean = task.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim() || task.title;
 
@@ -80,7 +80,7 @@ export function createDeliveryRoutes(): Router {
         const children = visibleTasks
           .filter(c => c.parentTaskId === task.id)
           .map(c => {
-            const cKey = c.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+            const cKey = c.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
             return {
               jiraKey: cKey ? cKey[1] : '',
               title: c.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim(),
@@ -208,7 +208,7 @@ export function createDeliveryRoutes(): Router {
       if (ctx) {
         const keyMap = new Map<string, db.TaskRow>();
         for (const t of jiraTasks) {
-          const match = t.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+          const match = t.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
           if (match) keyMap.set(match[1], t);
         }
         if (keyMap.size > 0) {
@@ -280,7 +280,7 @@ export function createDeliveryRoutes(): Router {
       if (ctx) {
         const keyMap = new Map<string, db.TaskRow>();
         for (const t of jiraTasks) {
-          const match = t.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+          const match = t.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
           if (match) keyMap.set(match[1], t);
         }
         if (keyMap.size > 0) {

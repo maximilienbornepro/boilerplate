@@ -244,9 +244,9 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
       for (const t of visibleTasks) {
         const pos = positionMap.get(t.id);
         if (!pos) continue;
-        const keyMatch = t.title.match(/^\[([A-Z][A-Z0-9_]+-)/);
-        if (keyMatch) {
-          const projectKey = keyMatch[1].replace(/-$/, '');
+        const key = extractJiraKey(t.title);
+        if (key) {
+          const projectKey = key.split('-')[0];
           if (!projectToRow.has(projectKey)) {
             projectToRow.set(projectKey, pos.row);
           }
@@ -260,8 +260,8 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
         // Try to place unsaved tasks in the same row as their Jira project
         let defaultRow = newTaskRowByCol[defaultCol] || 0;
         if (!savedPosition) {
-          const projMatch = taskData.title.match(/^\[([A-Z][A-Z0-9_]+-)/);
-          const projKey = projMatch ? projMatch[1].replace(/-$/, '') : null;
+          const extKey = extractJiraKey(taskData.title);
+          const projKey = extKey ? extKey.split('-')[0] : null;
           if (projKey && projectToRow.has(projKey)) {
             defaultRow = projectToRow.get(projKey)!;
           } else {
