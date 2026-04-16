@@ -34,6 +34,8 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const exportsRef = useRef<HTMLDivElement>(null);
   const [showImports, setShowImports] = useState(false);
   const importsRef = useRef<HTMLDivElement>(null);
+  const [showActions, setShowActions] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
   const [importInitialProvider, setImportInitialProvider] = useState<string | undefined>(undefined);
   const [importProviders, setImportProviders] = useState<{ outlook: boolean; gmail: boolean; transcription: boolean }>({ outlook: false, gmail: false, transcription: false });
 
@@ -65,6 +67,17 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showExports]);
+
+  useEffect(() => {
+    if (!showActions) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+        setShowActions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showActions]);
 
   useEffect(() => {
     if (!showImports) return;
@@ -144,200 +157,100 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
         >
           Historique
         </button>
-        <button
-          className="module-header-btn"
-          onClick={() => {
-            if (connectedAIs.length > 0) {
-              setShowAnalysis(true);
-            } else {
-              navigate('/reglages');
-            }
-          }}
-          title={connectedAIs.length > 0
-            ? 'Analyser les sujets et proposer la création de tickets (Jira/Notion/Roadmap)'
-            : 'Connectez une IA dans Réglages pour activer l\'analyse'}
-        >
-          Analyser
-        </button>
-        {connectedAIs.length > 0 ? (
-          <span
-            className="suivitess-ai-picker"
-            title="IA utilisée pour la reformulation et l'analyse des sujets"
-          >
-            <svg className="suivitess-ai-picker__icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M12 2 L13.5 8.5 L20 10 L13.5 11.5 L12 18 L10.5 11.5 L4 10 L10.5 8.5 Z" />
-              <path d="M19 16 L19.7 18.3 L22 19 L19.7 19.7 L19 22 L18.3 19.7 L16 19 L18.3 18.3 Z" />
-            </svg>
-            <span className="suivitess-ai-picker__label">IA</span>
-            <select
-              className="suivitess-ai-picker__select"
-              value={selectedAI}
-              onChange={e => setSelectedAI(e.target.value)}
-              aria-label="Connecteur IA utilisé pour la reformulation et l'analyse"
-            >
-              {connectedAIs.map(ai => (
-                <option key={ai.id} value={ai.id}>{ai.label}</option>
-              ))}
-            </select>
-          </span>
-        ) : (
-          <button
-            className="module-header-btn"
-            onClick={() => navigate('/reglages')}
-            title="Connectez une IA dans Réglages pour activer la reformulation et l'analyse"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
-              <path d="M12 2 L13.5 8.5 L20 10 L13.5 11.5 L12 18 L10.5 11.5 L4 10 L10.5 8.5 Z" />
-            </svg>
-            Connecter une IA →
-          </button>
-        )}
-        <div ref={importsRef} className="suivitess-exports">
+        <div ref={actionsRef} className="suivitess-exports">
           <button
             type="button"
             className="module-header-btn"
-            onClick={() => {
-              const hasAny = importProviders.transcription || importProviders.gmail || importProviders.outlook;
-              if (hasAny) {
-                setShowImports(v => !v);
-              } else {
-                navigate('/reglages');
-              }
-            }}
+            onClick={() => setShowActions(v => !v)}
             aria-haspopup="menu"
-            aria-expanded={showImports}
-            title={importProviders.transcription || importProviders.gmail || importProviders.outlook
-              ? 'Importer du contenu dans cette review'
-              : 'Connectez Fathom, Otter, Gmail ou Outlook dans Réglages pour importer du contenu'}
+            aria-expanded={showActions}
           >
-            Imports
+            Actions
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
-          {showImports && (
+          {showActions && (
             <div className="suivitess-exports-menu" role="menu">
+              {/* ── Importer ── */}
+              <div className="suivitess-exports-group-title">Importer</div>
               {importProviders.transcription && (
-                <button
-                  type="button"
-                  className="suivitess-exports-item"
-                  onClick={() => openImport()}
-                >
+                <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); openImport(); }}>
                   Transcription
                 </button>
               )}
-              {importProviders.transcription && (importProviders.gmail || importProviders.outlook) && <div className="suivitess-exports-divider" />}
               {importProviders.gmail && (
-                <button
-                  type="button"
-                  className="suivitess-exports-item"
-                  onClick={() => openImport('gmail')}
-                >
+                <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); openImport('gmail'); }}>
                   Gmail
                 </button>
               )}
               {importProviders.outlook && (
-                <button
-                  type="button"
-                  className="suivitess-exports-item"
-                  onClick={() => openImport('outlook')}
-                >
+                <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); openImport('outlook'); }}>
                   Outlook
                 </button>
               )}
               {!importProviders.transcription && !importProviders.gmail && !importProviders.outlook && (
-                <button
-                  type="button"
-                  className="suivitess-exports-item"
-                  onClick={() => { setShowImports(false); navigate('/reglages'); }}
-                >
-                  Configurer un import →
+                <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); navigate('/reglages'); }}>
+                  Configurer un import
+                </button>
+              )}
+
+              <div className="suivitess-exports-divider" />
+
+              {/* ── Exporter ── */}
+              <div className="suivitess-exports-group-title">Exporter</div>
+              {exportJsonFn && (
+                <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); exportJsonFn(); }}>
+                  JSON
+                </button>
+              )}
+              {copyFn && (
+                <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); copyFn(); }}>
+                  Tableau
+                </button>
+              )}
+
+              <div className="suivitess-exports-divider" />
+
+              {/* ── IA ── */}
+              <div className="suivitess-exports-group-title">
+                IA{connectedAIs.length === 1 ? ` · ${connectedAIs[0].label}` : ''}
+              </div>
+              {connectedAIs.length > 0 ? (
+                <>
+                  {connectedAIs.length > 1 && (
+                    <div className="suivitess-exports-item" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'default' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)' }}>Modèle</span>
+                      <select
+                        className="suivitess-ai-picker__select"
+                        value={selectedAI}
+                        onChange={e => setSelectedAI(e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        style={{ flex: 1 }}
+                      >
+                        {connectedAIs.map(ai => (
+                          <option key={ai.id} value={ai.id}>{ai.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); setShowAnalysis(true); }}>
+                    Analyser les sujets
+                  </button>
+                  {docId && (
+                    <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); setShowEmailModal(true); }}>
+                      Générer un email récap
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); navigate('/reglages'); }}>
+                  Connecter une IA
                 </button>
               )}
             </div>
           )}
         </div>
-        {(exportJsonFn || copyFn) && (
-          <div ref={exportsRef} className="suivitess-exports">
-            <button
-              type="button"
-              className="module-header-btn"
-              onClick={() => setShowExports(v => !v)}
-              aria-haspopup="menu"
-              aria-expanded={showExports}
-            >
-              Exports
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            {showExports && (
-              <div className="suivitess-exports-menu" role="menu">
-                {exportJsonFn && (
-                  <button
-                    type="button"
-                    className="suivitess-exports-item"
-                    onClick={() => { exportJsonFn(); setShowExports(false); }}
-                  >
-                    JSON
-                  </button>
-                )}
-                {copyFn && (
-                  <button
-                    type="button"
-                    className="suivitess-exports-item"
-                    onClick={() => { copyFn(); setShowExports(false); }}
-                  >
-                    Tableau
-                  </button>
-                )}
-                {docId && (
-                  <>
-                    <div className="suivitess-exports-divider" />
-                    {connectedAIs.length > 0 ? (
-                      <button
-                        type="button"
-                        className="suivitess-exports-item suivitess-exports-item--featured"
-                        onClick={() => { setShowEmailModal(true); setShowExports(false); }}
-                      >
-                        <span className="suivitess-exports-item__icon" aria-hidden="true">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                            <polyline points="22,6 12,13 2,6" />
-                          </svg>
-                        </span>
-                        <span className="suivitess-exports-item__text">
-                          <strong>Email (avec preview)</strong>
-                          <span className="suivitess-exports-item__hint">Genere un email recap par IA</span>
-                        </span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="suivitess-exports-item suivitess-exports-item--disabled"
-                        onClick={() => { setShowExports(false); navigate('/reglages'); }}
-                        title="Configurez une IA dans Reglages > Connecteurs pour activer l'export email"
-                      >
-                        <span className="suivitess-exports-item__icon" aria-hidden="true">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                            <polyline points="22,6 12,13 2,6" />
-                          </svg>
-                        </span>
-                        <span className="suivitess-exports-item__text">
-                          <strong>Email (avec preview)</strong>
-                          <span className="suivitess-exports-item__hint suivitess-exports-item__hint--cta">
-                            Connecter une IA →
-                          </span>
-                        </span>
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
         {saveFn && (
           <button
             className="module-header-btn module-header-btn-primary"

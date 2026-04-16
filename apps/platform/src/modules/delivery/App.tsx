@@ -105,6 +105,8 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const actionsRef = useRef<HTMLDivElement>(null);
   const [showHistoryMenu, setShowHistoryMenu] = useState(false);
   const historyRef = useRef<HTMLDivElement>(null);
+  const [showBoardSwitcher, setShowBoardSwitcher] = useState(false);
+  const boardSwitcherRef = useRef<HTMLDivElement>(null);
   /** Boards with the same type + overlapping/similar date range — shown as a switcher. */
   const [siblingBoards, setSiblingBoards] = useState<Board[]>([]);
   const [activeConnectors, setActiveConnectors] = useState<ActiveConnector[]>([]);
@@ -140,14 +142,15 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
 
   // Close dropdown menus on outside click
   useEffect(() => {
-    if (!showActionsMenu && !showHistoryMenu) return;
+    if (!showActionsMenu && !showHistoryMenu && !showBoardSwitcher) return;
     const handler = (e: MouseEvent) => {
       if (showActionsMenu && actionsRef.current && !actionsRef.current.contains(e.target as Node)) setShowActionsMenu(false);
       if (showHistoryMenu && historyRef.current && !historyRef.current.contains(e.target as Node)) setShowHistoryMenu(false);
+      if (showBoardSwitcher && boardSwitcherRef.current && !boardSwitcherRef.current.contains(e.target as Node)) setShowBoardSwitcher(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [showActionsMenu, showHistoryMenu]);
+  }, [showActionsMenu, showHistoryMenu, showBoardSwitcher]);
 
   // Load active connectors + Jira site URL + sibling boards on mount
   useEffect(() => {
@@ -625,22 +628,9 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
           <ModuleHeader
             title={board.name}
             onBack={onBack}
-          >
-            {/* Switcher between sibling boards of the same type */}
-            {siblingBoards.length > 0 && (
-              <select
-                className="module-header-btn"
-                value={board.id}
-                onChange={(e) => navigate(`/delivery/${e.target.value}`)}
-                title="Basculer vers un autre board"
-              >
-                <option value={board.id}>{board.name}</option>
-                {siblingBoards.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-            )}
+            titleSlot={undefined}
 
+          >
             {jiraProjects.length >= 2 && (
               <select
                 className="module-header-btn"
@@ -654,70 +644,34 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
               </select>
             )}
 
-            <div ref={actionsRef} className="delivery-actions-dropdown">
-              <button
-                type="button"
-                className="module-header-btn module-header-btn-primary"
-                onClick={() => setShowActionsMenu(v => !v)}
-                aria-haspopup="menu"
-                aria-expanded={showActionsMenu}
-              >
-                Actions
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-              {showActionsMenu && (
-                <div className="delivery-actions-menu" role="menu">
-                  <button
-                    type="button"
-                    className="delivery-actions-item"
-                    onClick={() => {
-                      setShowActionsMenu(false);
-                      setShowAddTask(!showAddTask);
-                    }}
-                  >
-                    + Nouvelle tâche
-                  </button>
-                  <div className="delivery-actions-divider" />
-                  <button
-                    type="button"
-                    className="delivery-actions-item"
-                    onClick={() => {
-                      setShowActionsMenu(false);
-                      if (activeConnectors.length > 0) {
-                        setShowImportModal(true);
-                      } else if (onNavigate) {
-                        onNavigate('/reglages');
-                      }
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    {activeConnectors.length > 0 ? 'Importer des tâches' : 'Importer des tâches → Réglages'}
-                  </button>
-                  <button
-                    type="button"
-                    className="delivery-actions-item"
-                    onClick={() => {
-                      setShowActionsMenu(false);
-                      if (tasks.some(t => t.source && t.source !== 'manual')) {
-                        setShowSanityModal(true);
-                      } else if (onNavigate) {
-                        onNavigate('/reglages');
-                      }
-                    }}
-                  >
-                    ✨ {tasks.some(t => t.source && t.source !== 'manual')
-                      ? 'Vérifier avec l\'IA'
-                      : 'Vérifier avec l\'IA → Réglages'}
-                  </button>
-                </div>
-              )}
-            </div>
+            {siblingBoards.length > 0 && (
+              <div ref={boardSwitcherRef} className="delivery-actions-dropdown">
+                <button
+                  type="button"
+                  className="module-header-btn"
+                  onClick={() => setShowBoardSwitcher(v => !v)}
+                >
+                  Boards
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                {showBoardSwitcher && (
+                  <div className="delivery-actions-menu" role="menu">
+                    {[board, ...siblingBoards].map(b => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        className={`delivery-actions-item ${b.id === board.id ? 'delivery-actions-item--active' : ''}`}
+                        onClick={() => { setShowBoardSwitcher(false); if (b.id !== board.id) navigate(`/delivery/${b.id}`); }}
+                      >
+                        {b.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div ref={historyRef} className="delivery-actions-dropdown">
               <button
@@ -740,9 +694,6 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                     className="delivery-actions-item"
                     onClick={() => { setShowHistoryMenu(false); setShowSnapshotModal(true); }}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-                    </svg>
                     Snapshots
                   </button>
                   {hiddenTaskCount > 0 && (
@@ -753,9 +704,6 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                         className="delivery-actions-item"
                         onClick={() => { setShowHistoryMenu(false); setShowRestoreModal(true); }}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-                        </svg>
                         Restaurer ({hiddenTaskCount})
                       </button>
                     </>
@@ -763,6 +711,65 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                 </div>
               )}
             </div>
+
+            <div ref={actionsRef} className="delivery-actions-dropdown">
+              <button
+                type="button"
+                className="module-header-btn"
+                onClick={() => setShowActionsMenu(v => !v)}
+                aria-haspopup="menu"
+                aria-expanded={showActionsMenu}
+              >
+                Actions
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {showActionsMenu && (
+                <div className="delivery-actions-menu" role="menu">
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      if (activeConnectors.length > 0) {
+                        setShowImportModal(true);
+                      } else if (onNavigate) {
+                        onNavigate('/reglages');
+                      }
+                    }}
+                  >
+                    Importer des tâches
+                  </button>
+
+                  <div className="delivery-actions-divider" />
+
+                  <div className="delivery-actions-group-title">IA</div>
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      if (tasks.some(t => t.source && t.source !== 'manual')) {
+                        setShowSanityModal(true);
+                      } else if (onNavigate) {
+                        onNavigate('/reglages');
+                      }
+                    }}
+                  >
+                    Vérifier avec l'IA
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="module-header-btn module-header-btn-primary"
+              onClick={() => setShowAddTask(!showAddTask)}
+            >
+              + Nouvelle tâche
+            </button>
           </ModuleHeader>
 
           {/* Add task form */}

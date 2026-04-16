@@ -46,7 +46,7 @@
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  min-width: 140px;
+  min-width: 240px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -79,6 +79,15 @@
   height: 1px;
   background: var(--border-color);
   margin: var(--spacing-xs) 0;
+}
+
+.suivitess-exports-group-title {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  cursor: default;
 }
 
 .suivitess-exports-item--featured,

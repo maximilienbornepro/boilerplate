@@ -6,6 +6,8 @@ export interface ModuleHeaderProps {
   title: string;
   /** Optional subtitle or breadcrumb text */
   subtitle?: string;
+  /** Optional content rendered next to the title (e.g. a switcher) */
+  titleSlot?: ReactNode;
   /** Back button handler - if omitted, no back button is shown */
   onBack?: () => void;
   /** Back button label (default: "Retour à la liste") */
@@ -19,6 +21,7 @@ export interface ModuleHeaderProps {
 export function ModuleHeader({
   title,
   subtitle,
+  titleSlot,
   onBack,
   backLabel = 'Retour à la liste',
   children,
@@ -47,7 +50,10 @@ export function ModuleHeader({
           </button>
         )}
         <div className={styles.titleGroup}>
-          <h1 className={styles.title}>{title}</h1>
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>{title}</h1>
+            {titleSlot}
+          </div>
           {subtitle && <span className={styles.subtitle}>{subtitle}</span>}
         </div>
       </div>

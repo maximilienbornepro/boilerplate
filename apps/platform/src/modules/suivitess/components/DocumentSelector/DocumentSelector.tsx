@@ -179,7 +179,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
           onClick={() => setShowBulkImport(true)}
           title="Importer les transcriptions et mails récents — l'IA propose la review de destination"
         >
-          ✨ Importer & ranger
+          Importer & ranger
         </button>
         <button
           className="module-header-btn module-header-btn-primary"

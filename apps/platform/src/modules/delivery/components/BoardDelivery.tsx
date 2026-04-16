@@ -122,7 +122,7 @@ export function BoardDelivery({
             <p className={styles.emptyTitle}>Aucune tâche</p>
             <p className={styles.emptyHint}>Créer votre première tâche pour commencer</p>
             <Button variant="primary" onClick={onAddTask}>
-              + Tâche
+              + Nouvelle tâche
             </Button>
           </div>
         </Card>
