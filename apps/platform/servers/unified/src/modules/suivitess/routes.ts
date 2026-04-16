@@ -2097,6 +2097,30 @@ Reponds UNIQUEMENT avec un JSON valide :
     res.json({ success: true });
   }));
 
+  // ==================== Outlook Collector ====================
+
+  // Push scraped Outlook emails from the Chrome extension.
+  router.post('/outlook/sync', asyncHandler(async (req, res) => {
+    const { emails } = req.body as { emails?: Array<{
+      id: string; subject: string; sender: string; date: string;
+      preview: string; body?: string;
+    }> };
+    if (!Array.isArray(emails) || emails.length === 0) {
+      res.status(400).json({ error: 'Aucun email à synchroniser' });
+      return;
+    }
+    const { storeOutlookEmails } = await import('./slackCollectorService.js');
+    const result = await storeOutlookEmails(req.user!.id, emails.slice(0, 200));
+    res.json(result);
+  }));
+
+  // Get Outlook collector status.
+  router.get('/outlook/status', asyncHandler(async (req, res) => {
+    const { getOutlookMessageCount } = await import('./slackCollectorService.js');
+    const count = await getOutlookMessageCount(req.user!.id);
+    res.json({ configured: count > 0, messageCount: count });
+  }));
+
   // ==================== Bulk transcription import (list-level) ====================
 
   // Aggregate calls + emails across every connected provider.
@@ -2195,6 +2219,19 @@ Reponds UNIQUEMENT avec un JSON valide :
       }
     } catch { /* Slack collector may not be initialized */ }
 
+    // Outlook collected emails (pushed from the Chrome extension)
+    try {
+      const { getOutlookMessages, groupOutlookMessagesByDay } = await import('./slackCollectorService.js');
+      const outlookMsgs = await getOutlookMessages(userId, {
+        days: Math.min(30, days),
+        excludeImported: true,
+      });
+      if (outlookMsgs.length > 0) {
+        const outlookDigests = groupOutlookMessagesByDay(outlookMsgs);
+        items.push(...outlookDigests);
+      }
+    } catch { /* Outlook collector may not be initialized */ }
+
     // Exclude items already imported into any of this user's documents.
     try {
       const { rows } = await db.pool.query(
@@ -2245,8 +2282,22 @@ Reponds UNIQUEMENT avec un JSON valide :
         const entries = await getOtterTranscript(userId, id);
         transcript = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
       } else if (source === 'outlook') {
-        const { getOutlookEmailBody } = await import('./emailService.js');
-        transcript = await getOutlookEmailBody(userId, id);
+        // If the id is a digest "outlook:YYYY-MM-DD", build transcript from stored emails
+        if (id.startsWith('outlook:')) {
+          const dateFilter = id.replace('outlook:', '');
+          const { getOutlookMessages } = await import('./slackCollectorService.js');
+          const msgs = await getOutlookMessages(userId, { days: 30 });
+          const filtered = dateFilter && dateFilter !== 'unknown'
+            ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
+            : msgs;
+          transcript = filtered
+            .map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`)
+            .join('\n');
+        } else {
+          // Legacy: single email via OAuth
+          const { getOutlookEmailBody } = await import('./emailService.js');
+          transcript = await getOutlookEmailBody(userId, id);
+        }
       } else if (source === 'gmail') {
         const { getGmailEmailBody } = await import('./emailService.js');
         transcript = await getGmailEmailBody(userId, id);

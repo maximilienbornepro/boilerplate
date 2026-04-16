@@ -363,37 +363,19 @@
     if (provider === 'outlook') {
       providerBadge.textContent = 'Outlook';
       providerBadge.className = 'badge badge-outlook';
+      // Scrape emails and push them to the server — no analysis in the extension.
+      await syncOutlookToServer();
+      return;
     } else if (provider === 'slack') {
       providerBadge.textContent = 'Slack';
       providerBadge.className = 'badge badge-slack';
-      // For Slack, skip the old scraping flow entirely — the server-side
-      // collector handles message fetching. Just show the Slack connect
-      // section and hide the doc/mode/items sections.
+      // For Slack, just show the connect section.
       return;
     } else {
       providerBadge.textContent = 'Page non supportee';
       providerBadge.className = 'badge badge-unknown';
       showError('Ouvrez Outlook ou Slack dans cet onglet pour importer du contenu.');
       return;
-    }
-
-    // Load documents (Outlook only — Slack uses the server-side collector)
-    await loadDocuments();
-
-    // Scrape items (Outlook only)
-    try {
-      items = await scrapeItems();
-      if (items.length === 0) {
-        showError('Aucun element trouve sur cette page (derniere semaine).');
-      } else {
-        modeSection.classList.remove('hidden');
-        itemsSection.classList.remove('hidden');
-        actionsSection.classList.remove('hidden');
-        renderItems();
-        updateImportBtn();
-      }
-    } catch (err) {
-      showError(err.message);
     }
   }
 
@@ -434,6 +416,58 @@
     renderItems();
     updateImportBtn();
   });
+
+  // ==================== OUTLOOK SYNC ====================
+
+  async function syncOutlookToServer() {
+    hideError();
+    statusSection.querySelector('#provider-badge').textContent = 'Outlook — Synchronisation...';
+
+    try {
+      // 1) Scrape emails from the page
+      const emails = await scrapeItems();
+      if (emails.length === 0) {
+        showError('Aucun email trouvé sur cette page.');
+        return;
+      }
+
+      // 2) For each email, try to grab the body (click to open + read)
+      // For now we send subject + preview — bodies require clicking each mail.
+      const payload = emails.map(e => ({
+        id: e.id,
+        subject: e.subject || '(sans objet)',
+        sender: e.sender || 'Inconnu',
+        date: e.date || '',
+        preview: e.preview || '',
+        body: e.body || null,
+      }));
+
+      // 3) Push to server
+      const result = await apiFetch('/suivitess-api/outlook/sync', {
+        method: 'POST',
+        body: JSON.stringify({ emails: payload }),
+      });
+
+      providerBadge.textContent = 'Outlook';
+      providerBadge.className = 'badge badge-outlook';
+
+      resultSection.classList.remove('hidden');
+      resultMsg.textContent = `✓ ${result.stored} email(s) synchronisé(s). Ouvrez SuiviTess > "Importer & ranger" pour les analyser.`;
+      resultMsg.className = 'result-msg';
+
+    } catch (err) {
+      providerBadge.textContent = 'Outlook';
+      providerBadge.className = 'badge badge-outlook';
+
+      if (err.message.includes('Non connecte')) {
+        resultSection.classList.remove('hidden');
+        resultMsg.innerHTML = `✗ Non connecté au serveur.<br><a href="${serverUrl || ENV.defaultServerUrl}" target="_blank" style="color:#10b981">Connectez-vous ici</a>, puis rechargez cette page.`;
+        resultMsg.className = 'result-msg error';
+      } else {
+        showError(err.message);
+      }
+    }
+  }
 
   // ==================== SLACK CREDENTIALS ====================
 
