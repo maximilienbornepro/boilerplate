@@ -144,6 +144,7 @@
 }
 
 .providerTag {
+  margin-left: 20px;
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-size: 10px;
