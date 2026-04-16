@@ -123,14 +123,11 @@
       },
     });
 
-    // If 404, the prefix might be wrong — try the alternative
-    if (res.status === 404 && apiPrefix === '/suivitess-api') {
-      apiPrefix = '/suivitess/api';
-      return apiFetch(path, options);
-    }
-    if (res.status === 404 && apiPrefix === '/suivitess/api') {
-      apiPrefix = '/suivitess-api';
-      // Don't loop — throw the error
+    // If 404 on the first attempt, try the alternative prefix once
+    if (res.status === 404 && !options._retried) {
+      const alt = apiPrefix === '/suivitess-api' ? '/suivitess/api' : '/suivitess-api';
+      apiPrefix = alt;
+      return apiFetch(path, { ...options, _retried: true });
     }
 
     if (!res.ok) {
@@ -476,6 +473,19 @@
     slackCredsBtn.disabled = true;
     slackCredsBtn.textContent = 'Récupération...';
     slackCredsStatus.classList.add('hidden');
+
+    // Ensure we have a valid auth token before proceeding
+    if (!jwtToken) {
+      jwtToken = await getTokenFromCookie(serverUrl);
+    }
+    if (!jwtToken) {
+      slackCredsStatus.innerHTML = `✗ Non connecté au serveur SuiviTess.<br><a href="${serverUrl || 'http://localhost:5170'}" target="_blank" style="color:#10b981">Cliquez ici pour vous connecter</a>, puis réessayez.`;
+      slackCredsStatus.className = 'slack-creds-status error';
+      slackCredsStatus.classList.remove('hidden');
+      slackCredsBtn.disabled = false;
+      slackCredsBtn.textContent = '🔄 Connecter et synchroniser';
+      return;
+    }
 
     try {
       // 1) Get xoxc token from content script
