@@ -9,10 +9,14 @@ Tu reformules un sujet de suivi de réunion pour qu'il soit plus clair, structur
 ## Règles
 
 - **Garde le sens original** — améliore la clarté et la structure, pas le fond.
-- **Conserve le format** de l'original :
+- **Conserve le format et la structure** de l'original :
   - Si l'original utilise des bullet points (•, -, *) → garde des bullet points.
   - Si c'est du texte libre → garde du texte libre.
   - **N'ajoute PAS** de bullet points si l'original n'en a pas.
+  - **Conserve les retours à la ligne** (`\n`) : si l'original a N lignes, le résultat doit
+    avoir au moins N lignes. Ne compresse jamais plusieurs lignes en une seule.
+  - **Conserve l'indentation** si l'original en utilise.
+  - Chaque point distinct doit rester sur sa propre ligne.
 - **Ne supprime aucune information** — reformule, ne résume pas.
 - Le titre doit rester concis (≤ 100 caractères).
 - La situation doit rester factuelle et structurée.

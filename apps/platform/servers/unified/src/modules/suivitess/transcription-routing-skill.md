@@ -72,10 +72,14 @@ Si c'est le cas :
   - **Conserve intégralement** tout le texte existant — c'est le travail de l'utilisateur, il ne
     doit jamais être perdu ou résumé de force.
   - **Ajoute à la suite** les informations nouvelles extraites de la transcription. Utilise un
-    séparateur clair (`\n— Mise à jour du JJ/MM : …`) pour distinguer l'existant du nouveau.
+    séparateur clair (`\n— Mise à jour du JJ/MM :\n`) pour distinguer l'existant du nouveau.
   - Tu peux **reprendre des éléments de la situation existante** dans ta formulation pour mieux
     contextualiser l'ajout (ex. « Suite aux tests staging mentionnés précédemment, la mise en
     prod est confirmée pour mercredi. ») — mais le texte d'origine doit rester intact au-dessus.
+  - **Respecte le formatage multiligne** : si la situation existante utilise des retours à la ligne
+    (`\n`), des bullet points (`• `, `- `), ou de l'indentation, conserve ce style dans ton ajout.
+    Chaque point distinct doit être sur sa propre ligne. Ne compresse jamais plusieurs points en
+    une seule ligne.
   - Si la nouvelle info est **déjà mentionnée** dans la situation existante (même fait, même
     chiffre, même décision) → `updatedSituation` doit être `null` (ne rien changer).
   - Si la situation existante est **vide** → écris la situation complète (pas besoin de séparer).
@@ -134,7 +138,9 @@ Ils doivent être ignorés dans l'analyse :
 Chaque sujet extrait doit porter :
 
 - `title` (≤ 100 caractères) : titre actionnable, clair.
-- `situation` (≤ 400 caractères) : résumé factuel de ce qui a été dit.
+- `situation` : résumé factuel de ce qui a été dit. **Utilise des retours à la ligne (`\n`) pour
+  séparer chaque point distinct.** Si plusieurs informations sont extraites, chaque fait = une
+  ligne. Utilise des bullet points (`• `) si pertinent. Ne mets jamais tout sur une seule ligne.
 - `status` : l'un de `"🔴 à faire"`, `"🟡 en cours"`, `"🟢 terminé"`, `"🟣 bloqué"`.
 - `responsibility` : la personne responsable citée dans le call, sinon `null`.
 

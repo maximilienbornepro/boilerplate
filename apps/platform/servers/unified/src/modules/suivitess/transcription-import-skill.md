@@ -33,6 +33,10 @@ jamais en retirer. Voici les règles détaillées :
 - **Lis attentivement** la situation existante du sujet ciblé avant d'écrire.
 - `appendText` contient le **texte à ajouter** à la situation existante, PAS la situation complète.
   Le backend concatène `situation_existante + "\n" + appendText`.
+- **Respecte le formatage multiligne** : utilise des retours à la ligne (`\n`) pour séparer
+  chaque point distinct dans `appendText`. Si plusieurs faits sont mentionnés, chaque fait = une
+  ligne. Utilise des bullet points (`• `) si la situation existante en utilise déjà. Ne compresse
+  jamais plusieurs informations en une seule ligne.
 - **Compare** la nouvelle information avec la situation existante :
   - Si l'info est **déjà présente** (même fait, même chiffre, même décision) → **ne propose pas**
     d'enrichissement pour ce sujet. Ignore-le.
@@ -49,7 +53,9 @@ jamais en retirer. Voici les règles détaillées :
 - Place le nouveau sujet dans la section la plus pertinente (via `sectionId`).
 - Vérifie que le sujet n'existe pas déjà sous un titre similaire dans la même section — si oui,
   propose un `enrich` plutôt qu'un `create_subject`.
-- `situation` : résumé factuel de ce qui a été dit (2-3 phrases max).
+- `situation` : résumé factuel de ce qui a été dit. **Utilise des retours à la ligne (`\n`) pour
+  séparer chaque point distinct.** Si plusieurs informations, chaque fait = une ligne. Utilise
+  des bullet points (`• `) si pertinent. Ne mets jamais tout sur une seule ligne.
 - `status` : l'un de `"🔴 à faire"`, `"🟡 en cours"`, `"🟢 terminé"`, `"🟣 bloqué"`.
 - `responsibility` : la personne responsable si mentionnée, sinon `null`.
 
