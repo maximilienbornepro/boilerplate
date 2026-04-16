@@ -2479,8 +2479,13 @@ Reponds UNIQUEMENT avec un JSON valide :
             const updateValues: (string | number | null)[] = [];
             let idx = 1;
             if (s.updatedSituation !== undefined && s.updatedSituation !== null) {
+              // Append with the same 📝 label as the intra-document import
+              const currentSituation = existing.situation || '';
+              const newSituation = currentSituation
+                ? `${currentSituation}\n\n---\n📝 Ajouté depuis transcription :\n${s.updatedSituation}`
+                : s.updatedSituation;
               updateFragments.push(`situation = $${idx++}`);
-              updateValues.push(s.updatedSituation);
+              updateValues.push(newSituation);
             }
             if (s.updatedStatus) {
               updateFragments.push(`status = $${idx++}`);
@@ -2560,10 +2565,15 @@ Reponds UNIQUEMENT avec un JSON valide :
           }
         }
 
+        // Tag new subjects created from transcript import
+        const situationWithLabel = s.situation
+          ? `📝 Ajouté depuis transcription :\n${s.situation}`
+          : null;
+
         const subject = await db.createSubject(
           sectionId,
           title,
-          (s.situation ?? null),
+          situationWithLabel,
           (s.status || '🔴 à faire'),
           s.responsibility ?? null,
         );
