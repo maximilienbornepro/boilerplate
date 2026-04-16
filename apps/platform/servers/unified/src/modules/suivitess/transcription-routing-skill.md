@@ -65,24 +65,38 @@ Si c'est le cas :
 
 - `subjectAction: "update-existing-subject"`
 - `targetSubjectId` = `id` du sujet existant
-- `updatedSituation` = nouvelle version de la situation, **qui complète** (pas qui remplace
-  intégralement si l'ancienne situation apportait du contexte utile) ; préfère un ton cumulatif
-  (« Mise à jour du 15/03 : … »).
-- `updatedStatus` = statut à appliquer en fonction de ce qui a été dit dans la transcription (par
-  exemple passer de 🔴 à 🟡 si le sujet a commencé, de 🟡 à 🟢 si résolu, de 🟡 à 🟣 si bloqué).
-- `updatedResponsibility` = nouveau responsable si mentionné, sinon null (ne pas écraser si null).
+- `updatedSituation` : construite en tenant compte de ce qui est **déjà écrit** dans le champ
+  `situationExcerpt` du sujet existant (fourni dans le payload). Règles :
+  - **Compare** d'abord la nouvelle information avec la situation existante.
+  - Si la nouvelle info est **déjà mentionnée** dans la situation existante (même fait, même
+    chiffre, même décision) → **ne crée pas de doublon**. N'ajoute que ce qui est réellement
+    nouveau.
+  - Si la nouvelle info apporte un **changement d'état** ou un **fait nouveau** → préfixe avec
+    la date du jour (`Mise à jour du JJ/MM : …`) et complète la situation existante.
+  - Si la situation existante est vide ou très courte → remplace-la intégralement.
+  - Si l'info de la transcription est **identique** à ce qui est déjà écrit → `updatedSituation`
+    doit être `null` (pas de modification inutile).
+- `updatedStatus` = statut à appliquer **uniquement si la transcription mentionne un changement
+  d'état explicite** (par exemple passer de 🔴 à 🟡 si le sujet a commencé, de 🟡 à 🟢 si
+  résolu, de 🟡 à 🟣 si bloqué). Si aucun changement de statut n'est évoqué dans la
+  transcription → `null` (ne pas toucher au statut existant).
+- `updatedResponsibility` = nouveau responsable **uniquement si** un transfert de responsabilité
+  est explicitement mentionné. Sinon `null` (ne pas écraser le responsable actuel).
 
 Sinon :
 
-- `subjectAction: "new-subject"` → comportement classique (création d'un nouveau sujet dans la
-  section choisie).
+- `subjectAction: "new-subject"` → création d'un nouveau sujet dans la section choisie.
 
 **Règles absolues sur les updates** :
 
+- **Pas de doublon** : si l'information est déjà présente dans la situation existante, ne crée
+  PAS un nouveau sujet et ne duplique PAS le texte dans la mise à jour. Met `updatedSituation`
+  à `null` si rien de nouveau. Si tout est identique (situation, statut, responsable), n'émets
+  PAS le sujet dans la réponse du tout — il est déjà à jour.
 - Un `targetSubjectId` doit exister dans la review/section choisies — sinon, le backend ignore
   l'update et rebascule en création.
 - Ne propose pas un update si l'info apportée est insignifiante (petite précision sans statut
-  modifié) — crée plutôt un nouveau sujet pour ne pas polluer le journal.
+  modifié et sans fait nouveau) — ignore simplement le sujet.
 - Jamais de update sur une review « new-review » (elle n'a pas encore de sujets).
 
 ## Règles absolues
