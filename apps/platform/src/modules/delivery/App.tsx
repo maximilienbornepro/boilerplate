@@ -148,12 +148,19 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
       setActiveConnectors(connectors);
       setJiraSiteUrl(siteUrl);
 
-      // Sibling boards = same boardType as the current board, excluding itself.
-      // We don't strictly filter on date overlap — just show all boards of the
-      // same type so the user can quickly jump between them.
-      const siblings = allBoards.filter(
-        b => b.id !== board.id && b.boardType === board.boardType,
-      );
+      // Sibling boards = same boardType + same period (overlapping date range)
+      // as the current board, excluding itself.
+      const siblings = allBoards.filter(b => {
+        if (b.id === board.id || b.boardType !== board.boardType) return false;
+        // Must share the same period : same startDate/endDate, or same
+        // durationWeeks for agile boards.
+        if (board.boardType === 'agile') {
+          return b.durationWeeks === board.durationWeeks
+            && b.startDate === board.startDate;
+        }
+        // Calendaire : same startDate = same month
+        return b.startDate === board.startDate;
+      });
       setSiblingBoards(siblings);
     };
     load();
