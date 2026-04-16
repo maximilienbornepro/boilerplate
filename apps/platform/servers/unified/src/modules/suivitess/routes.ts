@@ -36,6 +36,79 @@ function serializeFields(fields: Record<string, JiraFieldMeta>): Array<{
     }));
 }
 
+/**
+ * Group Slack messages by (channel + day) into digest items.
+ * Each digest aggregates all messages from one channel on one calendar day
+ * so the AI analyses a full conversation context, not individual messages.
+ * The `id` is `slack:channelId:YYYY-MM-DD` and stays stable for dedup.
+ */
+function groupSlackMessagesByDay(
+  messages: Array<{
+    channelId: string;
+    channelName: string | null;
+    messageTs: string;
+    senderName: string | null;
+    text: string;
+  }>,
+): Array<{
+  id: string;
+  provider: 'slack';
+  title: string;
+  date: string;
+  preview: string;
+  participants: string[];
+}> {
+  const groups = new Map<string, typeof messages>();
+
+  for (const m of messages) {
+    const dateStr = new Date(parseFloat(m.messageTs) * 1000)
+      .toISOString().slice(0, 10); // YYYY-MM-DD
+    const key = `${m.channelId}:${dateStr}`;
+    const group = groups.get(key) || [];
+    group.push(m);
+    groups.set(key, group);
+  }
+
+  const items: Array<{
+    id: string;
+    provider: 'slack';
+    title: string;
+    date: string;
+    preview: string;
+    participants: string[];
+  }> = [];
+
+  for (const [key, msgs] of groups) {
+    const [channelId, dateStr] = key.split(':');
+    const channelName = msgs[0]?.channelName || channelId;
+    const participants = [...new Set(msgs.map(m => m.senderName).filter(Boolean) as string[])];
+
+    // Build a readable date label
+    const dateLabel = new Date(dateStr + 'T00:00:00')
+      .toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    // Sort messages chronologically and build a preview
+    const sorted = msgs.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs));
+    const preview = sorted
+      .slice(0, 5)
+      .map(m => `[${m.senderName || '?'}] ${m.text.slice(0, 80)}`)
+      .join('\n');
+
+    items.push({
+      id: `slack:${channelId}:${dateStr}`,
+      provider: 'slack',
+      title: `#${channelName} — ${dateLabel} (${msgs.length} messages)`,
+      date: dateStr + 'T12:00:00.000Z',
+      preview,
+      participants,
+    });
+  }
+
+  // Sort by date desc
+  items.sort((a, b) => b.date.localeCompare(a.date));
+  return items;
+}
+
 export function createRoutes(): Router {
   const router = Router();
 
@@ -1925,6 +1998,129 @@ Reponds UNIQUEMENT avec un JSON valide :
     }
   }));
 
+  // ==================== Slack Collector ====================
+
+  // Configure Slack credentials + channels for automatic collection.
+  router.post('/slack/configure', asyncHandler(async (req, res) => {
+    const { workspaceUrl, xoxcToken, xoxdCookie, channels, daysToFetch } = req.body;
+    if (!xoxcToken || !xoxdCookie) {
+      res.status(400).json({ error: 'xoxcToken et xoxdCookie sont requis' });
+      return;
+    }
+
+    const { testSlackAuth, upsertSlackConfig } = await import('./slackCollectorService.js');
+
+    // Validate credentials
+    const authResult = await testSlackAuth(
+      workspaceUrl || 'https://francetv.slack.com',
+      xoxcToken, xoxdCookie,
+    );
+    if (!authResult.ok) {
+      res.status(401).json({ error: authResult.error || 'Authentification Slack échouée' });
+      return;
+    }
+
+    // Save config
+    const config = await upsertSlackConfig(req.user!.id, {
+      workspaceUrl: workspaceUrl || 'https://francetv.slack.com',
+      xoxcToken,
+      xoxdCookie,
+      channels: channels || [],
+      daysToFetch: daysToFetch ?? 7,
+    });
+
+    res.json({
+      success: true,
+      user: authResult.user,
+      team: authResult.team,
+      channelCount: config.channels.length,
+    });
+  }));
+
+  // Get Slack collector status for the current user.
+  router.get('/slack/status', asyncHandler(async (req, res) => {
+    const { getSlackConfig, getSlackMessageCount } = await import('./slackCollectorService.js');
+    const config = await getSlackConfig(req.user!.id);
+    if (!config) {
+      res.json({ configured: false });
+      return;
+    }
+    const messageCount = await getSlackMessageCount(config.id);
+    res.json({
+      configured: true,
+      isActive: config.isActive,
+      lastSyncAt: config.lastSyncAt,
+      channelCount: config.channels.length,
+      channels: config.channels,
+      messageCount,
+      daysToFetch: config.daysToFetch,
+    });
+  }));
+
+  // Force an immediate sync.
+  router.post('/slack/sync-now', asyncHandler(async (req, res) => {
+    const { syncNow } = await import('./slackCollectorService.js');
+    try {
+      const result = await syncNow(req.user!.id);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  }));
+
+  // Fetch collected Slack messages (not yet imported into SuiviTess).
+  router.get('/slack/messages', asyncHandler(async (req, res) => {
+    const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+    const config = await getSlackConfig(req.user!.id);
+    if (!config) {
+      res.json([]);
+      return;
+    }
+    const days = parseInt(req.query.days as string, 10) || config.daysToFetch;
+    const channelId = (req.query.channelId as string) || undefined;
+    const messages = await getSlackMessages(config.id, {
+      days,
+      channelId,
+      excludeImportedFor: req.user!.id,
+    });
+
+    // Group messages by channel + day into digest items so the AI can
+    // analyse a full day's conversation at once rather than message by message.
+    const items = groupSlackMessagesByDay(messages);
+    res.json(items);
+  }));
+
+  // Delete Slack configuration for the current user.
+  router.delete('/slack/configure', asyncHandler(async (req, res) => {
+    const { deleteSlackConfig } = await import('./slackCollectorService.js');
+    await deleteSlackConfig(req.user!.id);
+    res.json({ success: true });
+  }));
+
+  // ==================== Outlook Collector ====================
+
+  // Push scraped Outlook emails from the Chrome extension.
+  router.post('/outlook/sync', asyncHandler(async (req, res) => {
+    const { emails } = req.body as { emails?: Array<{
+      id: string; subject: string; sender: string; date: string;
+      preview: string; body?: string;
+    }> };
+    if (!Array.isArray(emails) || emails.length === 0) {
+      res.status(400).json({ error: 'Aucun email à synchroniser' });
+      return;
+    }
+    const { storeOutlookEmails } = await import('./outlookCollectorService.js');
+    const result = await storeOutlookEmails(req.user!.id, emails.slice(0, 200));
+    res.json(result);
+  }));
+
+  // Get Outlook collector status.
+  router.get('/outlook/status', asyncHandler(async (req, res) => {
+    const { getOutlookMessageCount } = await import('./outlookCollectorService.js');
+    const count = await getOutlookMessageCount(req.user!.id);
+    res.json({ configured: count > 0, messageCount: count });
+  }));
+
   // ==================== Bulk transcription import (list-level) ====================
 
   // Aggregate calls + emails across every connected provider.
@@ -2009,6 +2205,33 @@ Reponds UNIQUEMENT avec un JSON valide :
       });
     }
 
+    // Slack collected messages (from the hourly collector service)
+    try {
+      const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+      const slackConfig = await getSlackConfig(userId);
+      if (slackConfig && slackConfig.isActive) {
+        const slackMsgs = await getSlackMessages(slackConfig.id, {
+          days: Math.min(30, days),
+          excludeImportedFor: userId,
+        });
+        const slackDigests = groupSlackMessagesByDay(slackMsgs);
+        items.push(...slackDigests);
+      }
+    } catch { /* Slack collector may not be initialized */ }
+
+    // Outlook collected emails (pushed from the Chrome extension)
+    try {
+      const { getOutlookMessages, groupOutlookMessagesByDay } = await import('./outlookCollectorService.js');
+      const outlookMsgs = await getOutlookMessages(userId, {
+        days: Math.min(30, days),
+        excludeImported: true,
+      });
+      if (outlookMsgs.length > 0) {
+        const outlookDigests = groupOutlookMessagesByDay(outlookMsgs);
+        items.push(...outlookDigests);
+      }
+    } catch { /* Outlook collector may not be initialized */ }
+
     // Exclude items already imported into any of this user's documents.
     try {
       const { rows } = await db.pool.query(
@@ -2059,11 +2282,52 @@ Reponds UNIQUEMENT avec un JSON valide :
         const entries = await getOtterTranscript(userId, id);
         transcript = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
       } else if (source === 'outlook') {
-        const { getOutlookEmailBody } = await import('./emailService.js');
-        transcript = await getOutlookEmailBody(userId, id);
+        // If the id is a digest "outlook:YYYY-MM-DD", build transcript from stored emails
+        if (id.startsWith('outlook:')) {
+          const dateFilter = id.replace('outlook:', '');
+          const { getOutlookMessages } = await import('./outlookCollectorService.js');
+          const msgs = await getOutlookMessages(userId, { days: 30 });
+          const filtered = dateFilter && dateFilter !== 'unknown'
+            ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
+            : msgs;
+          transcript = filtered
+            .map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`)
+            .join('\n');
+        } else {
+          // Legacy: single email via OAuth
+          const { getOutlookEmailBody } = await import('./emailService.js');
+          transcript = await getOutlookEmailBody(userId, id);
+        }
       } else if (source === 'gmail') {
         const { getGmailEmailBody } = await import('./emailService.js');
         transcript = await getGmailEmailBody(userId, id);
+      } else if (source === 'slack') {
+        // The id is "slack:channelId:YYYY-MM-DD" (digest format).
+        // Build a transcript from all messages of that channel on that day.
+        const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+        const slackConfig = await getSlackConfig(userId);
+        if (!slackConfig) {
+          res.status(400).json({ error: 'Slack non configuré. Utilisez l\'extension Chrome pour connecter Slack.' });
+          return;
+        }
+        const parts = id.split(':');
+        const channelId = parts[1] || parts[0];
+        const dateFilter = parts[2]; // YYYY-MM-DD or undefined
+        const messages = await getSlackMessages(slackConfig.id, {
+          days: slackConfig.daysToFetch,
+          channelId,
+        });
+        // Filter to the specific day if provided
+        const filtered = dateFilter
+          ? messages.filter(m => {
+              const d = new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10);
+              return d === dateFilter;
+            })
+          : messages;
+        transcript = filtered
+          .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+          .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
+          .join('\n');
       } else {
         res.status(400).json({ error: `Source non supportée : ${source}` });
         return;
