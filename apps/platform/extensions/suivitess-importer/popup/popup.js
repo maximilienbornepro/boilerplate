@@ -35,17 +35,17 @@
   // ==================== CONFIG ====================
 
   async function getTokenFromCookie(url) {
-    // Try the exact URL first, then common variations (different ports,
-    // http vs https) to handle dev proxy setups where the cookie domain
-    // may differ from the configured server URL.
+    // Only look for the cookie on the configured server URL.
+    // In dev, also check the backend port (3010) since Vite proxies
+    // from 5170 but the cookie may be set on 5170.
     const candidates = [url];
     try {
       const u = new URL(url);
-      // Also try without port, with common dev ports, and with/without https
-      if (u.port) candidates.push(`${u.protocol}//${u.hostname}`);
-      if (!u.port || u.port !== '3010') candidates.push(`${u.protocol}//${u.hostname}:3010`);
-      if (!u.port || u.port !== '5170') candidates.push(`${u.protocol}//${u.hostname}:5170`);
-      if (u.protocol === 'http:') candidates.push(`https://${u.host}`);
+      if (u.hostname === 'localhost') {
+        // Dev: also try other common local ports
+        if (u.port !== '3010') candidates.push(`${u.protocol}//${u.hostname}:3010`);
+        if (u.port !== '5170') candidates.push(`${u.protocol}//${u.hostname}:5170`);
+      }
     } catch { /* invalid URL, try as-is */ }
 
     for (const candidate of candidates) {
