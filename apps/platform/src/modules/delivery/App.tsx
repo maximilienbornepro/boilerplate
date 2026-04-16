@@ -9,7 +9,7 @@ import { SanityCheckModal } from './components/SanityCheckModal/SanityCheckModal
 import { generateSprintsForBoard, type BoardConfig } from './utils/sprintGeneration';
 import { Layout, ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import type { Board } from './services/api';
-import { fetchBoard } from './services/api';
+import { fetchBoard, fetchBoards } from './services/api';
 import {
   fetchTasksForBoard,
   createTask,
@@ -92,6 +92,7 @@ function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
 }
 
 function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => void; onNavigate?: (path: string) => void }) {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +101,8 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSanityModal, setShowSanityModal] = useState(false);
+  /** Boards with the same type + overlapping/similar date range — shown as a switcher. */
+  const [siblingBoards, setSiblingBoards] = useState<Board[]>([]);
   const [activeConnectors, setActiveConnectors] = useState<ActiveConnector[]>([]);
   const [jiraSiteUrl, setJiraSiteUrl] = useState<string | null>(null);
   const [showAddTask, setShowAddTask] = useState(false);
@@ -131,21 +134,30 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   // Default sprint for new tasks (first sprint of the board).
   const defaultSprintId = currentSprints[0]?.id ?? `${board.id}_s1`;
 
-  // Load active connectors + Jira site URL on mount
+  // Load active connectors + Jira site URL + sibling boards on mount
   useEffect(() => {
     const load = async () => {
-      const [connectors, siteUrl] = await Promise.all([
+      const [connectors, siteUrl, allBoards] = await Promise.all([
         fetchActiveConnectors(),
         fetchJiraSiteUrl(),
+        fetchBoards().catch(() => [] as Board[]),
       ]);
       if (siteUrl && !connectors.some(c => c.service === 'jira')) {
         connectors.push({ service: 'jira' });
       }
       setActiveConnectors(connectors);
       setJiraSiteUrl(siteUrl);
+
+      // Sibling boards = same boardType as the current board, excluding itself.
+      // We don't strictly filter on date overlap — just show all boards of the
+      // same type so the user can quickly jump between them.
+      const siblings = allBoards.filter(
+        b => b.id !== board.id && b.boardType === board.boardType,
+      );
+      setSiblingBoards(siblings);
     };
     load();
-  }, []);
+  }, [board.id, board.boardType]);
 
   // Load board-level state (freeze, hidden tasks)
   const loadIncrementState = useCallback(async () => {
@@ -218,13 +230,38 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
       const positionMap = new Map(positions.map(p => [p.taskId, p]));
       const newTaskRowByCol = buildRowTracker(positions);
 
+      // Build a map : Jira project key → existing row (so newly-imported
+      // tasks of the same project land in the same row range instead of
+      // being scattered). Derived from tasks that already have a saved position.
+      const projectToRow = new Map<string, number>();
+      for (const t of visibleTasks) {
+        const pos = positionMap.get(t.id);
+        if (!pos) continue;
+        const keyMatch = t.title.match(/^\[([A-Z][A-Z0-9_]+-)/);
+        if (keyMatch) {
+          const projectKey = keyMatch[1].replace(/-$/, '');
+          if (!projectToRow.has(projectKey)) {
+            projectToRow.set(projectKey, pos.row);
+          }
+        }
+      }
+
       const transformedTasks: Task[] = visibleTasks.map((taskData) => {
         const savedPosition = positionMap.get(taskData.id);
         const defaultCol = 0;
-        const defaultRow = newTaskRowByCol[defaultCol] || 0;
+
+        // Try to place unsaved tasks in the same row as their Jira project
+        let defaultRow = newTaskRowByCol[defaultCol] || 0;
         if (!savedPosition) {
-          if (defaultCol in newTaskRowByCol) newTaskRowByCol[defaultCol]++;
+          const projMatch = taskData.title.match(/^\[([A-Z][A-Z0-9_]+-)/);
+          const projKey = projMatch ? projMatch[1].replace(/-$/, '') : null;
+          if (projKey && projectToRow.has(projKey)) {
+            defaultRow = projectToRow.get(projKey)!;
+          } else {
+            if (defaultCol in newTaskRowByCol) newTaskRowByCol[defaultCol]++;
+          }
         }
+
         return transformTask(taskData, savedPosition, { startCol: defaultCol, endCol: defaultCol + 2, row: defaultRow });
       });
 
@@ -567,6 +604,21 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
             title={board.name}
             onBack={onBack}
           >
+            {/* Switcher between sibling boards of the same type */}
+            {siblingBoards.length > 0 && (
+              <select
+                className="module-header-btn"
+                value={board.id}
+                onChange={(e) => navigate(`/delivery/${e.target.value}`)}
+                title="Basculer vers un autre board"
+              >
+                <option value={board.id}>{board.name}</option>
+                {siblingBoards.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            )}
+
             {jiraProjects.length >= 2 && (
               <select
                 className="module-header-btn"
