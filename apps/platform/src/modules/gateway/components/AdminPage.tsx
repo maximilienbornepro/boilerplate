@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ConfirmModal, APPS, ModuleHeader, Card, Badge, Button, SectionTitle, ExpandableSection, LoadingSpinner, ToastContainer } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
+import { AdminAiSkillsSection } from './AdminAiSkillsSection';
 
 interface User {
   id: number;
@@ -310,6 +311,9 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
             )}
           </div>
         </section>
+
+        {/* AI Skills */}
+        <AdminAiSkillsSection onToast={addToast} />
 
         {/* Credits Management */}
         {platformSettings.find(s => s.key === 'credits_enabled' && s.value === 'true') && (

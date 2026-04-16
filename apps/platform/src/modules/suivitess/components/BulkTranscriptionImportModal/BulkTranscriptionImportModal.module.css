@@ -6,6 +6,91 @@
   max-height: calc(90vh - 120px);
 }
 
+.analyzingLive {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-height: 360px;
+}
+
+.analyzingIntro {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.journalBox {
+  flex: 1;
+  min-height: 300px;
+  max-height: 500px;
+  overflow: auto;
+  margin: 0;
+  padding: var(--spacing-sm);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.journalDone {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.cursor {
+  opacity: 0.5;
+}
+
+.logBanner {
+  padding: 6px 10px;
+  margin-bottom: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+}
+
+.logBanner a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.logBanner a:hover {
+  text-decoration: underline;
+}
+
+.logBannerCopy {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.alreadyImportedBadge {
+  font-size: var(--font-size-xs);
+  padding: 2px 6px;
+  background: var(--bg-muted, var(--bg-primary));
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-muted, var(--text-secondary));
+  margin-left: var(--spacing-xs);
+}
+
 .loading,
 .error,
 .done,

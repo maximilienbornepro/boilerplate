@@ -44,6 +44,10 @@ export default defineConfig({
         target: UNIFIED_SERVER,
         rewrite: (path) => path.replace(/^\/rag-api/, '/rag/api'),
       },
+      // AI Skills API (admin-only editor) : /ai-skills/api/*
+      '/ai-skills/api': {
+        target: UNIFIED_SERVER,
+      },
       // Gateway APIs (auth, admin)
       '/api/auth': {
         target: UNIFIED_SERVER,

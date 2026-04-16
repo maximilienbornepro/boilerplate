@@ -1,8 +1,15 @@
-# SuiviTess — analyse et routage IA des sujets d'une transcription
+# Skill — SuiviTess : router une source vers la bonne review
 
-> Ce fichier est **chargé dans le prompt à chaque appel**. Modifie-le librement pour ajuster les
-> règles. Les changements prennent effet au prochain clic sur « Analyser & ranger » (aucun
-> redémarrage en dev, redéploiement en prod).
+## À propos de ce skill
+
+- **Slug** (id stable en code) : `suivitess-route-source-to-review`
+- **Où il est utilisé** : `POST /suivitess/api/transcription/analyze-and-route`
+- **Déclenché quand** : page listing SuiviTess → modale « Import en masse » → bouton « Analyser »
+- **Input** : une transcription / mail / Slack + la liste de **toutes les reviews** de l'utilisateur
+- **Output JSON** : pour chaque sujet extrait → review cible + section cible + action
+  (`new-subject` ou `update-existing-subject`)
+- **Édition** : via la page **Admin → AI Skills**. La version en DB gagne sur ce fichier (qui
+  reste le « contenu par défaut » restaurable via le bouton « Restaurer par défaut »).
 
 ## Rôle
 
@@ -80,6 +87,11 @@ Si c'est le cas :
     (`\n`), des bullet points (`• `, `- `), ou de l'indentation, conserve ce style dans ton ajout.
     Chaque point distinct doit être sur sa propre ligne. Ne compresse jamais plusieurs points en
     une seule ligne.
+  - **Indentation : uniquement des tabulations `\t` (vrais caractères tab), JAMAIS d'espaces.**
+    SuiviTess gère l'indentation au clavier avec `Tab` (indenter) et `Maj+Tab` (désindenter). Des
+    espaces en début de ligne apparaissent comme du texte brut et cassent l'alignement. Un niveau
+    = un caractère tab. Analyse l'indentation de la situation existante et reproduis-la : ajout
+    au même niveau = même nombre de tabs ; sous-point d'un élément existant = un tab en plus.
   - Si la nouvelle info est **déjà mentionnée** dans la situation existante (même fait, même
     chiffre, même décision) → `updatedSituation` doit être `null` (ne rien changer).
   - Si la situation existante est **vide** → écris la situation complète (pas besoin de séparer).
@@ -141,6 +153,8 @@ Chaque sujet extrait doit porter :
 - `situation` : résumé factuel de ce qui a été dit. **Utilise des retours à la ligne (`\n`) pour
   séparer chaque point distinct.** Si plusieurs informations sont extraites, chaque fait = une
   ligne. Utilise des bullet points (`• `) si pertinent. Ne mets jamais tout sur une seule ligne.
+- **Indentation : uniquement des tabulations `\t` (vrais caractères tab), JAMAIS d'espaces.**
+  SuiviTess gère `Tab` / `Maj+Tab` pour indenter / désindenter. Un niveau = un tab.
 - `status` : l'un de `"🔴 à faire"`, `"🟡 en cours"`, `"🟢 terminé"`, `"🟣 bloqué"`.
 - `responsibility` : la personne responsable citée dans le call, sinon `null`.
 
@@ -205,3 +219,35 @@ Chaque sujet extrait doit porter :
 - `subjectAction: "new-subject"` → les 4 champs `targetSubjectId` / `updatedSituation` /
   `updatedStatus` / `updatedResponsibility` sont tous à null ; la création utilise `title` +
   `situation` + `status` + `responsibility`.
+
+## Mode « journal d'analyse » (utilisé en streaming)
+
+Quand le contexte exécutable contient la mention `# Mode streaming activé`, tu dois **avant** le
+JSON final produire un **journal d'analyse** lisible par un humain, encadré par les balises
+`<journal>` et `</journal>`. Structure attendue :
+
+```
+<journal>
+🔎 Lecture de la source : N lignes / N caractères.
+📚 Reviews disponibles : N reviews, N sections au total.
+
+▶ Phase 1 — Extraction des sujets candidats
+  • [CONSIDÈRE] « ligne / passage reformulé » — raison en 1 phrase.
+  • [IGNORE]    « passage » — raison (small-talk, salutation…).
+
+▶ Phase 2 — Choix de la review pour chaque sujet
+  • Sujet « X » → review « R » (thématique explicite / sujet existant similaire / cycle récurrent).
+  • Sujet « Y » → NOUVELLE review « …» (aucune ne matche).
+
+▶ Phase 3 — Choix de la section + dédup des sujets
+  • Sujet « X » dans section « S » → [MATCH id:abc] sujet existant — update.
+  • Sujet « Y » dans nouvelle section « …» → NOUVEAU.
+
+▶ Phase 4 — Sujets filtrés (sans ajout utile)
+  • skip : « Z » (info déjà présente / identique à un sujet barré).
+</journal>
+```
+
+Ensuite, uniquement ensuite, écris l'objet JSON complet (avec `summary` + `subjects`) encadré
+par `<result>` et `</result>`. Hors de ces deux blocs, **n'écris rien**. Si la mention n'est pas
+présente dans le contexte, garde le format JSON brut (objet seul) sans balises.

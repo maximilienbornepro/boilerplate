@@ -1,8 +1,19 @@
-# SuiviTess — import de transcription dans un document existant
+# Skill — SuiviTess : intégrer une source dans le suivitess ouvert
 
-> Ce fichier est **chargé dans le prompt à chaque import** de transcription / mail / Slack
-> à l'intérieur d'un document SuiviTess déjà ouvert. Modifie-le librement pour ajuster les règles.
-> Changements pris en compte au prochain import (aucun redémarrage en dev, redéploiement en prod).
+## À propos de ce skill
+
+- **Slug** (id stable en code) : `suivitess-import-source-into-document`
+- **Où il est utilisé** :
+  - `POST /suivitess/api/documents/:docId/transcript-analyze-and-propose`
+  - `POST /suivitess/api/documents/:docId/content-analyze-and-propose`
+- **Déclenché quand** : page d'un suivitess → assistant `TranscriptionWizard` → bouton
+  « Analyser et fusionner »
+- **Input** : le suivitess courant (sections + sujets) + le contenu brut d'une source
+  (transcription, email, Slack)
+- **Output JSON** : liste de propositions — `enrich` (ajout de texte à un sujet existant),
+  `create_subject` (nouveau sujet dans une section existante) ou `create_section`.
+- **Édition** : via la page **Admin → AI Skills**. La version en DB gagne sur ce fichier (qui
+  reste le « contenu par défaut » restaurable via le bouton « Restaurer par défaut »).
 
 ## Rôle
 
@@ -37,6 +48,14 @@ jamais en retirer. Voici les règles détaillées :
   chaque point distinct dans `appendText`. Si plusieurs faits sont mentionnés, chaque fait = une
   ligne. Utilise des bullet points (`• `) si la situation existante en utilise déjà. Ne compresse
   jamais plusieurs informations en une seule ligne.
+- **Indentation : uniquement des tabulations `\t`, JAMAIS d'espaces.** SuiviTess gère
+  l'indentation au clavier avec `Tab` (indenter) et `Maj+Tab` (désindenter) ; des espaces en début
+  de ligne apparaissent comme du texte brut et cassent l'alignement. Un niveau d'indentation = un
+  caractère tabulation réel (pas la chaîne `\t` littérale). Exemple à 2 niveaux : commence la
+  ligne par deux vrais caractères tab puis `• sous-point`.
+- **Analyse l'indentation de la situation existante** et reproduis-la : si l'existant est indenté
+  à un niveau (un tab), un ajout contextuel reste au même niveau ; un sous-point d'un élément
+  existant prend un niveau supplémentaire.
 - **Compare** la nouvelle information avec la situation existante :
   - Si l'info est **déjà présente** (même fait, même chiffre, même décision) → **ne propose pas**
     d'enrichissement pour ce sujet. Ignore-le.
@@ -56,6 +75,8 @@ jamais en retirer. Voici les règles détaillées :
 - `situation` : résumé factuel de ce qui a été dit. **Utilise des retours à la ligne (`\n`) pour
   séparer chaque point distinct.** Si plusieurs informations, chaque fait = une ligne. Utilise
   des bullet points (`• `) si pertinent. Ne mets jamais tout sur une seule ligne.
+- **Indentation : uniquement des tabulations `\t` (vrais caractères tab), JAMAIS d'espaces.**
+  SuiviTess gère `Tab` / `Maj+Tab` pour indenter / désindenter. Un niveau = un tab.
 - `status` : l'un de `"🔴 à faire"`, `"🟡 en cours"`, `"🟢 terminé"`, `"🟣 bloqué"`.
 - `responsibility` : la personne responsable si mentionnée, sinon `null`.
 
@@ -118,3 +139,46 @@ Ils doivent être ignorés dans l'analyse :
   }
 ]
 ```
+
+## Mode « journal d'analyse » (utilisé en streaming)
+
+Quand le contexte exécutable contient la mention `# Mode streaming activé`, tu dois **avant** le
+JSON final produire un **journal d'analyse** lisible par un humain, encadré par les balises
+`<journal>` et `</journal>`. Structure attendue dans le journal :
+
+```
+<journal>
+🔎 Lecture de la source (N lignes / N caractères).
+📄 Document courant : N sections, N sujets.
+
+▶ Phase 1 — Extraction des sujets candidats
+  • [CONSIDÈRE] « ligne ou passage reformulé » — raison en 1 phrase.
+  • [IGNORE] « ligne ou passage » — raison (small-talk, salutation, hors-sujet…).
+  …
+
+▶ Phase 2 — Rapprochement avec les sujets existants
+  • Sujet « X » → [MATCH id:abc] sujet existant « Y » (section Z) — 2+ critères : entité + responsable.
+  • Sujet « A » → [NOUVEAU] aucun match dans les sections existantes.
+  …
+
+▶ Phase 3 — Décisions finales
+  • enrich   → sujet « Y » (append daté).
+  • create_subject → « A » dans section « Z ».
+  • skip     → « B » (info déjà présente dans la situation).
+  …
+</journal>
+```
+
+Ensuite, uniquement ensuite, écris le tableau JSON décrit plus haut **encadré par**
+`<result>` et `</result>` :
+
+```
+<result>
+[ …même format JSON… ]
+</result>
+```
+
+Hors de ces deux blocs, **n'écris rien**. Le backend ne renvoie au frontend que le contenu
+streamé entre `<journal>` et `</journal>` pour affichage live, puis parse `<result>` pour les
+propositions. Si la mention `# Mode streaming activé` n'apparaît pas, reviens au format JSON
+brut (tableau seul) sans balises.

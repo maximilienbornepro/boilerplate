@@ -50,12 +50,18 @@ export function Layout({
       } as CSSProperties)
     : undefined;
 
+  // Admin-only extra drawer entries (Logs IA for now).
+  const extraDrawerLinks = user?.isAdmin
+    ? [{ label: 'Logs IA', path: '/ai-logs' }]
+    : undefined;
+
   return (
     <div className={styles.app} style={moduleStyle}>
       <SharedNav
         currentApp={appId}
         onNavigate={onNavigate}
         allowedAppIds={effectiveAllowedAppIds}
+        extraDrawerLinks={extraDrawerLinks}
       >
         {navSlot}
       </SharedNav>

@@ -4,25 +4,18 @@
 // which existing review (or which new review) should host it, and inside
 // that review which section should receive it.
 //
-// Rules live in transcription-routing-skill.md and are reloaded from disk
-// on every call so edits take effect without a redeploy.
+// The prompt rules come from the skill `suivitess-route-source-to-review`
+// (see `aiSkills/registry.ts`) — editable from the admin UI, with the file
+// `skill-route-source-to-review.md` as the shipped default.
 
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { getAnthropicClient } from '../connectors/aiProvider.js';
+import { loadSkill as loadAiSkill } from '../aiSkills/skillLoader.js';
+import { logAnalysis } from '../aiSkills/analysisLogsService.js';
 
-const SKILL_PATH = (() => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return resolve(here, 'transcription-routing-skill.md');
-})();
+const SKILL_SLUG = 'suivitess-route-source-to-review';
 
 async function loadSkill(): Promise<string> {
-  try {
-    return await readFile(SKILL_PATH, 'utf-8');
-  } catch {
-    return 'Tu es un assistant d\'archivage. Réponds en JSON strict.';
-  }
+  return loadAiSkill(SKILL_SLUG);
 }
 
 // ============ Types ============
@@ -77,6 +70,9 @@ export interface AnalyzedSubject {
 export interface AnalysisResult {
   summary: string;
   subjects: AnalyzedSubject[];
+  /** DB id of the ai_analysis_logs row written after the call ; null if
+   *  logging failed. Callers surface a "Voir le log" link from it. */
+  logId?: number | null;
 }
 
 // ============ Entry point ============
@@ -85,12 +81,13 @@ export async function analyzeTranscriptionAndRoute(
   userId: number,
   transcript: string,
   reviews: ReviewWithSections[],
-  callMeta: { title: string; date?: string | null; provider: string },
+  callMeta: { title: string; date?: string | null; provider: string; userEmail?: string | null },
 ): Promise<AnalysisResult> {
   if (!transcript.trim()) {
     return { summary: 'Transcription vide.', subjects: [] };
   }
 
+  const startedAt = Date.now();
   const skill = await loadSkill();
   const { client, model } = await getAnthropicClient(userId);
 
@@ -283,9 +280,24 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
     if (subjects.length >= 15) break;
   }
 
+  const logId = await logAnalysis({
+    userId,
+    userEmail: callMeta.userEmail ?? null,
+    skillSlug: SKILL_SLUG,
+    sourceKind: callMeta.provider || 'transcript',
+    sourceTitle: callMeta.title,
+    documentId: null,
+    inputContent: transcript,
+    fullPrompt: prompt,
+    aiOutputRaw: text,
+    proposals: subjects,
+    durationMs: Date.now() - startedAt,
+  });
+
   return {
     summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 500) : `${subjects.length} sujet(s) extrait(s).`,
     subjects,
+    logId,
   };
 }
 

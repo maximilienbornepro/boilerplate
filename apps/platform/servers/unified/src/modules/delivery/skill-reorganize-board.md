@@ -1,8 +1,16 @@
-# Delivery board sanity check — règles IA
+# Skill — Delivery : réorganiser un board
 
-> Ce fichier est **chargé dans le prompt à chaque appel** de la vérification IA du delivery board.
-> Modifie-le librement pour ajuster le comportement : les changements prennent effet au prochain clic
-> sur « Vérifier avec l'IA » (aucun redémarrage nécessaire côté dev, un redéploiement côté prod).
+## À propos de ce skill
+
+- **Slug** (id stable en code) : `delivery-reorganize-board`
+- **Où il est utilisé** : `POST /delivery/api/boards/:id/ai-sanity-check`
+- **Déclenché quand** : page d'un delivery board → bouton « Vérifier avec l'IA »
+- **Input** : liste de tickets externes (Jira, ClickUp, Linear, Asana, Trello…) + la grille
+  temporelle actuelle du board (1 colonne = 1 semaine)
+- **Output JSON** : plan de réorganisation colonne par colonne, avec recommandation par ticket
+  et justification textuelle par colonne
+- **Édition** : via la page **Admin → AI Skills**. La version en DB gagne sur ce fichier (qui
+  reste le « contenu par défaut » restaurable via le bouton « Restaurer par défaut »).
 
 ## Rôle
 
