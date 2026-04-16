@@ -104,21 +104,27 @@ export function SnapshotModal({ incrementId, onRestore, onClose }: SnapshotModal
           ) : (
             <div className={styles.layout}>
               <div className={styles.snapshotList}>
-                {snapshots.map((snapshot) => (
-                  <div
-                    key={snapshot.id}
-                    className={`${styles.snapshotItem} ${selectedSnapshot?.id === snapshot.id ? styles.selected : ''}`}
-                    onClick={() => handleSelectSnapshot(snapshot.id)}
-                  >
-                    <div className={styles.snapshotLabel}>{snapshot.label}</div>
-                    <div className={styles.snapshotInfo}>
-                      <div className={styles.snapshotDate}>{formatDate(snapshot.createdAt)}</div>
-                      <div className={styles.snapshotMeta}>
-                        {snapshot.taskCount} positions | {snapshot.hiddenCount} masques
+                {snapshots.map((snapshot) => {
+                  const isAiSnapshot = snapshot.label.includes('rangement IA');
+                  return (
+                    <div
+                      key={snapshot.id}
+                      className={`${styles.snapshotItem} ${selectedSnapshot?.id === snapshot.id ? styles.selected : ''} ${isAiSnapshot ? styles.aiSnapshot : ''}`}
+                      onClick={() => handleSelectSnapshot(snapshot.id)}
+                    >
+                      <div className={styles.snapshotLabel}>
+                        {isAiSnapshot && <span className={styles.aiTag}>↩ IA</span>}
+                        {snapshot.label}
+                      </div>
+                      <div className={styles.snapshotInfo}>
+                        <div className={styles.snapshotDate}>{formatDate(snapshot.createdAt)}</div>
+                        <div className={styles.snapshotMeta}>
+                          {snapshot.taskCount} positions | {snapshot.hiddenCount} masqués
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {selectedSnapshot && (

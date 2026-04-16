@@ -422,9 +422,11 @@ export interface Snapshot {
   incrementId: string;
   snapshotData: SnapshotData;
   createdAt: string;
+  /** Optional human-readable label (e.g. "Avant rangement IA"). */
+  label: string | null;
 }
 
-export async function createSnapshot(incrementId: string): Promise<Snapshot> {
+export async function createSnapshot(incrementId: string, label?: string): Promise<Snapshot> {
   const positions = await getTaskPositions(incrementId);
   const state = await getIncrementState(incrementId);
 
@@ -443,10 +445,10 @@ export async function createSnapshot(incrementId: string): Promise<Snapshot> {
   };
 
   const result = await pool.query(
-    `INSERT INTO delivery_snapshots (increment_id, snapshot_data)
-     VALUES ($1, $2)
-     RETURNING id, increment_id, snapshot_data, created_at`,
-    [incrementId, JSON.stringify(snapshotData)]
+    `INSERT INTO delivery_snapshots (increment_id, snapshot_data, label)
+     VALUES ($1, $2, $3)
+     RETURNING id, increment_id, snapshot_data, created_at, label`,
+    [incrementId, JSON.stringify(snapshotData), label ?? null]
   );
 
   const row = result.rows[0];
@@ -455,12 +457,13 @@ export async function createSnapshot(incrementId: string): Promise<Snapshot> {
     incrementId: row.increment_id,
     snapshotData: row.snapshot_data,
     createdAt: row.created_at.toISOString(),
+    label: row.label ?? null,
   };
 }
 
 export async function getSnapshots(incrementId: string): Promise<Snapshot[]> {
   const result = await pool.query(
-    `SELECT id, increment_id, snapshot_data, created_at
+    `SELECT id, increment_id, snapshot_data, created_at, label
      FROM delivery_snapshots
      WHERE increment_id = $1
      ORDER BY created_at DESC LIMIT 10`,
@@ -472,12 +475,13 @@ export async function getSnapshots(incrementId: string): Promise<Snapshot[]> {
     incrementId: row.increment_id,
     snapshotData: row.snapshot_data,
     createdAt: row.created_at.toISOString(),
+    label: row.label ?? null,
   }));
 }
 
 export async function getSnapshotById(snapshotId: number): Promise<Snapshot | null> {
   const result = await pool.query(
-    'SELECT id, increment_id, snapshot_data, created_at FROM delivery_snapshots WHERE id = $1',
+    'SELECT id, increment_id, snapshot_data, created_at, label FROM delivery_snapshots WHERE id = $1',
     [snapshotId]
   );
 
@@ -489,6 +493,7 @@ export async function getSnapshotById(snapshotId: number): Promise<Snapshot | nu
     incrementId: row.increment_id,
     snapshotData: row.snapshot_data,
     createdAt: row.created_at.toISOString(),
+    label: row.label ?? null,
   };
 }
 
@@ -730,6 +735,7 @@ export async function initDeliveryDb(): Promise<void> {
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS parent_task_id UUID REFERENCES delivery_tasks(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE delivery_tasks ADD COLUMN IF NOT EXISTS description TEXT`);
     await pool.query(`ALTER TABLE delivery_positions ADD COLUMN IF NOT EXISTS row_span INTEGER NOT NULL DEFAULT 1`);
+    await pool.query(`ALTER TABLE delivery_snapshots ADD COLUMN IF NOT EXISTS label VARCHAR(100)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_delivery_tasks_parent ON delivery_tasks(parent_task_id)`);
     // Backfill source for existing Jira tasks
     await pool.query(`UPDATE delivery_tasks SET source = 'jira' WHERE sprint_name IS NOT NULL AND source = 'manual'`);

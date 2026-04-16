@@ -1048,6 +1048,15 @@ export function createDeliveryRoutes(): Router {
       return;
     }
 
+    // Auto-save a snapshot BEFORE applying the AI moves so the user can
+    // revert from the "Historique > Snapshots" menu.
+    try {
+      await db.createSnapshot(boardId, 'Avant rangement IA');
+    } catch {
+      // Non-blocking — don't fail the whole apply if snapshot creation fails
+      console.warn('[Delivery] Failed to create pre-AI snapshot for board', boardId);
+    }
+
     const tasks = await db.getAllTasksForBoard(boardId);
     const taskById = new Map(tasks.map(t => [t.id, t]));
     const positions = await db.getPositionsForBoard(boardId);

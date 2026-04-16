@@ -276,6 +276,8 @@ export type SnapshotDetail = {
     };
   };
   createdAt: string;
+  /** Backend-provided label (e.g. "Avant rangement IA"), null for auto snapshots. */
+  label?: string | null;
 };
 
 function getDayLabel(createdAt: string): string {
@@ -296,7 +298,9 @@ export async function fetchSnapshots(incrementId: string): Promise<SnapshotSumma
     id: s.id,
     incrementId: s.incrementId,
     createdAt: s.createdAt,
-    label: getDayLabel(s.createdAt),
+    // Use the backend-provided label when present (e.g. "Avant rangement IA"),
+    // otherwise derive a day-relative label (J, J-1, J-2…).
+    label: s.label || getDayLabel(s.createdAt),
     taskCount: s.snapshotData.taskPositions.length,
     hiddenCount: s.snapshotData.incrementState.hiddenTaskIds.length,
   }));
