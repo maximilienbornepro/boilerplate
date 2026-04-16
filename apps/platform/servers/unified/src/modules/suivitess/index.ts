@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { initDb } from './dbService.js';
 import { createRoutes } from './routes.js';
-import { initSlackCollector, initOutlookCollector } from './slackCollectorService.js';
+import { initSlackCollector } from './slackCollectorService.js';
+import { initOutlookCollector } from './outlookCollectorService.js';
 
 export async function initSuivitess() {
   await initDb();

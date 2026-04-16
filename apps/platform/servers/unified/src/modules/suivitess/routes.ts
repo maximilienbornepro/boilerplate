@@ -2109,14 +2109,14 @@ Reponds UNIQUEMENT avec un JSON valide :
       res.status(400).json({ error: 'Aucun email à synchroniser' });
       return;
     }
-    const { storeOutlookEmails } = await import('./slackCollectorService.js');
+    const { storeOutlookEmails } = await import('./outlookCollectorService.js');
     const result = await storeOutlookEmails(req.user!.id, emails.slice(0, 200));
     res.json(result);
   }));
 
   // Get Outlook collector status.
   router.get('/outlook/status', asyncHandler(async (req, res) => {
-    const { getOutlookMessageCount } = await import('./slackCollectorService.js');
+    const { getOutlookMessageCount } = await import('./outlookCollectorService.js');
     const count = await getOutlookMessageCount(req.user!.id);
     res.json({ configured: count > 0, messageCount: count });
   }));
@@ -2221,7 +2221,7 @@ Reponds UNIQUEMENT avec un JSON valide :
 
     // Outlook collected emails (pushed from the Chrome extension)
     try {
-      const { getOutlookMessages, groupOutlookMessagesByDay } = await import('./slackCollectorService.js');
+      const { getOutlookMessages, groupOutlookMessagesByDay } = await import('./outlookCollectorService.js');
       const outlookMsgs = await getOutlookMessages(userId, {
         days: Math.min(30, days),
         excludeImported: true,
@@ -2285,7 +2285,7 @@ Reponds UNIQUEMENT avec un JSON valide :
         // If the id is a digest "outlook:YYYY-MM-DD", build transcript from stored emails
         if (id.startsWith('outlook:')) {
           const dateFilter = id.replace('outlook:', '');
-          const { getOutlookMessages } = await import('./slackCollectorService.js');
+          const { getOutlookMessages } = await import('./outlookCollectorService.js');
           const msgs = await getOutlookMessages(userId, { days: 30 });
           const filtered = dateFilter && dateFilter !== 'unknown'
             ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
