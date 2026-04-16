@@ -409,25 +409,35 @@ export function createRoutes(): Router {
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 
+    // Load the editable skill file for reformulation rules.
+    let reformSkill = '';
+    try {
+      const { readFile } = await import('node:fs/promises');
+      const { fileURLToPath } = await import('node:url');
+      const { dirname, resolve } = await import('node:path');
+      const here = dirname(fileURLToPath(import.meta.url));
+      reformSkill = await readFile(resolve(here, 'reformulation-skill.md'), 'utf-8');
+    } catch {
+      reformSkill = 'Reformule ce sujet pour qu\'il soit plus clair. Retourne un JSON { title, situation }.';
+    }
+
     const aiResponse = await client.messages.create({
       model,
       max_tokens: 2000,
       messages: [{
         role: 'user',
-        content: `Reformule ce sujet de suivi de réunion pour qu'il soit plus clair, structuré et professionnel.
+        content: `${reformSkill}
+
+---
+
+# Sujet à reformuler
 
 Titre : ${subject.title}
 État de la situation : ${subject.situation || '(vide)'}
 Responsable : ${subject.responsibility || 'Non assigné'}
 Statut : ${subject.status}
 
-Retourne UNIQUEMENT un JSON :
-{
-  "title": "Titre reformulé (concis, max 100 caractères)",
-  "situation": "Situation reformulée (bullet points, structurée, factuelle)"
-}
-
-Garde le sens original, améliore la clarté et la structure. Conserve EXACTEMENT le même format que l'original (si c'est des bullet points avec •, garde des •, si c'est du texte libre, garde du texte libre). Ne change pas le fond, seulement la forme. N'ajoute PAS de bullet points si l'original n'en a pas.`,
+Applique les règles ci-dessus et réponds uniquement en JSON.`,
       }],
     });
 
