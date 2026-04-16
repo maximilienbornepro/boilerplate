@@ -204,8 +204,11 @@ export function HistoryPanel({ documentId, onClose, onRestore }: Props) {
 
             <div className={styles.list}>
               {snapshots.map(snapshot => (
-                <div key={snapshot.id} className={styles.item}>
+                <div key={snapshot.id} className={`${styles.item} ${snapshot.type === 'ai_import' ? styles.itemAI : ''}`}>
                   <div className={styles.itemHeader}>
+                    {snapshot.type === 'ai_import' && (
+                      <span className={styles.aiBadge}>↩ IA</span>
+                    )}
                     <span className={styles.date}>{formatDate(snapshot.created_at)}</span>
                     <div className={styles.actions}>
                       <button

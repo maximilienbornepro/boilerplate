@@ -1202,6 +1202,11 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`,
       return;
     }
 
+    // Auto-snapshot BEFORE applying AI changes so the user can revert.
+    try {
+      await db.createSnapshotForDocument(docId, 'ai_import');
+    } catch { /* non-blocking */ }
+
     let enriched = 0;
     let created = 0;
     let sectionsCreated = 0;
@@ -2434,6 +2439,18 @@ Reponds UNIQUEMENT avec un JSON valide :
     if (!Array.isArray(subjects) || subjects.length === 0) {
       res.status(400).json({ error: 'Aucun sujet à appliquer' });
       return;
+    }
+
+    // Auto-snapshot every existing review that will be touched, BEFORE applying.
+    // Collect unique targetReviewIds, snapshot each once.
+    const reviewIdsToSnapshot = new Set<string>();
+    for (const s of subjects) {
+      if (s.targetReviewId) reviewIdsToSnapshot.add(s.targetReviewId);
+    }
+    for (const reviewId of reviewIdsToSnapshot) {
+      try {
+        await db.createSnapshotForDocument(reviewId, 'ai_import');
+      } catch { /* non-blocking */ }
     }
 
     const newReviewByTitle = new Map<string, string>();

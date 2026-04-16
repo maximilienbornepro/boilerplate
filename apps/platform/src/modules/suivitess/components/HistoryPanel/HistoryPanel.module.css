@@ -316,3 +316,23 @@
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* ===== AI import snapshot ===== */
+
+.itemAI {
+  border-left: 3px solid var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
+}
+
+.aiBadge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary);
+  color: var(--bg-primary, #0a0a0a);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}

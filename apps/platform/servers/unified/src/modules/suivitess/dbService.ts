@@ -295,13 +295,13 @@ export async function getDocumentWithSections(docId: string): Promise<DocumentWi
   };
 }
 
-export async function createSnapshotForDocument(documentId: string): Promise<void> {
+export async function createSnapshotForDocument(documentId: string, type: string = 'manual'): Promise<void> {
   const doc = await getDocumentWithSections(documentId);
   if (!doc) return;
 
   await pool.query(
-    'INSERT INTO suivitess_snapshots (document_id, snapshot_data) VALUES ($1, $2)',
-    [documentId, JSON.stringify(doc)]
+    'INSERT INTO suivitess_snapshots (document_id, snapshot_data, type) VALUES ($1, $2, $3)',
+    [documentId, JSON.stringify(doc), type]
   );
 }
 
