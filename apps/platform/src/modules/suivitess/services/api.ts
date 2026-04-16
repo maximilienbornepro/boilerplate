@@ -313,7 +313,7 @@ export async function rejectSuggestion(id: number): Promise<void> {
 
 // ============ Bulk transcription import ============
 
-export type SourceProvider = 'fathom' | 'otter' | 'gmail' | 'outlook';
+export type SourceProvider = 'fathom' | 'otter' | 'gmail' | 'outlook' | 'slack';
 
 export interface BulkSourceItem {
   id: string;

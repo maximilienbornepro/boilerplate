@@ -73,6 +73,29 @@
       <button id="done-btn" class="btn btn-primary">OK</button>
     </div>
 
+    <!-- Slack credentials extraction (only visible on Slack pages) -->
+    <div id="slack-creds-section" class="section hidden">
+      <div class="slack-creds-box">
+        <div class="slack-creds-header">
+          <span class="slack-creds-icon">🔑</span>
+          <span class="slack-creds-title">Connecter Slack au collecteur</span>
+        </div>
+        <p class="slack-creds-desc">
+          Récupère automatiquement tes identifiants Slack depuis cette page et les envoie au serveur SuiviTess pour activer la collecte automatique des messages.
+        </p>
+        <div id="slack-creds-channels">
+          <label class="field-label">Channels à collecter (URLs, une par ligne)</label>
+          <textarea id="slack-channels-input" rows="3" placeholder="https://app.slack.com/client/T0NQT20US/C8TF1EZ6X&#10;(le channel actuel sera ajouté automatiquement)"></textarea>
+        </div>
+        <div class="slack-creds-row">
+          <label class="field-label">Jours à récupérer</label>
+          <input id="slack-days-input" type="number" value="7" min="1" max="30" style="width:60px" />
+        </div>
+        <button id="slack-creds-btn" class="btn btn-primary">🔄 Connecter et synchroniser</button>
+        <div id="slack-creds-status" class="slack-creds-status hidden"></div>
+      </div>
+    </div>
+
     <!-- Config toggle -->
     <div class="footer">
       <button id="toggle-config" class="btn-link">Parametres</button>

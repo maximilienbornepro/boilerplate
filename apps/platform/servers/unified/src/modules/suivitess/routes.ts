@@ -1925,6 +1925,112 @@ Reponds UNIQUEMENT avec un JSON valide :
     }
   }));
 
+  // ==================== Slack Collector ====================
+
+  // Configure Slack credentials + channels for automatic collection.
+  router.post('/slack/configure', asyncHandler(async (req, res) => {
+    const { workspaceUrl, xoxcToken, xoxdCookie, channels, daysToFetch } = req.body;
+    if (!xoxcToken || !xoxdCookie) {
+      res.status(400).json({ error: 'xoxcToken et xoxdCookie sont requis' });
+      return;
+    }
+
+    const { testSlackAuth, upsertSlackConfig } = await import('./slackCollectorService.js');
+
+    // Validate credentials
+    const authResult = await testSlackAuth(
+      workspaceUrl || 'https://francetv.slack.com',
+      xoxcToken, xoxdCookie,
+    );
+    if (!authResult.ok) {
+      res.status(401).json({ error: authResult.error || 'Authentification Slack échouée' });
+      return;
+    }
+
+    // Save config
+    const config = await upsertSlackConfig(req.user!.id, {
+      workspaceUrl: workspaceUrl || 'https://francetv.slack.com',
+      xoxcToken,
+      xoxdCookie,
+      channels: channels || [],
+      daysToFetch: daysToFetch ?? 7,
+    });
+
+    res.json({
+      success: true,
+      user: authResult.user,
+      team: authResult.team,
+      channelCount: config.channels.length,
+    });
+  }));
+
+  // Get Slack collector status for the current user.
+  router.get('/slack/status', asyncHandler(async (req, res) => {
+    const { getSlackConfig, getSlackMessageCount } = await import('./slackCollectorService.js');
+    const config = await getSlackConfig(req.user!.id);
+    if (!config) {
+      res.json({ configured: false });
+      return;
+    }
+    const messageCount = await getSlackMessageCount(config.id);
+    res.json({
+      configured: true,
+      isActive: config.isActive,
+      lastSyncAt: config.lastSyncAt,
+      channelCount: config.channels.length,
+      channels: config.channels,
+      messageCount,
+      daysToFetch: config.daysToFetch,
+    });
+  }));
+
+  // Force an immediate sync.
+  router.post('/slack/sync-now', asyncHandler(async (req, res) => {
+    const { syncNow } = await import('./slackCollectorService.js');
+    try {
+      const result = await syncNow(req.user!.id);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  }));
+
+  // Fetch collected Slack messages (not yet imported into SuiviTess).
+  router.get('/slack/messages', asyncHandler(async (req, res) => {
+    const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+    const config = await getSlackConfig(req.user!.id);
+    if (!config) {
+      res.json([]);
+      return;
+    }
+    const days = parseInt(req.query.days as string, 10) || config.daysToFetch;
+    const channelId = (req.query.channelId as string) || undefined;
+    const messages = await getSlackMessages(config.id, {
+      days,
+      channelId,
+      excludeImportedFor: req.user!.id,
+    });
+
+    // Map to BulkSourceItem format
+    const items = messages.map(m => ({
+      id: `${m.channelId}/${m.messageTs}`,
+      provider: 'slack' as const,
+      title: `${m.senderName || 'Inconnu'} · #${m.channelName || m.channelId}`,
+      date: new Date(parseFloat(m.messageTs) * 1000).toISOString(),
+      preview: m.text.slice(0, 300),
+      participants: m.senderName ? [m.senderName] : [],
+    }));
+
+    res.json(items);
+  }));
+
+  // Delete Slack configuration for the current user.
+  router.delete('/slack/configure', asyncHandler(async (req, res) => {
+    const { deleteSlackConfig } = await import('./slackCollectorService.js');
+    await deleteSlackConfig(req.user!.id);
+    res.json({ success: true });
+  }));
+
   // ==================== Bulk transcription import (list-level) ====================
 
   // Aggregate calls + emails across every connected provider.
@@ -2009,6 +2115,27 @@ Reponds UNIQUEMENT avec un JSON valide :
       });
     }
 
+    // Slack collected messages (from the hourly collector service)
+    try {
+      const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+      const slackConfig = await getSlackConfig(userId);
+      if (slackConfig && slackConfig.isActive) {
+        const slackMsgs = await getSlackMessages(slackConfig.id, {
+          days: Math.min(30, days),
+          excludeImportedFor: userId,
+        });
+        for (const m of slackMsgs) {
+          items.push({
+            id: `${m.channelId}/${m.messageTs}`,
+            provider: 'slack' as const,
+            title: `${m.senderName || 'Inconnu'} · #${m.channelName || m.channelId}`,
+            date: new Date(parseFloat(m.messageTs) * 1000).toISOString(),
+            preview: m.text.slice(0, 300),
+          });
+        }
+      }
+    } catch { /* Slack collector may not be initialized */ }
+
     // Exclude items already imported into any of this user's documents.
     try {
       const { rows } = await db.pool.query(
@@ -2064,6 +2191,24 @@ Reponds UNIQUEMENT avec un JSON valide :
       } else if (source === 'gmail') {
         const { getGmailEmailBody } = await import('./emailService.js');
         transcript = await getGmailEmailBody(userId, id);
+      } else if (source === 'slack') {
+        // For Slack, the id is "channelId/messageTs". We build a transcript
+        // from stored Slack messages in the same channel, around the same time.
+        const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+        const slackConfig = await getSlackConfig(userId);
+        if (!slackConfig) {
+          res.status(400).json({ error: 'Slack non configuré. Utilisez l\'extension Chrome pour connecter Slack.' });
+          return;
+        }
+        const [channelId] = id.split('/');
+        const messages = await getSlackMessages(slackConfig.id, {
+          days: slackConfig.daysToFetch,
+          channelId,
+        });
+        transcript = messages
+          .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+          .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
+          .join('\n');
       } else {
         res.status(400).json({ error: `Source non supportée : ${source}` });
         return;

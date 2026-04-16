@@ -286,3 +286,91 @@ input:focus, select:focus {
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* ===== Slack Credentials Section ===== */
+
+.slack-creds-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #4a154b;
+  border-radius: 6px;
+  background: #1a0a1a;
+}
+
+.slack-creds-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slack-creds-icon {
+  font-size: 16px;
+}
+
+.slack-creds-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #e0e0e0;
+}
+
+.slack-creds-desc {
+  font-size: 11px;
+  color: #888;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.slack-creds-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slack-creds-row .field-label {
+  flex: 1;
+  margin: 0;
+}
+
+#slack-channels-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: #111;
+  color: #e0e0e0;
+  font-family: monospace;
+  font-size: 11px;
+  resize: vertical;
+}
+
+#slack-channels-input:focus {
+  border-color: #4a154b;
+  outline: none;
+}
+
+.slack-creds-status {
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.slack-creds-status.success {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid #10b981;
+}
+
+.slack-creds-status.warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid #f59e0b;
+}
+
+.slack-creds-status.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+}

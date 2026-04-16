@@ -85,6 +85,35 @@
       return;
     }
 
+    // Extract Slack credentials (xoxc token + xoxd cookie) for the collector service
+    if (message.action === 'getSlackCredentials') {
+      try {
+        // xoxc token from boot_data or localStorage
+        const token = window.boot_data?.api_token
+          || (localStorage.getItem('localConfig_v2') || '').match(/"token":"(xoxc-[^"]+)"/)?.[1]
+          || null;
+
+        // Workspace URL
+        const workspaceUrl = window.boot_data?.team_url
+          || window.location.origin
+          || null;
+
+        // Team name
+        const teamName = window.boot_data?.team_name || null;
+
+        sendResponse({
+          success: true,
+          xoxcToken: token,
+          workspaceUrl,
+          teamName,
+          // xoxd cookie must be read via chrome.cookies API (done in popup.js)
+        });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      return;
+    }
+
     if (message.action === 'getMessages') {
       try {
         const messages = extractMessagesFromView();

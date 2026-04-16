@@ -393,6 +393,145 @@
     updateImportBtn();
   });
 
+  // ==================== SLACK CREDENTIALS ====================
+
+  const slackCredsSection = $('slack-creds-section');
+  const slackCredsBtn = $('slack-creds-btn');
+  const slackCredsStatus = $('slack-creds-status');
+  const slackChannelsInput = $('slack-channels-input');
+  const slackDaysInput = $('slack-days-input');
+
+  function showSlackCredsSection() {
+    if (provider !== 'slack') return;
+    slackCredsSection.classList.remove('hidden');
+
+    // Pre-fill with current channel URL
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.url?.includes('slack.com/client/')) {
+        const currentUrl = tabs[0].url;
+        const existing = slackChannelsInput.value.trim();
+        if (!existing) {
+          slackChannelsInput.value = currentUrl;
+        } else if (!existing.includes(currentUrl)) {
+          slackChannelsInput.value = existing + '\n' + currentUrl;
+        }
+      }
+    });
+
+    // Load saved channels from storage
+    chrome.storage.local.get(['slackChannels', 'slackDays'], (data) => {
+      if (data.slackChannels && !slackChannelsInput.value.trim()) {
+        slackChannelsInput.value = data.slackChannels;
+      }
+      if (data.slackDays) slackDaysInput.value = data.slackDays;
+    });
+  }
+
+  async function handleSlackConnect() {
+    slackCredsBtn.disabled = true;
+    slackCredsBtn.textContent = 'Récupération...';
+    slackCredsStatus.classList.add('hidden');
+
+    try {
+      // 1) Get xoxc token from content script
+      const creds = await new Promise((resolve, reject) => {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (!tabs[0]) { reject(new Error('Pas d\'onglet Slack actif')); return; }
+          chrome.tabs.sendMessage(tabs[0].id, { action: 'getSlackCredentials' }, (response) => {
+            if (chrome.runtime.lastError || !response?.success) {
+              reject(new Error(response?.error || 'Impossible de lire le token Slack. Rechargez la page Slack.'));
+              return;
+            }
+            resolve(response);
+          });
+        });
+      });
+
+      if (!creds.xoxcToken) {
+        throw new Error('Token xoxc introuvable. Rechargez Slack et réessayez.');
+      }
+
+      // 2) Get xoxd cookie via chrome.cookies API
+      const xoxdCookie = await new Promise((resolve) => {
+        chrome.cookies.get({ url: 'https://app.slack.com', name: 'd' }, (cookie) => {
+          resolve(cookie?.value || '');
+        });
+      });
+
+      if (!xoxdCookie) {
+        throw new Error('Cookie xoxd introuvable. Vérifiez que vous êtes connecté à Slack.');
+      }
+
+      // 3) Parse channel URLs
+      const channelUrls = slackChannelsInput.value.trim().split('\n').filter(u => u.trim());
+      const channels = [];
+      for (const url of channelUrls) {
+        const match = url.match(/\/client\/[A-Z0-9]+\/([A-Z0-9]+)/);
+        if (match) {
+          // Try to get channel name from the page if it's the current channel
+          channels.push({ id: match[1], name: match[1], url: url.trim() });
+        }
+      }
+
+      if (channels.length === 0) {
+        throw new Error('Aucune URL de channel valide. Format attendu : https://app.slack.com/client/TXXXXX/CXXXXX');
+      }
+
+      const days = parseInt(slackDaysInput.value, 10) || 7;
+
+      // Save to local storage for next time
+      chrome.storage.local.set({
+        slackChannels: slackChannelsInput.value,
+        slackDays: days,
+      });
+
+      // 4) Send to server
+      slackCredsBtn.textContent = 'Envoi au serveur...';
+
+      const result = await apiFetch('/suivitess-api/slack/configure', {
+        method: 'POST',
+        body: JSON.stringify({
+          workspaceUrl: creds.workspaceUrl || 'https://francetv.slack.com',
+          xoxcToken: creds.xoxcToken,
+          xoxdCookie: xoxdCookie,
+          channels,
+          daysToFetch: days,
+        }),
+      });
+
+      // 5) Trigger immediate sync
+      slackCredsBtn.textContent = 'Synchronisation...';
+
+      try {
+        const syncResult = await apiFetch('/suivitess-api/slack/sync-now', {
+          method: 'POST',
+        });
+        slackCredsStatus.textContent = `✓ Connecté en tant que ${result.user || 'OK'}. ${syncResult.total || 0} messages collectés.`;
+        slackCredsStatus.className = 'slack-creds-status success';
+      } catch (syncErr) {
+        slackCredsStatus.textContent = `✓ Identifiants sauvés. Sync échouée : ${syncErr.message}`;
+        slackCredsStatus.className = 'slack-creds-status warning';
+      }
+
+      slackCredsStatus.classList.remove('hidden');
+
+    } catch (err) {
+      slackCredsStatus.textContent = `✗ ${err.message}`;
+      slackCredsStatus.className = 'slack-creds-status error';
+      slackCredsStatus.classList.remove('hidden');
+    } finally {
+      slackCredsBtn.disabled = false;
+      slackCredsBtn.textContent = '🔄 Connecter et synchroniser';
+    }
+  }
+
+  if (slackCredsBtn) {
+    slackCredsBtn.addEventListener('click', handleSlackConnect);
+  }
+
   // Start
-  loadConfig().then(init);
+  loadConfig().then(async () => {
+    await init();
+    showSlackCredsSection();
+  });
 })();
