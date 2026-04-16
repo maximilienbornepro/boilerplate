@@ -59,6 +59,21 @@ jamais en retirer. Voici les règles détaillées :
 - La section contient ses sujets (même format que `create_subject`).
 - Nom de section explicite (ex. « Call Amazon — 15 avril »).
 
+## Texte barré (strikethrough) dans les situations existantes
+
+Les éléments de situation qui sont **barrés** (entourés de `~~` en markdown, ou marqués
+`<del>`, `<s>`, ou `~texte~`) sont des informations **obsolètes ou annulées** par l'utilisateur.
+Ils doivent être ignorés dans l'analyse :
+
+- **Ne jamais les considérer** comme une info active, un blocage, une action en cours, ou un
+  contexte pertinent pour l'enrichissement.
+- **Ne jamais compléter ou enrichir** un élément barré — il est clos.
+- **Ne pas les citer** dans le `reason` comme source de contexte.
+- **Ne pas les dupliquer** : si la transcription mentionne un sujet qui correspond exactement à
+  un élément barré, il s'agit probablement d'un sujet déjà traité → ignore-le, sauf si la
+  transcription apporte une info fondamentalement nouvelle qui justifie un nouveau `appendText`.
+- **Les conserver** tels quels dans la situation existante (ne pas les supprimer du texte).
+
 ## Règles générales
 
 - Ignore les sujets triviaux, le bavardage, les salutations, les hors-sujets.

@@ -104,6 +104,21 @@ Sinon :
   modifié et sans fait nouveau) — ignore simplement le sujet.
 - Jamais de update sur une review « new-review » (elle n'a pas encore de sujets).
 
+## Texte barré (strikethrough) dans les situations existantes
+
+Les éléments de situation qui sont **barrés** (entourés de `~~` en markdown, ou marqués
+`<del>`, `<s>`, ou `~texte~`) sont des informations **obsolètes ou annulées** par l'utilisateur.
+Ils doivent être ignorés dans l'analyse :
+
+- **Ne jamais les considérer** comme une info active, un blocage, une action en cours, ou un
+  contexte pertinent.
+- **Ne jamais compléter ou enrichir** un élément barré — il est clos.
+- **Ne pas les citer** dans le `reasoning` comme source de contexte.
+- **Ne pas les dupliquer** : si la transcription mentionne un sujet qui correspond exactement à
+  un élément barré, il s'agit probablement d'un sujet déjà traité → ignore-le, sauf si la
+  transcription apporte une info fondamentalement nouvelle qui justifie un nouveau sujet.
+- **Les conserver** tels quels dans la situation existante (ne pas les supprimer du texte).
+
 ## Règles absolues
 
 - Ne supprime jamais de review ou de section existante.
