@@ -221,7 +221,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                   <Button variant="secondary" onClick={onClose}>Annuler</Button>
                   <SkillButton skillSlug="suivitess-route-source-to-review" disabled={!selectedId}>
                     <Button variant="primary" onClick={handleAnalyze} disabled={!selectedId}>
-                      {selectedItem?.alreadyImported ? 'Ré-importer →' : 'Analyser →'}
+                      {selectedItem?.alreadyImported ? 'Ré-importer' : 'Analyser'}
                     </Button>
                   </SkillButton>
                 </div>
