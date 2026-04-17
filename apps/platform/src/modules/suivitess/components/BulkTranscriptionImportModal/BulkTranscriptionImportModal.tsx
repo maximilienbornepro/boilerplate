@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef, type ReactNode } from 'react';
 import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
 import { SkillButton } from '../SkillButton/SkillButton';
 import * as api from '../../services/api';
@@ -362,11 +362,15 @@ function SubjectRow({
       <div className={styles.routing}>
         <div className={styles.routingField}>
           <label>Review de destination</label>
-          <select
+          <CustomDropdown
             value={reviewId ?? '__new__'}
+            displayLabel={reviewId ? (reviews.find(r => r.id === reviewId)?.title ?? '—') : '+ Nouvelle review…'}
             disabled={skipped}
-            onChange={e => {
-              const val = e.target.value;
+            options={[
+              { value: '__new__', label: '+ Nouvelle review…' },
+              ...reviews.map(r => ({ value: r.id, label: r.title })),
+            ]}
+            onChange={(val) => {
               if (val === '__new__') {
                 onUpdate({ reviewId: null, sectionId: null });
               } else {
@@ -374,12 +378,7 @@ function SubjectRow({
                 onUpdate({ reviewId: val, sectionId: firstSection });
               }
             }}
-          >
-            <option value="__new__">➕ Nouvelle review…</option>
-            {reviews.map(r => (
-              <option key={r.id} value={r.id}>{r.title}</option>
-            ))}
-          </select>
+          />
           {!reviewId && (
             <input
               type="text"
@@ -395,24 +394,23 @@ function SubjectRow({
         <div className={styles.routingField}>
           <label>Section</label>
           {currentReview && currentReview.sections.length > 0 ? (
-            <select
+            <CustomDropdown
               value={sectionId ?? '__new__'}
+              displayLabel={sectionId ? (currentReview.sections.find(s => s.id === sectionId)?.name ?? '—') : '+ Nouvelle section…'}
               disabled={skipped}
-              onChange={e => {
-                const val = e.target.value === '__new__' ? null : e.target.value;
-                // If the target subject was in the previous section, clear it
+              options={[
+                { value: '__new__', label: '+ Nouvelle section…' },
+                ...currentReview.sections.map(s => ({ value: s.id, label: s.name })),
+              ]}
+              onChange={(val) => {
+                const next = val === '__new__' ? null : val;
                 onUpdate({
-                  sectionId: val,
+                  sectionId: next,
                   subjectAction: 'create',
                   targetSubjectId: null,
                 });
               }}
-            >
-              <option value="__new__">➕ Nouvelle section…</option>
-              {currentReview.sections.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            />
           ) : (
             <span className={styles.hint}>La nouvelle review aura cette section :</span>
           )}
@@ -456,26 +454,100 @@ function SubjectRow({
                 <span>Mettre à jour un sujet existant</span>
               </label>
               {subjectAction === 'update' && currentSection && (
-                <select
-                  className={styles.select}
+                <CustomDropdown
                   value={targetSubjectId ?? ''}
+                  displayLabel={currentSection.subjects.find(s => s.id === targetSubjectId)?.title ?? '—'}
                   disabled={skipped}
-                  onChange={e => onUpdate({ targetSubjectId: e.target.value })}
-                >
-                  {currentSection.subjects.map(s => (
-                    <option key={s.id} value={s.id}>{s.title}</option>
-                  ))}
-                </select>
+                  options={currentSection.subjects.map(s => ({ value: s.id, label: s.title }))}
+                  onChange={(val) => onUpdate({ targetSubjectId: val })}
+                />
               )}
             </div>
           </div>
         )}
       </div>
 
-      <label className={styles.skipToggle}>
-        <input type="checkbox" checked={skipped} onChange={e => onUpdate({ skipped: e.target.checked })} />
-        <span>Ignorer ce sujet</span>
-      </label>
+      <div className={styles.rowActions}>
+        <button
+          type="button"
+          className={`${styles.rowActionBtn} ${skipped ? styles.rowActionBtnIgnored : ''}`}
+          onClick={() => onUpdate({ skipped: true })}
+        >
+          Ignorer
+        </button>
+        <button
+          type="button"
+          className={`${styles.rowActionBtn} ${!skipped ? styles.rowActionBtnActive : ''}`}
+          onClick={() => onUpdate({ skipped: false })}
+        >
+          Ajouter
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ==================== Custom dropdown (matches "Actions" dropdown UI) ====================
+
+function CustomDropdown({
+  value,
+  displayLabel,
+  options,
+  onChange,
+  disabled,
+  placeholder,
+}: {
+  value: string;
+  displayLabel: ReactNode;
+  options: Array<{ value: string; label: ReactNode }>;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // Auto-disable when only one option is available (nothing to choose from)
+  const effectiveDisabled = disabled || options.length <= 1;
+
+  return (
+    <div ref={ref} className="suivitess-exports" style={{ width: '100%' }}>
+      <button
+        type="button"
+        className={styles.customDropdownBtn}
+        onClick={() => !effectiveDisabled && setOpen(v => !v)}
+        disabled={effectiveDisabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <span className={styles.customDropdownLabel}>{displayLabel || placeholder || '—'}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="suivitess-exports-menu" role="menu" style={{ width: '100%', maxHeight: 240, overflowY: 'auto' }}>
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`suivitess-exports-item ${opt.value === value ? styles.customDropdownItemActive : ''}`}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

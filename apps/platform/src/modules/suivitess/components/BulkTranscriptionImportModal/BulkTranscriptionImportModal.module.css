@@ -317,21 +317,48 @@
   margin: 0;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-primary);
   line-height: 1.5;
 }
 
 .reasoning {
   font-style: italic;
-  border-left: 2px solid var(--accent-primary);
-  padding-left: var(--spacing-xs);
+}
+
+.situation::before {
+  content: 'État de la situation : ';
+  color: var(--text-muted);
+  opacity: 0.6;
+  font-weight: var(--font-weight-normal);
+  font-style: normal;
+}
+
+.reasoning::before {
+  content: 'Raisonnement : ';
+  color: var(--text-muted);
+  opacity: 0.6;
+  font-weight: var(--font-weight-normal);
+  font-style: normal;
+}
+
+.subjectTitle::before {
+  content: 'Sujet : ';
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-normal);
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  margin-right: 6px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .routing {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--spacing-sm);
-  padding-top: var(--spacing-xs);
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
   border-top: 1px dashed var(--border-color);
 }
 
@@ -349,8 +376,7 @@
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
 }
 
 .routingField select,
@@ -388,6 +414,95 @@
   cursor: pointer;
 }
 
+.rowActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.rowActionBtn {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.rowActionBtn:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.rowActionBtnActive {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.rowActionBtnActive:hover {
+  color: white;
+}
+
+.rowActionBtnIgnored {
+  background: transparent;
+  border-color: var(--error, #ef4444);
+  color: var(--error, #ef4444);
+}
+
+.rowActionBtnIgnored:hover {
+  border-color: var(--error, #ef4444);
+  color: var(--error, #ef4444);
+}
+
+.customDropdownBtn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-md);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+  text-align: left;
+}
+
+.customDropdownBtn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+}
+
+.customDropdownBtn:disabled {
+  cursor: not-allowed;
+  color: var(--text-primary);
+}
+
+.customDropdownBtn:disabled svg {
+  display: none;
+}
+
+.customDropdownLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customDropdownItemActive {
+  color: var(--accent-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
 /* === actions === */
 
 .actions {
@@ -400,9 +515,34 @@
 
 /* === Update / create mode === */
 
+.subjectRow {
+  --row-accent: var(--success);
+}
+
 .subjectRowUpdate {
   border-color: var(--accent-primary);
   background: color-mix(in srgb, var(--accent-primary) 4%, transparent);
+  --row-accent: var(--accent-primary);
+}
+
+/* Apply mode color to interactive elements inside the row */
+.subjectRow .rowActionBtnActive {
+  background: var(--row-accent);
+  border-color: var(--row-accent);
+  color: #ffffff;
+}
+.subjectRow .rowActionBtnActive:hover {
+  background: var(--row-accent);
+  border-color: var(--row-accent);
+  opacity: 0.85;
+  color: #ffffff;
+}
+.subjectRow .rowActionBtn:hover {
+  border-color: var(--row-accent);
+  color: var(--text-primary);
+}
+.subjectRow .customDropdownBtn:hover:not(:disabled) {
+  border-color: var(--row-accent);
 }
 
 .modeTag {
@@ -414,6 +554,8 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+  margin-left: auto;
+  order: 99;
 }
 
 .modeCreate {
