@@ -54,8 +54,9 @@
   --border-color: #1e1e1e;
   --border-light: rgba(255,255,255,0.04);
 
-  --accent-primary: #00bcd4;
-  --accent-primary-hover: #00acc1;
+  /* SuiviTess = vert (override de l'accent par défaut, cf. SharedNav/constants.ts) */
+  --accent-primary: #10b981;
+  --accent-primary-hover: #059669;
 
   --success: #4caf50;
   --warning: #ff9800;
@@ -64,9 +65,9 @@
   --shadow-lg: 0 0 0 1px #1e1e1e;
   --overlay-light: rgba(0,0,0,0.6);
 
-  /* Tags d'action IA — couleurs neutres, hors palette module */
-  --tag-new:    #a78bfa;  /* violet — "+ Nouveau" */
-  --tag-update: #f59e0b;  /* ambre  — "↻ Mise à jour" */
+  /* Tags d'action IA — couleurs hors palette modules (pas violet/indigo, pas orange/ambre, pas cyan, pas vert, pas rose) */
+  --tag-new:    #eab308;  /* jaune   — "Nouveau"     */
+  --tag-update: #1d4ed8;  /* bleu roi — "Mise à jour" */
 }
 
 [data-theme="light"] {
@@ -84,15 +85,16 @@
   --border-color: #d0d0d0;
   --border-light: rgba(0,0,0,0.06);
 
-  --accent-primary: #00838f;
-  --accent-primary-hover: #006064;
+  /* SuiviTess = vert (light mode) */
+  --accent-primary: #059669;
+  --accent-primary-hover: #047857;
 
   --shadow-lg: 0 0 0 1px #d0d0d0;
   --overlay-light: rgba(0,0,0,0.3);
 
-  /* Tags d'action IA — variantes light un peu plus profondes pour contraster */
-  --tag-new:    #7c3aed;
-  --tag-update: #b45309;
+  /* Tags d'action IA — variantes light plus profondes pour contraster */
+  --tag-new:    #a16207;  /* yellow-700 */
+  --tag-update: #1e3a8a;  /* blue-900   */
 }
 
 * { box-sizing: border-box; }
@@ -246,15 +248,37 @@ html, body {
   flex: 1;
 }
 
+/* Terminal loader ">_" — extrait de LoadingSpinner.module.css */
 .spinner {
-  width: 28px;
-  height: 28px;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--accent-primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  width: 40px;
+  height: 30px;
+  color: var(--accent-primary);
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+.spinner svg { width: 100%; height: 100%; }
+.spinner .chevron {
+  stroke-dasharray: 44;
+  stroke-dashoffset: 44;
+  animation: drawChevron 1.2s ease forwards infinite;
+}
+.spinner .underscore {
+  stroke-dasharray: 14;
+  stroke-dashoffset: 14;
+  animation: drawUnderscore 1.2s ease forwards infinite;
+}
+@keyframes drawChevron {
+  0%   { stroke-dashoffset: 44; opacity: 0.3; }
+  10%  { opacity: 1; }
+  50%  { stroke-dashoffset: 0; opacity: 1; }
+  80%  { stroke-dashoffset: 0; opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0.3; }
+}
+@keyframes drawUnderscore {
+  0%, 40% { stroke-dashoffset: 14; opacity: 0.3; }
+  50%     { opacity: 1; }
+  70%     { stroke-dashoffset: 0; opacity: 1; }
+  80%     { stroke-dashoffset: 0; opacity: 1; }
+  100%    { stroke-dashoffset: 0; opacity: 0.3; }
+}
 
 .spinner-msg {
   margin: 0;
@@ -273,7 +297,7 @@ html, body {
 
 /* === Sommaire des sujets extraits (ancres scroll) === */
 .summaryIntro {
-  margin: 0 0 var(--spacing-sm);
+  margin: 0 0 -8px; /* rapproche visuellement la liste des 5 sujets juste en dessous (compense le gap flex .content) */
   font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
   color: var(--text-primary);
@@ -301,8 +325,11 @@ html, body {
   text-decoration: none;
   transition: color var(--transition-fast);
 }
-.summaryItem:hover {
-  color: var(--accent-primary);
+.summaryItem:hover .summaryItemTitle {
+  color: #ffffff;
+}
+[data-theme="light"] .summaryItem:hover .summaryItemTitle {
+  color: #000000;
 }
 .summaryItemMode {
   flex-shrink: 0;
@@ -314,35 +341,31 @@ html, body {
   letter-spacing: 0.04em;
 }
 .summaryItemMode.modeCreate {
-  background: color-mix(in srgb, var(--success) 15%, transparent);
-  color: var(--success);
-  border: 1px solid var(--success);
+  background: transparent;
+  color: var(--tag-new);
+  border: 1px solid var(--tag-new);
 }
 .summaryItemMode.modeUpdate {
-  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
-  color: var(--accent-primary);
-  border: 1px solid var(--accent-primary);
+  background: transparent;
+  color: var(--tag-update);
+  border: 1px solid var(--tag-update);
 }
 .summaryItemTitle {
-  flex: 1;
+  /* Même logique que .subjectTitle : le modeTag colle à la droite du titre */
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
 }
-.summaryItemArrow {
-  flex-shrink: 0;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-.summaryItem:hover .summaryItemArrow { color: var(--accent-primary); }
-
 /* Scroll fluide quand on clique une ancre */
 html { scroll-behavior: smooth; }
+/* Le :target garde la couleur du liseré de typologie — pas d'outline accent */
 .subjectRow:target {
-  outline: 1px solid var(--accent-primary);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .subjectsList {
@@ -362,10 +385,11 @@ html { scroll-behavior: smooth; }
   transition: opacity var(--transition-normal);
 }
 .subjectRow.is-skipped { opacity: 0.5; }
-.subjectRow.is-update {
-  border-color: var(--accent-primary);
-  background: color-mix(in srgb, var(--accent-primary) 4%, transparent);
-}
+.subjectRow.is-skipped .subjectTitle { opacity: 1; }
+
+/* Liseré coloré = couleur du tag de typologie (Nouveau / Mise à jour) */
+.subjectRow.mode-create { border-color: var(--tag-new);    background: color-mix(in srgb, var(--tag-new) 4%, transparent); }
+.subjectRow.mode-update { border-color: var(--tag-update); background: color-mix(in srgb, var(--tag-update) 4%, transparent); }
 
 .subjectHeader {
   display: flex;
@@ -374,17 +398,44 @@ html { scroll-behavior: smooth; }
   flex-wrap: wrap;
 }
 
+/* Status pill aligné sur SuiviTess (subjectCollapsedStatus) : bordure neutre + dot coloré */
 .statusTag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
   font-family: var(--font-family-mono);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
 }
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+/* Couleurs STATUS_OPTIONS de suivitess/types/index.ts */
+.dotAFaire  { background: #ef4444; }  /* À faire   */
+.dotEnCours { background: #f59e0b; }  /* En cours  */
+.dotAnalyse { background: #3b82f6; }  /* En analyse */
+.dotTermine { background: #10b981; }  /* Terminé   */
+.dotBloque  { background: #a855f7; }  /* Bloqué    */
+.dotMEP     { background: #06b6d4; }  /* À MEP     */
 
 .subjectTitle {
-  flex: 1;
+  /* Pas de flex:1 : le titre prend sa largeur naturelle, le modeTag colle à sa droite */
   min-width: 0;
+  flex: 0 1 auto;
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   word-break: break-word;
@@ -424,8 +475,10 @@ html { scroll-behavior: smooth; }
 .conf-medium { color: var(--accent-primary); border: 1px solid var(--accent-primary); }
 .conf-low    { color: var(--warning);        border: 1px solid var(--warning); }
 
+/* Tag UI alignée sur BoardList Delivery : transparent + texte/border colorés, padding 1px 6px */
 .modeTag {
-  padding: 2px 8px;
+  display: inline-block;
+  padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-family: var(--font-family-mono);
   font-size: 10px;
@@ -435,12 +488,12 @@ html { scroll-behavior: smooth; }
   white-space: nowrap;
 }
 .modeCreate {
-  background: color-mix(in srgb, var(--tag-new) 15%, transparent);
+  background: transparent;
   color: var(--tag-new);
   border: 1px solid var(--tag-new);
 }
 .modeUpdate {
-  background: color-mix(in srgb, var(--tag-update) 15%, transparent);
+  background: transparent;
   color: var(--tag-update);
   border: 1px solid var(--tag-update);
 }
@@ -622,7 +675,12 @@ html { scroll-behavior: smooth; }
     </div>
     <div class="content">
       <div class="loading">
-        <div class="spinner"></div>
+        <div class="spinner">
+          <svg viewBox="0 0 40 30" fill="none">
+            <polyline points="4,4 18,15 4,26" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="chevron" />
+            <line x1="22" y1="26" x2="36" y2="26" stroke="currentColor" stroke-width="3" stroke-linecap="round" class="underscore" />
+          </svg>
+        </div>
         <p class="spinner-msg">L'IA lit la transcription et décide où ranger chaque sujet…</p>
       </div>
     </div>
@@ -645,45 +703,35 @@ html { scroll-behavior: smooth; }
       <nav class="summaryList" aria-label="Sommaire des sujets extraits">
         <a class="summaryItem" href="#subj-a">
           <span class="summaryItemTitle">Migration de l'API V2 vers le nouveau gateway</span>
-          <span class="summaryItemMode modeCreate">+ Nouveau</span>
-          <span class="summaryItemArrow">↓</span>
+          <span class="summaryItemMode modeCreate">Nouveau</span>
         </a>
         <a class="summaryItem" href="#subj-b">
           <span class="summaryItemTitle">Bug lecture HDR sur l'app Android Orange</span>
-          <span class="summaryItemMode modeUpdate">↻ Mise à jour</span>
-          <span class="summaryItemArrow">↓</span>
+          <span class="summaryItemMode modeUpdate">Mise à jour</span>
         </a>
         <a class="summaryItem" href="#subj-c">
           <span class="summaryItemTitle">Préparation du POC de mesure d'audience cross-device</span>
-          <span class="summaryItemMode modeCreate">+ Nouveau</span>
-          <span class="summaryItemArrow">↓</span>
+          <span class="summaryItemMode modeCreate">Nouveau</span>
         </a>
         <a class="summaryItem" href="#subj-d">
           <span class="summaryItemTitle">Suivi commercial Free Mobile — premier point</span>
-          <span class="summaryItemMode modeCreate">+ Nouveau</span>
-          <span class="summaryItemArrow">↓</span>
+          <span class="summaryItemMode modeCreate">Nouveau</span>
         </a>
         <a class="summaryItem" href="#subj-e">
           <span class="summaryItemTitle">Anecdote sur le café cassé en salle de réunion</span>
-          <span class="summaryItemMode modeCreate">+ Nouveau</span>
-          <span class="summaryItemArrow">↓</span>
+          <span class="summaryItemMode modeCreate">Nouveau</span>
         </a>
       </nav>
 
       <div class="subjectsList">
 
         <!-- Row A : create new + existing review + existing section + high confidence + reasoning + responsibility -->
-        <div class="subjectRow" id="subj-a">
+        <div class="subjectRow mode-create" id="subj-a">
           <div class="subjectHeader">
-            <span class="modeTag modeCreate">+ Nouveau</span>
-            <span class="statusTag">EN COURS</span>
             <span class="subjectTitle">Migration de l'API V2 vers le nouveau gateway</span>
+            <span class="modeTag modeCreate">Nouveau</span>
+            <span class="statusTag"><span class="statusDot dotEnCours"></span>En cours</span>
           </div>
-          <p class="subjectMeta">
-            <strong>Création d'un sujet</strong>
-            <span class="subjectMetaSep">·</span>Ajouté le 16/04/2026
-            <span class="subjectMetaSep">·</span>Source : Daily Jeudi 16/04
-          </p>
           <p class="situation">Le device Android d'Orange ne répond plus correctement après la mise à jour 4.12. Maxime investigue côté gateway.</p>
           <p class="reasoning">Sujet jamais évoqué auparavant dans la review Orange — création recommandée.</p>
           <div class="routing">
@@ -713,17 +761,12 @@ html { scroll-behavior: smooth; }
         </div>
 
         <!-- Row B : update existing subject + medium confidence + updateBox visible -->
-        <div class="subjectRow is-update" id="subj-b">
+        <div class="subjectRow mode-update" id="subj-b">
           <div class="subjectHeader">
-            <span class="modeTag modeUpdate">↻ Mise à jour</span>
-            <span class="statusTag">RÉSOLU</span>
             <span class="subjectTitle">Bug lecture HDR sur l'app Android Orange</span>
+            <span class="modeTag modeUpdate">Mise à jour</span>
+            <span class="statusTag"><span class="statusDot dotTermine"></span>Terminé</span>
           </div>
-          <p class="subjectMeta">
-            <strong>Mise à jour de sujet existant</strong>
-            <span class="subjectMetaSep">·</span>Mis à jour le 16/04/2026
-            <span class="subjectMetaSep">·</span>Source : Daily Jeudi 16/04
-          </p>
           <p class="situation">Patch déployé hier soir, à confirmer côté QA Orange.</p>
           <p class="reasoning">Le sujet "Bug lecture HDR Android" existe déjà dans cette section — l'IA propose une mise à jour de statut.</p>
           <div class="updateBox">
@@ -767,17 +810,12 @@ html { scroll-behavior: smooth; }
         </div>
 
         <!-- Row C : create new + existing review + NEW section input shown + low confidence + no reasoning -->
-        <div class="subjectRow" id="subj-c">
+        <div class="subjectRow mode-create" id="subj-c">
           <div class="subjectHeader">
-            <span class="modeTag modeCreate">+ Nouveau</span>
-            <span class="statusTag">À CADRER</span>
             <span class="subjectTitle">Préparation du POC de mesure d'audience cross-device</span>
+            <span class="modeTag modeCreate">Nouveau</span>
+            <span class="statusTag"><span class="statusDot dotAnalyse"></span>En analyse</span>
           </div>
-          <p class="subjectMeta">
-            <strong>Création d'un sujet</strong>
-            <span class="subjectMetaSep">·</span>Ajouté le 16/04/2026
-            <span class="subjectMetaSep">·</span>Source : Daily Jeudi 16/04
-          </p>
           <p class="situation">Mentionné brièvement à 32 min : "il faudrait qu'on cadre un POC d'ici fin avril".</p>
           <div class="routing">
             <div class="routingField">
@@ -805,11 +843,11 @@ html { scroll-behavior: smooth; }
         </div>
 
         <!-- Row D : create new + NEW review + new section + medium confidence -->
-        <div class="subjectRow" id="subj-d">
+        <div class="subjectRow mode-create" id="subj-d">
           <div class="subjectHeader">
-            <span class="modeTag modeCreate">+ Nouveau</span>
-            <span class="statusTag">EN COURS</span>
             <span class="subjectTitle">Suivi commercial Free Mobile — premier point</span>
+            <span class="modeTag modeCreate">Nouveau</span>
+            <span class="statusTag"><span class="statusDot dotEnCours"></span>En cours</span>
           </div>
           <p class="subjectMeta">
             <strong>Création d'un sujet</strong>
@@ -841,11 +879,11 @@ html { scroll-behavior: smooth; }
         </div>
 
         <!-- Row E : skipped state -->
-        <div class="subjectRow is-skipped" id="subj-e">
+        <div class="subjectRow is-skipped mode-create" id="subj-e">
           <div class="subjectHeader">
-            <span class="modeTag modeCreate">+ Nouveau</span>
-            <span class="statusTag">À RANGER</span>
             <span class="subjectTitle">Anecdote sur le café cassé en salle de réunion</span>
+            <span class="modeTag modeCreate">Nouveau</span>
+            <span class="statusTag"><span class="statusDot dotAFaire"></span>À faire</span>
           </div>
           <p class="subjectMeta">
             <strong>Création d'un sujet</strong>
@@ -919,7 +957,12 @@ html { scroll-behavior: smooth; }
     </div>
     <div class="content">
       <div class="loading">
-        <div class="spinner"></div>
+        <div class="spinner">
+          <svg viewBox="0 0 40 30" fill="none">
+            <polyline points="4,4 18,15 4,26" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="chevron" />
+            <line x1="22" y1="26" x2="36" y2="26" stroke="currentColor" stroke-width="3" stroke-linecap="round" class="underscore" />
+          </svg>
+        </div>
         <p class="spinner-msg">Import en cours…</p>
       </div>
     </div>
