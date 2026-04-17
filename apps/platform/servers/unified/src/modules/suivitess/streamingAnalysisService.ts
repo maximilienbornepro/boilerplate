@@ -9,9 +9,11 @@
 // format.
 
 import type { Response } from 'express';
-import { getAnthropicClient } from '../connectors/aiProvider.js';
+import { getAnthropicClient, logAnthropicUsage } from '../connectors/aiProvider.js';
 import { loadSkill } from '../aiSkills/skillLoader.js';
 import { logAnalysis } from '../aiSkills/analysisLogsService.js';
+import { ensureSkillVersion } from '../aiSkills/skillVersionService.js';
+import { computeCostUsd } from '../aiSkills/pricing.js';
 import { JournalStreamer, extractResultJson } from './journalStreamer.js';
 import type { DocumentWithSections } from './dbService.js';
 
@@ -61,10 +63,17 @@ export async function streamAnalysis(res: Response, params: StreamParams): Promi
   let fullText = '';
   let proposalsForLog: Array<Record<string, unknown>> = [];
   let logError: string | null = null;
+  let skillVersionHash = '';
+  let usedModel = '';
+  let finalInputTokens = 0;
+  let finalOutputTokens = 0;
 
   try {
     const skill = await loadSkill(SKILL_SLUG);
+    const versionInfo = await ensureSkillVersion(SKILL_SLUG, skill, null);
+    skillVersionHash = versionInfo.hash;
     const { client, model } = await getAnthropicClient(params.userId);
+    usedModel = model;
 
     const existingContext = params.doc.sections.map(s => {
       const subjectsText = s.subjects.map(sub =>
@@ -117,11 +126,24 @@ puis un <result>…</result> contenant le JSON des propositions.`;
           text => sendEvent(res, { type: 'journal-delta', text }),
           () => sendEvent(res, { type: 'journal-complete' }),
         );
+      } else {
+        // Collect usage from message_start (input_tokens) and message_delta
+        // (output_tokens). Cast because the SDK's discriminated union types
+        // don't surface usage on all variants.
+        const anyEvent = event as { type: string; message?: { usage?: { input_tokens?: number } }; usage?: { output_tokens?: number } };
+        if (anyEvent.type === 'message_start' && anyEvent.message?.usage) {
+          finalInputTokens = anyEvent.message.usage.input_tokens ?? 0;
+        } else if (anyEvent.type === 'message_delta' && anyEvent.usage) {
+          finalOutputTokens = anyEvent.usage.output_tokens ?? 0;
+        }
       }
     }
 
     const proposals = extractProposals(fullText).map((p, i) => ({ ...p, id: i }));
     proposalsForLog = proposals;
+    if (finalInputTokens > 0 || finalOutputTokens > 0) {
+      logAnthropicUsage(params.userId, usedModel, { input_tokens: finalInputTokens, output_tokens: finalOutputTokens }, `aiSkills:${SKILL_SLUG}`);
+    }
     sendEvent(res, { type: 'proposals', proposals });
     sendEvent(res, { type: 'done' });
   } catch (err) {
@@ -130,6 +152,8 @@ puis un <result>…</result> contenant le JSON des propositions.`;
   } finally {
     res.end();
     // Best-effort logging — never throws.
+    const inputTokens = finalInputTokens;
+    const outputTokens = finalOutputTokens;
     await logAnalysis({
       userId: params.userId,
       userEmail: params.userEmail ?? null,
@@ -143,6 +167,12 @@ puis un <result>…</result> contenant le JSON des propositions.`;
       proposals: proposalsForLog,
       durationMs: Date.now() - startedAt,
       error: logError,
+      skillVersionHash: skillVersionHash || null,
+      provider: 'anthropic',
+      model: usedModel || null,
+      inputTokens,
+      outputTokens,
+      costUsd: computeCostUsd(usedModel, inputTokens, outputTokens),
     });
   }
 }

@@ -14,6 +14,8 @@ const DeliveryApp = lazy(() => import('./modules/delivery/App'));
 const MonCvApp = lazy(() => import('./modules/mon-cv/App'));
 const RagApp = lazy(() => import('./modules/rag/App'));
 const AiLogsApp = lazy(() => import('./modules/ai-logs/App'));
+const AiEvalsApp = lazy(() => import('./modules/ai-evals/App'));
+const AiPlaygroundApp = lazy(() => import('./modules/ai-playground/App'));
 const DesignSystemApp = lazy(() => import('./modules/design-system/App'));
 const DemoApp = lazy(() => import('./modules/demo/App'));
 const LandingDemoModule = lazy(() => import('./modules/demo/LandingDemo').then(m => ({ default: () => <m.LandingDemo /> })));
@@ -44,7 +46,13 @@ const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
  *  (landing, settings) that use SharedNav directly instead of going through
  *  the shared Layout wrapper. */
 function adminDrawerLinks(user?: User | null) {
-  return user?.isAdmin ? [{ label: 'Logs IA', path: '/ai-logs' }] : undefined;
+  return user?.isAdmin
+    ? [
+        { label: 'Logs IA', path: '/ai-logs' },
+        { label: 'Évaluations IA', path: '/ai-evals' },
+        { label: 'Playground IA', path: '/ai-playground' },
+      ]
+    : undefined;
 }
 
 function HomePage({ onNavigate, user }: { onNavigate?: (path: string) => void; user?: User | null }) {
@@ -205,6 +213,30 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <AiLogsApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/ai-evals"
+        element={
+          <SuspenseWrapper>
+            <AiEvalsApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/ai-evals/:datasetId"
+        element={
+          <SuspenseWrapper>
+            <AiEvalsApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/ai-playground"
+        element={
+          <SuspenseWrapper>
+            <AiPlaygroundApp onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />

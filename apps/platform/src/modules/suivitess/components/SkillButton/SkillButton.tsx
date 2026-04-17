@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal, Button } from '@boilerplate/shared/components';
 import styles from './SkillButton.module.css';
 
@@ -22,11 +22,14 @@ interface Props {
   children: ReactNode;
   /** Optional — hide the hover tooltip (useful when the button is disabled). */
   disabled?: boolean;
+  /** Show a persistent "skill: ✎ edit" caption below the button instead of
+   *  relying only on the hover tooltip. Default: true. */
+  showCaption?: boolean;
 }
 
 const HOVER_DELAY_MS = 250;
 
-export function SkillButton({ skillSlug, children, disabled }: Props) {
+export function SkillButton({ skillSlug, children, disabled, showCaption = true }: Props) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [meta, setMeta] = useState<SkillMeta | null>(null);
@@ -36,14 +39,20 @@ export function SkillButton({ skillSlug, children, disabled }: Props) {
   const [error, setError] = useState('');
   const timerRef = useRef<number | null>(null);
 
-  const fetchMeta = async () => {
+  const fetchMeta = useCallback(async () => {
     if (meta || loading) return;
     setLoading(true);
     try {
       const res = await fetch(`/ai-skills/api/${skillSlug}`, { credentials: 'include' });
       if (res.ok) setMeta(await res.json());
     } finally { setLoading(false); }
-  };
+  }, [meta, loading, skillSlug]);
+
+  // Load meta on mount so the caption shows the real skill name immediately.
+  useEffect(() => {
+    fetchMeta();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillSlug]);
 
   const openTooltip = () => {
     if (disabled) return;
@@ -114,6 +123,22 @@ export function SkillButton({ skillSlug, children, disabled }: Props) {
     >
       {children}
 
+      {showCaption && (
+        <button
+          type="button"
+          className={styles.caption}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditor(); }}
+          title="Éditer le skill IA utilisé par ce bouton"
+          disabled={!meta}
+        >
+          <span className={styles.captionLabel}>skill :</span>
+          <span className={styles.captionName}>
+            {loading ? '…' : (meta?.name ?? skillSlug)}
+          </span>
+          <span className={styles.captionEdit}>✎ éditer</span>
+        </button>
+      )}
+
       {open && !editing && (
         <div className={styles.tooltip} role="tooltip">
           <div className={styles.tooltipTitle}>Skill IA utilisé</div>
@@ -161,7 +186,7 @@ export function SkillButton({ skillSlug, children, disabled }: Props) {
               }}
             />
             {error && (
-              <div style={{ color: 'var(--color-error)', fontSize: 'var(--font-size-sm)' }}>{error}</div>
+              <div style={{ color: 'var(--error)', fontSize: 'var(--font-size-sm)' }}>{error}</div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--spacing-xs)' }}>
               <Button variant="secondary" onClick={resetDefault} disabled={saving || !meta.isCustomized}>

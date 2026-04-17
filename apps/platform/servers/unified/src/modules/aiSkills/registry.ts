@@ -82,6 +82,18 @@ export const SKILLS: readonly SkillDefinition[] = [
     },
     defaultFilePath: resolve(MODULES_DIR, 'delivery/skill-reorganize-board.md'),
   },
+  {
+    slug: 'llm-judge-faithfulness',
+    name: 'Juge IA — Fidélité de l\'output',
+    description:
+      'Scorer llm-judge : évalue la fidélité factuelle d\'un output IA par rapport à son input source. Utilisé automatiquement dans le scoring des logs.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — invoqué par POST /ai-skills/api/logs/:id/rescore',
+      trigger: 'Auto-scoring des logs ou clic admin « Relancer scorers »',
+    },
+    defaultFilePath: resolve(MODULES_DIR, 'aiSkills/skill-llm-judge-faithfulness.md'),
+  },
 ] as const;
 
 export function getSkill(slug: string): SkillDefinition | undefined {

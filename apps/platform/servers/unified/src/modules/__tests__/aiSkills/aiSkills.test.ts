@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { SKILLS, getSkill } from '../../aiSkills/registry.js';
 
 describe('aiSkills.registry', () => {
-  it('exposes the 4 expected slugs', () => {
+  it('exposes the 5 expected slugs (4 production skills + 1 llm-judge)', () => {
     const slugs = SKILLS.map(s => s.slug).sort();
     expect(slugs).toEqual([
       'delivery-reorganize-board',
+      'llm-judge-faithfulness',
       'suivitess-import-source-into-document',
       'suivitess-reformulate-subject',
       'suivitess-route-source-to-review',

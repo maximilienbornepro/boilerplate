@@ -8,9 +8,11 @@
 // (see `aiSkills/registry.ts`) — editable from the admin UI, with the file
 // `skill-route-source-to-review.md` as the shipped default.
 
-import { getAnthropicClient } from '../connectors/aiProvider.js';
+import { getAnthropicClient, logAnthropicUsage } from '../connectors/aiProvider.js';
 import { loadSkill as loadAiSkill } from '../aiSkills/skillLoader.js';
 import { logAnalysis } from '../aiSkills/analysisLogsService.js';
+import { ensureSkillVersion } from '../aiSkills/skillVersionService.js';
+import { computeCostUsd } from '../aiSkills/pricing.js';
 
 const SKILL_SLUG = 'suivitess-route-source-to-review';
 
@@ -89,6 +91,7 @@ export async function analyzeTranscriptionAndRoute(
 
   const startedAt = Date.now();
   const skill = await loadSkill();
+  const { hash: skillVersionHash } = await ensureSkillVersion(SKILL_SLUG, skill, null);
   const { client, model } = await getAnthropicClient(userId);
 
   const reviewsJson = reviews.map(r => ({
@@ -138,6 +141,9 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
   const text = aiResponse.content.find(b => b.type === 'text')?.type === 'text'
     ? (aiResponse.content.find(b => b.type === 'text') as { type: 'text'; text: string }).text
     : '';
+  const inputTokens = aiResponse.usage?.input_tokens ?? 0;
+  const outputTokens = aiResponse.usage?.output_tokens ?? 0;
+  logAnthropicUsage(userId, model, aiResponse.usage, `aiSkills:${SKILL_SLUG}`);
 
   let parsed: { summary?: string; subjects?: unknown[] } = {};
   try {
@@ -292,6 +298,12 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
     aiOutputRaw: text,
     proposals: subjects,
     durationMs: Date.now() - startedAt,
+    skillVersionHash,
+    provider: 'anthropic',
+    model,
+    inputTokens,
+    outputTokens,
+    costUsd: computeCostUsd(model, inputTokens, outputTokens),
   });
 
   return {

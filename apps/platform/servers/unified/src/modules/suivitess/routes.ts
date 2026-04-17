@@ -406,66 +406,43 @@ export function createRoutes(): Router {
     try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'reformulation'); }
     catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
-    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
-    const { client, model } = await getAnthropicClient(req.user!.id);
-
-    // Load the editable skill (DB first, file fallback) — admin can tune it
-    // from Admin → AI Skills.
-    const { loadSkill } = await import('../aiSkills/skillLoader.js');
-    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
-    const reformSkill = await loadSkill('suivitess-reformulate-subject');
-
     const inputSummary = `Titre : ${subject.title}
 État de la situation : ${subject.situation || '(vide)'}
 Responsable : ${subject.responsibility || 'Non assigné'}
 Statut : ${subject.status}`;
 
-    const promptText = `${reformSkill}
-
----
-
-# Sujet à reformuler
-
-${inputSummary}
-
-Applique les règles ci-dessus et réponds uniquement en JSON.`;
-
-    const startedAt = Date.now();
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: promptText }],
+    const { runSkill } = await import('../aiSkills/runSkill.js');
+    const runRes = await runSkill({
+      slug: 'suivitess-reformulate-subject',
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      buildPrompt: (skill) => `${skill}\n\n---\n\n# Sujet à reformuler\n\n${inputSummary}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
+      inputContent: inputSummary,
+      sourceKind: 'subject',
+      sourceTitle: subject.title,
+      documentId: null,
+      maxTokens: 2000,
     });
 
-    const text = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
     let result: { title?: string; situation?: string } = {};
     try {
-      let json = text.trim();
+      let json = runRes.outputText.trim();
       if (json.startsWith('```json')) json = json.slice(7);
       if (json.startsWith('```')) json = json.slice(3);
       if (json.endsWith('```')) json = json.slice(0, -3);
       result = JSON.parse(json.trim());
     } catch {
-      const match = text.match(/\{[\s\S]*\}/);
+      const match = runRes.outputText.match(/\{[\s\S]*\}/);
       if (match) result = JSON.parse(match[0]);
     }
 
     const finalTitle = result.title || subject.title;
     const finalSituation = result.situation || subject.situation;
-    const logId = await logAnalysis({
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      skillSlug: 'suivitess-reformulate-subject',
-      sourceKind: 'subject',
-      sourceTitle: subject.title,
-      documentId: null,
-      inputContent: inputSummary,
-      fullPrompt: promptText,
-      aiOutputRaw: text,
-      proposals: [{ title: finalTitle, situation: finalSituation }],
-      durationMs: Date.now() - startedAt,
-    });
-    res.json({ title: finalTitle, situation: finalSituation, logId });
+    if (runRes.logId != null) {
+      const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+      await attachProposalsToLog(runRes.logId, [{ title: finalTitle, situation: finalSituation }]);
+    }
+    res.json({ title: finalTitle, situation: finalSituation, logId: runRes.logId });
   }));
 
   // Generate an email summary for one or all subjects
@@ -1306,67 +1283,37 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`,
     try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'transcript_analysis'); }
     catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
-    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
-    const { client, model } = await getAnthropicClient(req.user!.id);
-
-    // Uses the shared editable skill — admin can tweak rules from Admin → AI Skills.
-    const { loadSkill } = await import('../aiSkills/skillLoader.js');
-    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
-    const skill = await loadSkill('suivitess-import-source-into-document');
-
-    const promptText = `${skill}
-
----
-
-# Contexte exécutable
-
-## Document existant (avec IDs)
-${existingContext || '(aucun sujet existant)'}
-
-## Transcription du call "${callTitle || 'Call'}"
-${transcriptText.slice(0, 30000)}
-
-Applique les règles ci-dessus et réponds uniquement en JSON.`;
-
-    const startedAt = Date.now();
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: promptText }],
+    const { runSkill } = await import('../aiSkills/runSkill.js');
+    const runRes = await runSkill({
+      slug: 'suivitess-import-source-into-document',
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(aucun sujet existant)'}\n\n## Transcription du call "${callTitle || 'Call'}"\n${transcriptText.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
+      inputContent: transcriptText,
+      sourceKind: 'transcript',
+      sourceTitle: callTitle || 'Call',
+      documentId: String(docId),
     });
-
-    const responseText = aiResponse.content
-      .filter(c => c.type === 'text')
-      .map(c => (c as { type: 'text'; text: string }).text)
-      .join('');
 
     let proposals: Array<Record<string, unknown>> = [];
     try {
-      let jsonText = responseText.trim();
+      let jsonText = runRes.outputText.trim();
       if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
       if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
       if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
       proposals = JSON.parse(jsonText.trim());
     } catch {
-      const match = responseText.match(/\[[\s\S]*\]/);
+      const match = runRes.outputText.match(/\[[\s\S]*\]/);
       if (match) proposals = JSON.parse(match[0]);
     }
 
     const indexed = proposals.map((p, i) => ({ ...p, id: i }));
-    const logId = await logAnalysis({
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      skillSlug: 'suivitess-import-source-into-document',
-      sourceKind: 'transcript',
-      sourceTitle: callTitle || 'Call',
-      documentId: String(docId),
-      inputContent: transcriptText,
-      fullPrompt: promptText,
-      aiOutputRaw: responseText,
-      proposals: indexed,
-      durationMs: Date.now() - startedAt,
-    });
-    res.json({ proposals: indexed, logId });
+    // Attach parsed proposals back to the log so the /ai-logs UI shows them.
+    if (runRes.logId != null) {
+      const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+      await attachProposalsToLog(runRes.logId, indexed);
+    }
+    res.json({ proposals: indexed, logId: runRes.logId });
   }));
 
   // ── Streaming version of the analysis (SSE) ──
@@ -1660,38 +1607,22 @@ ${filteredContent.slice(0, 30000)}`,
 
     const sourceLabel = source === 'outlook' ? 'emails' : 'messages Slack';
 
-    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
-    const { client, model } = await getAnthropicClient(req.user!.id);
-
-    // Uses the shared editable skill — admin can tweak rules from Admin → AI Skills.
-    const { loadSkill } = await import('../aiSkills/skillLoader.js');
-    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
-    const skill = await loadSkill('suivitess-import-source-into-document');
-
-    const promptText = `${skill}
-
----
-
-# Contexte exécutable
-
-## Document existant (avec IDs)
-${existingContext || '(Document vide)'}
-
-## Contenu à analyser (${sourceLabel})
-${filteredContent.slice(0, 30000)}
-
-Applique les règles ci-dessus et réponds uniquement en JSON au format attendu (tableau ou objet { "proposals": [...] }).`;
-
-    const startedAt = Date.now();
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: promptText }],
+    const { runSkill } = await import('../aiSkills/runSkill.js');
+    const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+    const runRes = await runSkill({
+      slug: 'suivitess-import-source-into-document',
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(Document vide)'}\n\n## Contenu à analyser (${sourceLabel})\n${filteredContent.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON au format attendu (tableau ou objet { "proposals": [...] }).`,
+      inputContent: filteredContent,
+      sourceKind: source,
+      sourceTitle: sourceTitle || 'Import',
+      documentId: String(docId),
     });
 
-    const text = aiResponse.content[0]?.type === 'text' ? aiResponse.content[0].text : '';
     // Handles both shapes — bare array `[...]` (from the shared skill) OR
     // legacy `{ "proposals": [...] }` wrapper.
+    const text = runRes.outputText;
     let proposals: Array<Record<string, unknown>> = [];
     try {
       const arrayMatch = text.match(/\[[\s\S]*\]/);
@@ -1705,20 +1636,8 @@ Applique les règles ci-dessus et réponds uniquement en JSON au format attendu 
     } catch { /* parse error */ }
 
     const indexed = proposals.map((p, i) => ({ ...p, id: i }));
-    const logId = await logAnalysis({
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      skillSlug: 'suivitess-import-source-into-document',
-      sourceKind: source,
-      sourceTitle: sourceTitle || 'Import',
-      documentId: String(docId),
-      inputContent: filteredContent,
-      fullPrompt: promptText,
-      aiOutputRaw: text,
-      proposals: indexed,
-      durationMs: Date.now() - startedAt,
-    });
-    res.json({ proposals: indexed, skipped, logId });
+    if (runRes.logId != null) await attachProposalsToLog(runRes.logId, indexed);
+    res.json({ proposals: indexed, skipped, logId: runRes.logId });
   }));
 
   // ==================== SUBJECT EXTERNAL LINKS (Jira/Notion/Roadmap) ====================

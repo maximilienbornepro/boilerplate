@@ -50,9 +50,13 @@ export function Layout({
       } as CSSProperties)
     : undefined;
 
-  // Admin-only extra drawer entries (Logs IA for now).
+  // Admin-only extra drawer entries (Logs IA + Évaluations IA + Playground IA).
   const extraDrawerLinks = user?.isAdmin
-    ? [{ label: 'Logs IA', path: '/ai-logs' }]
+    ? [
+        { label: 'Logs IA', path: '/ai-logs' },
+        { label: 'Évaluations IA', path: '/ai-evals' },
+        { label: 'Playground IA', path: '/ai-playground' },
+      ]
     : undefined;
 
   return (
