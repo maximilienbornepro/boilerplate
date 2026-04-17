@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
+import { SkillButton } from '../SkillButton/SkillButton';
 import * as api from '../../services/api';
 import styles from './BulkTranscriptionImportModal.module.css';
 
@@ -48,6 +49,10 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   // Step 3 — apply progress
   const [applyResult, setApplyResult] = useState<api.ApplyRoutingResponse | null>(null);
 
+  // DB id of the ai_analysis_logs row written on analyze — surfaced as a
+  // "voir le log" link during the routing step.
+  const [lastLogId, setLastLogId] = useState<number | null>(null);
+
   // ============ Load sources on mount ============
   useEffect(() => {
     api.fetchBulkSources()
@@ -67,6 +72,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   const handleAnalyze = async () => {
     if (!selectedItem) return;
     setPhase('analyzing');
+    setLastLogId(null);
     try {
       const res = await api.analyzeAndRoute({
         source: selectedItem.provider,
@@ -74,6 +80,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
         title: selectedItem.title,
         date: selectedItem.date,
       });
+      if (res.logId != null) setLastLogId(res.logId);
       setSummary(res.summary);
       setAvailableReviews(res.availableReviews);
       setRows(res.subjects.map((s, i) => ({
@@ -203,15 +210,20 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                       />
                       <span className={styles.sourceTitle}>{s.title}</span>
                       <span className={styles.providerTag}>{s.provider}</span>
+                      {s.alreadyImported && (
+                        <span className={styles.alreadyImportedBadge}>Déjà importé</span>
+                      )}
                       {s.date && <span className={styles.sourceDate}>{formatDate(s.date)}</span>}
                     </label>
                   ))}
                 </div>
                 <div className={styles.actions}>
                   <Button variant="secondary" onClick={onClose}>Annuler</Button>
-                  <Button variant="primary" onClick={handleAnalyze} disabled={!selectedId}>
-                    Analyser
-                  </Button>
+                  <SkillButton skillSlug="suivitess-route-source-to-review" disabled={!selectedId}>
+                    <Button variant="primary" onClick={handleAnalyze} disabled={!selectedId}>
+                      {selectedItem?.alreadyImported ? 'Ré-importer →' : 'Analyser →'}
+                    </Button>
+                  </SkillButton>
                 </div>
               </>
             )}
@@ -226,6 +238,16 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
         {phase === 'routing' && (
           <>
+            {lastLogId != null && (
+              <div className={styles.logBanner}>
+                <span>🧠 Analyse loggée — <a href={`/ai-logs/${lastLogId}`} target="_blank" rel="noreferrer">voir le log #{lastLogId}</a></span>
+                <button
+                  type="button"
+                  className={styles.logBannerCopy}
+                  onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/ai-logs/${lastLogId}`)}
+                >📋 copier l'URL</button>
+              </div>
+            )}
             <div className={styles.summaryBlock}>
               <strong>{summary}</strong>
             </div>

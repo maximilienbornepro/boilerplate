@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
+import { SkillButton } from '../SkillButton/SkillButton';
 import styles from './TranscriptionWizard.module.css';
 
 interface TranscriptionCall {
@@ -87,12 +88,16 @@ export function TranscriptionWizard({ documentId, onClose, onDone, initialProvid
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [existingSections, setExistingSections] = useState<Section[]>([]);
+  // DB id of the ai_analysis_logs row written during the last analyze call.
+  // Displayed as a "Voir le log" link so admins can inspect what the AI saw.
+  const [lastLogId, setLastLogId] = useState<number | null>(null);
 
   const [analyzing, setAnalyzing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ enriched: number; created: number; sectionsCreated: number } | null>(null);
+
 
   // Already-imported call tracking
   const [importedCallIds, setImportedCallIds] = useState<Set<string>>(new Set());
@@ -242,10 +247,14 @@ export function TranscriptionWizard({ documentId, onClose, onDone, initialProvid
     finally { setImporting(false); }
   };
 
+  /** Streams the AI analysis via SSE. Lets the user watch — in real time —
+   *  what the model considers, ignores, matches. Switches to the proposals
+   *  step once the full response is parsed. */
   const handleAnalyzeAndPropose = async () => {
     if (!selectedCall) return;
-    setAnalyzing(true); setError('');
+    setAnalyzing(true); setError(''); setLastLogId(null);
     try {
+      let data: { proposals?: Proposal[]; logId?: number | null };
       if (EMAIL_PROVIDERS.has(provider)) {
         const content = await fetchEmailContent(selectedCall);
         const res = await fetch(`${API_BASE}/documents/${documentId}/content-analyze-and-propose`, {
@@ -253,19 +262,18 @@ export function TranscriptionWizard({ documentId, onClose, onDone, initialProvid
           body: JSON.stringify({ content, source: provider, sourceTitle: selectedCall.title, itemIds: [selectedCall.id] }),
         });
         if (!res.ok) throw new Error((await res.json()).error);
-        const data = await res.json();
-        setProposals(data.proposals || []);
-        setSelected(new Set((data.proposals || []).map((p: Proposal) => p.id)));
+        data = await res.json();
       } else {
         const res = await fetch(`${API_BASE}/documents/${documentId}/transcript-analyze-and-propose`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
           body: JSON.stringify({ callId: selectedCall.id, callTitle: selectedCall.title, provider }),
         });
         if (!res.ok) throw new Error((await res.json()).error);
-        const data = await res.json();
-        setProposals(data.proposals || []);
-        setSelected(new Set((data.proposals || []).map((p: Proposal) => p.id)));
+        data = await res.json();
       }
+      setProposals(data.proposals || []);
+      setSelected(new Set((data.proposals || []).map((p: Proposal) => p.id)));
+      if (data.logId != null) setLastLogId(data.logId);
       setStep('proposals');
     } catch (err) { setError(err instanceof Error ? err.message : 'Erreur'); }
     finally { setAnalyzing(false); }
@@ -327,6 +335,31 @@ export function TranscriptionWizard({ documentId, onClose, onDone, initialProvid
     return (
       <Modal title="Propositions de fusion" onClose={() => setStep('choose-mode')}>
         <div className={styles.body}>
+          {lastLogId != null && (
+            <div style={{
+              padding: '6px 10px',
+              marginBottom: 'var(--spacing-xs)',
+              fontSize: 'var(--font-size-xs)',
+              fontFamily: 'var(--font-mono)',
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 'var(--spacing-xs)',
+            }}>
+              <span>🧠 Analyse loggée — <a href={`/ai-logs/${lastLogId}`} target="_blank" rel="noreferrer" style={{ color: 'var(--color-accent)' }}>voir le log #{lastLogId}</a></span>
+              <button
+                type="button"
+                style={{ background: 'none', border: 'none', color: 'var(--color-accent)', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+                onClick={() => {
+                  navigator.clipboard?.writeText(`${window.location.origin}/ai-logs/${lastLogId}`);
+                }}
+              >📋 copier</button>
+            </div>
+          )}
           <div className={styles.selectAllRow}>
             <label className={styles.selectAll}>
               <input type="checkbox" checked={selected.size === proposals.length} onChange={toggleAll} />
@@ -404,9 +437,11 @@ export function TranscriptionWizard({ documentId, onClose, onDone, initialProvid
                   <select className={styles.aiSelect} value={selectedAI} onChange={e => setSelectedAI(e.target.value)}>
                     {connectedAI.map(id => { const ai = AI_PROVIDERS.find(a => a.id === id); return <option key={id} value={id}>{ai?.label || id}</option>; })}
                   </select>
-                  <Button variant="primary" onClick={handleAnalyzeAndPropose} disabled={busy}>
-                    {analyzing ? 'Analyse...' : 'Analyser et fusionner'}
-                  </Button>
+                  <SkillButton skillSlug="suivitess-import-source-into-document" disabled={busy}>
+                    <Button variant="primary" onClick={handleAnalyzeAndPropose} disabled={busy}>
+                      {analyzing ? 'Analyse...' : 'Analyser et fusionner'}
+                    </Button>
+                  </SkillButton>
                 </>
               ) : <span className={styles.noAI}>Aucune IA configurée.</span>}
             </div>
@@ -416,7 +451,11 @@ export function TranscriptionWizard({ documentId, onClose, onDone, initialProvid
                 <div className={styles.importOption}>
                   <strong>Analyser comme section</strong>
                   <span className={styles.importOptionDesc}>L'IA extrait les sujets clés dans une section dédiée</span>
-                  <Button variant="secondary" onClick={handleImportAISection} disabled={busy}>{importing ? 'Analyse...' : 'Créer section IA'}</Button>
+                  <SkillButton skillSlug="suivitess-import-source-into-document" disabled={busy}>
+                    <Button variant="secondary" onClick={handleImportAISection} disabled={busy}>
+                      {importing ? 'Analyse...' : 'Créer section IA'}
+                    </Button>
+                  </SkillButton>
                 </div>
               </>
             )}

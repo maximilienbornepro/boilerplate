@@ -6,31 +6,19 @@
 //
 // Never deletes a task, never changes a task's duration, only repositions.
 
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { getAnthropicClient } from '../connectors/aiProvider.js';
+import { loadSkill as loadAiSkill } from '../aiSkills/skillLoader.js';
+import { logAnalysis } from '../aiSkills/analysisLogsService.js';
 
 /**
- * Path to the editable skill file that holds the rules injected into the
- * Claude prompt. Co-located with the service so it ships in Docker builds.
+ * Slug of the editable skill that holds the rules injected into the Claude
+ * prompt. See `aiSkills/registry.ts` — the admin UI can override the content
+ * in the DB ; the shipped default lives in `skill-reorganize-board.md`.
  */
-const SKILL_PATH = (() => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return resolve(here, 'sanity-check-skill.md');
-})();
+const SKILL_SLUG = 'delivery-reorganize-board';
 
-/**
- * Load the skill rules from disk on every call so edits to the markdown
- * file are picked up without restarting the server. Falls back to a minimal
- * inline ruleset if the file is missing for any reason.
- */
 async function loadSkill(): Promise<string> {
-  try {
-    return await readFile(SKILL_PATH, 'utf-8');
-  } catch {
-    return 'Tu es un assistant de gestion de projet. Réponds en JSON strict.';
-  }
+  return loadAiSkill(SKILL_SLUG);
 }
 
 // ============ Public types ============
@@ -280,6 +268,7 @@ export function categoryOf(versionName: string | null, versions: VersionInfo[]):
 export async function analyzeSanityCheck(
   userId: number,
   snapshot: BoardSnapshot,
+  userEmail?: string | null,
 ): Promise<SanityCheckResult> {
   const stats = computeBoardAnalysis(snapshot);
 
@@ -287,6 +276,7 @@ export async function analyzeSanityCheck(
     return { summary: 'Aucune tâche à analyser.', analysis: stats, columns: [] };
   }
 
+  const startedAt = Date.now();
   const { client, model } = await getAnthropicClient(userId);
 
   const MAX_COL = snapshot.totalCols - 1;
@@ -331,9 +321,9 @@ export async function analyzeSanityCheck(
     iterationName: m.iterationName,
   }));
 
-  // Editable skill rules — loaded from disk on each call.
-  // Edit apps/platform/servers/unified/src/modules/delivery/sanity-check-skill.md
-  // to tune the AI behaviour without touching code.
+  // Editable skill rules — loaded from DB (admin override) or from
+  // skill-reorganize-board.md as fallback. Edit from the admin UI
+  // (Admin → AI Skills) or tweak the markdown file to change defaults.
   const skill = await loadSkill();
 
   const prompt = `${skill}
@@ -475,11 +465,28 @@ Applique les règles ci-dessus à cet état et réponds uniquement en JSON.`;
 
   columns.sort((a, b) => a.col - b.col);
 
-  return {
+  const logId = await logAnalysis({
+    userId,
+    userEmail: userEmail ?? null,
+    skillSlug: SKILL_SLUG,
+    sourceKind: 'board',
+    sourceTitle: snapshot.boardName || 'Delivery board',
+    documentId: null,
+    inputContent: `Tickets: ${snapshot.tasks.length}\nMissing from board: ${snapshot.missingFromBoard.length}\nTotal columns: ${snapshot.totalCols}\nToday col: ${snapshot.todayCol}`,
+    fullPrompt: prompt,
+    aiOutputRaw: text,
+    proposals: columns,
+    durationMs: Date.now() - startedAt,
+  });
+
+  const result: SanityCheckResult & { logId?: number | null } = {
     summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 500) : `${seenTaskIds.size} recommandation(s).`,
     analysis: stats,
     columns,
+    logId,
   };
+
+  return result;
 }
 
 // ============ Pure analysis ============

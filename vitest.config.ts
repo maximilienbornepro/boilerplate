@@ -175,6 +175,15 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      // Server: aiSkills (editable skill registry + analysis logs)
+      {
+        test: {
+          name: 'server-ai-skills',
+          root: '.',
+          include: ['apps/platform/servers/unified/src/modules/__tests__/aiSkills/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
       // Client: suivitess-recorder
       {
         test: {

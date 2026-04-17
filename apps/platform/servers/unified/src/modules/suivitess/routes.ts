@@ -409,36 +409,32 @@ export function createRoutes(): Router {
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 
-    // Load the editable skill file for reformulation rules.
-    let reformSkill = '';
-    try {
-      const { readFile } = await import('node:fs/promises');
-      const { fileURLToPath } = await import('node:url');
-      const { dirname, resolve } = await import('node:path');
-      const here = dirname(fileURLToPath(import.meta.url));
-      reformSkill = await readFile(resolve(here, 'reformulation-skill.md'), 'utf-8');
-    } catch {
-      reformSkill = 'Reformule ce sujet pour qu\'il soit plus clair. Retourne un JSON { title, situation }.';
-    }
+    // Load the editable skill (DB first, file fallback) — admin can tune it
+    // from Admin → AI Skills.
+    const { loadSkill } = await import('../aiSkills/skillLoader.js');
+    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
+    const reformSkill = await loadSkill('suivitess-reformulate-subject');
 
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: `${reformSkill}
+    const inputSummary = `Titre : ${subject.title}
+État de la situation : ${subject.situation || '(vide)'}
+Responsable : ${subject.responsibility || 'Non assigné'}
+Statut : ${subject.status}`;
+
+    const promptText = `${reformSkill}
 
 ---
 
 # Sujet à reformuler
 
-Titre : ${subject.title}
-État de la situation : ${subject.situation || '(vide)'}
-Responsable : ${subject.responsibility || 'Non assigné'}
-Statut : ${subject.status}
+${inputSummary}
 
-Applique les règles ci-dessus et réponds uniquement en JSON.`,
-      }],
+Applique les règles ci-dessus et réponds uniquement en JSON.`;
+
+    const startedAt = Date.now();
+    const aiResponse = await client.messages.create({
+      model,
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: promptText }],
     });
 
     const text = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
@@ -454,10 +450,22 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`,
       if (match) result = JSON.parse(match[0]);
     }
 
-    res.json({
-      title: result.title || subject.title,
-      situation: result.situation || subject.situation,
+    const finalTitle = result.title || subject.title;
+    const finalSituation = result.situation || subject.situation;
+    const logId = await logAnalysis({
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      skillSlug: 'suivitess-reformulate-subject',
+      sourceKind: 'subject',
+      sourceTitle: subject.title,
+      documentId: null,
+      inputContent: inputSummary,
+      fullPrompt: promptText,
+      aiOutputRaw: text,
+      proposals: [{ title: finalTitle, situation: finalSituation }],
+      durationMs: Date.now() - startedAt,
     });
+    res.json({ title: finalTitle, situation: finalSituation, logId });
   }));
 
   // Generate an email summary for one or all subjects
@@ -1123,17 +1131,10 @@ ${transcriptText.slice(0, 30000)}`,
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 
-    // Load the editable skill file for intra-document import rules.
-    let importSkill = '';
-    try {
-      const { readFile } = await import('node:fs/promises');
-      const { fileURLToPath } = await import('node:url');
-      const { dirname, resolve } = await import('node:path');
-      const here = dirname(fileURLToPath(import.meta.url));
-      importSkill = await readFile(resolve(here, 'transcription-import-skill.md'), 'utf-8');
-    } catch {
-      importSkill = 'Tu es un assistant de suivi de réunion. Retourne un tableau JSON de propositions.';
-    }
+    // Load the editable skill (DB first, file fallback) — admin can tune it
+    // from Admin → AI Skills.
+    const { loadSkill } = await import('../aiSkills/skillLoader.js');
+    const importSkill = await loadSkill('suivitess-import-source-into-document');
 
     const aiResponse = await client.messages.create({
       model,
@@ -1308,62 +1309,30 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`,
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 
+    // Uses the shared editable skill — admin can tweak rules from Admin → AI Skills.
+    const { loadSkill } = await import('../aiSkills/skillLoader.js');
+    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
+    const skill = await loadSkill('suivitess-import-source-into-document');
+
+    const promptText = `${skill}
+
+---
+
+# Contexte exécutable
+
+## Document existant (avec IDs)
+${existingContext || '(aucun sujet existant)'}
+
+## Transcription du call "${callTitle || 'Call'}"
+${transcriptText.slice(0, 30000)}
+
+Applique les règles ci-dessus et réponds uniquement en JSON.`;
+
+    const startedAt = Date.now();
     const aiResponse = await client.messages.create({
       model,
       max_tokens: 4096,
-      messages: [{
-        role: 'user',
-        content: `Tu es un assistant de suivi de réunion. Analyse cette transcription et propose des modifications au document de suivi existant.
-
-## Document existant (avec IDs) :
-${existingContext || '(aucun sujet existant)'}
-
-## Transcription du call "${callTitle || 'Call'}" :
-${transcriptText.slice(0, 30000)}
-
-## Types d'actions possibles :
-
-1. "enrich" — Enrichir l'état de la situation d'un sujet existant. N'écrase PAS l'existant, AJOUTE du texte.
-2. "create_subject" — Créer un nouveau sujet dans une section existante.
-3. "create_section" — Créer une nouvelle section avec ses sujets (si le thème ne correspond à aucune section existante).
-
-## Règles :
-- Pour "enrich" : retourne le texte à AJOUTER (pas la situation complète)
-- Pour "create_subject" : indique dans quelle section existante le placer (via sectionId)
-- Pour "create_section" : inclus les sujets à créer dedans
-- Ignore les bavardages, hors-sujet, salutations
-- Maximum 10 propositions, priorise les plus importantes
-
-Retourne UNIQUEMENT un tableau JSON :
-[
-  {
-    "action": "enrich",
-    "subjectId": "uuid",
-    "subjectTitle": "titre du sujet (pour affichage)",
-    "sectionName": "nom de la section (pour affichage)",
-    "appendText": "Nouveau texte à ajouter",
-    "reason": "Justification courte"
-  },
-  {
-    "action": "create_subject",
-    "sectionId": "uuid",
-    "sectionName": "nom de la section (pour affichage)",
-    "title": "Titre du nouveau sujet",
-    "situation": "Description...",
-    "responsibility": "Responsable ou null",
-    "status": "🔴 à faire",
-    "reason": "Justification"
-  },
-  {
-    "action": "create_section",
-    "sectionName": "Nom de la nouvelle section",
-    "subjects": [
-      { "title": "...", "situation": "...", "responsibility": null, "status": "🔴 à faire" }
-    ],
-    "reason": "Justification"
-  }
-]`,
-      }],
+      messages: [{ role: 'user', content: promptText }],
     });
 
     const responseText = aiResponse.content
@@ -1383,7 +1352,77 @@ Retourne UNIQUEMENT un tableau JSON :
       if (match) proposals = JSON.parse(match[0]);
     }
 
-    res.json({ proposals: proposals.map((p, i) => ({ ...p, id: i })) });
+    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
+    const logId = await logAnalysis({
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      skillSlug: 'suivitess-import-source-into-document',
+      sourceKind: 'transcript',
+      sourceTitle: callTitle || 'Call',
+      documentId: String(docId),
+      inputContent: transcriptText,
+      fullPrompt: promptText,
+      aiOutputRaw: responseText,
+      proposals: indexed,
+      durationMs: Date.now() - startedAt,
+    });
+    res.json({ proposals: indexed, logId });
+  }));
+
+  // ── Streaming version of the analysis (SSE) ──
+  // Streams the AI's narrated journal in real time ; emits the final
+  // proposals once done. Same input shape as transcript-analyze-and-propose
+  // but accepts transcript/email/slack via `sourceKind`.
+  router.post('/documents/:docId/analyze-source-stream', asyncHandler(async (req, res) => {
+    const { docId } = req.params;
+    const { sourceKind, sourceTitle, content, callId, provider } = req.body as {
+      sourceKind: 'transcript' | 'outlook' | 'gmail' | 'slack';
+      sourceTitle?: string;
+      content?: string;
+      callId?: string;
+      provider?: 'fathom' | 'otter';
+    };
+
+    const doc = await db.getDocumentWithSections(String(docId));
+    if (!doc) { res.status(404).json({ error: 'Document non trouvé' }); return; }
+
+    // If sourceKind === 'transcript', caller gives us (callId + provider) and
+    // we fetch the transcript ourselves. Otherwise content is passed in.
+    let body = content ?? '';
+    if (sourceKind === 'transcript') {
+      if (!callId || !provider) { res.status(400).json({ error: 'callId + provider requis' }); return; }
+      const transcript = provider === 'fathom'
+        ? await (await import('./fathomService.js')).getFathomTranscript(req.user!.id, callId)
+        : await (await import('./otterService.js')).getOtterTranscript(req.user!.id, callId);
+      if (!transcript || transcript.length === 0) { res.status(400).json({ error: 'Transcription vide' }); return; }
+      body = transcript.map((e: { speaker: string; text: string }) => `[${e.speaker}]: ${e.text}`).join('\n');
+    }
+    if (!body.trim()) { res.status(400).json({ error: 'Contenu vide' }); return; }
+
+    // Credits — same quota as the non-streamed endpoint.
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try {
+      await deductCredits(
+        req.user!.id, req.user!.isAdmin, 'suivitess',
+        sourceKind === 'transcript' ? 'transcript_analysis' : 'content_analysis',
+      );
+    } catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        res.status(402).json({ error: 'INSUFFICIENT_CREDITS', required: e.required, available: e.available });
+        return;
+      }
+      throw e;
+    }
+
+    const { streamAnalysis } = await import('./streamingAnalysisService.js');
+    await streamAnalysis(res, {
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      doc,
+      sourceKind,
+      sourceTitle: sourceTitle || 'Source',
+      content: body,
+    });
   }));
 
   // ==================== CONTENT IMPORT (Email/Slack via Chrome extension) ====================
@@ -1624,49 +1663,62 @@ ${filteredContent.slice(0, 30000)}`,
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 
+    // Uses the shared editable skill — admin can tweak rules from Admin → AI Skills.
+    const { loadSkill } = await import('../aiSkills/skillLoader.js');
+    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
+    const skill = await loadSkill('suivitess-import-source-into-document');
+
+    const promptText = `${skill}
+
+---
+
+# Contexte exécutable
+
+## Document existant (avec IDs)
+${existingContext || '(Document vide)'}
+
+## Contenu à analyser (${sourceLabel})
+${filteredContent.slice(0, 30000)}
+
+Applique les règles ci-dessus et réponds uniquement en JSON au format attendu (tableau ou objet { "proposals": [...] }).`;
+
+    const startedAt = Date.now();
     const aiResponse = await client.messages.create({
       model,
       max_tokens: 4096,
-      messages: [{
-        role: 'user',
-        content: `Tu es un assistant de suivi de projet. Analyse ces ${sourceLabel} et propose des modifications au document de suivi existant.
-
-## Document existant :
-${existingContext || '(Document vide)'}
-
-## Contenu a analyser (${sourceLabel}) :
-${filteredContent.slice(0, 30000)}
-
-## Regles :
-- Propose max 10 actions
-- Ignore les messages triviaux (salutations, signatures)
-- Types d'actions possibles :
-  1. "enrich" : enrichir un sujet existant avec de nouvelles informations
-  2. "create_subject" : creer un nouveau sujet dans une section existante
-  3. "create_section" : creer une nouvelle section avec ses sujets
-
-Reponds UNIQUEMENT avec un JSON valide :
-{
-  "proposals": [
-    { "action": "enrich", "subjectId": "uuid", "subjectTitle": "titre actuel", "sectionName": "section", "appendText": "texte a ajouter", "reason": "pourquoi" },
-    { "action": "create_subject", "sectionId": "uuid", "sectionName": "section", "title": "titre", "situation": "description", "responsibility": null, "status": "a faire", "reason": "pourquoi" },
-    { "action": "create_section", "sectionName": "nom section", "subjects": [{ "title": "...", "situation": "...", "status": "..." }], "reason": "pourquoi" }
-  ]
-}`,
-      }],
+      messages: [{ role: 'user', content: promptText }],
     });
 
     const text = aiResponse.content[0]?.type === 'text' ? aiResponse.content[0].text : '';
+    // Handles both shapes — bare array `[...]` (from the shared skill) OR
+    // legacy `{ "proposals": [...] }` wrapper.
     let proposals: Array<Record<string, unknown>> = [];
     try {
-      const match = text.match(/\{[\s\S]*\}/);
-      if (match) {
-        const parsed = JSON.parse(match[0]);
-        proposals = parsed.proposals || [];
+      const arrayMatch = text.match(/\[[\s\S]*\]/);
+      const objectMatch = text.match(/\{[\s\S]*\}/);
+      if (arrayMatch && (!objectMatch || arrayMatch.index! < objectMatch.index!)) {
+        proposals = JSON.parse(arrayMatch[0]);
+      } else if (objectMatch) {
+        const parsed = JSON.parse(objectMatch[0]);
+        proposals = Array.isArray(parsed) ? parsed : (parsed.proposals || []);
       }
     } catch { /* parse error */ }
 
-    res.json({ proposals: proposals.map((p, i) => ({ ...p, id: i })), skipped });
+    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
+    const logId = await logAnalysis({
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      skillSlug: 'suivitess-import-source-into-document',
+      sourceKind: source,
+      sourceTitle: sourceTitle || 'Import',
+      documentId: String(docId),
+      inputContent: filteredContent,
+      fullPrompt: promptText,
+      aiOutputRaw: text,
+      proposals: indexed,
+      durationMs: Date.now() - startedAt,
+    });
+    res.json({ proposals: indexed, skipped, logId });
   }));
 
   // ==================== SUBJECT EXTERNAL LINKS (Jira/Notion/Roadmap) ====================
@@ -2195,26 +2247,30 @@ Reponds UNIQUEMENT avec un JSON valide :
       });
     }
 
-    // Slack collected messages (from the hourly collector service)
+    // Slack collected messages — we keep already-imported digests in the
+    // list and tag them with `alreadyImported` below, so the UI can offer
+    // a "Ré-importer" action.
     try {
       const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
       const slackConfig = await getSlackConfig(userId);
       if (slackConfig && slackConfig.isActive) {
         const slackMsgs = await getSlackMessages(slackConfig.id, {
           days: Math.min(30, days),
-          excludeImportedFor: userId,
         });
         const slackDigests = groupSlackMessagesByDay(slackMsgs);
         items.push(...slackDigests);
       }
     } catch { /* Slack collector may not be initialized */ }
 
-    // Outlook collected emails (pushed from the Chrome extension)
+    // Outlook collected emails (pushed from the Chrome extension).
+    // We keep already-imported digests in the result : the UI shows them
+    // with a "Déjà importé" badge + a "Ré-importer" action, same pattern
+    // as the per-document TranscriptionWizard.
     try {
       const { getOutlookMessages, groupOutlookMessagesByDay } = await import('./outlookCollectorService.js');
       const outlookMsgs = await getOutlookMessages(userId, {
         days: Math.min(30, days),
-        excludeImported: true,
+        excludeImported: false,
       });
       if (outlookMsgs.length > 0) {
         const outlookDigests = groupOutlookMessagesByDay(outlookMsgs);
@@ -2222,7 +2278,8 @@ Reponds UNIQUEMENT avec un JSON valide :
       }
     } catch { /* Outlook collector may not be initialized */ }
 
-    // Exclude items already imported into any of this user's documents.
+    // Mark items already imported — we keep them in the list so the user
+    // can re-import on purpose, just tagged so the UI can show them greyed.
     try {
       const { rows } = await db.pool.query(
         `SELECT call_id FROM suivitess_transcript_imports
@@ -2230,8 +2287,8 @@ Reponds UNIQUEMENT avec un JSON valide :
         [userId],
       );
       const imported = new Set(rows.map(r => r.call_id as string));
-      for (let i = items.length - 1; i >= 0; i--) {
-        if (imported.has(items[i].id)) items.splice(i, 1);
+      for (const item of items) {
+        if (imported.has(item.id)) (item as { alreadyImported?: boolean }).alreadyImported = true;
       }
     } catch { /* already-imported table may not exist yet — keep everything */ }
 
@@ -2388,7 +2445,7 @@ Reponds UNIQUEMENT avec un JSON valide :
         userId,
         transcript,
         reviews,
-        { title: title || '(sans titre)', date: date ?? null, provider: source },
+        { title: title || '(sans titre)', date: date ?? null, provider: source, userEmail: req.user!.email },
       );
       res.json({
         ...result,
@@ -2406,6 +2463,117 @@ Reponds UNIQUEMENT avec un JSON valide :
       console.error('[SuiviTess routing] error:', err);
       res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
     }
+  }));
+
+  // POST /transcription/analyze-and-route-stream
+  // Streaming variant of the above : same body, but returns an SSE stream
+  // with the AI's narrated journal + the final result once parsed.
+  router.post('/transcription/analyze-and-route-stream', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { source, id, title, date } = (req.body || {}) as {
+      source?: string; id?: string; title?: string; date?: string | null;
+    };
+    if (!source || !id) {
+      res.status(400).json({ error: 'source et id sont requis' });
+      return;
+    }
+
+    // Reuse the same transcript-fetching logic as the non-streamed route.
+    let transcript = '';
+    try {
+      if (source === 'fathom') {
+        const { getFathomTranscript } = await import('./fathomService.js');
+        const entries = await getFathomTranscript(userId, id);
+        transcript = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+      } else if (source === 'otter') {
+        const { getOtterTranscript } = await import('./otterService.js');
+        const entries = await getOtterTranscript(userId, id);
+        transcript = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+      } else if (source === 'outlook') {
+        if (id.startsWith('outlook:')) {
+          const dateFilter = id.replace('outlook:', '');
+          const { getOutlookMessages } = await import('./outlookCollectorService.js');
+          const msgs = await getOutlookMessages(userId, { days: 30 });
+          const filtered = dateFilter && dateFilter !== 'unknown'
+            ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
+            : msgs;
+          transcript = filtered.map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`).join('\n');
+        } else {
+          const { getOutlookEmailBody } = await import('./emailService.js');
+          transcript = await getOutlookEmailBody(userId, id);
+        }
+      } else if (source === 'gmail') {
+        const { getGmailEmailBody } = await import('./emailService.js');
+        transcript = await getGmailEmailBody(userId, id);
+      } else if (source === 'slack') {
+        const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+        const slackConfig = await getSlackConfig(userId);
+        if (!slackConfig) { res.status(400).json({ error: 'Slack non configuré.' }); return; }
+        const parts = id.split(':');
+        const channelId = parts[1] || parts[0];
+        const dateFilter = parts[2];
+        const messages = await getSlackMessages(slackConfig.id, { days: slackConfig.daysToFetch, channelId });
+        const filtered = dateFilter
+          ? messages.filter(m => new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10) === dateFilter)
+          : messages;
+        transcript = filtered
+          .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+          .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`).join('\n');
+      } else {
+        res.status(400).json({ error: `Source non supportée : ${source}` }); return;
+      }
+    } catch (err) {
+      res.status(502).json({ error: (err as Error).message || 'Récupération échouée' });
+      return;
+    }
+
+    if (!transcript.trim()) { res.status(400).json({ error: 'Transcription vide' }); return; }
+
+    // Credits — same quota as the non-streamed endpoint.
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(userId, req.user!.isAdmin, 'suivitess', 'transcript_analysis'); }
+    catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        res.status(402).json({ error: 'INSUFFICIENT_CREDITS', required: e.required, available: e.available });
+        return;
+      }
+      throw e;
+    }
+
+    // Build the reviews snapshot.
+    const existingDocs = await db.getAllDocuments(userId, req.user!.isAdmin);
+    const reviews = [];
+    for (const d of existingDocs.slice(0, 40)) {
+      try {
+        const doc = await db.getDocumentWithSections(d.id);
+        if (!doc) continue;
+        reviews.push({
+          id: doc.id,
+          title: doc.title,
+          description: (d as { description?: string | null }).description ?? null,
+          sections: (doc.sections || []).map(s => ({
+            id: s.id,
+            name: s.name,
+            subjects: (s.subjects || []).slice(0, 20).map(sub => ({
+              id: sub.id,
+              title: sub.title,
+              status: sub.status ?? null,
+              situationExcerpt: (sub.situation || '').slice(0, 200),
+              responsibility: sub.responsibility ?? null,
+            })),
+          })),
+        });
+      } catch { /* skip this review */ }
+    }
+
+    const { streamRouting } = await import('./streamingRoutingService.js');
+    await streamRouting(res, {
+      userId,
+      userEmail: req.user!.email,
+      transcript,
+      reviews,
+      callMeta: { title: title || '(sans titre)', date: date ?? null, provider: source },
+    });
   }));
 
   // POST /transcription/apply-routing

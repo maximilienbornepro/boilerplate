@@ -13,6 +13,7 @@ import { initDelivery, createDeliveryRouter } from './modules/delivery/index.js'
 import { initMonCv, createMonCvRouter } from './modules/mon-cv/index.js';
 import { initConnectors, createConnectorsRouter } from './modules/connectors/index.js';
 import { initRag, createRagRouter } from './modules/rag/index.js';
+import { initAiSkills, createAiSkillsRouter } from './modules/aiSkills/index.js';
 
 const app = express();
 
@@ -72,6 +73,10 @@ async function init() {
   // RAG
   await initRag();
   app.use('/rag/api', createRagRouter());
+
+  // AI Skills (admin editor)
+  await initAiSkills();
+  app.use('/ai-skills/api', createAiSkillsRouter());
 
   // Error handling
   app.use(errorMiddleware);

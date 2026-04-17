@@ -322,6 +322,8 @@ export interface BulkSourceItem {
   date: string | null;
   participants?: string[];
   preview?: string;
+  /** True if this source has already been imported into any review of the user. */
+  alreadyImported?: boolean;
 }
 
 export async function fetchBulkSources(days = 30): Promise<BulkSourceItem[]> {
@@ -376,6 +378,8 @@ export interface AnalysisResponse {
   summary: string;
   subjects: AnalyzedSubject[];
   availableReviews: AvailableReview[];
+  /** DB id of the ai_analysis_logs row — may be null if logging failed. */
+  logId?: number | null;
 }
 
 /**
@@ -399,6 +403,63 @@ export async function analyzeAndRoute(payload: {
     throw new Error(data.error || `HTTP ${response.status}`);
   }
   return response.json();
+}
+
+/** SSE-streamed variant : receives `journal-delta` events as the AI is
+ *  writing its analysis journal, then `result` with the fully-parsed output,
+ *  then `done`. Callbacks fire on every event. Returns the final result when
+ *  the stream ends. */
+export async function analyzeAndRouteStream(
+  payload: { source: SourceProvider; id: string; title: string; date?: string | null },
+  handlers: {
+    onJournalDelta?: (text: string) => void;
+    onJournalComplete?: () => void;
+  },
+): Promise<AnalysisResponse> {
+  const response = await fetch(`${API_BASE}/transcription/analyze-and-route-stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok || !response.body) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let finalResult: AnalysisResponse | null = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let sep: number;
+    while ((sep = buf.indexOf('\n\n')) !== -1) {
+      const frame = buf.slice(0, sep);
+      buf = buf.slice(sep + 2);
+      if (!frame.startsWith('data: ')) continue;
+      let evt: { type: string; [k: string]: unknown };
+      try { evt = JSON.parse(frame.slice(6)); } catch { continue; }
+
+      if (evt.type === 'journal-delta') {
+        handlers.onJournalDelta?.(String(evt.text ?? ''));
+      } else if (evt.type === 'journal-complete') {
+        handlers.onJournalComplete?.();
+      } else if (evt.type === 'result') {
+        const result = evt.result as { summary: string; subjects: AnalyzedSubject[] };
+        const availableReviews = evt.availableReviews as AvailableReview[];
+        finalResult = { ...result, availableReviews };
+      } else if (evt.type === 'error') {
+        throw new Error(String(evt.message || 'Erreur IA'));
+      }
+    }
+  }
+
+  if (!finalResult) throw new Error('Flux interrompu avant la réponse finale');
+  return finalResult;
 }
 
 export interface ApplyRoutingSubject {

@@ -13,6 +13,7 @@ const SuivitessApp = lazy(() => import('./modules/suivitess/App'));
 const DeliveryApp = lazy(() => import('./modules/delivery/App'));
 const MonCvApp = lazy(() => import('./modules/mon-cv/App'));
 const RagApp = lazy(() => import('./modules/rag/App'));
+const AiLogsApp = lazy(() => import('./modules/ai-logs/App'));
 const DesignSystemApp = lazy(() => import('./modules/design-system/App'));
 const DemoApp = lazy(() => import('./modules/demo/App'));
 const LandingDemoModule = lazy(() => import('./modules/demo/LandingDemo').then(m => ({ default: () => <m.LandingDemo /> })));
@@ -39,10 +40,17 @@ const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
   </Suspense>
 );
 
+/** Admin-only drawer links — mirrored from Layout so they show up on pages
+ *  (landing, settings) that use SharedNav directly instead of going through
+ *  the shared Layout wrapper. */
+function adminDrawerLinks(user?: User | null) {
+  return user?.isAdmin ? [{ label: 'Logs IA', path: '/ai-logs' }] : undefined;
+}
+
 function HomePage({ onNavigate, user }: { onNavigate?: (path: string) => void; user?: User | null }) {
   return (
     <>
-      <SharedNav allowedAppIds={user?.permissions} onNavigate={onNavigate} />
+      <SharedNav allowedAppIds={user?.permissions} onNavigate={onNavigate} extraDrawerLinks={adminDrawerLinks(user)} />
       <main>
         <LandingPage onNavigate={onNavigate} />
       </main>
@@ -102,7 +110,7 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         path="/reglages"
         element={
           <>
-            <SharedNav allowedAppIds={user?.permissions} onNavigate={onNavigate} />
+            <SharedNav allowedAppIds={user?.permissions} onNavigate={onNavigate} extraDrawerLinks={adminDrawerLinks(user)} />
             <main style={{ paddingTop: 0 }}>
               <SettingsPage onBack={() => onNavigate ? onNavigate('/') : (window.location.href = '/')} user={user} />
             </main>
@@ -113,7 +121,7 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         path="/settings/connectors"
         element={
           <>
-            <SharedNav allowedAppIds={user?.permissions} onNavigate={onNavigate} />
+            <SharedNav allowedAppIds={user?.permissions} onNavigate={onNavigate} extraDrawerLinks={adminDrawerLinks(user)} />
             <main style={{ paddingTop: 0 }}>
               <ConnectorsPage onBack={() => onNavigate ? onNavigate('/') : (window.location.href = '/')} />
             </main>
@@ -181,6 +189,22 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <LandingDemoModule />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/ai-logs"
+        element={
+          <SuspenseWrapper>
+            <AiLogsApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/ai-logs/:logId"
+        element={
+          <SuspenseWrapper>
+            <AiLogsApp onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />

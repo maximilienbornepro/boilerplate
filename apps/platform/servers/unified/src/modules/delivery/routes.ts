@@ -1009,7 +1009,7 @@ export function createDeliveryRoutes(): Router {
       tasks: capped,
       versions: classifiedVersions,
       missingFromBoard: missingCapped,
-    });
+    }, req.user!.email);
 
     res.json(result);
   }));

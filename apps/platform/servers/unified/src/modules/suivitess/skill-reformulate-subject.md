@@ -1,6 +1,14 @@
-# SuiviTess — reformulation IA d'un sujet
+# Skill — SuiviTess : reformuler un sujet
 
-> Ce fichier est **chargé à chaque appel** de reformulation d'un sujet. Modifie-le librement.
+## À propos de ce skill
+
+- **Slug** (id stable en code) : `suivitess-reformulate-subject`
+- **Où il est utilisé** : `POST /suivitess/api/subjects/:id/reformulate`
+- **Déclenché quand** : page d'un suivitess → bouton « Reformuler avec l'IA » sur un sujet
+- **Input** : titre + situation + statut + responsable du sujet
+- **Output JSON** : `{ title, situation }` reformulés, sens et structure conservés.
+- **Édition** : via la page **Admin → AI Skills**. La version en DB gagne sur ce fichier (qui
+  reste le « contenu par défaut » restaurable via le bouton « Restaurer par défaut »).
 
 ## Rôle
 

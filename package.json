@@ -40,6 +40,7 @@
     "test:client:rag": "vitest run --project client-rag",
     "test:server:suivitess-recorder": "vitest run --project server-suivitess-recorder",
     "test:client:suivitess-recorder": "vitest run --project client-suivitess-recorder",
+    "test:server:ai-skills": "vitest run --project server-ai-skills",
     "test:shared": "vitest run --project shared",
     "predeploy": "npm test"
   },

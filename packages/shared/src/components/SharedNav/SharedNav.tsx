@@ -10,12 +10,16 @@ export interface SharedNavProps {
   allowedAppIds?: string[];
   /** If provided, use SPA navigation instead of full page reload */
   onNavigate?: (path: string) => void;
+  /** Extra drawer entries shown above "Réglages". Intended for admin-only
+   *  pages — the caller is responsible for gating visibility. */
+  extraDrawerLinks?: Array<{ label: string; path: string; icon?: ReactNode }>;
 }
 
 export function SharedNav({
   currentApp,
   allowedAppIds,
   onNavigate,
+  extraDrawerLinks,
 }: SharedNavProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -155,6 +159,26 @@ export function SharedNav({
               </li>
             ))}
           </ul>
+
+          {/* Extra admin entries (Logs IA, etc.) */}
+          {extraDrawerLinks && extraDrawerLinks.length > 0 && (
+            <ul className="shared-nav-drawer-list">
+              {extraDrawerLinks.map(link => (
+                <li key={link.path}>
+                  <a
+                    className="shared-nav-drawer-item"
+                    href={link.path}
+                    onClick={(e) => handleNavClick(e, link.path)}
+                  >
+                    <span className="shared-nav-drawer-icon">
+                      {link.icon ?? <span className="shared-nav-drawer-dot" style={{ backgroundColor: 'var(--color-accent)' }} />}
+                    </span>
+                    <span className="shared-nav-drawer-name">{link.label}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
 
           {/* Settings (separated, no bullet, gear icon) */}
           <a
