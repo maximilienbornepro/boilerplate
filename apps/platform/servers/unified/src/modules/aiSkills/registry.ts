@@ -94,6 +94,100 @@ export const SKILLS: readonly SkillDefinition[] = [
     },
     defaultFilePath: resolve(MODULES_DIR, 'aiSkills/skill-llm-judge-faithfulness.md'),
   },
+
+  // ── Pipeline modulaire (feature flag USE_PIPELINE_SKILLS) ─────────────
+  //
+  // Architecture 3 tiers qui remplace à terme le monolithique
+  // `suivitess-import-source-into-document` :
+  //   Tier 1 (adapters) : extract-transcript / extract-slack / extract-outlook
+  //   Tier 2 (placement) : place-in-document / place-in-reviews
+  //   Tier 3 (writers)   : append-situation / compose-situation
+  // Chaque skill ≤ 80 lignes, focus strict, testable en isolation dans le
+  // playground et via les datasets /ai-evals.
+  {
+    slug: 'suivitess-extract-transcript',
+    name: 'SuiviTess — Pipeline/T1 : extraire les sujets d\'une transcription',
+    description:
+      'Tier 1 du pipeline modulaire. Parcourt une transcription d\'appel (Fathom/Otter) et en sort des sujets atomiques avec citations brutes, sans interprétation. Matériel downstream pour les tiers placement et writer.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline() dans aiSkills/analyzeSourcePipeline.ts',
+      trigger: 'Pipeline modulaire actif (env USE_PIPELINE_SKILLS=1), source=transcript',
+    },
+    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-extract-transcript.md'),
+  },
+  {
+    slug: 'suivitess-extract-slack',
+    name: 'SuiviTess — Pipeline/T1 : extraire les sujets d\'un fil Slack',
+    description:
+      'Tier 1 du pipeline modulaire. Parcourt un digest Slack (threads, mentions, réactions) et en sort des sujets atomiques avec citations brutes.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline()',
+      trigger: 'Pipeline modulaire actif, source=slack',
+    },
+    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-extract-slack.md'),
+  },
+  {
+    slug: 'suivitess-extract-outlook',
+    name: 'SuiviTess — Pipeline/T1 : extraire les sujets d\'emails Outlook/Gmail',
+    description:
+      'Tier 1 du pipeline modulaire. Parcourt une chaîne d\'emails et en sort des sujets atomiques avec citations brutes. Gère les quotes, signatures, CC.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline()',
+      trigger: 'Pipeline modulaire actif, source=outlook/gmail',
+    },
+    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-extract-outlook.md'),
+  },
+  {
+    slug: 'suivitess-place-in-document',
+    name: 'SuiviTess — Pipeline/T2 : placer les sujets dans un suivitess ouvert',
+    description:
+      'Tier 2 du pipeline modulaire. Prend des sujets pré-extraits + le suivitess courant, décide pour chacun enrich/create_subject/create_section (sans rédiger le contenu).',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline() (variante document-scoped)',
+      trigger: 'Pipeline modulaire actif, page d\'un suivitess',
+    },
+    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-place-in-document.md'),
+  },
+  {
+    slug: 'suivitess-place-in-reviews',
+    name: 'SuiviTess — Pipeline/T2 : router les sujets vers la bonne review',
+    description:
+      'Tier 2 du pipeline modulaire. Prend des sujets pré-extraits + toutes les reviews, décide pour chacun la review+section cible (sans rédiger le contenu).',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline() (variante multi-review)',
+      trigger: 'Pipeline modulaire actif, page listing',
+    },
+    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-place-in-reviews.md'),
+  },
+  {
+    slug: 'suivitess-append-situation',
+    name: 'SuiviTess — Pipeline/T3 : rédiger le texte à ajouter (enrich)',
+    description:
+      'Tier 3 du pipeline modulaire. Rédige uniquement le appendText à concaténer à une situation existante, strictement à partir des rawQuotes. Aucune invention permise.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline() (par enrich, parallèle)',
+      trigger: 'Pipeline modulaire actif, décision enrich du tier 2',
+    },
+    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-append-situation.md'),
+  },
+  {
+    slug: 'suivitess-compose-situation',
+    name: 'SuiviTess — Pipeline/T3 : rédiger la situation d\'un nouveau sujet',
+    description:
+      'Tier 3 du pipeline modulaire. Rédige une situation initiale pour un create_subject/new-subject, strictement à partir des rawQuotes.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline() (par création, parallèle)',
+      trigger: 'Pipeline modulaire actif, décision create du tier 2',
+    },
+    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-compose-situation.md'),
+  },
 ] as const;
 
 export function getSkill(slug: string): SkillDefinition | undefined {

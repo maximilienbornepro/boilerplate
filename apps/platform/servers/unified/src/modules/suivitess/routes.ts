@@ -1373,37 +1373,76 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
     try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'transcript_analysis'); }
     catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
-    const { runSkill } = await import('../aiSkills/runSkill.js');
-    const runRes = await runSkill({
-      slug: 'suivitess-import-source-into-document',
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(aucun sujet existant)'}\n\n## Transcription du call "${callTitle || 'Call'}"\n${transcriptText.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
-      inputContent: transcriptText,
-      sourceKind: 'transcript',
-      sourceTitle: callTitle || 'Call',
-      documentId: String(docId),
-    });
+    // ── Modular pipeline (feature flag) OR monolithic skill (default) ──
+    const { isPipelineEnabled, analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+    let indexed: Array<Record<string, unknown>> = [];
+    let rootLogId: number | null = null;
 
-    let proposals: Array<Record<string, unknown>> = [];
-    try {
-      let jsonText = runRes.outputText.trim();
-      if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
-      if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
-      if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
-      proposals = JSON.parse(jsonText.trim());
-    } catch {
-      const match = runRes.outputText.match(/\[[\s\S]*\]/);
-      if (match) proposals = JSON.parse(match[0]);
+    if (isPipelineEnabled()) {
+      // Build the structured DocumentContext expected by the pipeline.
+      const documentCtx = {
+        id: String(doc.id),
+        title: doc.title,
+        sections: doc.sections.map(s => ({
+          id: String(s.id),
+          name: s.name,
+          subjects: s.subjects.map(sub => ({
+            id: String(sub.id),
+            title: sub.title,
+            situationExcerpt: (sub.situation || '').slice(0, 2000),
+            status: sub.status,
+            responsibility: sub.responsibility ?? null,
+          })),
+        })),
+      };
+      const { proposals, rootLogId: logId } = await analyzeSourceForDocument({
+        sourceKind: 'transcript',
+        sourceRaw: transcriptText,
+        sourceTitle: callTitle || 'Call',
+        document: documentCtx,
+        userId: req.user!.id,
+        userEmail: req.user!.email || '',
+      });
+      indexed = proposals.map((p, i) => ({ ...p, id: i }));
+      rootLogId = logId;
+      if (rootLogId != null && indexed.length > 0) {
+        const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+        await attachProposalsToLog(rootLogId, indexed);
+      }
+    } else {
+      const { runSkill } = await import('../aiSkills/runSkill.js');
+      const runRes = await runSkill({
+        slug: 'suivitess-import-source-into-document',
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(aucun sujet existant)'}\n\n## Transcription du call "${callTitle || 'Call'}"\n${transcriptText.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
+        inputContent: transcriptText,
+        sourceKind: 'transcript',
+        sourceTitle: callTitle || 'Call',
+        documentId: String(docId),
+      });
+
+      let proposals: Array<Record<string, unknown>> = [];
+      try {
+        let jsonText = runRes.outputText.trim();
+        if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
+        if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
+        if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
+        proposals = JSON.parse(jsonText.trim());
+      } catch {
+        const match = runRes.outputText.match(/\[[\s\S]*\]/);
+        if (match) proposals = JSON.parse(match[0]);
+      }
+
+      indexed = proposals.map((p, i) => ({ ...p, id: i }));
+      rootLogId = runRes.logId;
+      if (rootLogId != null) {
+        const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+        await attachProposalsToLog(rootLogId, indexed);
+      }
     }
 
-    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
-    // Attach parsed proposals back to the log so the /ai-logs UI shows them.
-    if (runRes.logId != null) {
-      const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
-      await attachProposalsToLog(runRes.logId, indexed);
-    }
-    res.json({ proposals: indexed, logId: runRes.logId });
+    res.json({ proposals: indexed, logId: rootLogId });
   }));
 
   // ── Streaming version of the analysis (SSE) ──
@@ -1697,37 +1736,71 @@ ${filteredContent.slice(0, 30000)}`,
 
     const sourceLabel = source === 'outlook' ? 'emails' : 'messages Slack';
 
-    const { runSkill } = await import('../aiSkills/runSkill.js');
     const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
-    const runRes = await runSkill({
-      slug: 'suivitess-import-source-into-document',
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(Document vide)'}\n\n## Contenu à analyser (${sourceLabel})\n${filteredContent.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON au format attendu (tableau ou objet { "proposals": [...] }).`,
-      inputContent: filteredContent,
-      sourceKind: source,
-      sourceTitle: sourceTitle || 'Import',
-      documentId: String(docId),
-    });
+    const { isPipelineEnabled, analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+    let indexed: Array<Record<string, unknown>> = [];
+    let rootLogId: number | null = null;
 
-    // Handles both shapes — bare array `[...]` (from the shared skill) OR
-    // legacy `{ "proposals": [...] }` wrapper.
-    const text = runRes.outputText;
-    let proposals: Array<Record<string, unknown>> = [];
-    try {
-      const arrayMatch = text.match(/\[[\s\S]*\]/);
-      const objectMatch = text.match(/\{[\s\S]*\}/);
-      if (arrayMatch && (!objectMatch || arrayMatch.index! < objectMatch.index!)) {
-        proposals = JSON.parse(arrayMatch[0]);
-      } else if (objectMatch) {
-        const parsed = JSON.parse(objectMatch[0]);
-        proposals = Array.isArray(parsed) ? parsed : (parsed.proposals || []);
-      }
-    } catch { /* parse error */ }
+    if (isPipelineEnabled()) {
+      const documentCtx = {
+        id: String(doc.id),
+        title: doc.title,
+        sections: doc.sections.map(s => ({
+          id: String(s.id),
+          name: s.name,
+          subjects: s.subjects.map(sub => ({
+            id: String(sub.id),
+            title: sub.title,
+            situationExcerpt: (sub.situation || '').slice(0, 2000),
+            status: sub.status,
+            responsibility: sub.responsibility ?? null,
+          })),
+        })),
+      };
+      const pipelineKind = source === 'slack' ? 'slack' : 'outlook';
+      const { proposals, rootLogId: logId } = await analyzeSourceForDocument({
+        sourceKind: pipelineKind,
+        sourceRaw: filteredContent,
+        sourceTitle: sourceTitle || 'Import',
+        document: documentCtx,
+        userId: req.user!.id,
+        userEmail: req.user!.email || '',
+      });
+      indexed = proposals.map((p, i) => ({ ...p, id: i }));
+      rootLogId = logId;
+      if (rootLogId != null && indexed.length > 0) await attachProposalsToLog(rootLogId, indexed);
+    } else {
+      const { runSkill } = await import('../aiSkills/runSkill.js');
+      const runRes = await runSkill({
+        slug: 'suivitess-import-source-into-document',
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(Document vide)'}\n\n## Contenu à analyser (${sourceLabel})\n${filteredContent.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON au format attendu (tableau ou objet { "proposals": [...] }).`,
+        inputContent: filteredContent,
+        sourceKind: source,
+        sourceTitle: sourceTitle || 'Import',
+        documentId: String(docId),
+      });
 
-    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
-    if (runRes.logId != null) await attachProposalsToLog(runRes.logId, indexed);
-    res.json({ proposals: indexed, skipped, logId: runRes.logId });
+      const text = runRes.outputText;
+      let proposals: Array<Record<string, unknown>> = [];
+      try {
+        const arrayMatch = text.match(/\[[\s\S]*\]/);
+        const objectMatch = text.match(/\{[\s\S]*\}/);
+        if (arrayMatch && (!objectMatch || arrayMatch.index! < objectMatch.index!)) {
+          proposals = JSON.parse(arrayMatch[0]);
+        } else if (objectMatch) {
+          const parsed = JSON.parse(objectMatch[0]);
+          proposals = Array.isArray(parsed) ? parsed : (parsed.proposals || []);
+        }
+      } catch { /* parse error */ }
+
+      indexed = proposals.map((p, i) => ({ ...p, id: i }));
+      rootLogId = runRes.logId;
+      if (rootLogId != null) await attachProposalsToLog(rootLogId, indexed);
+    }
+
+    res.json({ proposals: indexed, skipped, logId: rootLogId });
   }));
 
   // ==================== SUBJECT EXTERNAL LINKS (Jira/Notion/Roadmap) ====================
@@ -2447,7 +2520,42 @@ ${filteredContent.slice(0, 30000)}`,
       }
     }
 
-    // 4) Run AI.
+    // 4) Run AI — pipeline modulaire (flag) OU skill monolithique (défaut).
+    const availableReviewsPayload = reviews.map(r => ({
+      id: r.id,
+      title: r.title,
+      sections: r.sections.map(s => ({
+        id: s.id,
+        name: s.name,
+        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+      })),
+    }));
+
+    const { isPipelineEnabled, analyzeSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
+
+    if (isPipelineEnabled()) {
+      try {
+        const { proposals, rootLogId } = await analyzeSourceForReviews({
+          sourceKind: source as 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail',
+          sourceRaw: transcript,
+          sourceTitle: title || '(sans titre)',
+          reviews,
+          userId,
+          userEmail: req.user!.email || '',
+        });
+        res.json({
+          summary: proposals.length > 0 ? `${proposals.length} sujet(s) extrait(s) et routé(s).` : 'Aucun sujet exploitable.',
+          subjects: proposals,
+          logId: rootLogId,
+          availableReviews: availableReviewsPayload,
+        });
+      } catch (err) {
+        console.error('[SuiviTess pipeline routing] error:', err);
+        res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
+      }
+      return;
+    }
+
     const { analyzeTranscriptionAndRoute } = await import('./transcriptionRoutingService.js');
     try {
       const result = await analyzeTranscriptionAndRoute(
@@ -2456,18 +2564,7 @@ ${filteredContent.slice(0, 30000)}`,
         reviews,
         { title: title || '(sans titre)', date: date ?? null, provider: source, userEmail: req.user!.email },
       );
-      res.json({
-        ...result,
-        availableReviews: reviews.map(r => ({
-          id: r.id,
-          title: r.title,
-          sections: r.sections.map(s => ({
-            id: s.id,
-            name: s.name,
-            subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
-          })),
-        })),
-      });
+      res.json({ ...result, availableReviews: availableReviewsPayload });
     } catch (err) {
       console.error('[SuiviTess routing] error:', err);
       res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
