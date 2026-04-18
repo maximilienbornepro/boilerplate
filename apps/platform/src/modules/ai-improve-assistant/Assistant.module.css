@@ -198,7 +198,7 @@
 .codeBlock {
 	margin: 0;
 	padding: var(--spacing-sm);
-	max-height: 220px;
+	max-height: 420px;
 	overflow: auto;
 	background: var(--bg-secondary, rgba(128,128,128,0.05));
 	border: 1px solid var(--border-color);

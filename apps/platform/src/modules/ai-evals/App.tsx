@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Layout, Button, LoadingSpinner, Toast, useGatewayUser } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
@@ -106,6 +106,7 @@ export default function AiEvalsApp({ onNavigate }: { onNavigate?: (path: string)
   const [detail, setDetail] = useState<DatasetDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
+  const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
   const [selectedExpId, setSelectedExpId] = useState<number | null>(null);
   const [expReport, setExpReport] = useState<ExperimentReport | null>(null);
   const [loadingExp, setLoadingExp] = useState(false);
@@ -144,18 +145,29 @@ export default function AiEvalsApp({ onNavigate }: { onNavigate?: (path: string)
 
   useEffect(() => { loadDatasets(); }, [loadDatasets]);
 
-  // Load detail when route id changes.
-  useEffect(() => {
+  // Reusable detail loader (used on route change AND after the assistant
+  // closes — so items added via /ai-improve-assistant show up immediately).
+  const reloadDetail = useCallback(async () => {
     if (!routeDatasetId) { setDetail(null); return; }
     setLoadingDetail(true);
+    try {
+      const r = await fetch(`/ai-skills/api/datasets/${routeDatasetId}`, { credentials: 'include' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d: DatasetDetail = await r.json();
+      setDetail(d);
+    } catch (err) {
+      addToast({ type: 'error', message: err instanceof Error ? err.message : 'Erreur' });
+    } finally {
+      setLoadingDetail(false);
+    }
+  }, [routeDatasetId, addToast]);
+
+  // Load detail when route id changes.
+  useEffect(() => {
     setExpReport(null);
     setSelectedExpId(null);
-    fetch(`/ai-skills/api/datasets/${routeDatasetId}`, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then((d: DatasetDetail) => setDetail(d))
-      .catch(err => addToast({ type: 'error', message: err instanceof Error ? err.message : 'Erreur' }))
-      .finally(() => setLoadingDetail(false));
-  }, [routeDatasetId, addToast]);
+    reloadDetail();
+  }, [reloadDetail]);
 
   // Auto-refresh experiment detail while running.
   useEffect(() => {
@@ -349,8 +361,14 @@ export default function AiEvalsApp({ onNavigate }: { onNavigate?: (path: string)
                 <header className={styles.sectionHeader}>
                   <div>
                     <h3 className={styles.sectionTitle}>📋 Items du dataset ({detail.items.length})</h3>
-                    <p className={styles.sectionSubtitle}>Ajout via /ai-logs (bouton « ➕ ajouter à un dataset ») ou POST /datasets/:id/items.</p>
+                    <p className={styles.sectionSubtitle}>
+                      Ajout via /ai-logs (bouton « ➕ ajouter à un dataset »), via l'assistant /ai-improve-assistant (étape 5)
+                      ou POST /datasets/:id/items. Clique sur une ligne pour voir l'input complet + l'output attendu + les notes.
+                    </p>
                   </div>
+                  <Button variant="secondary" onClick={reloadDetail} disabled={loadingDetail}>
+                    {loadingDetail ? '…' : '🔄 Rafraîchir'}
+                  </Button>
                 </header>
                 {detail.items.length === 0 ? (
                   <p className={styles.placeholderHint}>Aucun item encore. Depuis /ai-logs, ouvre un log pertinent puis clique « ➕ ajouter à un dataset » pour peupler ce dataset.</p>
@@ -358,21 +376,50 @@ export default function AiEvalsApp({ onNavigate }: { onNavigate?: (path: string)
                   <table className={styles.table}>
                     <thead>
                       <tr>
-                        <th>#</th>
+                        <th style={{ width: 30 }} />
+                        <th style={{ width: 40 }}>#</th>
                         <th>Input (aperçu)</th>
-                        <th>Expected ?</th>
-                        <th>Source</th>
+                        <th style={{ width: 90 }}>Expected</th>
+                        <th style={{ width: 120 }}>Notes</th>
+                        <th style={{ width: 120 }}>Source</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {detail.items.map(it => (
-                        <tr key={it.id}>
-                          <td>{it.position}</td>
-                          <td><div className={styles.preview}>{it.input_content.slice(0, 200)}</div></td>
-                          <td>{it.expected_output ? '✓' : '—'}</td>
-                          <td>{it.source_log_id ? <a href={`/ai-logs/${it.source_log_id}`} target="_blank" rel="noreferrer">log #{it.source_log_id}</a> : 'ad-hoc'}</td>
-                        </tr>
-                      ))}
+                      {detail.items.map(it => {
+                        const isExpanded = expandedItemId === it.id;
+                        const toggle = () => setExpandedItemId(prev => prev === it.id ? null : it.id);
+                        return (
+                          <Fragment key={it.id}>
+                            <tr onClick={toggle} style={{ cursor: 'pointer' }} title="Cliquer pour voir le détail complet">
+                              <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{isExpanded ? '▾' : '▸'}</td>
+                              <td>{it.position}</td>
+                              <td><div className={styles.preview}>{it.input_content.slice(0, 200)}{it.input_content.length > 200 ? '…' : ''}</div></td>
+                              <td style={{ color: it.expected_output ? 'var(--success, #4caf50)' : 'var(--text-secondary)' }}>
+                                {it.expected_output ? '✓ défini' : '— vide'}
+                              </td>
+                              <td style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                                {it.expected_notes ? (it.expected_notes.length > 30 ? it.expected_notes.slice(0, 30) + '…' : it.expected_notes) : '—'}
+                              </td>
+                              <td>
+                                {it.source_log_id
+                                  ? <a href={`/ai-logs/${it.source_log_id}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>log #{it.source_log_id}</a>
+                                  : 'ad-hoc'}
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={6} style={{
+                                  background: 'var(--bg-secondary, rgba(128,128,128,0.05))',
+                                  padding: 'var(--spacing-sm) var(--spacing-md)',
+                                  borderLeft: '3px solid var(--accent-primary)',
+                                }}>
+                                  <DatasetItemDetail item={it} />
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}
@@ -477,7 +524,28 @@ export default function AiEvalsApp({ onNavigate }: { onNavigate?: (path: string)
 
       <AssistantFlow
         open={assistantOpen}
-        onClose={() => setAssistantOpen(false)}
+        onClose={() => {
+          setAssistantOpen(false);
+          // The assistant persists its state (skillSlug, logId, datasetId,
+          // itemId, …) in localStorage under `assistant:improve-skill`.
+          // If the user created/picked a DIFFERENT dataset inside the
+          // assistant (step 4) than the one currently displayed, the items
+          // they added went there — so we redirect to that dataset so
+          // their work is actually visible.
+          let redirected = false;
+          try {
+            const raw = localStorage.getItem('assistant:improve-skill');
+            if (raw) {
+              const parsed = JSON.parse(raw) as { datasetId?: number | null };
+              const targetId = parsed.datasetId;
+              if (targetId != null && String(targetId) !== routeDatasetId) {
+                go(`/ai-evals/${targetId}`);
+                redirected = true;
+              }
+            }
+          } catch { /* best-effort */ }
+          if (!redirected) reloadDetail();
+        }}
         initialSkillSlug={detail?.dataset.skill_slug ?? null}
       />
     </Layout>
@@ -485,6 +553,84 @@ export default function AiEvalsApp({ onNavigate }: { onNavigate?: (path: string)
 }
 
 // ── Sub-components ────────────────────────────────────────────────────
+
+function DatasetItemDetail({ item }: { item: DatasetItem }) {
+  // Expected output : pretty-JSON if it parses, fall back to raw text, or
+  // show an explicit "non défini" state. Same pattern as /ai-logs.
+  const expectedPretty: string = (() => {
+    if (item.expected_output == null) return '';
+    if (typeof item.expected_output === 'string') return item.expected_output;
+    try { return JSON.stringify(item.expected_output, null, 2); }
+    catch { return String(item.expected_output); }
+  })();
+
+  const paneStyle: React.CSSProperties = {
+    margin: 0,
+    padding: 'var(--spacing-xs)',
+    maxHeight: 320,
+    overflow: 'auto',
+    background: 'var(--bg-primary)',
+    border: '1px solid var(--border-color)',
+    borderRadius: 'var(--radius-sm)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 11,
+    color: 'var(--text-primary)',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    lineHeight: 1.4,
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 600,
+    color: 'var(--text-secondary)',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
+      {/* Item metadata row. */}
+      <div style={{ display: 'flex', gap: 'var(--spacing-md)', fontSize: 11, color: 'var(--text-secondary)' }}>
+        <span>Item #{item.position} · id <code>{item.id}</code></span>
+        {item.source_log_id && (
+          <span>Source : <a href={`/ai-logs/${item.source_log_id}`} target="_blank" rel="noreferrer">log #{item.source_log_id}</a></span>
+        )}
+        <span>Input : {item.input_content.length.toLocaleString()} chars</span>
+      </div>
+
+      {/* Input content (full). */}
+      <div>
+        <div style={labelStyle}>📥 Input complet</div>
+        <pre style={paneStyle}>{item.input_content || '(vide)'}</pre>
+      </div>
+
+      {/* Expected output (if any). */}
+      <div>
+        <div style={labelStyle}>
+          🎯 Output attendu {expectedPretty ? `(${expectedPretty.length.toLocaleString()} chars)` : ''}
+        </div>
+        {expectedPretty ? (
+          <pre style={paneStyle}>{expectedPretty}</pre>
+        ) : (
+          <p style={{ margin: 0, fontSize: 11, color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+            Non défini. Sans output attendu, le juge IA notera seulement la cohérence générale (pas la fidélité exacte à une vérité terrain).
+          </p>
+        )}
+      </div>
+
+      {/* Notes (if any). */}
+      {item.expected_notes && (
+        <div>
+          <div style={labelStyle}>📝 Notes</div>
+          <div style={{ fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
+            {item.expected_notes}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ProgressCell({ experiment }: { experiment: Experiment }) {
   const done = experiment.runs_done ?? 0;

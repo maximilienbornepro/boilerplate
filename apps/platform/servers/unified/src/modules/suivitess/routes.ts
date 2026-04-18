@@ -498,21 +498,52 @@ Format tableau ou liste numérotée. Ton direct et actionnable.`,
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 3000,
-      messages: [{
-        role: 'user',
-        content: `${templatePrompts[template] || templatePrompts.listing}
+    const fullPrompt = `${templatePrompts[template] || templatePrompts.listing}
 
 Document : "${doc.title}"
 ${content}
 
-Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En français.`,
-      }],
-    });
+Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En français.`;
 
-    const emailBody = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
+    // ── Best-effort logging : capture latency, tokens, cost and output.
+    //    Logged in both success and failure paths so /ai-logs stays
+    //    complete even when the AI call itself throws. ──
+    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
+    const startedAt = Date.now();
+    let aiResponse: Awaited<ReturnType<typeof client.messages.create>> | null = null;
+    let emailBody = '';
+    let logError: string | null = null;
+    try {
+      aiResponse = await client.messages.create({
+        model,
+        max_tokens: 3000,
+        messages: [{ role: 'user', content: fullPrompt }],
+      });
+      emailBody = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
+    } catch (e) {
+      logError = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      const usage = aiResponse && 'usage' in aiResponse ? aiResponse.usage as { input_tokens?: number; output_tokens?: number } | undefined : undefined;
+      await logAnalysis({
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        skillSlug: 'suivitess-email-summary',
+        sourceKind: 'email-summary',
+        sourceTitle: `${template} — ${doc.title}`,
+        documentId: String(documentId),
+        inputContent: content,
+        fullPrompt,
+        aiOutputRaw: emailBody,
+        proposals: null,
+        durationMs: Date.now() - startedAt,
+        error: logError,
+        provider: 'anthropic',
+        model,
+        inputTokens: usage?.input_tokens ?? null,
+        outputTokens: usage?.output_tokens ?? null,
+      });
+    }
 
     res.json({ email: emailBody, template });
   }));
@@ -969,12 +1000,7 @@ Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En fran
         const { getAnthropicClient } = await import('../connectors/aiProvider.js');
         const { client, model } = await getAnthropicClient(req.user!.id);
 
-        const aiResponse = await client.messages.create({
-          model,
-          max_tokens: 4096,
-          messages: [{
-            role: 'user',
-            content: `Tu es un assistant de suivi de réunion. Analyse cette transcription et extrais les sujets clés discutés.
+        const fullPrompt = `Tu es un assistant de suivi de réunion. Analyse cette transcription et extrais les sujets clés discutés.
 
 Pour chaque sujet, retourne :
 - "title": un titre court et clair (max 100 caractères)
@@ -988,14 +1014,48 @@ Exemple: [{"title":"...", "situation":"...", "responsibility":"...", "status":"�
 Maximum 15 sujets, priorise les plus importants.
 
 Transcription:
-${transcriptText.slice(0, 30000)}`,
-          }],
-        });
+${transcriptText.slice(0, 30000)}`;
 
-        const responseText = aiResponse.content
-          .filter(c => c.type === 'text')
-          .map(c => (c as { type: 'text'; text: string }).text)
-          .join('');
+        // ── Best-effort logging (see /ai-logs).
+        const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
+        const startedAt = Date.now();
+        let aiResponse: Awaited<ReturnType<typeof client.messages.create>> | null = null;
+        let responseText = '';
+        let logError: string | null = null;
+        try {
+          aiResponse = await client.messages.create({
+            model,
+            max_tokens: 4096,
+            messages: [{ role: 'user', content: fullPrompt }],
+          });
+          responseText = aiResponse.content
+            .filter(c => c.type === 'text')
+            .map(c => (c as { type: 'text'; text: string }).text)
+            .join('');
+        } catch (e) {
+          logError = e instanceof Error ? e.message : String(e);
+          throw e;
+        } finally {
+          const usage = aiResponse && 'usage' in aiResponse ? aiResponse.usage as { input_tokens?: number; output_tokens?: number } | undefined : undefined;
+          await logAnalysis({
+            userId: req.user!.id,
+            userEmail: req.user!.email,
+            skillSlug: 'suivitess-import-source-into-document',
+            sourceKind: provider, // fathom / otter — grouped under "transcript" by /ai-logs
+            sourceTitle: callTitle || 'Call',
+            documentId: String(docId),
+            inputContent: transcriptText,
+            fullPrompt,
+            aiOutputRaw: responseText,
+            proposals: null,
+            durationMs: Date.now() - startedAt,
+            error: logError,
+            provider: 'anthropic',
+            model,
+            inputTokens: usage?.input_tokens ?? null,
+            outputTokens: usage?.output_tokens ?? null,
+          });
+        }
 
         // Parse JSON
         let subjects: Array<{ title: string; situation: string; responsibility?: string | null; status?: string }> = [];
@@ -1113,12 +1173,7 @@ ${transcriptText.slice(0, 30000)}`,
     const { loadSkill } = await import('../aiSkills/skillLoader.js');
     const importSkill = await loadSkill('suivitess-import-source-into-document');
 
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 4096,
-      messages: [{
-        role: 'user',
-        content: `${importSkill}
+    const fullPrompt = `${importSkill}
 
 ---
 
@@ -1130,14 +1185,48 @@ ${existingContext || '(aucun sujet existant)'}
 ## Contenu de la transcription
 ${transcriptionSubjects}
 
-Applique les règles ci-dessus et réponds uniquement en JSON.`,
-      }],
-    });
+Applique les règles ci-dessus et réponds uniquement en JSON.`;
 
-    const responseText = aiResponse.content
-      .filter(c => c.type === 'text')
-      .map(c => (c as { type: 'text'; text: string }).text)
-      .join('');
+    const { logAnalysis, attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+    const startedAt = Date.now();
+    let aiResponse: Awaited<ReturnType<typeof client.messages.create>> | null = null;
+    let responseText = '';
+    let logError: string | null = null;
+    let logId: number | null = null;
+    try {
+      aiResponse = await client.messages.create({
+        model,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: fullPrompt }],
+      });
+      responseText = aiResponse.content
+        .filter(c => c.type === 'text')
+        .map(c => (c as { type: 'text'; text: string }).text)
+        .join('');
+    } catch (e) {
+      logError = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      const usage = aiResponse && 'usage' in aiResponse ? aiResponse.usage as { input_tokens?: number; output_tokens?: number } | undefined : undefined;
+      logId = await logAnalysis({
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        skillSlug: 'suivitess-import-source-into-document',
+        sourceKind: 'transcript',
+        sourceTitle: sourceSection.name,
+        documentId: String(docId),
+        inputContent: transcriptionSubjects,
+        fullPrompt,
+        aiOutputRaw: responseText,
+        proposals: null,
+        durationMs: Date.now() - startedAt,
+        error: logError,
+        provider: 'anthropic',
+        model,
+        inputTokens: usage?.input_tokens ?? null,
+        outputTokens: usage?.output_tokens ?? null,
+      });
+    }
 
     let proposals: Array<Record<string, unknown>> = [];
     try {
@@ -1153,6 +1242,7 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`,
 
     // Add an index to each proposal for selection
     const indexed = proposals.map((p, i) => ({ ...p, id: i }));
+    if (logId != null) await attachProposalsToLog(logId, indexed);
 
     res.json({ proposals: indexed });
   }));

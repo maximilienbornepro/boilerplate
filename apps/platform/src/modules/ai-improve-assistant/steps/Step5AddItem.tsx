@@ -43,7 +43,7 @@ export default function Step5AddItem({ onAdvance: _ }: StepProps) {
           value={expected}
           onChange={e => setExpected(e.target.value)}
           placeholder='Ex (JSON) : [{"action":"enrich","subjectId":"…","appendText":"Migration validée mercredi"}]&#10;&#10;Ou en texte libre : « Devrait détecter le sujet Migration DB existant et l&apos;enrichir sans créer de doublon. »'
-          disabled={adding || !!state.itemId}
+          disabled={adding}
         />
         <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
           👁 <strong>À quoi ça sert ?</strong> Un 2ᵉ IA (le « juge ») peut comparer cet output attendu aux futures sorties du skill et leur mettre une note de fidélité 0–1. Sans ça, le juge évalue seulement la cohérence générale.
@@ -58,7 +58,7 @@ export default function Step5AddItem({ onAdvance: _ }: StepProps) {
           value={notes}
           onChange={e => setNotes(e.target.value)}
           placeholder="Ex : « doublon Migration DB non détecté — devrait enrichir »"
-          disabled={adding || !!state.itemId}
+          disabled={adding}
         />
         <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginTop: 4 }}>
           Mémo interne pour toi et ton équipe. Visible plus tard dans la table des items du dataset.
