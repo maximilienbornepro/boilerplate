@@ -272,12 +272,16 @@ async function tier2PlaceDocument(base: TierBase & {
 }): Promise<{ logId: number | null; placements: DocumentPlacement[]; durationMs: number }> {
   const t0 = Date.now();
   const ctx = { subjects: base.subjects, document: base.document };
+  const ctxJson = JSON.stringify(ctx, null, 2).slice(0, 30000);
   const run = await runSkill({
     slug: 'suivitess-place-in-document',
     userId: base.userId,
     userEmail: base.userEmail,
-    buildContext: () => `## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2).slice(0, 30000)}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des décisions de placement.`,
-    inputContent: JSON.stringify({ subjectsCount: base.subjects.length, documentId: base.document.id }),
+    buildContext: () => `## Contexte\n\n\`\`\`json\n${ctxJson}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des décisions de placement.`,
+    // Store the actual context JSON (not a summary) so /ai-logs → "Input
+    // brut" shows what the model really received. Truncated at 30k chars
+    // to match the prompt itself.
+    inputContent: ctxJson,
     sourceKind: base.sourceKind,
     sourceTitle: base.sourceTitle,
     documentId: base.documentId,
@@ -308,12 +312,15 @@ async function tier2PlaceReviews(base: TierBase & {
 }): Promise<{ logId: number | null; placements: ReviewPlacement[]; durationMs: number }> {
   const t0 = Date.now();
   const ctx = { subjects: base.subjects, reviews: base.reviews };
+  const ctxJson = JSON.stringify(ctx, null, 2).slice(0, 30000);
   const run = await runSkill({
     slug: 'suivitess-place-in-reviews',
     userId: base.userId,
     userEmail: base.userEmail,
-    buildContext: () => `## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2).slice(0, 30000)}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des décisions de routage.`,
-    inputContent: JSON.stringify({ subjectsCount: base.subjects.length, reviewsCount: base.reviews.length }),
+    buildContext: () => `## Contexte\n\n\`\`\`json\n${ctxJson}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des décisions de routage.`,
+    // Store the real context JSON (not a summary) so /ai-logs → "Input
+    // brut" shows what the model really received.
+    inputContent: ctxJson,
     sourceKind: base.sourceKind,
     sourceTitle: base.sourceTitle,
     documentId: base.documentId,
