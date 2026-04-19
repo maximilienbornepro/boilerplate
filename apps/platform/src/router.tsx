@@ -48,9 +48,9 @@ const SuspenseWrapper = ({ children }: { children: React.ReactNode }) => (
 function adminDrawerLinks(user?: User | null) {
   return user?.isAdmin
     ? [
-        { label: 'Logs IA', path: '/ai-logs' },
-        { label: 'Évaluations IA', path: '/ai-evals' },
-        { label: 'Playground IA', path: '/ai-playground' },
+        { label: 'Logs IA',        path: '/ai-logs',       color: '#14b8a6' }, // teal
+        { label: 'Évaluations IA', path: '/ai-evals',      color: '#f43f5e' }, // rose
+        { label: 'Playground IA',  path: '/ai-playground', color: '#a855f7' }, // purple
       ]
     : undefined;
 }

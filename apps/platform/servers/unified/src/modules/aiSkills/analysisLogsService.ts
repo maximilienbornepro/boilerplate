@@ -277,3 +277,21 @@ export async function attachProposalsToLog(
     console.error('[AiSkills] attachProposalsToLog failed:', err);
   }
 }
+
+/** Post-hoc error annotation. Used by the pipeline when the AI call itself
+ *  succeeded (no throw) but the output was unusable (parse failure, empty
+ *  array, truncation). Without this the log row just looks "fine" even
+ *  though the downstream work got zero results. */
+export async function updateLogError(
+  logId: number,
+  error: string,
+): Promise<void> {
+  try {
+    await pool.query(
+      `UPDATE ai_analysis_logs SET error = $2 WHERE id = $1`,
+      [logId, error.slice(0, 2000)],
+    );
+  } catch (err) {
+    console.error('[AiSkills] updateLogError failed:', err);
+  }
+}

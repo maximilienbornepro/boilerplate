@@ -100,6 +100,10 @@ export const voteLog = (id: number, value: -1 | 1, rationale?: string) =>
     method: 'POST',
     body: JSON.stringify({ name: 'thumbs', value, rationale: rationale || null }),
   });
+/** Force a (re-)run of every heuristic + llm-judge scorer on a given log.
+ *  Useful when the log predates the scoring infra or the auto-run crashed. */
+export const rescoreLog = (id: number) =>
+  request<ScoreRow[]>(`/logs/${id}/rescore`, { method: 'POST' });
 
 // ── Datasets ──────────────────────────────────────────────────────────
 

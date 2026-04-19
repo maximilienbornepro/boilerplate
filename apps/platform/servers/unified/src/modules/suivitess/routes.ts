@@ -498,21 +498,52 @@ Format tableau ou liste numérotée. Ton direct et actionnable.`,
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 3000,
-      messages: [{
-        role: 'user',
-        content: `${templatePrompts[template] || templatePrompts.listing}
+    const fullPrompt = `${templatePrompts[template] || templatePrompts.listing}
 
 Document : "${doc.title}"
 ${content}
 
-Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En français.`,
-      }],
-    });
+Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En français.`;
 
-    const emailBody = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
+    // ── Best-effort logging : capture latency, tokens, cost and output.
+    //    Logged in both success and failure paths so /ai-logs stays
+    //    complete even when the AI call itself throws. ──
+    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
+    const startedAt = Date.now();
+    let aiResponse: Awaited<ReturnType<typeof client.messages.create>> | null = null;
+    let emailBody = '';
+    let logError: string | null = null;
+    try {
+      aiResponse = await client.messages.create({
+        model,
+        max_tokens: 3000,
+        messages: [{ role: 'user', content: fullPrompt }],
+      });
+      emailBody = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
+    } catch (e) {
+      logError = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      const usage = aiResponse && 'usage' in aiResponse ? aiResponse.usage as { input_tokens?: number; output_tokens?: number } | undefined : undefined;
+      await logAnalysis({
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        skillSlug: 'suivitess-email-summary',
+        sourceKind: 'email-summary',
+        sourceTitle: `${template} — ${doc.title}`,
+        documentId: String(documentId),
+        inputContent: content,
+        fullPrompt,
+        aiOutputRaw: emailBody,
+        proposals: null,
+        durationMs: Date.now() - startedAt,
+        error: logError,
+        provider: 'anthropic',
+        model,
+        inputTokens: usage?.input_tokens ?? null,
+        outputTokens: usage?.output_tokens ?? null,
+      });
+    }
 
     res.json({ email: emailBody, template });
   }));
@@ -969,12 +1000,7 @@ Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En fran
         const { getAnthropicClient } = await import('../connectors/aiProvider.js');
         const { client, model } = await getAnthropicClient(req.user!.id);
 
-        const aiResponse = await client.messages.create({
-          model,
-          max_tokens: 4096,
-          messages: [{
-            role: 'user',
-            content: `Tu es un assistant de suivi de réunion. Analyse cette transcription et extrais les sujets clés discutés.
+        const fullPrompt = `Tu es un assistant de suivi de réunion. Analyse cette transcription et extrais les sujets clés discutés.
 
 Pour chaque sujet, retourne :
 - "title": un titre court et clair (max 100 caractères)
@@ -988,14 +1014,48 @@ Exemple: [{"title":"...", "situation":"...", "responsibility":"...", "status":"�
 Maximum 15 sujets, priorise les plus importants.
 
 Transcription:
-${transcriptText.slice(0, 30000)}`,
-          }],
-        });
+${transcriptText.slice(0, 30000)}`;
 
-        const responseText = aiResponse.content
-          .filter(c => c.type === 'text')
-          .map(c => (c as { type: 'text'; text: string }).text)
-          .join('');
+        // ── Best-effort logging (see /ai-logs).
+        const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
+        const startedAt = Date.now();
+        let aiResponse: Awaited<ReturnType<typeof client.messages.create>> | null = null;
+        let responseText = '';
+        let logError: string | null = null;
+        try {
+          aiResponse = await client.messages.create({
+            model,
+            max_tokens: 4096,
+            messages: [{ role: 'user', content: fullPrompt }],
+          });
+          responseText = aiResponse.content
+            .filter(c => c.type === 'text')
+            .map(c => (c as { type: 'text'; text: string }).text)
+            .join('');
+        } catch (e) {
+          logError = e instanceof Error ? e.message : String(e);
+          throw e;
+        } finally {
+          const usage = aiResponse && 'usage' in aiResponse ? aiResponse.usage as { input_tokens?: number; output_tokens?: number } | undefined : undefined;
+          await logAnalysis({
+            userId: req.user!.id,
+            userEmail: req.user!.email,
+            skillSlug: 'suivitess-import-source-into-document',
+            sourceKind: provider, // fathom / otter — grouped under "transcript" by /ai-logs
+            sourceTitle: callTitle || 'Call',
+            documentId: String(docId),
+            inputContent: transcriptText,
+            fullPrompt,
+            aiOutputRaw: responseText,
+            proposals: null,
+            durationMs: Date.now() - startedAt,
+            error: logError,
+            provider: 'anthropic',
+            model,
+            inputTokens: usage?.input_tokens ?? null,
+            outputTokens: usage?.output_tokens ?? null,
+          });
+        }
 
         // Parse JSON
         let subjects: Array<{ title: string; situation: string; responsibility?: string | null; status?: string }> = [];
@@ -1113,12 +1173,7 @@ ${transcriptText.slice(0, 30000)}`,
     const { loadSkill } = await import('../aiSkills/skillLoader.js');
     const importSkill = await loadSkill('suivitess-import-source-into-document');
 
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 4096,
-      messages: [{
-        role: 'user',
-        content: `${importSkill}
+    const fullPrompt = `${importSkill}
 
 ---
 
@@ -1130,14 +1185,48 @@ ${existingContext || '(aucun sujet existant)'}
 ## Contenu de la transcription
 ${transcriptionSubjects}
 
-Applique les règles ci-dessus et réponds uniquement en JSON.`,
-      }],
-    });
+Applique les règles ci-dessus et réponds uniquement en JSON.`;
 
-    const responseText = aiResponse.content
-      .filter(c => c.type === 'text')
-      .map(c => (c as { type: 'text'; text: string }).text)
-      .join('');
+    const { logAnalysis, attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+    const startedAt = Date.now();
+    let aiResponse: Awaited<ReturnType<typeof client.messages.create>> | null = null;
+    let responseText = '';
+    let logError: string | null = null;
+    let logId: number | null = null;
+    try {
+      aiResponse = await client.messages.create({
+        model,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: fullPrompt }],
+      });
+      responseText = aiResponse.content
+        .filter(c => c.type === 'text')
+        .map(c => (c as { type: 'text'; text: string }).text)
+        .join('');
+    } catch (e) {
+      logError = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      const usage = aiResponse && 'usage' in aiResponse ? aiResponse.usage as { input_tokens?: number; output_tokens?: number } | undefined : undefined;
+      logId = await logAnalysis({
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        skillSlug: 'suivitess-import-source-into-document',
+        sourceKind: 'transcript',
+        sourceTitle: sourceSection.name,
+        documentId: String(docId),
+        inputContent: transcriptionSubjects,
+        fullPrompt,
+        aiOutputRaw: responseText,
+        proposals: null,
+        durationMs: Date.now() - startedAt,
+        error: logError,
+        provider: 'anthropic',
+        model,
+        inputTokens: usage?.input_tokens ?? null,
+        outputTokens: usage?.output_tokens ?? null,
+      });
+    }
 
     let proposals: Array<Record<string, unknown>> = [];
     try {
@@ -1153,6 +1242,7 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`,
 
     // Add an index to each proposal for selection
     const indexed = proposals.map((p, i) => ({ ...p, id: i }));
+    if (logId != null) await attachProposalsToLog(logId, indexed);
 
     res.json({ proposals: indexed });
   }));
@@ -1283,37 +1373,91 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`,
     try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'transcript_analysis'); }
     catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
-    const { runSkill } = await import('../aiSkills/runSkill.js');
-    const runRes = await runSkill({
-      slug: 'suivitess-import-source-into-document',
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(aucun sujet existant)'}\n\n## Transcription du call "${callTitle || 'Call'}"\n${transcriptText.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
-      inputContent: transcriptText,
-      sourceKind: 'transcript',
-      sourceTitle: callTitle || 'Call',
-      documentId: String(docId),
-    });
+    // ── Modular pipeline (feature flag) OR monolithic skill (default) ──
+    const { isPipelineEnabled, analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+    let indexed: Array<Record<string, unknown>> = [];
+    let rootLogId: number | null = null;
 
-    let proposals: Array<Record<string, unknown>> = [];
-    try {
-      let jsonText = runRes.outputText.trim();
-      if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
-      if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
-      if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
-      proposals = JSON.parse(jsonText.trim());
-    } catch {
-      const match = runRes.outputText.match(/\[[\s\S]*\]/);
-      if (match) proposals = JSON.parse(match[0]);
+    if (isPipelineEnabled()) {
+      // Build the structured DocumentContext expected by the pipeline.
+      const documentCtx = {
+        id: String(doc.id),
+        title: doc.title,
+        sections: doc.sections.map(s => ({
+          id: String(s.id),
+          name: s.name,
+          subjects: s.subjects.map(sub => ({
+            id: String(sub.id),
+            title: sub.title,
+            situationExcerpt: (sub.situation || '').slice(0, 2000),
+            status: sub.status,
+            responsibility: sub.responsibility ?? null,
+          })),
+        })),
+      };
+      const { proposals, rootLogId: logId } = await analyzeSourceForDocument({
+        sourceKind: 'transcript',
+        sourceRaw: transcriptText,
+        sourceTitle: callTitle || 'Call',
+        document: documentCtx,
+        userId: req.user!.id,
+        userEmail: req.user!.email || '',
+      });
+      indexed = proposals.map((p, i) => ({ ...p, id: i }));
+      rootLogId = logId;
+      // NOTE : with the pipeline active, each tier log has ALREADY had its
+      // own output attached (T1 → subjects, T2 → placements, T3 → the one
+      // appendText/situation it produced). We deliberately DO NOT overwrite
+      // the T1 log here, otherwise its "propositions" count would become
+      // the final pipeline total (often lower than the subjects T1 actually
+      // extracted — misleading in /ai-logs). The final count is still
+      // returned in the HTTP response for the frontend.
+      // When the pipeline yields zero proposals we surface a meaningful
+      // message instead of leaving the UI empty (frontend shows "null").
+      // The admin can open /ai-logs/<rootLogId> to inspect what failed.
+      if (indexed.length === 0) {
+        res.json({
+          proposals: [],
+          logId: rootLogId,
+          pipelineEmpty: true,
+          message: `Pipeline modulaire : aucun sujet proposé. Ouvre /ai-logs/${rootLogId ?? '??'} pour voir le détail (tier 1/2/3 chaînés par parent_log_id).`,
+        });
+        return;
+      }
+    } else {
+      const { runSkill } = await import('../aiSkills/runSkill.js');
+      const runRes = await runSkill({
+        slug: 'suivitess-import-source-into-document',
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(aucun sujet existant)'}\n\n## Transcription du call "${callTitle || 'Call'}"\n${transcriptText.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
+        inputContent: transcriptText,
+        sourceKind: 'transcript',
+        sourceTitle: callTitle || 'Call',
+        documentId: String(docId),
+      });
+
+      let proposals: Array<Record<string, unknown>> = [];
+      try {
+        let jsonText = runRes.outputText.trim();
+        if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
+        if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
+        if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
+        proposals = JSON.parse(jsonText.trim());
+      } catch {
+        const match = runRes.outputText.match(/\[[\s\S]*\]/);
+        if (match) proposals = JSON.parse(match[0]);
+      }
+
+      indexed = proposals.map((p, i) => ({ ...p, id: i }));
+      rootLogId = runRes.logId;
+      if (rootLogId != null) {
+        const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+        await attachProposalsToLog(rootLogId, indexed);
+      }
     }
 
-    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
-    // Attach parsed proposals back to the log so the /ai-logs UI shows them.
-    if (runRes.logId != null) {
-      const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
-      await attachProposalsToLog(runRes.logId, indexed);
-    }
-    res.json({ proposals: indexed, logId: runRes.logId });
+    res.json({ proposals: indexed, logId: rootLogId });
   }));
 
   // ── Streaming version of the analysis (SSE) ──
@@ -1607,37 +1751,72 @@ ${filteredContent.slice(0, 30000)}`,
 
     const sourceLabel = source === 'outlook' ? 'emails' : 'messages Slack';
 
-    const { runSkill } = await import('../aiSkills/runSkill.js');
     const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
-    const runRes = await runSkill({
-      slug: 'suivitess-import-source-into-document',
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(Document vide)'}\n\n## Contenu à analyser (${sourceLabel})\n${filteredContent.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON au format attendu (tableau ou objet { "proposals": [...] }).`,
-      inputContent: filteredContent,
-      sourceKind: source,
-      sourceTitle: sourceTitle || 'Import',
-      documentId: String(docId),
-    });
+    const { isPipelineEnabled, analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+    let indexed: Array<Record<string, unknown>> = [];
+    let rootLogId: number | null = null;
 
-    // Handles both shapes — bare array `[...]` (from the shared skill) OR
-    // legacy `{ "proposals": [...] }` wrapper.
-    const text = runRes.outputText;
-    let proposals: Array<Record<string, unknown>> = [];
-    try {
-      const arrayMatch = text.match(/\[[\s\S]*\]/);
-      const objectMatch = text.match(/\{[\s\S]*\}/);
-      if (arrayMatch && (!objectMatch || arrayMatch.index! < objectMatch.index!)) {
-        proposals = JSON.parse(arrayMatch[0]);
-      } else if (objectMatch) {
-        const parsed = JSON.parse(objectMatch[0]);
-        proposals = Array.isArray(parsed) ? parsed : (parsed.proposals || []);
-      }
-    } catch { /* parse error */ }
+    if (isPipelineEnabled()) {
+      const documentCtx = {
+        id: String(doc.id),
+        title: doc.title,
+        sections: doc.sections.map(s => ({
+          id: String(s.id),
+          name: s.name,
+          subjects: s.subjects.map(sub => ({
+            id: String(sub.id),
+            title: sub.title,
+            situationExcerpt: (sub.situation || '').slice(0, 2000),
+            status: sub.status,
+            responsibility: sub.responsibility ?? null,
+          })),
+        })),
+      };
+      const pipelineKind = source === 'slack' ? 'slack' : 'outlook';
+      const { proposals, rootLogId: logId } = await analyzeSourceForDocument({
+        sourceKind: pipelineKind,
+        sourceRaw: filteredContent,
+        sourceTitle: sourceTitle || 'Import',
+        document: documentCtx,
+        userId: req.user!.id,
+        userEmail: req.user!.email || '',
+      });
+      indexed = proposals.map((p, i) => ({ ...p, id: i }));
+      rootLogId = logId;
+      // See note in transcript-analyze-and-propose : do NOT overwrite the
+      // T1 log — each tier has already attached its own output.
+    } else {
+      const { runSkill } = await import('../aiSkills/runSkill.js');
+      const runRes = await runSkill({
+        slug: 'suivitess-import-source-into-document',
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(Document vide)'}\n\n## Contenu à analyser (${sourceLabel})\n${filteredContent.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON au format attendu (tableau ou objet { "proposals": [...] }).`,
+        inputContent: filteredContent,
+        sourceKind: source,
+        sourceTitle: sourceTitle || 'Import',
+        documentId: String(docId),
+      });
 
-    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
-    if (runRes.logId != null) await attachProposalsToLog(runRes.logId, indexed);
-    res.json({ proposals: indexed, skipped, logId: runRes.logId });
+      const text = runRes.outputText;
+      let proposals: Array<Record<string, unknown>> = [];
+      try {
+        const arrayMatch = text.match(/\[[\s\S]*\]/);
+        const objectMatch = text.match(/\{[\s\S]*\}/);
+        if (arrayMatch && (!objectMatch || arrayMatch.index! < objectMatch.index!)) {
+          proposals = JSON.parse(arrayMatch[0]);
+        } else if (objectMatch) {
+          const parsed = JSON.parse(objectMatch[0]);
+          proposals = Array.isArray(parsed) ? parsed : (parsed.proposals || []);
+        }
+      } catch { /* parse error */ }
+
+      indexed = proposals.map((p, i) => ({ ...p, id: i }));
+      rootLogId = runRes.logId;
+      if (rootLogId != null) await attachProposalsToLog(rootLogId, indexed);
+    }
+
+    res.json({ proposals: indexed, skipped, logId: rootLogId });
   }));
 
   // ==================== SUBJECT EXTERNAL LINKS (Jira/Notion/Roadmap) ====================
@@ -2357,7 +2536,42 @@ ${filteredContent.slice(0, 30000)}`,
       }
     }
 
-    // 4) Run AI.
+    // 4) Run AI — pipeline modulaire (flag) OU skill monolithique (défaut).
+    const availableReviewsPayload = reviews.map(r => ({
+      id: r.id,
+      title: r.title,
+      sections: r.sections.map(s => ({
+        id: s.id,
+        name: s.name,
+        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+      })),
+    }));
+
+    const { isPipelineEnabled, analyzeSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
+
+    if (isPipelineEnabled()) {
+      try {
+        const { proposals, rootLogId } = await analyzeSourceForReviews({
+          sourceKind: source as 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail',
+          sourceRaw: transcript,
+          sourceTitle: title || '(sans titre)',
+          reviews,
+          userId,
+          userEmail: req.user!.email || '',
+        });
+        res.json({
+          summary: proposals.length > 0 ? `${proposals.length} sujet(s) extrait(s) et routé(s).` : 'Aucun sujet exploitable.',
+          subjects: proposals,
+          logId: rootLogId,
+          availableReviews: availableReviewsPayload,
+        });
+      } catch (err) {
+        console.error('[SuiviTess pipeline routing] error:', err);
+        res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
+      }
+      return;
+    }
+
     const { analyzeTranscriptionAndRoute } = await import('./transcriptionRoutingService.js');
     try {
       const result = await analyzeTranscriptionAndRoute(
@@ -2366,18 +2580,7 @@ ${filteredContent.slice(0, 30000)}`,
         reviews,
         { title: title || '(sans titre)', date: date ?? null, provider: source, userEmail: req.user!.email },
       );
-      res.json({
-        ...result,
-        availableReviews: reviews.map(r => ({
-          id: r.id,
-          title: r.title,
-          sections: r.sections.map(s => ({
-            id: s.id,
-            name: s.name,
-            subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
-          })),
-        })),
-      });
+      res.json({ ...result, availableReviews: availableReviewsPayload });
     } catch (err) {
       console.error('[SuiviTess routing] error:', err);
       res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });

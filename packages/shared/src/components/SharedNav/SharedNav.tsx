@@ -12,7 +12,7 @@ export interface SharedNavProps {
   onNavigate?: (path: string) => void;
   /** Extra drawer entries shown above "Réglages". Intended for admin-only
    *  pages — the caller is responsible for gating visibility. */
-  extraDrawerLinks?: Array<{ label: string; path: string; icon?: ReactNode }>;
+  extraDrawerLinks?: Array<{ label: string; path: string; icon?: ReactNode; color?: string }>;
 }
 
 export function SharedNav({
@@ -171,7 +171,12 @@ export function SharedNav({
                     onClick={(e) => handleNavClick(e, link.path)}
                   >
                     <span className="shared-nav-drawer-icon">
-                      {link.icon ?? <span className="shared-nav-drawer-dot" style={{ backgroundColor: 'var(--color-accent)' }} />}
+                      {link.icon ?? (
+                        <span
+                          className="shared-nav-drawer-dot"
+                          style={{ backgroundColor: link.color ?? 'var(--accent-primary)' }}
+                        />
+                      )}
                     </span>
                     <span className="shared-nav-drawer-name">{link.label}</span>
                   </a>
