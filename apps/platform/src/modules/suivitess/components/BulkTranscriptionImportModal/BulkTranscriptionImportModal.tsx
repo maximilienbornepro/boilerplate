@@ -57,14 +57,45 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   // Updated ~500 ms while the async job is running.
   const [pipelineStatus, setPipelineStatus] = useState<api.PipelineJobStatus | null>(null);
 
+  // Per-provider sync status — shows "Dernière synchro Slack : 14:23
+  // (12 messages)" even when no new message was collected.
+  const [syncMeta, setSyncMeta] = useState<api.SyncMetaResponse | null>(null);
+  const [syncingNow, setSyncingNow] = useState(false);
+
+  // ── Reusable loader : trigger the Slack sync, then fetch the list +
+  // meta in parallel. Called on mount AND by the 🔄 button. ──
+  const reloadAll = async () => {
+    setSyncingNow(true);
+    try {
+      // 1) Fire the sync first. If it fails (expired cookies, etc.) we
+      //    don't block — just surface the error in the banner.
+      try {
+        const res = await api.triggerSyncAll();
+        if (!res.slack.ok && res.slack.error) {
+          console.warn('[slack sync]', res.slack.error);
+        }
+      } catch (err) {
+        console.warn('[slack sync] trigger failed:', err);
+      }
+      // 2) Fetch meta + list in parallel.
+      const [meta, items] = await Promise.all([
+        api.fetchSyncMeta(),
+        api.fetchBulkSources(),
+      ]);
+      setSyncMeta(meta);
+      setSources(items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Chargement échoué');
+      setPhase('error');
+    } finally {
+      setSyncingNow(false);
+    }
+  };
+
   // ============ Load sources on mount ============
   useEffect(() => {
-    api.fetchBulkSources()
-      .then(setSources)
-      .catch(err => {
-        setError(err instanceof Error ? err.message : 'Chargement échoué');
-        setPhase('error');
-      });
+    reloadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedItem = useMemo(
@@ -187,6 +218,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
         {phase === 'picking' && (
           <>
+            <SyncStatusBanner meta={syncMeta} syncing={syncingNow} onRefresh={reloadAll} />
             {sources === null ? (
               <div className={styles.loading}>
                 <LoadingSpinner message="Récupération des transcriptions et emails…" />
@@ -500,6 +532,74 @@ function formatDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/** "il y a 3 min" / "il y a 2 h" / "il y a 4 j" / "à l'instant". */
+function formatRelative(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 60_000) return 'à l\'instant';
+  if (diffMs < 3_600_000) return `il y a ${Math.floor(diffMs / 60_000)} min`;
+  if (diffMs < 86_400_000) return `il y a ${Math.floor(diffMs / 3_600_000)} h`;
+  return `il y a ${Math.floor(diffMs / 86_400_000)} j`;
+}
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('fr-FR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// ── Sync status banner ────────────────────────────────────────────────
+
+interface SyncStatusBannerProps {
+  meta: api.SyncMetaResponse | null;
+  syncing: boolean;
+  onRefresh: () => void;
+}
+
+function SyncStatusBanner({ meta, syncing, onRefresh }: SyncStatusBannerProps) {
+  const row = (label: string, p: api.ProviderSyncMeta | undefined) => {
+    if (!p || !p.configured) {
+      return (
+        <span style={{ color: 'var(--text-secondary)', opacity: 0.6 }}>
+          {label}: non configuré
+        </span>
+      );
+    }
+    const errColor = p.error ? 'var(--error, #f44336)' : undefined;
+    return (
+      <span style={{ color: errColor }}>
+        <strong>{label}</strong> : {p.messageCount} message{p.messageCount > 1 ? 's' : ''}
+        {' · '}dernière synchro {formatRelative(p.lastSyncAt)}
+        <span style={{ opacity: 0.6, marginLeft: 4 }}>({formatDateTime(p.lastSyncAt)})</span>
+        {p.error && <span> · erreur : {p.error}</span>}
+      </span>
+    );
+  };
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '6px 12px',
+      marginBottom: 'var(--spacing-sm)',
+      background: 'var(--bg-secondary, rgba(128,128,128,0.05))',
+      border: '1px solid var(--border-color)',
+      borderRadius: 'var(--radius-sm)',
+      fontSize: 11, fontFamily: 'var(--font-mono)',
+      color: 'var(--text-secondary)',
+      flexWrap: 'wrap',
+    }}>
+      <span style={{ display: 'flex', flex: 1, gap: 16, flexWrap: 'wrap' }}>
+        {row('Slack', meta?.slack)}
+        {row('Outlook', meta?.outlook)}
+      </span>
+      <Button variant="secondary" onClick={onRefresh} disabled={syncing}>
+        {syncing ? '🔄 Synchro…' : '🔄 Synchroniser'}
+      </Button>
+    </div>
+  );
 }
 
 // ── Pipeline progress indicator (driven by real backend status) ───────

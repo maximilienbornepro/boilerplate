@@ -2185,6 +2185,75 @@ ${filteredContent.slice(0, 30000)}`,
 
   // ==================== Bulk transcription import (list-level) ====================
 
+  // GET /transcription/sync-meta — returns the last-sync / message-count
+  // for each collector, so the modal can show "Dernière synchro Slack :
+  // il y a 3 min (12 messages)" even when there's no new content.
+  router.get('/transcription/sync-meta', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    type ProviderMeta = {
+      configured: boolean;
+      isActive?: boolean;
+      lastSyncAt: string | null;
+      messageCount: number;
+      channelCount?: number;
+      daysToFetch?: number;
+      error?: string;
+    };
+    const meta: { slack: ProviderMeta; outlook: ProviderMeta } = {
+      slack:   { configured: false, lastSyncAt: null, messageCount: 0 },
+      outlook: { configured: false, lastSyncAt: null, messageCount: 0 },
+    };
+    try {
+      const { getSlackConfig, getSlackMessageCount } = await import('./slackCollectorService.js');
+      const sc = await getSlackConfig(userId);
+      if (sc) {
+        meta.slack = {
+          configured: true,
+          isActive: sc.isActive,
+          lastSyncAt: sc.lastSyncAt,
+          messageCount: await getSlackMessageCount(sc.id),
+          channelCount: sc.channels.length,
+          daysToFetch: sc.daysToFetch,
+        };
+      }
+    } catch (err) { meta.slack.error = (err as Error).message; }
+    try {
+      const { getOutlookMessageCount } = await import('./outlookCollectorService.js');
+      const count = await getOutlookMessageCount(userId);
+      // We don't track Outlook sync time separately — the extension posts
+      // whenever the user opens Outlook, so the latest collected email's
+      // `date` is our best proxy.
+      const { rows } = await db.pool.query(
+        `SELECT MAX(collected_at) AS last FROM outlook_messages WHERE user_id = $1`,
+        [userId],
+      ).catch(() => ({ rows: [] as Array<{ last: string | null }> }));
+      meta.outlook = {
+        configured: count > 0,
+        lastSyncAt: rows[0]?.last ?? null,
+        messageCount: count,
+      };
+    } catch (err) { meta.outlook.error = (err as Error).message; }
+    res.json(meta);
+  }));
+
+  // POST /transcription/sync-all — triggers a sync for every configured
+  // collector (currently only Slack, since Outlook is push-based).
+  // Returns the per-provider result. Non-blocking (awaited serially is
+  // fine — one Slack sync is ~1 s).
+  router.post('/transcription/sync-all', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    type Result = { ok: boolean; total?: number; error?: string };
+    const out: { slack: Result } = { slack: { ok: false } };
+    try {
+      const { syncNow } = await import('./slackCollectorService.js');
+      const r = await syncNow(userId);
+      out.slack = { ok: true, total: r.total };
+    } catch (err) {
+      out.slack = { ok: false, error: (err as Error).message };
+    }
+    res.json(out);
+  }));
+
   // Aggregate calls + emails across every connected provider.
   // Returns a unified list the UI can show and let the user re-route.
   router.get('/transcription/bulk-sources', asyncHandler(async (req, res) => {

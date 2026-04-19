@@ -326,6 +326,40 @@ export interface BulkSourceItem {
   alreadyImported?: boolean;
 }
 
+// ── Sync meta + trigger (for the bulk import modal header) ───────────
+
+export interface ProviderSyncMeta {
+  configured: boolean;
+  isActive?: boolean;
+  lastSyncAt: string | null;
+  messageCount: number;
+  channelCount?: number;
+  daysToFetch?: number;
+  error?: string;
+}
+export interface SyncMetaResponse {
+  slack: ProviderSyncMeta;
+  outlook: ProviderSyncMeta;
+}
+
+export async function fetchSyncMeta(): Promise<SyncMetaResponse> {
+  const r = await fetch(`${API_BASE}/transcription/sync-meta`, { credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+export interface SyncAllResponse {
+  slack: { ok: boolean; total?: number; error?: string };
+}
+
+export async function triggerSyncAll(): Promise<SyncAllResponse> {
+  const r = await fetch(`${API_BASE}/transcription/sync-all`, {
+    method: 'POST', credentials: 'include',
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
 export async function fetchBulkSources(days = 30): Promise<BulkSourceItem[]> {
   const response = await fetch(
     `${API_BASE}/transcription/bulk-sources?days=${days}`,
