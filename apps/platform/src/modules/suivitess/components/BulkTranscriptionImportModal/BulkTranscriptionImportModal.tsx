@@ -233,6 +233,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
         {phase === 'analyzing' && (
           <div className={styles.loading}>
             <LoadingSpinner message="L'IA lit la transcription et décide où ranger chaque sujet…" />
+            <PipelineStepsIndicator />
           </div>
         )}
 
@@ -488,4 +489,90 @@ function formatDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+// ── Pipeline progress indicator ───────────────────────────────────────
+//
+// The backend runs T1 → T2 → T3 sequentially (T3 parallel per placement).
+// We don't stream progress from the server (would require SSE), so we
+// fake a plausible timeline based on the mean durations we see in the
+// [pipeline:summary] logs. Gives the user a feeling of "ça avance" and
+// tells them what the IA is doing right now.
+//
+// If the real pipeline finishes faster, the parent switches to 'routing'
+// and unmounts this component → no harm. If it finishes slower, the
+// last step stays active ("Finalisation…") until the HTTP response
+// arrives — better than nothing.
+
+const PIPELINE_STEPS: ReadonlyArray<{ icon: string; label: string; estMs: number }> = [
+  { icon: '🔎', label: 'Lecture de la source',                           estMs: 400 },
+  { icon: '🧩', label: 'Extraction des sujets atomiques (citations brutes)', estMs: 5000 },
+  { icon: '🗂️',  label: 'Analyse de placement (review + section par sujet)', estMs: 3500 },
+  { icon: '✍️',  label: 'Rédaction des situations (en parallèle)',          estMs: 3000 },
+  { icon: '🎯',  label: 'Finalisation et préparation de l\'UI',             estMs: 400 },
+];
+
+function PipelineStepsIndicator() {
+  const [activeIdx, setActiveIdx] = useState(0);
+
+  useEffect(() => {
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+    let cumulative = 0;
+    PIPELINE_STEPS.forEach((step, i) => {
+      cumulative += step.estMs;
+      // Mark step i complete when we've spent its est duration, then
+      // move to step i+1 (or stay on last if it's the end).
+      timeouts.push(setTimeout(() => {
+        setActiveIdx(prev => Math.max(prev, Math.min(i + 1, PIPELINE_STEPS.length - 1)));
+      }, cumulative));
+    });
+    return () => { timeouts.forEach(clearTimeout); };
+  }, []);
+
+  return (
+    <>
+      <style>{`@keyframes pipelinePulse { 0%,100% { opacity: 1 } 50% { opacity: 0.4 } }`}</style>
+      <ul style={{
+        listStyle: 'none',
+        padding: 0,
+        margin: '16px auto 0',
+        maxWidth: 500,
+        fontFamily: 'var(--font-mono)',
+        fontSize: 13,
+        lineHeight: 1.8,
+      }}>
+      {PIPELINE_STEPS.map((step, i) => {
+        const status: 'done' | 'active' | 'pending' =
+          i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending';
+        const color =
+          status === 'done' ? 'var(--success, #4caf50)' :
+          status === 'active' ? 'var(--accent-primary)' :
+          'var(--text-secondary)';
+        const opacity = status === 'pending' ? 0.45 : 1;
+        const marker =
+          status === 'done' ? '✓' :
+          status === 'active' ? '◉' :
+          '○';
+        return (
+          <li key={step.icon + i} style={{ color, opacity, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{
+              display: 'inline-block',
+              width: 14,
+              textAlign: 'center',
+              fontWeight: 700,
+              animation: status === 'active' ? 'pipelinePulse 1.2s ease-in-out infinite' : undefined,
+            }}>
+              {marker}
+            </span>
+            <span aria-hidden>{step.icon}</span>
+            <span>
+              {step.label}
+              {status === 'active' && <span style={{ opacity: 0.6 }}>… ({Math.round(step.estMs / 1000)}s)</span>}
+            </span>
+          </li>
+        );
+      })}
+      </ul>
+    </>
+  );
 }
