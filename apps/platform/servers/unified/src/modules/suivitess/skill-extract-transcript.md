@@ -50,7 +50,10 @@ cites uniquement ce qui a été dit.
 - **Jamais résumer** les quotes : ce sont des citations mot pour mot.
 - **Jamais interpréter** ce qui n'est pas dit. Si le sujet n'a pas de responsable
   cité, `responsibilityHint: null` — ne devine pas.
-- Maximum **15 sujets**, priorise les plus actionnables.
+- Maximum **10 sujets**, priorise les plus actionnables.
+- **`rawQuotes` courts** : 1 à 3 quotes de **maximum 150 caractères chacune**. Coupe
+  les longues interventions aux phrases les plus porteuses d'information. Le but
+  est de tenir dans le budget tokens, pas de faire une compilation exhaustive.
 
 ## Format de sortie (JSON strict, rien hors JSON)
 

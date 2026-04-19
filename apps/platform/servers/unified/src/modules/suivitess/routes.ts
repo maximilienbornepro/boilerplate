@@ -1409,6 +1409,18 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
         const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
         await attachProposalsToLog(rootLogId, indexed);
       }
+      // When the pipeline yields zero proposals we surface a meaningful
+      // message instead of leaving the UI empty (frontend shows "null").
+      // The admin can open /ai-logs/<rootLogId> to inspect what failed.
+      if (indexed.length === 0) {
+        res.json({
+          proposals: [],
+          logId: rootLogId,
+          pipelineEmpty: true,
+          message: `Pipeline modulaire : aucun sujet proposé. Ouvre /ai-logs/${rootLogId ?? '??'} pour voir le détail (tier 1/2/3 chaînés par parent_log_id).`,
+        });
+        return;
+      }
     } else {
       const { runSkill } = await import('../aiSkills/runSkill.js');
       const runRes = await runSkill({

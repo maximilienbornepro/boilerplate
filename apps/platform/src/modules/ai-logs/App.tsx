@@ -338,6 +338,11 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
                     <button
                       className={`${styles.listItem} ${active ? styles.listItemActive : ''}`}
                       onClick={() => go(`/ai-logs/${l.id}`)}
+                      style={l.error ? {
+                        borderLeft: '3px solid var(--error, #f44336)',
+                        background: 'rgba(244,67,54,0.08)',
+                      } : undefined}
+                      title={l.error ? `Erreur : ${l.error.slice(0, 200)}` : undefined}
                     >
                       <div className={styles.listItemTop}>
                         <span className={styles.listItemId}>#{l.id}</span>
@@ -476,6 +481,35 @@ function LogDetailView({
 
   return (
     <div className={styles.detail}>
+      {/* ── Prominent error banner : always visible above the header when
+          the log has an error (either thrown at call time, or annotated
+          by the pipeline on parse/empty failure). ── */}
+      {detail.error && (
+        <div style={{
+          padding: 'var(--spacing-sm) var(--spacing-md)',
+          marginBottom: 'var(--spacing-md)',
+          background: 'rgba(244,67,54,0.1)',
+          border: '1px solid var(--error, #f44336)',
+          borderLeft: '4px solid var(--error, #f44336)',
+          borderRadius: 'var(--radius-sm)',
+          color: 'var(--error, #f44336)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 'var(--font-size-sm)',
+          lineHeight: 1.5,
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 4, fontFamily: 'inherit', fontSize: 'var(--font-size-md)' }}>
+            ⚠ Erreur sur ce log
+          </div>
+          <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-primary)' }}>
+            {detail.error}
+          </div>
+          {detail.parent_log_id != null && (
+            <div style={{ marginTop: 6, fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>
+              Ce log est un enfant de <a href={`/ai-logs/${detail.parent_log_id}`}>#{detail.parent_log_id}</a> — remonte l'arbre pour voir l'étape d'origine.
+            </div>
+          )}
+        </div>
+      )}
       <header className={styles.detailHeader}>
         <div>
           <div className={styles.detailCrumb}>ai-logs › <strong>#{detail.id}</strong></div>

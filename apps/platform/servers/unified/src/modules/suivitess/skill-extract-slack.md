@@ -50,7 +50,8 @@ sujets distincts qui méritent un suivi dans un SuiviTess.
 - **Jamais inventer** de fait, de chiffre, de nom absent des `rawQuotes`.
 - **Jamais résumer** les quotes — citations exactes, y compris les fautes et
   emojis qui portent du sens (`:fire:`, `:rocket:`).
-- Maximum **15 sujets**, priorise les plus actionnables.
+- Maximum **10 sujets**, priorise les plus actionnables.
+- **`rawQuotes` courts** : 1 à 3 quotes de **maximum 150 caractères chacune**.
 
 ## Format de sortie (JSON strict, rien hors JSON)
 

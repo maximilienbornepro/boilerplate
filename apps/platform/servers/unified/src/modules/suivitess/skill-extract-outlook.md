@@ -57,7 +57,8 @@ les sujets distincts qui méritent un suivi dans un SuiviTess.
 - **Ne confonds pas** l'expéditeur et le responsable : un mail `De: Alice` ne
   signifie pas que Alice est responsable du sujet évoqué (elle peut juste
   relayer l'info).
-- Maximum **15 sujets**, priorise les plus actionnables.
+- Maximum **10 sujets**, priorise les plus actionnables.
+- **`rawQuotes` courts** : 1 à 3 quotes de **maximum 150 caractères chacune**.
 
 ## Format de sortie (JSON strict, rien hors JSON)
 

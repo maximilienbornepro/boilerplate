@@ -17,6 +17,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { runSkill } from './runSkill.js';
+import { updateLogError } from './analysisLogsService.js';
 
 // ── Shared types ──────────────────────────────────────────────────────
 
@@ -140,13 +141,20 @@ export interface FinalReviewProposal {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-/** Tolerant JSON extraction — handles ```json fences and stray prose. */
+/** Tolerant JSON extraction — handles ```json fences, stray prose AND
+ *  **truncated output** (cut off by max_tokens). For truncated arrays we
+ *  drop the last incomplete item and close the array, which is strictly
+ *  better than losing everything. */
 function extractJson<T>(text: string): T | null {
   let s = text.trim();
   if (s.startsWith('```json')) s = s.slice(7).trim();
   else if (s.startsWith('```')) s = s.slice(3).trim();
   if (s.endsWith('```')) s = s.slice(0, -3).trim();
+
+  // 1) Try as-is.
   try { return JSON.parse(s) as T; } catch { /* fall through */ }
+
+  // 2) Try extracting the first array/object that looks complete.
   const arrMatch = s.match(/\[[\s\S]*\]/);
   const objMatch = s.match(/\{[\s\S]*\}/);
   try {
@@ -154,7 +162,30 @@ function extractJson<T>(text: string): T | null {
       return JSON.parse(arrMatch[0]) as T;
     }
     if (objMatch) return JSON.parse(objMatch[0]) as T;
-  } catch { /* ignore */ }
+  } catch { /* fall through to truncation recovery */ }
+
+  // 3) Truncation recovery — output hit max_tokens mid-item. Find the last
+  //    `},` inside a `[...`-open array, keep everything before it, close
+  //    the array, re-parse. Covers the common case of extract-* skills
+  //    returning N-1 valid items + a half-written N-th.
+  const openArr = s.indexOf('[');
+  if (openArr >= 0) {
+    const body = s.slice(openArr);
+    // Find last occurrence of "}," or "}\n" that marks the end of a
+    // complete object.
+    const lastComma = Math.max(body.lastIndexOf('},'), body.lastIndexOf('}\n'));
+    if (lastComma > 0) {
+      const truncated = body.slice(0, lastComma + 1) + ']';
+      try { return JSON.parse(truncated) as T; } catch { /* give up */ }
+    }
+    // Or a single complete object at the end.
+    const lastBrace = body.lastIndexOf('}');
+    if (lastBrace > 0) {
+      const truncated = body.slice(0, lastBrace + 1) + ']';
+      try { return JSON.parse(truncated) as T; } catch { /* give up */ }
+    }
+  }
+
   return null;
 }
 
@@ -196,12 +227,26 @@ async function tier1Extract(base: TierBase & {
     sourceKind: base.sourceKind,
     sourceTitle: base.sourceTitle,
     documentId: base.documentId,
-    maxTokens: 3000,
+    // Extract step needs headroom for N subjects × (title + rawQuotes +
+    // participants + entities). 10 subjects ≈ 4000 tokens, 15 ≈ 6500.
+    // We size for the full 15 so the JSON never truncates mid-item.
+    maxTokens: 8000,
   });
-  const raw = extractJson<ExtractedSubject[]>(run.outputText) ?? [];
+  const raw = extractJson<ExtractedSubject[]>(run.outputText);
   const subjects = Array.isArray(raw)
     ? raw.map((s, i) => ({ ...s, index: i })) // re-index to be safe
     : [];
+  // eslint-disable-next-line no-console -- visible for pipeline debugging
+  console.log(`[pipeline] tier1 extract (${base.sourceKind}) → ${subjects.length} subjects (logId=${run.logId})`);
+  // Annotate the log row so /ai-logs shows a clear error instead of a
+  // successful-looking log with empty proposals.
+  if (run.logId != null) {
+    if (raw == null) {
+      await updateLogError(run.logId, `[PIPELINE T1] JSON parse failed — output may be truncated (${run.outputText.length} chars). Check the raw output below.`);
+    } else if (subjects.length === 0) {
+      await updateLogError(run.logId, `[PIPELINE T1] Extracted 0 subjects — source may lack actionable content or the skill's filtering is too aggressive.`);
+    }
+  }
   return { logId: run.logId, subjects };
 }
 
@@ -221,10 +266,20 @@ async function tier2PlaceDocument(base: TierBase & {
     sourceTitle: base.sourceTitle,
     documentId: base.documentId,
     parentLogId: base.parentLogId,
-    maxTokens: 2500,
+    maxTokens: 4000,
   });
-  const raw = extractJson<DocumentPlacement[]>(run.outputText) ?? [];
-  return { logId: run.logId, placements: Array.isArray(raw) ? raw : [] };
+  const raw = extractJson<DocumentPlacement[]>(run.outputText);
+  const placements = Array.isArray(raw) ? raw : [];
+  // eslint-disable-next-line no-console -- visible for pipeline debugging
+  console.log(`[pipeline] tier2 place-in-document → ${placements.length} placements (logId=${run.logId})`);
+  if (run.logId != null) {
+    if (raw == null) {
+      await updateLogError(run.logId, `[PIPELINE T2 document] JSON parse failed — output may be truncated.`);
+    } else if (placements.length === 0 && base.subjects.length > 0) {
+      await updateLogError(run.logId, `[PIPELINE T2 document] 0 placements for ${base.subjects.length} subjects — likely all considered duplicates already present in the document.`);
+    }
+  }
+  return { logId: run.logId, placements };
 }
 
 async function tier2PlaceReviews(base: TierBase & {
@@ -243,10 +298,20 @@ async function tier2PlaceReviews(base: TierBase & {
     sourceTitle: base.sourceTitle,
     documentId: base.documentId,
     parentLogId: base.parentLogId,
-    maxTokens: 3000,
+    maxTokens: 4500,
   });
-  const raw = extractJson<ReviewPlacement[]>(run.outputText) ?? [];
-  return { logId: run.logId, placements: Array.isArray(raw) ? raw : [] };
+  const raw = extractJson<ReviewPlacement[]>(run.outputText);
+  const placements = Array.isArray(raw) ? raw : [];
+  // eslint-disable-next-line no-console -- visible for pipeline debugging
+  console.log(`[pipeline] tier2 place-in-reviews → ${placements.length} placements (logId=${run.logId})`);
+  if (run.logId != null) {
+    if (raw == null) {
+      await updateLogError(run.logId, `[PIPELINE T2 reviews] JSON parse failed — output may be truncated.`);
+    } else if (placements.length === 0 && base.subjects.length > 0) {
+      await updateLogError(run.logId, `[PIPELINE T2 reviews] 0 routings for ${base.subjects.length} subjects — likely all considered duplicates already present in existing reviews.`);
+    }
+  }
+  return { logId: run.logId, placements };
 }
 
 async function tier3Append(base: TierBase & {
@@ -274,6 +339,9 @@ async function tier3Append(base: TierBase & {
     maxTokens: 800,
   });
   const parsed = extractJson<{ appendText: string | null }>(run.outputText);
+  if (run.logId != null && parsed == null) {
+    await updateLogError(run.logId, `[PIPELINE T3 append] JSON parse failed — output may be truncated or malformed.`);
+  }
   return { logId: run.logId, appendText: parsed?.appendText ?? null };
 }
 
@@ -296,6 +364,9 @@ async function tier3Compose(base: TierBase & {
     maxTokens: 800,
   });
   const parsed = extractJson<{ situation: string }>(run.outputText);
+  if (run.logId != null && parsed == null) {
+    await updateLogError(run.logId, `[PIPELINE T3 compose] JSON parse failed — output may be truncated or malformed.`);
+  }
   return { logId: run.logId, situation: parsed?.situation ?? '' };
 }
 
@@ -324,7 +395,11 @@ export async function analyzeSourceForDocument(
 
   // Tier 1
   const ex = await tier1Extract({ ...base, sourceRaw: input.sourceRaw });
-  if (ex.subjects.length === 0) return { proposals: [], rootLogId: ex.logId };
+  if (ex.subjects.length === 0) {
+    // eslint-disable-next-line no-console
+    console.warn(`[pipeline] tier1 returned 0 subjects — aborting. logId=${ex.logId}. Check the raw output in /ai-logs.`);
+    return { proposals: [], rootLogId: ex.logId };
+  }
 
   // Tier 2
   const pl = await tier2PlaceDocument({
@@ -333,9 +408,15 @@ export async function analyzeSourceForDocument(
     document: input.document,
     parentLogId: ex.logId,
   });
-  if (pl.placements.length === 0) return { proposals: [], rootLogId: ex.logId };
+  if (pl.placements.length === 0) {
+    // eslint-disable-next-line no-console
+    console.warn(`[pipeline] tier2 returned 0 placements (had ${ex.subjects.length} subjects) — aborting. logId=${pl.logId}.`);
+    return { proposals: [], rootLogId: ex.logId };
+  }
 
   // Tier 3 — parallel per placement
+  // eslint-disable-next-line no-console
+  console.log(`[pipeline] tier3 running ${pl.placements.length} writer(s) in parallel…`);
   const proposals = await Promise.all(pl.placements.map(async (p): Promise<FinalDocumentProposal | null> => {
     const subj = ex.subjects[p.subjectIndex];
     if (!subj) return null;
@@ -407,10 +488,10 @@ export async function analyzeSourceForDocument(
     return null;
   }));
 
-  return {
-    proposals: proposals.filter((p): p is FinalDocumentProposal => p !== null),
-    rootLogId: ex.logId,
-  };
+  const final = proposals.filter((p): p is FinalDocumentProposal => p !== null);
+  // eslint-disable-next-line no-console
+  console.log(`[pipeline] done → ${final.length}/${pl.placements.length} final proposals (${pl.placements.length - final.length} dropped by writer, e.g. nothing new to append)`);
+  return { proposals: final, rootLogId: ex.logId };
 }
 
 export interface AnalyzeForReviewsInput {
@@ -436,7 +517,11 @@ export async function analyzeSourceForReviews(
 
   // Tier 1
   const ex = await tier1Extract({ ...base, sourceRaw: input.sourceRaw });
-  if (ex.subjects.length === 0) return { proposals: [], rootLogId: ex.logId };
+  if (ex.subjects.length === 0) {
+    // eslint-disable-next-line no-console
+    console.warn(`[pipeline] tier1 returned 0 subjects — aborting. logId=${ex.logId}.`);
+    return { proposals: [], rootLogId: ex.logId };
+  }
 
   // Tier 2
   const pl = await tier2PlaceReviews({
@@ -445,9 +530,15 @@ export async function analyzeSourceForReviews(
     reviews: input.reviews,
     parentLogId: ex.logId,
   });
-  if (pl.placements.length === 0) return { proposals: [], rootLogId: ex.logId };
+  if (pl.placements.length === 0) {
+    // eslint-disable-next-line no-console
+    console.warn(`[pipeline] tier2 returned 0 placements (had ${ex.subjects.length} subjects) — aborting. logId=${pl.logId}.`);
+    return { proposals: [], rootLogId: ex.logId };
+  }
 
   // Tier 3 — parallel per placement
+  // eslint-disable-next-line no-console
+  console.log(`[pipeline] tier3 running ${pl.placements.length} writer(s) in parallel…`);
   const proposals = await Promise.all(pl.placements.map(async (p): Promise<FinalReviewProposal | null> => {
     const subj = ex.subjects[p.subjectIndex];
     if (!subj) return null;
@@ -525,10 +616,10 @@ export async function analyzeSourceForReviews(
     };
   }));
 
-  return {
-    proposals: proposals.filter((p): p is FinalReviewProposal => p !== null),
-    rootLogId: ex.logId,
-  };
+  const final = proposals.filter((p): p is FinalReviewProposal => p !== null);
+  // eslint-disable-next-line no-console
+  console.log(`[pipeline] done → ${final.length}/${pl.placements.length} final review proposals`);
+  return { proposals: final, rootLogId: ex.logId };
 }
 
 // ── Feature flag helper ───────────────────────────────────────────────
