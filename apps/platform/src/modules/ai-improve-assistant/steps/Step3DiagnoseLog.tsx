@@ -12,6 +12,7 @@ export default function Step3DiagnoseLog({ onAdvance: _ }: StepProps) {
   const [note, setNote] = useState('');
   const [voting, setVoting] = useState(false);
   const [rescoring, setRescoring] = useState(false);
+  const [rescoreMessage, setRescoreMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   // Search terms — independent per pane, clicking a chip sets both.
   const [searchIn, setSearchIn] = useState('');
@@ -44,12 +45,27 @@ export default function Step3DiagnoseLog({ onAdvance: _ }: StepProps) {
   const rerunScorers = async () => {
     if (!state.logId) return;
     setRescoring(true);
+    setRescoreMessage(null);
+    // eslint-disable-next-line no-console -- debug aid
+    console.log(`[rescore] POST /ai-skills/api/logs/${state.logId}/rescore`);
     try {
       const refreshed = await rescoreLog(state.logId);
       setScores(refreshed);
       dispatch({ type: 'PATCH', patch: { logScores: refreshed } });
-    } catch {
-      /* best-effort, the UI already shows what it has */
+      // eslint-disable-next-line no-console
+      console.log(`[rescore] ok — ${refreshed.length} score(s) returned`, refreshed);
+      const autoCount = refreshed.filter(s => s.scorer_kind === 'heuristic' || s.scorer_kind === 'llm-judge').length;
+      setRescoreMessage({
+        kind: 'ok',
+        text: autoCount > 0
+          ? `✓ ${autoCount} scorer(s) auto recalculé(s) · total ${refreshed.length} ligne(s)`
+          : `⚠ Appel OK mais 0 scorer auto retourné — le backend a peut-être silencieusement échoué. Regarde les logs serveur pour [AiSkills] runAutoScorersForLog.`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // eslint-disable-next-line no-console
+      console.error('[rescore] failed:', err);
+      setRescoreMessage({ kind: 'err', text: `× ${msg}` });
     } finally { setRescoring(false); }
   };
 
@@ -140,7 +156,7 @@ export default function Step3DiagnoseLog({ onAdvance: _ }: StepProps) {
 
       {/* Scores actuels. */}
       <FormBlock label="⭐ Scores sur ce log">
-        <ScoresSection scores={scores} rescoring={rescoring} onRerun={rerunScorers} />
+        <ScoresSection scores={scores} rescoring={rescoring} onRerun={rerunScorers} rescoreMessage={rescoreMessage} />
       </FormBlock>
 
       {/* Vote humain. */}
@@ -267,9 +283,10 @@ interface ScoresSectionProps {
   scores: ScoreRow[];
   rescoring: boolean;
   onRerun: () => void;
+  rescoreMessage?: { kind: 'ok' | 'err'; text: string } | null;
 }
 
-function ScoresSection({ scores, rescoring, onRerun }: ScoresSectionProps) {
+function ScoresSection({ scores, rescoring, onRerun, rescoreMessage }: ScoresSectionProps) {
   const hasAuto = scores.some(s => s.scorer_kind === 'heuristic' || s.scorer_kind === 'llm-judge');
   const hasAny = scores.length > 0;
 
@@ -310,16 +327,16 @@ function ScoresSection({ scores, rescoring, onRerun }: ScoresSectionProps) {
             {rescoring ? 'Scoring en cours…' : '▶ Calculer les scorers automatiques'}
           </Button>
         </div>
-        <ScoresTable scores={scores} rescoring={rescoring} onRerun={onRerun} />
+        <ScoresTable scores={scores} rescoring={rescoring} onRerun={onRerun} rescoreMessage={rescoreMessage} />
       </>
     );
   }
 
   // ── Normal case : heuristic + llm-judge + human. ──
-  return <ScoresTable scores={scores} rescoring={rescoring} onRerun={onRerun} />;
+  return <ScoresTable scores={scores} rescoring={rescoring} onRerun={onRerun} rescoreMessage={rescoreMessage} />;
 }
 
-function ScoresTable({ scores, rescoring, onRerun }: ScoresSectionProps) {
+function ScoresTable({ scores, rescoring, onRerun, rescoreMessage }: ScoresSectionProps) {
   // Dedupe : keep only the latest row per (kind:name) — human votes can be
   // inserted multiple times if the user changes their mind.
   const latest = useMemo(() => {
@@ -354,20 +371,31 @@ function ScoresTable({ scores, rescoring, onRerun }: ScoresSectionProps) {
           <strong> Juge IA</strong> (2ᵉ modèle qui relit et note la qualité),
           <strong> Humain</strong> (ton vote 👍/👎). Passe la souris sur un critère pour voir précisément ce qu'il mesure.
         </p>
-        <button
-          type="button"
-          onClick={onRerun}
-          disabled={rescoring}
-          style={{
-            padding: '2px 8px', fontSize: 11, fontFamily: 'var(--font-mono)',
-            background: 'transparent', color: 'var(--accent-primary)',
-            border: '1px solid var(--accent-primary)', borderRadius: 2, cursor: rescoring ? 'wait' : 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-          title="Ré-exécute tous les scorers automatiques sur ce log"
-        >
-          {rescoring ? '…' : '🔄 Re-run'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {rescoreMessage && (
+            <span style={{
+              fontSize: 11, fontFamily: 'var(--font-mono)',
+              color: rescoreMessage.kind === 'ok' ? 'var(--success, #4caf50)' : 'var(--error, #f44336)',
+              maxWidth: 320,
+            }}>
+              {rescoreMessage.text}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onRerun}
+            disabled={rescoring}
+            style={{
+              padding: '2px 8px', fontSize: 11, fontFamily: 'var(--font-mono)',
+              background: 'transparent', color: 'var(--accent-primary)',
+              border: '1px solid var(--accent-primary)', borderRadius: 2, cursor: rescoring ? 'wait' : 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+            title="Ré-exécute tous les scorers automatiques sur ce log"
+          >
+            {rescoring ? '🔄 En cours…' : '🔄 Re-run'}
+          </button>
+        </div>
       </div>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)' }}>
         <thead>
