@@ -48,6 +48,10 @@ export default defineConfig({
       '/ai-skills/api': {
         target: UNIFIED_SERVER,
       },
+      // Prompt Logs API (Claude Code hook ingestion + admin viewer)
+      '/prompt-logs/api': {
+        target: UNIFIED_SERVER,
+      },
       // Gateway APIs (auth, admin)
       '/api/auth': {
         target: UNIFIED_SERVER,

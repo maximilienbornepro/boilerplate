@@ -16,6 +16,7 @@ const RagApp = lazy(() => import('./modules/rag/App'));
 const AiLogsApp = lazy(() => import('./modules/ai-logs/App'));
 const AiEvalsApp = lazy(() => import('./modules/ai-evals/App'));
 const AiPlaygroundApp = lazy(() => import('./modules/ai-playground/App'));
+const PromptLogsApp = lazy(() => import('./modules/prompt-logs/App'));
 const DesignSystemApp = lazy(() => import('./modules/design-system/App'));
 const DemoApp = lazy(() => import('./modules/demo/App'));
 const LandingDemoModule = lazy(() => import('./modules/demo/LandingDemo').then(m => ({ default: () => <m.LandingDemo /> })));
@@ -51,6 +52,7 @@ function adminDrawerLinks(user?: User | null) {
         { label: 'Logs IA',        path: '/ai-logs',       color: '#14b8a6' }, // teal
         { label: 'Évaluations IA', path: '/ai-evals',      color: '#f43f5e' }, // rose
         { label: 'Playground IA',  path: '/ai-playground', color: '#a855f7' }, // purple
+        { label: 'Logs Prompts',   path: '/prompt-logs',   color: '#eab308' }, // amber
       ]
     : undefined;
 }
@@ -237,6 +239,14 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <AiPlaygroundApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/prompt-logs"
+        element={
+          <SuspenseWrapper>
+            <PromptLogsApp onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />

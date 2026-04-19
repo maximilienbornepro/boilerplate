@@ -41,6 +41,7 @@
     "test:server:suivitess-recorder": "vitest run --project server-suivitess-recorder",
     "test:client:suivitess-recorder": "vitest run --project client-suivitess-recorder",
     "test:server:ai-skills": "vitest run --project server-ai-skills",
+    "test:server:prompt-logs": "vitest run --project server-prompt-logs",
     "test:shared": "vitest run --project shared",
     "predeploy": "npm test"
   },
