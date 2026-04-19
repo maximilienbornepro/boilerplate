@@ -97,7 +97,10 @@ export const STEPS: StepDef[] = [
       'Optionnel mais recommandé : écrire l\'output que tu aurais aimé recevoir (en JSON ou texte libre). ' +
       'Ça permet plus tard à un second IA (le « juge ») de noter automatiquement les nouvelles sorties en les comparant à ta référence.',
     Component: Step5,
-    isComplete: s => !!s.itemId,
+    // Must have a dataset AND at least 1 real item in it. Using the live
+    // count (refreshed by Step5 itself) not the stale state.itemId which
+    // could point to an item from an earlier session / different dataset.
+    isComplete: s => !!s.datasetId && s.datasetItemCount > 0,
   },
   {
     title: 'Mesurer la baseline',

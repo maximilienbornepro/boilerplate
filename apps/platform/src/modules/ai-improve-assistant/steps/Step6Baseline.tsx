@@ -62,17 +62,43 @@ export default function Step6Baseline({ onAdvance: _ }: StepProps) {
     return <BaselineReport report={report} />;
   }
 
+  // Hard stop : can't launch a baseline on an empty dataset. Step5 should
+  // have blocked this, but we defend against stale state / direct nav.
+  const itemCount = state.datasetItemCount;
+  if (itemCount <= 0) {
+    return (
+      <div style={{
+        padding: 'var(--spacing-md)',
+        background: 'rgba(255,152,0,0.1)',
+        border: '1px solid var(--warning, #ff9800)',
+        borderLeft: '4px solid var(--warning, #ff9800)',
+        borderRadius: 'var(--radius-sm)',
+      }}>
+        <div style={{ fontSize: 'var(--font-size-md)', fontWeight: 700, marginBottom: 8 }}>
+          ⚠ Impossible de lancer la baseline — le dataset est vide
+        </div>
+        <p style={{ margin: '0 0 12px', fontSize: 'var(--font-size-sm)', lineHeight: 1.5 }}>
+          Le dataset <strong>« {state.datasetName} »</strong> (<code>#{state.datasetId}</code>) ne contient
+          aucun item. Une baseline a besoin d'au moins 1 cas pour produire un chiffre de référence.
+        </p>
+        <Button variant="primary" onClick={() => dispatch({ type: 'GOTO', step: 4 })}>
+          ↩ Retour étape 5 pour ajouter des items
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.actionBlock}>
       <p className={styles.statusLine} style={{ lineHeight: 1.5 }}>
-        On va <strong>rejouer le skill tel qu'il est aujourd'hui</strong> sur tous les items du dataset <strong>{state.datasetName}</strong> — chaque item = un appel complet à l'IA (donc ça coûte quelques centimes et prend ~10–30 s par item). Les scorers automatiques tournent ensuite sur chaque sortie.
+        On va <strong>rejouer le skill tel qu'il est aujourd'hui</strong> sur <strong>{itemCount} item{itemCount > 1 ? 's' : ''}</strong> du dataset <strong>{state.datasetName}</strong> — chaque item = un appel complet à l'IA (donc ça coûte quelques centimes et prend ~10–30 s par item). Les scorers automatiques tournent ensuite sur chaque sortie.
         <br />
         Résultat : une « photo » chiffrée des performances actuelles. C'est contre cette photo qu'on comparera toutes les variantes testées après.
       </p>
 
       {!exp && !report && (
         <Button variant="primary" onClick={launch} disabled={launching}>
-          {launching ? 'Démarrage…' : '▶ Lancer la baseline'}
+          {launching ? 'Démarrage…' : `▶ Lancer la baseline sur ${itemCount} item${itemCount > 1 ? 's' : ''}`}
         </Button>
       )}
 

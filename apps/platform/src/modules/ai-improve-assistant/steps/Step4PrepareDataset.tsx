@@ -26,16 +26,39 @@ export default function Step4PrepareDataset({ onAdvance: _ }: StepProps) {
       .finally(() => setLoading(false));
   }, [state.skillSlug]);
 
-  const pickExisting = (d: Dataset) => {
-    dispatch({ type: 'PATCH', patch: { datasetId: d.id, datasetName: d.name } });
+  // When the user picks/creates a DIFFERENT dataset, everything downstream
+  // (itemId, baseline, playground, winner, promoted skill, final report)
+  // is tied to the old dataset and becomes stale. We reset it all so the
+  // user is forced to re-add at least one item at step 5 before advancing.
+  const switchToDataset = (id: number, name: string) => {
+    const isDifferent = state.datasetId !== id;
+    dispatch({
+      type: 'PATCH',
+      patch: isDifferent
+        ? {
+            datasetId: id,
+            datasetName: name,
+            itemId: null,
+            baselineReport: null,
+            variants: [],
+            playgroundResult: null,
+            winnerVariantIndex: null,
+            winningSkillContent: null,
+            newSkillVersionHash: null,
+            finalReport: null,
+          }
+        : { datasetId: id, datasetName: name },
+    });
   };
+
+  const pickExisting = (d: Dataset) => switchToDataset(d.id, d.name);
 
   const doCreate = async () => {
     if (!state.skillSlug || !newName.trim()) return;
     setCreating(true); setError('');
     try {
       const ds = await createDataset({ name: newName.trim(), skillSlug: state.skillSlug, description: newDesc || null });
-      dispatch({ type: 'PATCH', patch: { datasetId: ds.id, datasetName: ds.name } });
+      switchToDataset(ds.id, ds.name);
       // Refresh list so the UI shows the new one if the user goes back.
       setExisting(prev => prev ? [ds, ...prev] : [ds]);
     } catch (e) {

@@ -22,6 +22,10 @@ export interface AssistantState {
   datasetId: number | null;
   datasetName: string | null;
   itemId: number | null;
+  /** Live count of items in the current dataset — set by Step5 on mount
+   *  and after every add. Source of truth for Step5.isComplete so we
+   *  don't rely on a stale itemId from a previous session. */
+  datasetItemCount: number;
 
   // Step 6 : baseline experiment.
   baselineExperimentId: number | null;
@@ -53,6 +57,7 @@ export const INITIAL_STATE: AssistantState = {
   datasetId: null,
   datasetName: null,
   itemId: null,
+  datasetItemCount: 0,
   baselineExperimentId: null,
   baselineReport: null,
   originalSkillContent: null,
