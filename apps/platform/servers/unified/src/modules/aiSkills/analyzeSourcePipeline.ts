@@ -201,6 +201,12 @@ function todayFrFr(): string {
   return new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
 }
 
+/** "1234ms" → "1.23s (1234ms)". We log both units because seconds are more
+ *  readable for humans, ms are more precise for comparisons/regressions. */
+function fmtDur(ms: number): string {
+  return `${(ms / 1000).toFixed(2)}s (${ms}ms)`;
+}
+
 function defaultStatus(hint: string | null | undefined): string {
   return hint ?? '🟡 en cours';
 }
@@ -217,7 +223,8 @@ interface TierBase {
 
 async function tier1Extract(base: TierBase & {
   sourceRaw: string;
-}): Promise<{ logId: number | null; subjects: ExtractedSubject[] }> {
+}): Promise<{ logId: number | null; subjects: ExtractedSubject[]; durationMs: number }> {
+  const t0 = Date.now();
   const run = await runSkill({
     slug: extractorSlugFor(base.sourceKind as SourceKind),
     userId: base.userId,
@@ -238,8 +245,9 @@ async function tier1Extract(base: TierBase & {
   const subjects = Array.isArray(raw)
     ? raw.map((s, i) => ({ ...s, index: i })) // re-index to be safe
     : [];
+  const durationMs = Date.now() - t0;
   // eslint-disable-next-line no-console -- visible for pipeline debugging
-  console.log(`[pipeline] tier1 extract (${base.sourceKind}) → ${subjects.length} subjects (logId=${run.logId})`);
+  console.log(`[pipeline] tier1 extract (${base.sourceKind}) → ${subjects.length} subjects · ${fmtDur(durationMs)} · logId=${run.logId}`);
   // Annotate the log row so /ai-logs shows a clear error instead of a
   // successful-looking log with empty proposals.
   if (run.logId != null) {
@@ -254,14 +262,15 @@ async function tier1Extract(base: TierBase & {
       await attachProposalsToLog(run.logId, subjects);
     }
   }
-  return { logId: run.logId, subjects };
+  return { logId: run.logId, subjects, durationMs };
 }
 
 async function tier2PlaceDocument(base: TierBase & {
   subjects: ExtractedSubject[];
   document: DocumentContext;
   parentLogId: number | null;
-}): Promise<{ logId: number | null; placements: DocumentPlacement[] }> {
+}): Promise<{ logId: number | null; placements: DocumentPlacement[]; durationMs: number }> {
+  const t0 = Date.now();
   const ctx = { subjects: base.subjects, document: base.document };
   const run = await runSkill({
     slug: 'suivitess-place-in-document',
@@ -277,8 +286,9 @@ async function tier2PlaceDocument(base: TierBase & {
   });
   const raw = extractJson<DocumentPlacement[]>(run.outputText);
   const placements = Array.isArray(raw) ? raw : [];
+  const durationMs = Date.now() - t0;
   // eslint-disable-next-line no-console -- visible for pipeline debugging
-  console.log(`[pipeline] tier2 place-in-document → ${placements.length} placements (logId=${run.logId})`);
+  console.log(`[pipeline] tier2 place-in-document → ${placements.length} placements · ${fmtDur(durationMs)} · logId=${run.logId}`);
   if (run.logId != null) {
     if (raw == null) {
       await updateLogError(run.logId, `[PIPELINE T2 document] JSON parse failed — output may be truncated.`);
@@ -288,14 +298,15 @@ async function tier2PlaceDocument(base: TierBase & {
       await attachProposalsToLog(run.logId, placements);
     }
   }
-  return { logId: run.logId, placements };
+  return { logId: run.logId, placements, durationMs };
 }
 
 async function tier2PlaceReviews(base: TierBase & {
   subjects: ExtractedSubject[];
   reviews: ReviewContext[];
   parentLogId: number | null;
-}): Promise<{ logId: number | null; placements: ReviewPlacement[] }> {
+}): Promise<{ logId: number | null; placements: ReviewPlacement[]; durationMs: number }> {
+  const t0 = Date.now();
   const ctx = { subjects: base.subjects, reviews: base.reviews };
   const run = await runSkill({
     slug: 'suivitess-place-in-reviews',
@@ -311,8 +322,9 @@ async function tier2PlaceReviews(base: TierBase & {
   });
   const raw = extractJson<ReviewPlacement[]>(run.outputText);
   const placements = Array.isArray(raw) ? raw : [];
+  const durationMs = Date.now() - t0;
   // eslint-disable-next-line no-console -- visible for pipeline debugging
-  console.log(`[pipeline] tier2 place-in-reviews → ${placements.length} placements (logId=${run.logId})`);
+  console.log(`[pipeline] tier2 place-in-reviews → ${placements.length} placements · ${fmtDur(durationMs)} · logId=${run.logId}`);
   if (run.logId != null) {
     if (raw == null) {
       await updateLogError(run.logId, `[PIPELINE T2 reviews] JSON parse failed — output may be truncated.`);
@@ -322,7 +334,7 @@ async function tier2PlaceReviews(base: TierBase & {
       await attachProposalsToLog(run.logId, placements);
     }
   }
-  return { logId: run.logId, placements };
+  return { logId: run.logId, placements, durationMs };
 }
 
 async function tier3Append(base: TierBase & {
@@ -330,7 +342,8 @@ async function tier3Append(base: TierBase & {
   rawQuotes: string[];
   subjectTitle: string;
   parentLogId: number | null;
-}): Promise<{ logId: number | null; appendText: string | null }> {
+}): Promise<{ logId: number | null; appendText: string | null; durationMs: number }> {
+  const t0 = Date.now();
   const ctx = {
     existingSituation: base.existingSituation,
     rawQuotes: base.rawQuotes,
@@ -367,14 +380,18 @@ async function tier3Append(base: TierBase & {
       await attachProposalsToLog(run.logId, [{ kind: 'append', text: null, note: 'writer decided nothing new to add' }]);
     }
   }
-  return { logId: run.logId, appendText: parsed?.appendText ?? null };
+  const durationMs = Date.now() - t0;
+  // eslint-disable-next-line no-console
+  console.log(`[pipeline] tier3 append → ${parsed?.appendText ? 'text' : 'null'} · ${fmtDur(durationMs)} · logId=${run.logId}`);
+  return { logId: run.logId, appendText: parsed?.appendText ?? null, durationMs };
 }
 
 async function tier3Compose(base: TierBase & {
   title: string;
   rawQuotes: string[];
   parentLogId: number | null;
-}): Promise<{ logId: number | null; situation: string }> {
+}): Promise<{ logId: number | null; situation: string; durationMs: number }> {
+  const t0 = Date.now();
   const ctx = { title: base.title, rawQuotes: base.rawQuotes };
   const run = await runSkill({
     slug: 'suivitess-compose-situation',
@@ -396,7 +413,10 @@ async function tier3Compose(base: TierBase & {
       await attachProposalsToLog(run.logId, [{ kind: 'compose', text: parsed.situation ?? '' }]);
     }
   }
-  return { logId: run.logId, situation: parsed?.situation ?? '' };
+  const durationMs = Date.now() - t0;
+  // eslint-disable-next-line no-console
+  console.log(`[pipeline] tier3 compose → ${(parsed?.situation?.length ?? 0)} chars · ${fmtDur(durationMs)} · logId=${run.logId}`);
+  return { logId: run.logId, situation: parsed?.situation ?? '', durationMs };
 }
 
 // ── Public API ────────────────────────────────────────────────────────
@@ -414,6 +434,7 @@ export interface AnalyzeForDocumentInput {
 export async function analyzeSourceForDocument(
   input: AnalyzeForDocumentInput,
 ): Promise<{ proposals: FinalDocumentProposal[]; rootLogId: number | null }> {
+  const wallStart = Date.now();
   const base = {
     userId: input.userId,
     userEmail: input.userEmail,
@@ -444,6 +465,7 @@ export async function analyzeSourceForDocument(
   }
 
   // Tier 3 — parallel per placement
+  const tier3Start = Date.now();
   // eslint-disable-next-line no-console
   console.log(`[pipeline] tier3 running ${pl.placements.length} writer(s) in parallel…`);
   const proposals = await Promise.all(pl.placements.map(async (p): Promise<FinalDocumentProposal | null> => {
@@ -518,8 +540,16 @@ export async function analyzeSourceForDocument(
   }));
 
   const final = proposals.filter((p): p is FinalDocumentProposal => p !== null);
+  const tier3WallMs = Date.now() - tier3Start;
+  const totalMs = Date.now() - wallStart;
+  // Final timing summary — one line per pipeline run, easy to grep.
   // eslint-disable-next-line no-console
-  console.log(`[pipeline] done → ${final.length}/${pl.placements.length} final proposals (${pl.placements.length - final.length} dropped by writer, e.g. nothing new to append)`);
+  console.log(
+    `[pipeline:summary] (document) ` +
+    `T1=${fmtDur(ex.durationMs)} · T2=${fmtDur(pl.durationMs)} · ` +
+    `T3=${fmtDur(tier3WallMs)} (${pl.placements.length} writers in //) · ` +
+    `TOTAL=${fmtDur(totalMs)} · final=${final.length}/${pl.placements.length} proposals`,
+  );
   return { proposals: final, rootLogId: ex.logId };
 }
 
@@ -536,6 +566,7 @@ export interface AnalyzeForReviewsInput {
 export async function analyzeSourceForReviews(
   input: AnalyzeForReviewsInput,
 ): Promise<{ proposals: FinalReviewProposal[]; rootLogId: number | null }> {
+  const wallStart = Date.now();
   const base = {
     userId: input.userId,
     userEmail: input.userEmail,
@@ -566,6 +597,7 @@ export async function analyzeSourceForReviews(
   }
 
   // Tier 3 — parallel per placement
+  const tier3Start = Date.now();
   // eslint-disable-next-line no-console
   console.log(`[pipeline] tier3 running ${pl.placements.length} writer(s) in parallel…`);
   const proposals = await Promise.all(pl.placements.map(async (p): Promise<FinalReviewProposal | null> => {
@@ -646,8 +678,15 @@ export async function analyzeSourceForReviews(
   }));
 
   const final = proposals.filter((p): p is FinalReviewProposal => p !== null);
+  const tier3WallMs = Date.now() - tier3Start;
+  const totalMs = Date.now() - wallStart;
   // eslint-disable-next-line no-console
-  console.log(`[pipeline] done → ${final.length}/${pl.placements.length} final review proposals`);
+  console.log(
+    `[pipeline:summary] (reviews) ` +
+    `T1=${fmtDur(ex.durationMs)} · T2=${fmtDur(pl.durationMs)} · ` +
+    `T3=${fmtDur(tier3WallMs)} (${pl.placements.length} writers in //) · ` +
+    `TOTAL=${fmtDur(totalMs)} · final=${final.length}/${pl.placements.length} proposals`,
+  );
   return { proposals: final, rootLogId: ex.logId };
 }
 

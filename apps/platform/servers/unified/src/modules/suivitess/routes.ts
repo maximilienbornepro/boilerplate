@@ -1405,10 +1405,13 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
       });
       indexed = proposals.map((p, i) => ({ ...p, id: i }));
       rootLogId = logId;
-      if (rootLogId != null && indexed.length > 0) {
-        const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
-        await attachProposalsToLog(rootLogId, indexed);
-      }
+      // NOTE : with the pipeline active, each tier log has ALREADY had its
+      // own output attached (T1 → subjects, T2 → placements, T3 → the one
+      // appendText/situation it produced). We deliberately DO NOT overwrite
+      // the T1 log here, otherwise its "propositions" count would become
+      // the final pipeline total (often lower than the subjects T1 actually
+      // extracted — misleading in /ai-logs). The final count is still
+      // returned in the HTTP response for the frontend.
       // When the pipeline yields zero proposals we surface a meaningful
       // message instead of leaving the UI empty (frontend shows "null").
       // The admin can open /ai-logs/<rootLogId> to inspect what failed.
@@ -1780,7 +1783,8 @@ ${filteredContent.slice(0, 30000)}`,
       });
       indexed = proposals.map((p, i) => ({ ...p, id: i }));
       rootLogId = logId;
-      if (rootLogId != null && indexed.length > 0) await attachProposalsToLog(rootLogId, indexed);
+      // See note in transcript-analyze-and-propose : do NOT overwrite the
+      // T1 log — each tier has already attached its own output.
     } else {
       const { runSkill } = await import('../aiSkills/runSkill.js');
       const runRes = await runSkill({
