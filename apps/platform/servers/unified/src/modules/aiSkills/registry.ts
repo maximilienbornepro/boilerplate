@@ -72,15 +72,39 @@ export const SKILLS: readonly SkillDefinition[] = [
   },
   {
     slug: 'delivery-reorganize-board',
-    name: 'Delivery — Réorganiser un board',
+    name: 'Delivery — Réorganiser un board (LEGACY — plus appelé)',
     description:
-      'Analyse un delivery board et propose un plan de réorganisation colonne par colonne selon statut, estimation et version fix des tickets externes (Jira, ClickUp, Linear, ...).',
+      'LEGACY — ancien skill monolithique remplacé par le pipeline modulaire (assess-tickets → layout engine TS → write-reasoning). Conservé dans le registre pour la navigation historique dans /ai-logs. N\'est plus invoqué depuis avril 2026.',
     usage: {
       module: 'delivery',
-      endpoint: 'POST /delivery/api/boards/:id/ai-sanity-check',
-      trigger: 'Bouton « Vérifier avec l\'IA » sur un delivery board',
+      endpoint: 'Aucun — legacy',
+      trigger: 'Aucun — remplacé par le pipeline delivery',
     },
     defaultFilePath: resolve(MODULES_DIR, 'delivery/skill-reorganize-board.md'),
+  },
+  {
+    slug: 'delivery-assess-tickets',
+    name: 'Delivery — Pipeline/T1 : évaluer la qualité des tickets',
+    description:
+      'Tier 1 du pipeline delivery. Produit des flags qualité (hasEstimation, hasMeaningfulDescription, ready) + risk notes optionnelles par ticket. Aucun placement — juste une évaluation du contenu pour alimenter le layout engine.',
+    usage: {
+      module: 'delivery',
+      endpoint: 'Interne — analyzeSanityCheckPipeline() dans delivery/reorganizeBoardPipeline.ts',
+      trigger: 'Bouton « Vérifier avec l\'IA » sur un delivery board — tier 1 du pipeline',
+    },
+    defaultFilePath: resolve(MODULES_DIR, 'delivery/skill-assess-tickets.md'),
+  },
+  {
+    slug: 'delivery-write-reasoning',
+    name: 'Delivery — Pipeline/T2 : rédiger les justifications de placement',
+    description:
+      'Tier 2 du pipeline delivery. Prend le plan décidé par le layout engine (pure TS) et produit une phrase de justification ≤ 200 chars par ticket, citant statut + version + qualité + raison du déplacement.',
+    usage: {
+      module: 'delivery',
+      endpoint: 'Interne — analyzeSanityCheckPipeline()',
+      trigger: 'Bouton « Vérifier avec l\'IA » sur un delivery board — tier 2 du pipeline',
+    },
+    defaultFilePath: resolve(MODULES_DIR, 'delivery/skill-write-reasoning.md'),
   },
   {
     slug: 'llm-judge-faithfulness',

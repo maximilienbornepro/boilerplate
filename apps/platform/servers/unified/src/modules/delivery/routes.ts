@@ -784,8 +784,9 @@ export function createDeliveryRoutes(): Router {
     }
 
     const {
-      parseExternalKey, computeTodayCol, analyzeSanityCheck, categorizeVersions, categoryOf,
+      parseExternalKey, computeTodayCol, categorizeVersions, categoryOf,
     } = await import('./deliveryAISanityService.js');
+    const { analyzeSanityCheckPipeline } = await import('./reorganizeBoardPipeline.js');
 
     // external key → board task id, only for Jira-sourced tasks (the only
     // provider for which we currently fetch live data). Other sources still
@@ -1001,7 +1002,7 @@ export function createDeliveryRoutes(): Router {
     const MAX_TASKS = 50;
     const capped = snapshotTasks.slice(0, MAX_TASKS);
 
-    const result = await analyzeSanityCheck(req.user!.id, {
+    const result = await analyzeSanityCheckPipeline(req.user!.id, {
       boardId,
       boardName: board.name,
       totalCols,
