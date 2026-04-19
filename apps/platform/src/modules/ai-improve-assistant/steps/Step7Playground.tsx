@@ -18,41 +18,58 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
   const [variants, setVariants] = useState<Variant[]>(state.variants.length > 0 ? state.variants : []);
   const [items, setItems] = useState<InputPick[]>([]);
   const [loadingSeed, setLoadingSeed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<PlaygroundResult | null>(state.playgroundResult);
 
   // Seed : v1 = current skill content ; v2 = empty copy for edits.
   // Also load the dataset items so the user can pick 1–2 inputs.
+  // Refactored as a reusable loader — called on mount AND by the
+  // "🔄 Rafraîchir" button so items added in step 5 after the first load
+  // show up without rebuilding the variants.
+  const loadSeed = async (keepVariants: boolean) => {
+    if (!state.skillSlug || !state.datasetId) return;
+    try {
+      const [skill, ds] = await Promise.all([
+        getSkillDetail(state.skillSlug),
+        getDatasetDetail(state.datasetId),
+      ]);
+      if (!keepVariants || variants.length === 0) {
+        setVariants([
+          { label: 'current', content: skill.content },
+          { label: 'v2 (édite moi)', content: skill.content },
+        ]);
+        dispatch({ type: 'PATCH', patch: { originalSkillContent: skill.content } });
+      }
+      // Preserve current selection state when refreshing.
+      const prevSelected = new Set(items.filter(i => i.selected).map(i => i.itemId));
+      setItems(ds.items.map((it, idx) => ({
+        itemId: it.id,
+        label: `item #${it.id}`,
+        content: it.input_content,
+        selected: prevSelected.size > 0 ? prevSelected.has(it.id) : idx < 2,
+      })));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur');
+    }
+  };
+
   useEffect(() => {
     if (!state.skillSlug || !state.datasetId) return;
     if (variants.length > 0 && items.length > 0) return;
     setLoadingSeed(true);
-    Promise.all([
-      getSkillDetail(state.skillSlug),
-      getDatasetDetail(state.datasetId),
-    ])
-      .then(([skill, ds]) => {
-        if (variants.length === 0) {
-          setVariants([
-            { label: 'current', content: skill.content },
-            { label: 'v2 (édite moi)', content: skill.content },
-          ]);
-          // Save the original content so the final-step can rollback.
-          dispatch({ type: 'PATCH', patch: { originalSkillContent: skill.content } });
-        }
-        // Default : first 2 items pre-selected.
-        setItems(ds.items.map((it, idx) => ({
-          itemId: it.id,
-          label: `item #${it.id}`,
-          content: it.input_content,
-          selected: idx < 2,
-        })));
-      })
-      .catch(e => setError(e instanceof Error ? e.message : 'Erreur'))
-      .finally(() => setLoadingSeed(false));
+    loadSeed(true).finally(() => setLoadingSeed(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.skillSlug, state.datasetId]);
+
+  const refresh = async () => {
+    setRefreshing(true); setError('');
+    await loadSeed(true);
+    setRefreshing(false);
+  };
+
+  const goBackToStep5 = () => dispatch({ type: 'GOTO', step: 4 }); // 0-indexed : step 5 = index 4
 
   const patchVariant = (i: number, patch: Partial<Variant>) => {
     setVariants(v => v.map((x, idx) => idx === i ? { ...x, ...patch } : x));
@@ -104,28 +121,58 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
       {/* Variants */}
       <FormBlock label={`Variantes du prompt (${variants.length})`}>
         <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: -2, marginBottom: 8 }}>
-          Chaque variante = une version modifiée du skill à tester. L'éditeur propose 3 vues : <strong>Éditer</strong> (textarea numérotée), <strong>Aperçu</strong> (markdown rendu), <strong>Diff vs v1</strong> (ce que tu as changé vs la v1 current). Utilise l'outline de gauche pour sauter de section en section.
+          Chaque variante = une version modifiée du skill à tester. L'éditeur propose 3 vues : <strong>Éditer</strong>, <strong>Aperçu</strong>, <strong>Diff vs v1</strong>. Utilise l'outline de gauche pour sauter de section en section.
         </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
           {variants.map((v, i) => {
-            // v1 content = variants[0], used as reference for all others.
             const referenceContent = i === 0 ? null : variants[0]?.content ?? null;
+            const isBaseline = i === 0;
+            // Visual identity per variant : v1 neutral, v2+ accent color.
+            const badgeColor = isBaseline ? 'var(--text-secondary)' : 'var(--accent-primary)';
+            const badgeBg = isBaseline ? 'var(--bg-secondary, rgba(128,128,128,0.08))' : 'var(--accent-primary)';
+            const badgeFg = isBaseline ? 'var(--text-primary)' : '#0a0a0a';
             return (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: 'var(--spacing-xs)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)' }}>
-                <div style={{ display: 'flex', gap: 'var(--spacing-xs)', alignItems: 'center' }}>
-                  <input
-                    className={styles.input}
-                    style={{ width: 160 }}
-                    value={v.label}
-                    onChange={e => patchVariant(i, { label: e.target.value })}
-                    placeholder="label de la variante"
-                  />
-                  <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)' }}>
-                    {i === 0 ? '(version actuelle — ne pas modifier)' : 'variante à tester'}
+              <div key={i} style={{
+                display: 'flex', flexDirection: 'column', gap: 10,
+                padding: 'var(--spacing-sm)',
+                border: `1px solid ${isBaseline ? 'var(--border-color)' : badgeColor}`,
+                borderLeft: `4px solid ${badgeColor}`,
+                borderRadius: 'var(--radius-sm)',
+              }}>
+                {/* Header row 1 : badge + role description (dominant). */}
+                <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{
+                    padding: '4px 12px',
+                    background: badgeBg,
+                    color: badgeFg,
+                    fontWeight: 700,
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 13,
+                    borderRadius: 2,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    v{i + 1}
                   </span>
-                  {variants.length > 1 && (
+                  <span style={{ flex: 1, fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                    {isBaseline
+                      ? <>🔒 Ton prompt <em>actuel</em> — référence en lecture seule</>
+                      : <>✏️ Variante <em>à tester</em> — édite ce prompt pour corriger ce qui ne marchait pas</>}
+                  </span>
+                  {!isBaseline && variants.length > 1 && (
                     <Button variant="secondary" onClick={() => removeVariant(i)}>× retirer</Button>
                   )}
+                </div>
+                {/* Header row 2 : label input (secondary). */}
+                <div style={{ display: 'flex', gap: 'var(--spacing-xs)', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', minWidth: 60 }}>Libellé&nbsp;:</span>
+                  <input
+                    className={styles.input}
+                    style={{ flex: 1, maxWidth: 360 }}
+                    value={v.label}
+                    onChange={e => patchVariant(i, { label: e.target.value })}
+                    placeholder={isBaseline ? 'current' : 'ex : « sans emojis dans les situations »'}
+                    disabled={isBaseline}
+                  />
                 </div>
                 <SkillEditor
                   value={v.content}
@@ -133,6 +180,7 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
                   refContent={referenceContent}
                   refLabel={variants[0]?.label ?? 'v1'}
                   minHeight={280}
+                  disabled={isBaseline}
                 />
               </div>
             );
@@ -142,27 +190,73 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
       </FormBlock>
 
       {/* Inputs picker (from dataset) */}
-      <FormBlock label={`Inputs à tester (depuis le dataset ${state.datasetName})`}>
-        {items.length === 0 ? (
-          <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
-            Le dataset n'a aucun item. Retourne à l'étape 5.
-          </p>
-        ) : (
-          <div style={{ maxHeight: 180, overflowY: 'auto' }}>
-            <table className={styles.table}>
-              <thead><tr><th style={{ width: 20 }} /><th>Item</th><th>Aperçu</th></tr></thead>
-              <tbody>
-                {items.map(it => (
-                  <tr key={it.itemId} className={it.selected ? styles.selected : ''} onClick={() => toggleItem(it.itemId)} style={{ cursor: 'pointer' }}>
-                    <td><input type="checkbox" checked={it.selected} onChange={() => toggleItem(it.itemId)} /></td>
-                    <td>#{it.itemId}</td>
-                    <td style={{ fontSize: 11, color: 'var(--text-secondary)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {it.content.slice(0, 200)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <FormBlock label={`Inputs à tester (depuis le dataset « ${state.datasetName} »)`}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1 }}>
+            {items.length === 0
+              ? <>Le dataset <code>#{state.datasetId}</code> n'a <strong>aucun item</strong>. Ajoutes-en depuis l'étape 5.</>
+              : <>
+                <strong>{items.filter(i => i.selected).length} / {items.length}</strong> item(s) sélectionné(s).
+                {' '}Coche les lignes que tu veux rejouer. Chaque cellule (variante × input) = 1 appel IA.
+              </>}
+          </span>
+          <Button variant="secondary" onClick={refresh} disabled={refreshing}>
+            {refreshing ? '…' : '🔄 Rafraîchir'}
+          </Button>
+          {items.length === 0 && (
+            <Button variant="primary" onClick={goBackToStep5}>↩ Retour étape 5</Button>
+          )}
+          {items.length > 0 && (
+            <>
+              <Button variant="secondary" onClick={() => setItems(is => is.map(x => ({ ...x, selected: true })))}>Tout cocher</Button>
+              <Button variant="secondary" onClick={() => setItems(is => is.map(x => ({ ...x, selected: false })))}>Tout décocher</Button>
+            </>
+          )}
+        </div>
+        {items.length === 0 ? null : (
+          <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)' }}>
+            {items.map(it => {
+              const onToggle = () => toggleItem(it.itemId);
+              return (
+                <div
+                  key={it.itemId}
+                  onClick={onToggle}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: 'var(--spacing-xs) var(--spacing-sm)',
+                    borderBottom: '1px solid var(--border-color)',
+                    cursor: 'pointer',
+                    background: it.selected ? 'rgba(102,126,234,0.08)' : 'transparent',
+                    borderLeft: it.selected ? '3px solid var(--accent-primary)' : '3px solid transparent',
+                  }}
+                >
+                  {/* Big visible checkbox */}
+                  <input
+                    type="checkbox"
+                    checked={it.selected}
+                    onChange={onToggle}
+                    onClick={e => e.stopPropagation()}
+                    style={{ width: 18, height: 18, marginTop: 2, cursor: 'pointer', accentColor: 'var(--accent-primary)' }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 600 }}>
+                      item #{it.itemId}
+                      <span style={{ marginLeft: 8, fontWeight: 400, color: 'var(--text-secondary)' }}>
+                        · {it.content.length.toLocaleString()} chars
+                      </span>
+                    </div>
+                    <div style={{
+                      fontSize: 11, color: 'var(--text-secondary)', marginTop: 2,
+                      overflow: 'hidden', textOverflow: 'ellipsis',
+                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                      lineHeight: 1.4,
+                    }}>
+                      {it.content.slice(0, 300)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </FormBlock>
