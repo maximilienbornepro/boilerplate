@@ -1373,88 +1373,44 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
     try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'transcript_analysis'); }
     catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
-    // ── Modular pipeline (feature flag) OR monolithic skill (default) ──
-    const { isPipelineEnabled, analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
-    let indexed: Array<Record<string, unknown>> = [];
-    let rootLogId: number | null = null;
-
-    if (isPipelineEnabled()) {
-      // Build the structured DocumentContext expected by the pipeline.
-      const documentCtx = {
-        id: String(doc.id),
-        title: doc.title,
-        sections: doc.sections.map(s => ({
-          id: String(s.id),
-          name: s.name,
-          subjects: s.subjects.map(sub => ({
-            id: String(sub.id),
-            title: sub.title,
-            situationExcerpt: (sub.situation || '').slice(0, 2000),
-            status: sub.status,
-            responsibility: sub.responsibility ?? null,
-          })),
+    // ── Modular 3-tier pipeline (always active, no flag) ──
+    // Each tier log (T1 extract → T2 place → T3 writers) already has its
+    // own output attached via analyzeSourcePipeline — we don't overwrite
+    // the root log here so /ai-logs keeps a honest count per tier.
+    const { analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+    const documentCtx = {
+      id: String(doc.id),
+      title: doc.title,
+      sections: doc.sections.map(s => ({
+        id: String(s.id),
+        name: s.name,
+        subjects: s.subjects.map(sub => ({
+          id: String(sub.id),
+          title: sub.title,
+          situationExcerpt: (sub.situation || '').slice(0, 2000),
+          status: sub.status,
+          responsibility: sub.responsibility ?? null,
         })),
-      };
-      const { proposals, rootLogId: logId } = await analyzeSourceForDocument({
-        sourceKind: 'transcript',
-        sourceRaw: transcriptText,
-        sourceTitle: callTitle || 'Call',
-        document: documentCtx,
-        userId: req.user!.id,
-        userEmail: req.user!.email || '',
-      });
-      indexed = proposals.map((p, i) => ({ ...p, id: i }));
-      rootLogId = logId;
-      // NOTE : with the pipeline active, each tier log has ALREADY had its
-      // own output attached (T1 → subjects, T2 → placements, T3 → the one
-      // appendText/situation it produced). We deliberately DO NOT overwrite
-      // the T1 log here, otherwise its "propositions" count would become
-      // the final pipeline total (often lower than the subjects T1 actually
-      // extracted — misleading in /ai-logs). The final count is still
-      // returned in the HTTP response for the frontend.
-      // When the pipeline yields zero proposals we surface a meaningful
-      // message instead of leaving the UI empty (frontend shows "null").
-      // The admin can open /ai-logs/<rootLogId> to inspect what failed.
-      if (indexed.length === 0) {
-        res.json({
-          proposals: [],
-          logId: rootLogId,
-          pipelineEmpty: true,
-          message: `Pipeline modulaire : aucun sujet proposé. Ouvre /ai-logs/${rootLogId ?? '??'} pour voir le détail (tier 1/2/3 chaînés par parent_log_id).`,
-        });
-        return;
-      }
-    } else {
-      const { runSkill } = await import('../aiSkills/runSkill.js');
-      const runRes = await runSkill({
-        slug: 'suivitess-import-source-into-document',
-        userId: req.user!.id,
-        userEmail: req.user!.email,
-        buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(aucun sujet existant)'}\n\n## Transcription du call "${callTitle || 'Call'}"\n${transcriptText.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
-        inputContent: transcriptText,
-        sourceKind: 'transcript',
-        sourceTitle: callTitle || 'Call',
-        documentId: String(docId),
-      });
+      })),
+    };
+    const { proposals, rootLogId } = await analyzeSourceForDocument({
+      sourceKind: 'transcript',
+      sourceRaw: transcriptText,
+      sourceTitle: callTitle || 'Call',
+      document: documentCtx,
+      userId: req.user!.id,
+      userEmail: req.user!.email || '',
+    });
+    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
 
-      let proposals: Array<Record<string, unknown>> = [];
-      try {
-        let jsonText = runRes.outputText.trim();
-        if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
-        if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
-        if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
-        proposals = JSON.parse(jsonText.trim());
-      } catch {
-        const match = runRes.outputText.match(/\[[\s\S]*\]/);
-        if (match) proposals = JSON.parse(match[0]);
-      }
-
-      indexed = proposals.map((p, i) => ({ ...p, id: i }));
-      rootLogId = runRes.logId;
-      if (rootLogId != null) {
-        const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
-        await attachProposalsToLog(rootLogId, indexed);
-      }
+    if (indexed.length === 0) {
+      res.json({
+        proposals: [],
+        logId: rootLogId,
+        pipelineEmpty: true,
+        message: `Aucun sujet proposé. Ouvre /ai-logs/${rootLogId ?? '??'} pour voir le détail (tier 1/2/3 chaînés par parent_log_id).`,
+      });
+      return;
     }
 
     res.json({ proposals: indexed, logId: rootLogId });
@@ -1751,70 +1707,36 @@ ${filteredContent.slice(0, 30000)}`,
 
     const sourceLabel = source === 'outlook' ? 'emails' : 'messages Slack';
 
-    const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
-    const { isPipelineEnabled, analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
-    let indexed: Array<Record<string, unknown>> = [];
-    let rootLogId: number | null = null;
-
-    if (isPipelineEnabled()) {
-      const documentCtx = {
-        id: String(doc.id),
-        title: doc.title,
-        sections: doc.sections.map(s => ({
-          id: String(s.id),
-          name: s.name,
-          subjects: s.subjects.map(sub => ({
-            id: String(sub.id),
-            title: sub.title,
-            situationExcerpt: (sub.situation || '').slice(0, 2000),
-            status: sub.status,
-            responsibility: sub.responsibility ?? null,
-          })),
+    // ── Modular 3-tier pipeline (always active). ──
+    const { analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+    const documentCtx = {
+      id: String(doc.id),
+      title: doc.title,
+      sections: doc.sections.map(s => ({
+        id: String(s.id),
+        name: s.name,
+        subjects: s.subjects.map(sub => ({
+          id: String(sub.id),
+          title: sub.title,
+          situationExcerpt: (sub.situation || '').slice(0, 2000),
+          status: sub.status,
+          responsibility: sub.responsibility ?? null,
         })),
-      };
-      const pipelineKind = source === 'slack' ? 'slack' : 'outlook';
-      const { proposals, rootLogId: logId } = await analyzeSourceForDocument({
-        sourceKind: pipelineKind,
-        sourceRaw: filteredContent,
-        sourceTitle: sourceTitle || 'Import',
-        document: documentCtx,
-        userId: req.user!.id,
-        userEmail: req.user!.email || '',
-      });
-      indexed = proposals.map((p, i) => ({ ...p, id: i }));
-      rootLogId = logId;
-      // See note in transcript-analyze-and-propose : do NOT overwrite the
-      // T1 log — each tier has already attached its own output.
-    } else {
-      const { runSkill } = await import('../aiSkills/runSkill.js');
-      const runRes = await runSkill({
-        slug: 'suivitess-import-source-into-document',
-        userId: req.user!.id,
-        userEmail: req.user!.email,
-        buildPrompt: (skill) => `${skill}\n\n---\n\n# Contexte exécutable\n\n## Document existant (avec IDs)\n${existingContext || '(Document vide)'}\n\n## Contenu à analyser (${sourceLabel})\n${filteredContent.slice(0, 30000)}\n\nApplique les règles ci-dessus et réponds uniquement en JSON au format attendu (tableau ou objet { "proposals": [...] }).`,
-        inputContent: filteredContent,
-        sourceKind: source,
-        sourceTitle: sourceTitle || 'Import',
-        documentId: String(docId),
-      });
-
-      const text = runRes.outputText;
-      let proposals: Array<Record<string, unknown>> = [];
-      try {
-        const arrayMatch = text.match(/\[[\s\S]*\]/);
-        const objectMatch = text.match(/\{[\s\S]*\}/);
-        if (arrayMatch && (!objectMatch || arrayMatch.index! < objectMatch.index!)) {
-          proposals = JSON.parse(arrayMatch[0]);
-        } else if (objectMatch) {
-          const parsed = JSON.parse(objectMatch[0]);
-          proposals = Array.isArray(parsed) ? parsed : (parsed.proposals || []);
-        }
-      } catch { /* parse error */ }
-
-      indexed = proposals.map((p, i) => ({ ...p, id: i }));
-      rootLogId = runRes.logId;
-      if (rootLogId != null) await attachProposalsToLog(rootLogId, indexed);
-    }
+      })),
+    };
+    const pipelineKind = source === 'slack' ? 'slack' : 'outlook';
+    const { proposals, rootLogId } = await analyzeSourceForDocument({
+      sourceKind: pipelineKind,
+      sourceRaw: filteredContent,
+      sourceTitle: sourceTitle || 'Import',
+      document: documentCtx,
+      userId: req.user!.id,
+      userEmail: req.user!.email || '',
+    });
+    // Consistent with sourceLabel kept for future logging/UI ; the pipeline
+    // already logs per-tier via analyzeSourcePipeline.
+    void sourceLabel;
+    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
 
     res.json({ proposals: indexed, skipped, logId: rootLogId });
   }));
@@ -2536,7 +2458,7 @@ ${filteredContent.slice(0, 30000)}`,
       }
     }
 
-    // 4) Run AI — pipeline modulaire (flag) OU skill monolithique (défaut).
+    // 4) Run AI — modular 3-tier pipeline (always active).
     const availableReviewsPayload = reviews.map(r => ({
       id: r.id,
       title: r.title,
@@ -2547,42 +2469,25 @@ ${filteredContent.slice(0, 30000)}`,
       })),
     }));
 
-    const { isPipelineEnabled, analyzeSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
+    const { analyzeSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
 
-    if (isPipelineEnabled()) {
-      try {
-        const { proposals, rootLogId } = await analyzeSourceForReviews({
-          sourceKind: source as 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail',
-          sourceRaw: transcript,
-          sourceTitle: title || '(sans titre)',
-          reviews,
-          userId,
-          userEmail: req.user!.email || '',
-        });
-        res.json({
-          summary: proposals.length > 0 ? `${proposals.length} sujet(s) extrait(s) et routé(s).` : 'Aucun sujet exploitable.',
-          subjects: proposals,
-          logId: rootLogId,
-          availableReviews: availableReviewsPayload,
-        });
-      } catch (err) {
-        console.error('[SuiviTess pipeline routing] error:', err);
-        res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
-      }
-      return;
-    }
-
-    const { analyzeTranscriptionAndRoute } = await import('./transcriptionRoutingService.js');
     try {
-      const result = await analyzeTranscriptionAndRoute(
-        userId,
-        transcript,
+      const { proposals, rootLogId } = await analyzeSourceForReviews({
+        sourceKind: source as 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail',
+        sourceRaw: transcript,
+        sourceTitle: title || '(sans titre)',
         reviews,
-        { title: title || '(sans titre)', date: date ?? null, provider: source, userEmail: req.user!.email },
-      );
-      res.json({ ...result, availableReviews: availableReviewsPayload });
+        userId,
+        userEmail: req.user!.email || '',
+      });
+      res.json({
+        summary: proposals.length > 0 ? `${proposals.length} sujet(s) extrait(s) et routé(s).` : 'Aucun sujet exploitable.',
+        subjects: proposals,
+        logId: rootLogId,
+        availableReviews: availableReviewsPayload,
+      });
     } catch (err) {
-      console.error('[SuiviTess routing] error:', err);
+      console.error('[SuiviTess pipeline routing] error:', err);
       res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
     }
   }));

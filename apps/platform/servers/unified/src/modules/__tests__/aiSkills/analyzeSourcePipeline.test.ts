@@ -1,12 +1,9 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 // We can't import `analyzeSourcePipeline` directly without pulling pg +
 // Anthropic into the test runner. The helpers we care about are small pure
 // functions — we mirror them here, exactly as in the module, so a divergence
 // gets caught as a review diff.
-//
-// `isPipelineEnabled` IS exported and safe to import on its own.
-import { isPipelineEnabled } from '../../aiSkills/analyzeSourcePipeline.js';
 
 // ── Mirrored pure helpers ─────────────────────────────────────────────
 
@@ -83,31 +80,3 @@ describe('analyzeSourcePipeline — extractJson (tolerant parser)', () => {
   });
 });
 
-describe('analyzeSourcePipeline — isPipelineEnabled (env flag)', () => {
-  const previous = process.env.USE_PIPELINE_SKILLS;
-  afterEach(() => {
-    if (previous === undefined) delete process.env.USE_PIPELINE_SKILLS;
-    else process.env.USE_PIPELINE_SKILLS = previous;
-  });
-
-  it('is off by default (unset env)', () => {
-    delete process.env.USE_PIPELINE_SKILLS;
-    expect(isPipelineEnabled()).toBe(false);
-  });
-  it('activates on "1"', () => {
-    process.env.USE_PIPELINE_SKILLS = '1';
-    expect(isPipelineEnabled()).toBe(true);
-  });
-  it('activates on "true"', () => {
-    process.env.USE_PIPELINE_SKILLS = 'true';
-    expect(isPipelineEnabled()).toBe(true);
-  });
-  it('does NOT activate on arbitrary values ("yes", "0", "on")', () => {
-    process.env.USE_PIPELINE_SKILLS = 'yes';
-    expect(isPipelineEnabled()).toBe(false);
-    process.env.USE_PIPELINE_SKILLS = '0';
-    expect(isPipelineEnabled()).toBe(false);
-    process.env.USE_PIPELINE_SKILLS = 'on';
-    expect(isPipelineEnabled()).toBe(false);
-  });
-});

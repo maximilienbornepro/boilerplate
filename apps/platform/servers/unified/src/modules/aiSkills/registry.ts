@@ -36,25 +36,25 @@ export interface SkillDefinition {
 export const SKILLS: readonly SkillDefinition[] = [
   {
     slug: 'suivitess-route-source-to-review',
-    name: 'SuiviTess — Router une source vers la bonne review',
+    name: 'SuiviTess — Router une source (LEGACY — plus appelé)',
     description:
-      'Page listing SuiviTess : analyse une transcription / mail / Slack et décide dans QUELLE review et QUELLE section chaque sujet doit aller. Détecte les doublons avec les sujets existants.',
+      'LEGACY — skill monolithique remplacé par le pipeline 3-tiers (extract → place-in-reviews → write). Conservé pour la navigation historique dans /ai-logs. N\'est plus invoqué depuis avril 2026.',
     usage: {
       module: 'suivitess',
-      endpoint: 'POST /suivitess/api/transcription/analyze-and-route',
-      trigger: 'Import en masse depuis la page listing (BulkTranscriptionImportModal)',
+      endpoint: 'Aucun — legacy',
+      trigger: 'Aucun — remplacé par le pipeline',
     },
     defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-route-source-to-review.md'),
   },
   {
     slug: 'suivitess-import-source-into-document',
-    name: 'SuiviTess — Intégrer une source dans un suivitess ouvert',
+    name: 'SuiviTess — Intégrer une source (LEGACY — plus appelé)',
     description:
-      'Page d\'un suivitess : analyse une transcription / mail / Slack et propose d\'enrichir les sujets existants ou de créer de nouveaux sujets / sections dans le document courant.',
+      'LEGACY — skill monolithique remplacé par le pipeline 3-tiers (extract → place → write). Conservé dans le registre uniquement pour la navigation historique dans /ai-logs. N\'est plus invoqué à aucun endroit du code depuis avril 2026.',
     usage: {
       module: 'suivitess',
-      endpoint: 'POST /suivitess/api/documents/:docId/transcript-analyze-and-propose (et .../content-analyze-and-propose)',
-      trigger: 'Assistant d\'import dans un suivitess (TranscriptionWizard — bouton « Analyser et fusionner »)',
+      endpoint: 'Aucun — legacy',
+      trigger: 'Aucun — remplacé par suivitess-extract-* / place-* / append-situation / compose-situation',
     },
     defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-import-source-into-document.md'),
   },
@@ -95,10 +95,11 @@ export const SKILLS: readonly SkillDefinition[] = [
     defaultFilePath: resolve(MODULES_DIR, 'aiSkills/skill-llm-judge-faithfulness.md'),
   },
 
-  // ── Pipeline modulaire (feature flag USE_PIPELINE_SKILLS) ─────────────
+  // ── Pipeline modulaire (ACTIF par défaut — seul path runtime) ────────
   //
-  // Architecture 3 tiers qui remplace à terme le monolithique
-  // `suivitess-import-source-into-document` :
+  // Architecture 3 tiers qui a remplacé les monolithes
+  // `suivitess-import-source-into-document` et `suivitess-route-source-to-
+  // review` (maintenant marqués LEGACY) :
   //   Tier 1 (adapters) : extract-transcript / extract-slack / extract-outlook
   //   Tier 2 (placement) : place-in-document / place-in-reviews
   //   Tier 3 (writers)   : append-situation / compose-situation
@@ -112,7 +113,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     usage: {
       module: 'suivitess',
       endpoint: 'Interne — analyzeSourcePipeline() dans aiSkills/analyzeSourcePipeline.ts',
-      trigger: 'Pipeline modulaire actif (env USE_PIPELINE_SKILLS=1), source=transcript',
+      trigger: 'Analyse d\'une transcription (Fathom / Otter / enregistreur) — tier 1 du pipeline',
     },
     defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-extract-transcript.md'),
   },
@@ -124,7 +125,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     usage: {
       module: 'suivitess',
       endpoint: 'Interne — analyzeSourcePipeline()',
-      trigger: 'Pipeline modulaire actif, source=slack',
+      trigger: 'Analyse d\'un digest Slack — tier 1 du pipeline',
     },
     defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-extract-slack.md'),
   },
@@ -136,7 +137,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     usage: {
       module: 'suivitess',
       endpoint: 'Interne — analyzeSourcePipeline()',
-      trigger: 'Pipeline modulaire actif, source=outlook/gmail',
+      trigger: 'Analyse d\'une chaîne Outlook / Gmail — tier 1 du pipeline',
     },
     defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-extract-outlook.md'),
   },
@@ -148,7 +149,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     usage: {
       module: 'suivitess',
       endpoint: 'Interne — analyzeSourcePipeline() (variante document-scoped)',
-      trigger: 'Pipeline modulaire actif, page d\'un suivitess',
+      trigger: 'Import dans un suivitess ouvert — tier 2 du pipeline',
     },
     defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-place-in-document.md'),
   },
@@ -160,7 +161,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     usage: {
       module: 'suivitess',
       endpoint: 'Interne — analyzeSourcePipeline() (variante multi-review)',
-      trigger: 'Pipeline modulaire actif, page listing',
+      trigger: 'Import en masse depuis la page listing — tier 2 du pipeline',
     },
     defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-place-in-reviews.md'),
   },
@@ -172,7 +173,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     usage: {
       module: 'suivitess',
       endpoint: 'Interne — analyzeSourcePipeline() (par enrich, parallèle)',
-      trigger: 'Pipeline modulaire actif, décision enrich du tier 2',
+      trigger: 'Décision enrich du tier 2 — rédaction du appendText',
     },
     defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-append-situation.md'),
   },
@@ -184,7 +185,7 @@ export const SKILLS: readonly SkillDefinition[] = [
     usage: {
       module: 'suivitess',
       endpoint: 'Interne — analyzeSourcePipeline() (par création, parallèle)',
-      trigger: 'Pipeline modulaire actif, décision create du tier 2',
+      trigger: 'Décision create du tier 2 — rédaction de la situation initiale',
     },
     defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-compose-situation.md'),
   },

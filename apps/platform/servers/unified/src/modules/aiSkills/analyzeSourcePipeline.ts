@@ -1,5 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════
 // Modular 3-tier AI pipeline for analysing a source (transcript/slack/email).
+// This is the ONLY path for suivitess analyse-and-route / analyse-and-propose
+// since we removed the legacy monolithic skill `suivitess-import-source-into-
+// document` as a runtime dependency. The monolith skill remains registered
+// for historical log browsing but is never invoked anymore.
 //
 //   Tier 1 — adapters (per-source) : extract subjects with raw quotes
 //      suivitess-extract-{transcript|slack|outlook}
@@ -9,8 +13,7 @@
 //      suivitess-append-situation | suivitess-compose-situation
 //
 // Each tier is a separate registered skill, logged individually, chained via
-// parent_log_id so /ai-logs shows the tree. Activated per-request via
-// `env.USE_PIPELINE_SKILLS=1` (see routes.ts).
+// parent_log_id so /ai-logs shows the tree.
 //
 // Never throws — errors fall through as empty proposal lists + the error is
 // captured in the per-tier log rows.
@@ -697,10 +700,3 @@ export async function analyzeSourceForReviews(
   return { proposals: final, rootLogId: ex.logId };
 }
 
-// ── Feature flag helper ───────────────────────────────────────────────
-
-/** Returns true when the caller should use the modular pipeline.
- *  Single source of truth : env var USE_PIPELINE_SKILLS=1. */
-export function isPipelineEnabled(): boolean {
-  return process.env.USE_PIPELINE_SKILLS === '1' || process.env.USE_PIPELINE_SKILLS === 'true';
-}
