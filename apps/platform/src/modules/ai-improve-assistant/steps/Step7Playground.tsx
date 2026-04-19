@@ -224,30 +224,64 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
       </FormBlock>
 
       {/* Inputs picker (from dataset) */}
-      <FormBlock label={`Cas à rejouer — issus du dataset « ${state.datasetName} »`}>
+      <FormBlock label={`Cas à rejouer — issus du dataset « ${state.datasetName} » (#${state.datasetId})`}>
+        {items.length === 0 ? (
+          // ── LOUD empty state ──
+          <div style={{
+            padding: 'var(--spacing-md)',
+            background: 'rgba(255,152,0,0.1)',
+            border: '1px solid var(--warning, #ff9800)',
+            borderLeft: '4px solid var(--warning, #ff9800)',
+            borderRadius: 'var(--radius-sm)',
+          }}>
+            <div style={{ fontSize: 'var(--font-size-md)', fontWeight: 700, marginBottom: 8 }}>
+              ⚠ Ce dataset est vide — aucun cas à rejouer
+            </div>
+            <p style={{ margin: '0 0 12px', fontSize: 'var(--font-size-sm)', lineHeight: 1.5 }}>
+              L'assistant travaille sur le dataset <strong>« {state.datasetName} »</strong> (id <code>#{state.datasetId}</code>),
+              mais il n'y a aucun item dedans. Trois raisons possibles :
+            </p>
+            <ul style={{ margin: '0 0 12px 20px', padding: 0, fontSize: 'var(--font-size-sm)', lineHeight: 1.7 }}>
+              <li>Tu n'as pas encore ajouté d'item à l'étape 5 → <strong>clique ↩ Retour étape 5</strong>.</li>
+              <li>Tu viens de l'ajouter mais la page ne s'est pas rafraîchie → <strong>clique 🔄 Rafraîchir</strong>.</li>
+              <li>Tu as ajouté l'item dans un <em>autre</em> dataset → <a href={`/ai-evals/${state.datasetId}`} target="_blank" rel="noreferrer">ouvre ce dataset dans /ai-evals</a> pour vérifier son contenu.</li>
+            </ul>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Button variant="primary" onClick={goBackToStep5}>↩ Retour étape 5</Button>
+              <Button variant="secondary" onClick={refresh} disabled={refreshing}>
+                {refreshing ? '🔄 Rafraîchissement…' : '🔄 Rafraîchir le dataset'}
+              </Button>
+              <a
+                href={`/ai-evals/${state.datasetId}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid var(--accent-primary)',
+                  color: 'var(--accent-primary)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  textDecoration: 'none',
+                  borderRadius: 2,
+                }}
+              >
+                ↗ Voir le dataset
+              </a>
+            </div>
+          </div>
+        ) : (
+          <>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1 }}>
-            {items.length === 0
-              ? <>Le dataset <code>#{state.datasetId}</code> n'a <strong>aucun item</strong>. Ajoutes-en depuis l'étape 5.</>
-              : <>
-                <strong>{items.filter(i => i.selected).length} / {items.length}</strong> item(s) sélectionné(s).
-                {' '}Coche les lignes que tu veux rejouer. Chaque cellule (variante × input) = 1 appel IA.
-              </>}
+            <strong>{items.filter(i => i.selected).length} / {items.length}</strong> cas sélectionné(s).
+            {' '}Coche les lignes que tu veux rejouer. Chaque cellule (variante × cas) = 1 appel IA.
           </span>
           <Button variant="secondary" onClick={refresh} disabled={refreshing}>
             {refreshing ? '…' : '🔄 Rafraîchir'}
           </Button>
-          {items.length === 0 && (
-            <Button variant="primary" onClick={goBackToStep5}>↩ Retour étape 5</Button>
-          )}
-          {items.length > 0 && (
-            <>
-              <Button variant="secondary" onClick={() => setItems(is => is.map(x => ({ ...x, selected: true })))}>Tout cocher</Button>
-              <Button variant="secondary" onClick={() => setItems(is => is.map(x => ({ ...x, selected: false })))}>Tout décocher</Button>
-            </>
-          )}
+          <Button variant="secondary" onClick={() => setItems(is => is.map(x => ({ ...x, selected: true })))}>Tout cocher</Button>
+          <Button variant="secondary" onClick={() => setItems(is => is.map(x => ({ ...x, selected: false })))}>Tout décocher</Button>
         </div>
-        {items.length === 0 ? null : (
           <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)' }}>
             {items.map(it => {
               const onToggle = () => toggleItem(it.itemId);
@@ -292,6 +326,7 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
               );
             })}
           </div>
+          </>
         )}
       </FormBlock>
 
