@@ -81,10 +81,27 @@ que quand CC est lancé depuis ce répertoire.
 
 ---
 
-## Hook `Stop` (optionnel — niveau 2)
+## Hook `Stop` (optionnel) — capturer la réponse de l'assistant
 
-Pour logger aussi ce que CC a fait à la fin de chaque réponse (outils
-utilisés, fichiers touchés, durée), ajoute :
+Le payload natif de `Stop` envoyé par Claude Code NE contient PAS le texte
+de la réponse de Claude — seulement `session_id`, `transcript_path`,
+`hook_event_name: "Stop"`. Pour récupérer ma dernière réponse texte, il
+faut lire le `transcript_path` (fichier JSONL géré par CC).
+
+Le script [`stop-hook.sh`](./stop-hook.sh) fait ça : il lit le transcript,
+extrait le dernier message `assistant` qui contient du **texte** (ignore
+les tool_use / thinking), et enrichit le payload avec `response_summary`
+avant le POST.
+
+### Installation
+
+```bash
+mkdir -p ~/.claude/bin
+cp apps/platform/servers/unified/src/modules/promptLogs/stop-hook.sh ~/.claude/bin/prompt-logs-stop-hook.sh
+chmod +x ~/.claude/bin/prompt-logs-stop-hook.sh
+```
+
+### Config `~/.claude/settings.json`
 
 ```json
 {
@@ -98,16 +115,16 @@ utilisés, fichiers touchés, durée), ajoute :
     "Stop": [{
       "hooks": [{
         "type": "command",
-        "command": "curl -s -X POST http://localhost:3010/prompt-logs/api/events -H 'Content-Type: application/json' -d @- || true"
+        "command": "/Users/<YOU>/.claude/bin/prompt-logs-stop-hook.sh"
       }]
     }]
   }
 }
 ```
 
-Le payload de `Stop` inclut `hook_event_name: \"Stop\"` — notre `normalizeEvent`
-le mappe automatiquement sur `event_kind: 'stop'`. Pas besoin de les
-différencier côté hook.
+Prérequis : `jq` installé (`brew install jq` sur macOS). Le script échoue
+silencieusement si `jq` manque ou si le transcript n'est pas lisible — pas
+d'impact sur CC.
 
 ---
 
