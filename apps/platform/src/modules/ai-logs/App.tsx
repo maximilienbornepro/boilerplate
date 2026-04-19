@@ -455,6 +455,7 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
               rescoring={rescoring}
               humanRationale={humanRationale}
               setHumanRationale={setHumanRationale}
+              skillsMeta={skillsMeta}
             />
           )}
         </main>
@@ -498,6 +499,8 @@ interface DetailProps {
   rescoring: boolean;
   humanRationale: string;
   setHumanRationale: (v: string) => void;
+  /** slug → human-readable name + description from /ai-skills/api. */
+  skillsMeta: Record<string, { name: string; description: string }>;
 }
 
 function LogDetailView({
@@ -507,6 +510,7 @@ function LogDetailView({
   replaying, replayResult, onReplay, onOpenReplay,
   scores, currentUserId, onThumbUp, onThumbDown, onDeleteMyScore,
   onRescoreAuto, rescoring, humanRationale, setHumanRationale,
+  skillsMeta,
 }: DetailProps) {
   const copy = (text: string) => { navigator.clipboard?.writeText(text); };
   const url = `${window.location.origin}/ai-logs/${detail.id}`;
