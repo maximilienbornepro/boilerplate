@@ -87,6 +87,9 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [filterSkill, setFilterSkill] = useState<string>('');
+  // Registry of skill metadata (slug → human name) loaded once on mount.
+  // Used to render the skill's readable name in the log list + detail.
+  const [skillsMeta, setSkillsMeta] = useState<Record<string, { name: string; description: string }>>({});
   const [assistantOpen, setAssistantOpen] = useState(false);
 
   const [detail, setDetail] = useState<LogDetail | null>(null);
@@ -148,6 +151,18 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
   };
 
   useEffect(() => { loadList(); }, [loadList]);
+
+  // Load the skills registry once so we can show human-readable names.
+  useEffect(() => {
+    fetch('/ai-skills/api', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then((rows: Array<{ slug: string; name: string; description: string }>) => {
+        const map: Record<string, { name: string; description: string }> = {};
+        for (const s of rows) map[s.slug] = { name: s.name, description: s.description };
+        setSkillsMeta(map);
+      })
+      .catch(() => { /* non-fatal, falls back to slug */ });
+  }, []);
 
   // ── Load detail when route id changes ──
   useEffect(() => {
@@ -346,10 +361,27 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
                     >
                       <div className={styles.listItemTop}>
                         <span className={styles.listItemId}>#{l.id}</span>
-                        <span className={styles.listItemSkill}>{l.skill_slug}</span>
+                        <span
+                          className={styles.listItemSkill}
+                          style={{
+                            color: 'var(--accent-primary)',
+                            fontWeight: 600,
+                            fontSize: 'var(--font-size-sm)',
+                          }}
+                          title={l.skill_slug}
+                        >
+                          {skillsMeta[l.skill_slug]?.name ?? l.skill_slug}
+                        </span>
                       </div>
                       <div className={styles.listItemTitle}>
                         {l.source_title || <em>(sans titre)</em>}
+                      </div>
+                      <div style={{
+                        fontSize: 10, fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-secondary)', opacity: 0.6,
+                        marginTop: 2,
+                      }}>
+                        {l.skill_slug}
                       </div>
                       <div className={styles.listItemMeta}>
                         <span>{formatDate(l.created_at)}</span>
@@ -512,10 +544,42 @@ function LogDetailView({
       )}
       <header className={styles.detailHeader}>
         <div>
-          <div className={styles.detailCrumb}>ai-logs › <strong>#{detail.id}</strong></div>
+          <div className={styles.detailCrumb}>
+            ai-logs › <strong>#{detail.id}</strong>
+            {skillsMeta[detail.skill_slug]?.name && (
+              <>
+                {' › '}
+                <span style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>
+                  {skillsMeta[detail.skill_slug].name}
+                </span>
+              </>
+            )}
+          </div>
           <h1 className={styles.detailTitle}>{detail.source_title || '(sans titre)'}</h1>
+          {skillsMeta[detail.skill_slug]?.description && (
+            <p style={{
+              margin: '4px 0 6px',
+              fontSize: 'var(--font-size-xs)',
+              color: 'var(--text-secondary)',
+              maxWidth: 800,
+              lineHeight: 1.4,
+            }}>
+              {skillsMeta[detail.skill_slug].description}
+            </p>
+          )}
           <div className={styles.detailMeta}>
-            <span className={styles.metaPill}>{detail.skill_slug}</span>
+            <span
+              className={styles.metaPill}
+              style={{
+                background: 'var(--accent-primary)',
+                color: '#0a0a0a',
+                fontWeight: 600,
+                fontFamily: 'var(--font-mono)',
+              }}
+              title={`Slug technique : ${detail.skill_slug}`}
+            >
+              {skillsMeta[detail.skill_slug]?.name ?? detail.skill_slug}
+            </span>
             {detail.source_kind && <span className={styles.metaPill}>{detail.source_kind}</span>}
             {detail.error ? (
               <span className={`${styles.metaPill} ${styles.metaPillError}`}>× erreur</span>
