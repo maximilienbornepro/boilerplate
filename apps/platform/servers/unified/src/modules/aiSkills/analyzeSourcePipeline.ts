@@ -17,7 +17,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { runSkill } from './runSkill.js';
-import { updateLogError } from './analysisLogsService.js';
+import { updateLogError, attachProposalsToLog } from './analysisLogsService.js';
 
 // ── Shared types ──────────────────────────────────────────────────────
 
@@ -222,7 +222,9 @@ async function tier1Extract(base: TierBase & {
     slug: extractorSlugFor(base.sourceKind as SourceKind),
     userId: base.userId,
     userEmail: base.userEmail,
-    buildPrompt: (skill) => `${skill}\n\n---\n\n## Source brute\n\n${base.sourceRaw.slice(0, 30000)}\n\nRenvoie UNIQUEMENT le tableau JSON des sujets extraits.`,
+    // Use buildContext (cacheable) — the skill body goes to system with
+    // cache_control, the user message carries only the source.
+    buildContext: () => `## Source brute\n\n${base.sourceRaw.slice(0, 30000)}\n\nRenvoie UNIQUEMENT le tableau JSON des sujets extraits.`,
     inputContent: base.sourceRaw,
     sourceKind: base.sourceKind,
     sourceTitle: base.sourceTitle,
@@ -245,6 +247,11 @@ async function tier1Extract(base: TierBase & {
       await updateLogError(run.logId, `[PIPELINE T1] JSON parse failed — output may be truncated (${run.outputText.length} chars). Check the raw output below.`);
     } else if (subjects.length === 0) {
       await updateLogError(run.logId, `[PIPELINE T1] Extracted 0 subjects — source may lack actionable content or the skill's filtering is too aggressive.`);
+    } else {
+      // Attach the subjects as "proposals" so the log's count reflects
+      // what this tier actually produced (otherwise the UI shows
+      // "0 propositions" which is misleading).
+      await attachProposalsToLog(run.logId, subjects);
     }
   }
   return { logId: run.logId, subjects };
@@ -260,7 +267,7 @@ async function tier2PlaceDocument(base: TierBase & {
     slug: 'suivitess-place-in-document',
     userId: base.userId,
     userEmail: base.userEmail,
-    buildPrompt: (skill) => `${skill}\n\n---\n\n## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2).slice(0, 30000)}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des décisions de placement.`,
+    buildContext: () => `## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2).slice(0, 30000)}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des décisions de placement.`,
     inputContent: JSON.stringify({ subjectsCount: base.subjects.length, documentId: base.document.id }),
     sourceKind: base.sourceKind,
     sourceTitle: base.sourceTitle,
@@ -277,6 +284,8 @@ async function tier2PlaceDocument(base: TierBase & {
       await updateLogError(run.logId, `[PIPELINE T2 document] JSON parse failed — output may be truncated.`);
     } else if (placements.length === 0 && base.subjects.length > 0) {
       await updateLogError(run.logId, `[PIPELINE T2 document] 0 placements for ${base.subjects.length} subjects — likely all considered duplicates already present in the document.`);
+    } else {
+      await attachProposalsToLog(run.logId, placements);
     }
   }
   return { logId: run.logId, placements };
@@ -292,7 +301,7 @@ async function tier2PlaceReviews(base: TierBase & {
     slug: 'suivitess-place-in-reviews',
     userId: base.userId,
     userEmail: base.userEmail,
-    buildPrompt: (skill) => `${skill}\n\n---\n\n## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2).slice(0, 30000)}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des décisions de routage.`,
+    buildContext: () => `## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2).slice(0, 30000)}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des décisions de routage.`,
     inputContent: JSON.stringify({ subjectsCount: base.subjects.length, reviewsCount: base.reviews.length }),
     sourceKind: base.sourceKind,
     sourceTitle: base.sourceTitle,
@@ -309,6 +318,8 @@ async function tier2PlaceReviews(base: TierBase & {
       await updateLogError(run.logId, `[PIPELINE T2 reviews] JSON parse failed — output may be truncated.`);
     } else if (placements.length === 0 && base.subjects.length > 0) {
       await updateLogError(run.logId, `[PIPELINE T2 reviews] 0 routings for ${base.subjects.length} subjects — likely all considered duplicates already present in existing reviews.`);
+    } else {
+      await attachProposalsToLog(run.logId, placements);
     }
   }
   return { logId: run.logId, placements };
@@ -330,7 +341,10 @@ async function tier3Append(base: TierBase & {
     slug: 'suivitess-append-situation',
     userId: base.userId,
     userEmail: base.userEmail,
-    buildPrompt: (skill) => `${skill}\n\n---\n\n## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\n\`\`\`\n\nRenvoie UNIQUEMENT l'objet JSON { "appendText": … }.`,
+    // T3 runs in parallel N times with the SAME skill → prompt caching
+    // brings the biggest win here. First call pays cache_creation ~1.25×,
+    // all subsequent calls pay cache_read ~0.1×.
+    buildContext: () => `## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\n\`\`\`\n\nRenvoie UNIQUEMENT l'objet JSON { "appendText": … }.`,
     inputContent: JSON.stringify(ctx),
     sourceKind: base.sourceKind,
     sourceTitle: base.sourceTitle,
@@ -339,8 +353,19 @@ async function tier3Append(base: TierBase & {
     maxTokens: 800,
   });
   const parsed = extractJson<{ appendText: string | null }>(run.outputText);
-  if (run.logId != null && parsed == null) {
-    await updateLogError(run.logId, `[PIPELINE T3 append] JSON parse failed — output may be truncated or malformed.`);
+  if (run.logId != null) {
+    if (parsed == null) {
+      await updateLogError(run.logId, `[PIPELINE T3 append] JSON parse failed — output may be truncated or malformed.`);
+    } else if (parsed.appendText) {
+      // A T3 writer produces a single item. We store it as a 1-item array so
+      // /ai-logs displays "1 proposition" instead of "0 propositions" (which
+      // made these logs look like failures).
+      await attachProposalsToLog(run.logId, [{ kind: 'append', text: parsed.appendText }]);
+    } else {
+      // Writer decided explicitly that nothing new was worth appending —
+      // valid no-op, not an error.
+      await attachProposalsToLog(run.logId, [{ kind: 'append', text: null, note: 'writer decided nothing new to add' }]);
+    }
   }
   return { logId: run.logId, appendText: parsed?.appendText ?? null };
 }
@@ -355,7 +380,7 @@ async function tier3Compose(base: TierBase & {
     slug: 'suivitess-compose-situation',
     userId: base.userId,
     userEmail: base.userEmail,
-    buildPrompt: (skill) => `${skill}\n\n---\n\n## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\n\`\`\`\n\nRenvoie UNIQUEMENT l'objet JSON { "situation": … }.`,
+    buildContext: () => `## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\n\`\`\`\n\nRenvoie UNIQUEMENT l'objet JSON { "situation": … }.`,
     inputContent: JSON.stringify(ctx),
     sourceKind: base.sourceKind,
     sourceTitle: base.sourceTitle,
@@ -364,8 +389,12 @@ async function tier3Compose(base: TierBase & {
     maxTokens: 800,
   });
   const parsed = extractJson<{ situation: string }>(run.outputText);
-  if (run.logId != null && parsed == null) {
-    await updateLogError(run.logId, `[PIPELINE T3 compose] JSON parse failed — output may be truncated or malformed.`);
+  if (run.logId != null) {
+    if (parsed == null) {
+      await updateLogError(run.logId, `[PIPELINE T3 compose] JSON parse failed — output may be truncated or malformed.`);
+    } else {
+      await attachProposalsToLog(run.logId, [{ kind: 'compose', text: parsed.situation ?? '' }]);
+    }
   }
   return { logId: run.logId, situation: parsed?.situation ?? '' };
 }
