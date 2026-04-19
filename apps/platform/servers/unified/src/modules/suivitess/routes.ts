@@ -97,7 +97,10 @@ function groupSlackMessagesByDay(
     items.push({
       id: `slack:${channelId}:${dateStr}`,
       provider: 'slack',
-      title: `#${channelName} — ${dateLabel} (${msgs.length} messages)`,
+      // Title explicitly says 'Messages du …' so the user doesn't confuse
+      // the date in the title (= date of the collected messages) with the
+      // sync time shown in the banner at the top of the modal.
+      title: `#${channelName} — Messages du ${dateLabel} (${msgs.length} messages)`,
       date: dateStr + 'T12:00:00.000Z',
       preview,
       participants,

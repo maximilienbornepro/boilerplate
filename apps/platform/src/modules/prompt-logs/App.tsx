@@ -100,6 +100,38 @@ export default function PromptLogsApp({ onNavigate }: { onNavigate?: (path: stri
 
   useEffect(() => { loadProjects(); }, [loadProjects]);
 
+  // ── Live refresh : every 5s, silently re-fetch whatever is currently
+  //    displayed (projects list + current project's sessions + current
+  //    session's events). No loading spinner so the UI doesn't flicker.
+  //    Stops when the tab is hidden to save round-trips. ──
+  useEffect(() => {
+    const tick = async () => {
+      if (document.hidden) return;
+      try {
+        const rows = await fetchJson<ProjectSummary[]>('/projects');
+        setProjects(rows);
+      } catch { /* silent */ }
+      if (selectedCwd) {
+        try {
+          const [s, sess] = await Promise.all([
+            fetchJson<ProjectStats>(`/projects/stats?cwd=${encodeURIComponent(selectedCwd)}`),
+            fetchJson<SessionSummary[]>(`/sessions?cwd=${encodeURIComponent(selectedCwd)}`),
+          ]);
+          setStats(s);
+          setSessions(sess);
+        } catch { /* silent */ }
+      }
+      if (selectedSessionId) {
+        try {
+          const evs = await fetchJson<EventRow[]>(`/sessions/${encodeURIComponent(selectedSessionId)}`);
+          setEvents(evs);
+        } catch { /* silent */ }
+      }
+    };
+    const handle = setInterval(tick, 5000);
+    return () => clearInterval(handle);
+  }, [selectedCwd, selectedSessionId]);
+
   // On project change : fetch stats + sessions ; pick first session.
   useEffect(() => {
     if (!selectedCwd) return;
@@ -169,8 +201,18 @@ export default function PromptLogsApp({ onNavigate }: { onNavigate?: (path: stri
             borderBottom: '1px solid var(--border-color)',
             display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
           }}>
-            <h1 style={{ margin: 0, fontSize: 'var(--font-size-md)', color: 'var(--accent-primary)' }}>
+            <h1 style={{ margin: 0, fontSize: 'var(--font-size-md)', color: 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
               🪝 Logs Prompts
+              <span
+                title="Live — la page se rafraîchit toute seule toutes les 5 s"
+                style={{
+                  fontSize: 10, padding: '1px 6px',
+                  background: 'var(--success, #4caf50)', color: '#000',
+                  fontWeight: 700, borderRadius: 2,
+                  animation: 'promptLogsLive 2s ease-in-out infinite',
+                }}
+              >LIVE</span>
+              <style>{`@keyframes promptLogsLive { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
             </h1>
             <Button variant="secondary" onClick={loadProjects} disabled={loadingProjects}>
               {loadingProjects ? '…' : '🔄'}
