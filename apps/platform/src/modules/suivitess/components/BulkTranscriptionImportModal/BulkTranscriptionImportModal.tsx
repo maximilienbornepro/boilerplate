@@ -53,6 +53,10 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   // "voir le log" link during the routing step.
   const [lastLogId, setLastLogId] = useState<number | null>(null);
 
+  // Real pipeline progress (replaces the fake timer-based indicator).
+  // Updated ~500 ms while the async job is running.
+  const [pipelineStatus, setPipelineStatus] = useState<api.PipelineJobStatus | null>(null);
+
   // ============ Load sources on mount ============
   useEffect(() => {
     api.fetchBulkSources()
@@ -73,13 +77,20 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     if (!selectedItem) return;
     setPhase('analyzing');
     setLastLogId(null);
+    setPipelineStatus(null);
     try {
-      const res = await api.analyzeAndRoute({
-        source: selectedItem.provider,
-        id: selectedItem.id,
-        title: selectedItem.title,
-        date: selectedItem.date,
-      });
+      // Use the async polling variant : backend returns a jobId immediately,
+      // we poll every 500 ms to drive the real progress indicator.
+      const res = await api.analyzeAndRouteWithPolling(
+        {
+          source: selectedItem.provider,
+          id: selectedItem.id,
+          title: selectedItem.title,
+          date: selectedItem.date,
+        },
+        (status) => setPipelineStatus(status),
+        { intervalMs: 500 },
+      );
       if (res.logId != null) setLastLogId(res.logId);
       setSummary(res.summary);
       setAvailableReviews(res.availableReviews);
@@ -233,7 +244,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
         {phase === 'analyzing' && (
           <div className={styles.loading}>
             <LoadingSpinner message="L'IA lit la transcription et décide où ranger chaque sujet…" />
-            <PipelineStepsIndicator />
+            <PipelineStepsIndicator status={pipelineStatus} />
           </div>
         )}
 
@@ -491,43 +502,54 @@ function formatDate(iso: string): string {
   }
 }
 
-// ── Pipeline progress indicator ───────────────────────────────────────
+// ── Pipeline progress indicator (driven by real backend status) ───────
 //
-// The backend runs T1 → T2 → T3 sequentially (T3 parallel per placement).
-// We don't stream progress from the server (would require SSE), so we
-// fake a plausible timeline based on the mean durations we see in the
-// [pipeline:summary] logs. Gives the user a feeling of "ça avance" and
-// tells them what the IA is doing right now.
+// `status` comes from polling GET /suivitess/api/pipeline-jobs/:id every
+// 500 ms in the parent. Each update reflects a real tier transition :
+//   phase 'queued'   → nothing yet (job just created)
+//   phase 'tier1'    → extractor running
+//   phase 'tier2'    → placement running (after tier1 finished)
+//   phase 'tier3'    → writers running (t3Done/t3Total live count)
+//   phase 'done'     → component unmounts, caller switches to next step
+//   phase 'error'    → shows the last-reached step as failed
 //
-// If the real pipeline finishes faster, the parent switches to 'routing'
-// and unmounts this component → no harm. If it finishes slower, the
-// last step stays active ("Finalisation…") until the HTTP response
-// arrives — better than nothing.
+// No more fake timers — a step flips to 'done' only when the server
+// actually moved past it.
 
-const PIPELINE_STEPS: ReadonlyArray<{ icon: string; label: string; estMs: number }> = [
-  { icon: '🔎', label: 'Lecture de la source',                           estMs: 400 },
-  { icon: '🧩', label: 'Extraction des sujets atomiques (citations brutes)', estMs: 5000 },
-  { icon: '🗂️',  label: 'Analyse de placement (review + section par sujet)', estMs: 3500 },
-  { icon: '✍️',  label: 'Rédaction des situations (en parallèle)',          estMs: 3000 },
-  { icon: '🎯',  label: 'Finalisation et préparation de l\'UI',             estMs: 400 },
-];
+type PhaseKey = 'source' | 'extract' | 'place' | 'write' | 'finalize';
 
-function PipelineStepsIndicator() {
-  const [activeIdx, setActiveIdx] = useState(0);
+function PipelineStepsIndicator({ status }: { status: api.PipelineJobStatus | null }) {
+  // Derive the active step from the backend phase.
+  const phase = status?.phase ?? 'queued';
+  const active: PhaseKey =
+    phase === 'queued' ? 'source'
+    : phase === 'tier1' ? 'extract'
+    : phase === 'tier2' ? 'place'
+    : phase === 'tier3' ? 'write'
+    : 'finalize';
 
-  useEffect(() => {
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
-    let cumulative = 0;
-    PIPELINE_STEPS.forEach((step, i) => {
-      cumulative += step.estMs;
-      // Mark step i complete when we've spent its est duration, then
-      // move to step i+1 (or stay on last if it's the end).
-      timeouts.push(setTimeout(() => {
-        setActiveIdx(prev => Math.max(prev, Math.min(i + 1, PIPELINE_STEPS.length - 1)));
-      }, cumulative));
-    });
-    return () => { timeouts.forEach(clearTimeout); };
-  }, []);
+  // For the T3 writer step, show "N / M writers done" in real time.
+  const t3Progress = phase === 'tier3' && status && status.t3Total > 0
+    ? ` — ${status.t3Done} / ${status.t3Total} writers`
+    : '';
+
+  // Lightweight step model kept inline — no external state, no timers.
+  const STEPS: ReadonlyArray<{ key: PhaseKey; icon: string; label: string }> = [
+    { key: 'source',   icon: '🔎', label: 'Lecture de la source' },
+    { key: 'extract',  icon: '🧩', label: 'Extraction des sujets atomiques' },
+    { key: 'place',    icon: '🗂️',  label: 'Analyse de placement (review + section)' },
+    { key: 'write',    icon: '✍️',  label: `Rédaction des situations (en parallèle)${t3Progress}` },
+    { key: 'finalize', icon: '🎯', label: 'Finalisation' },
+  ];
+  const activeIdx = STEPS.findIndex(s => s.key === active);
+
+  // Subtitle with per-tier durations once they're known.
+  const { t1, t2, t3 } = status?.durations ?? {};
+  const durLine = [
+    t1 != null ? `T1 ${(t1 / 1000).toFixed(1)}s` : null,
+    t2 != null ? `T2 ${(t2 / 1000).toFixed(1)}s` : null,
+    t3 != null ? `T3 ${(t3 / 1000).toFixed(1)}s` : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <>
@@ -536,43 +558,44 @@ function PipelineStepsIndicator() {
         listStyle: 'none',
         padding: 0,
         margin: '16px auto 0',
-        maxWidth: 500,
+        maxWidth: 560,
         fontFamily: 'var(--font-mono)',
         fontSize: 13,
         lineHeight: 1.8,
       }}>
-      {PIPELINE_STEPS.map((step, i) => {
-        const status: 'done' | 'active' | 'pending' =
-          i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending';
-        const color =
-          status === 'done' ? 'var(--success, #4caf50)' :
-          status === 'active' ? 'var(--accent-primary)' :
-          'var(--text-secondary)';
-        const opacity = status === 'pending' ? 0.45 : 1;
-        const marker =
-          status === 'done' ? '✓' :
-          status === 'active' ? '◉' :
-          '○';
-        return (
-          <li key={step.icon + i} style={{ color, opacity, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{
-              display: 'inline-block',
-              width: 14,
-              textAlign: 'center',
-              fontWeight: 700,
-              animation: status === 'active' ? 'pipelinePulse 1.2s ease-in-out infinite' : undefined,
-            }}>
-              {marker}
-            </span>
-            <span aria-hidden>{step.icon}</span>
-            <span>
-              {step.label}
-              {status === 'active' && <span style={{ opacity: 0.6 }}>… ({Math.round(step.estMs / 1000)}s)</span>}
-            </span>
-          </li>
-        );
-      })}
+        {STEPS.map((step, i) => {
+          const stepStatus: 'done' | 'active' | 'pending' =
+            i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending';
+          const color =
+            stepStatus === 'done' ? 'var(--success, #4caf50)' :
+            stepStatus === 'active' ? 'var(--accent-primary)' :
+            'var(--text-secondary)';
+          const opacity = stepStatus === 'pending' ? 0.45 : 1;
+          const marker =
+            stepStatus === 'done' ? '✓' :
+            stepStatus === 'active' ? '◉' :
+            '○';
+          return (
+            <li key={step.key} style={{ color, opacity, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{
+                display: 'inline-block', width: 14, textAlign: 'center', fontWeight: 700,
+                animation: stepStatus === 'active' ? 'pipelinePulse 1.2s ease-in-out infinite' : undefined,
+              }}>
+                {marker}
+              </span>
+              <span aria-hidden>{step.icon}</span>
+              <span>{step.label}</span>
+            </li>
+          );
+        })}
       </ul>
+      {durLine && (
+        <div style={{
+          marginTop: 8, textAlign: 'center',
+          fontFamily: 'var(--font-mono)', fontSize: 11,
+          color: 'var(--text-secondary)',
+        }}>{durLine}</div>
+      )}
     </>
   );
 }

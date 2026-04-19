@@ -22,6 +22,25 @@
 import { runSkill } from './runSkill.js';
 import { updateLogError, attachProposalsToLog } from './analysisLogsService.js';
 
+// ── Progress callback — optional, used by the async-job variants to
+//    report real phase transitions to the frontend (replaces the fake
+//    timer-based progress indicator in BulkTranscriptionImportModal). ──
+
+export type PipelineProgressEvent =
+  | { kind: 't1-start' }
+  | { kind: 't1-end'; subjectsExtracted: number; rootLogId: number | null; durationMs: number }
+  | { kind: 't2-start' }
+  | { kind: 't2-end'; placementsProduced: number; durationMs: number }
+  | { kind: 't3-start'; t3Total: number }
+  | { kind: 't3-writer-done' }
+  | { kind: 't3-end'; durationMs: number }
+  | { kind: 'error'; error: string };
+
+export type PipelineProgressCallback = (e: PipelineProgressEvent) => void;
+
+// No-op default so callers who don't care don't have to pass anything.
+const NOOP: PipelineProgressCallback = () => { /* no-op */ };
+
 // ── Shared types ──────────────────────────────────────────────────────
 
 export type SourceKind = 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail';
@@ -443,6 +462,7 @@ export interface AnalyzeForDocumentInput {
 /** Pipeline for the TranscriptionWizard / content-wizard on a specific doc. */
 export async function analyzeSourceForDocument(
   input: AnalyzeForDocumentInput,
+  onProgress: PipelineProgressCallback = NOOP,
 ): Promise<{ proposals: FinalDocumentProposal[]; rootLogId: number | null }> {
   const wallStart = Date.now();
   const base = {
@@ -454,7 +474,9 @@ export async function analyzeSourceForDocument(
   };
 
   // Tier 1
+  onProgress({ kind: 't1-start' });
   const ex = await tier1Extract({ ...base, sourceRaw: input.sourceRaw });
+  onProgress({ kind: 't1-end', subjectsExtracted: ex.subjects.length, rootLogId: ex.logId, durationMs: ex.durationMs });
   if (ex.subjects.length === 0) {
     // eslint-disable-next-line no-console
     console.warn(`[pipeline] tier1 returned 0 subjects — aborting. logId=${ex.logId}. Check the raw output in /ai-logs.`);
@@ -462,12 +484,14 @@ export async function analyzeSourceForDocument(
   }
 
   // Tier 2
+  onProgress({ kind: 't2-start' });
   const pl = await tier2PlaceDocument({
     ...base,
     subjects: ex.subjects,
     document: input.document,
     parentLogId: ex.logId,
   });
+  onProgress({ kind: 't2-end', placementsProduced: pl.placements.length, durationMs: pl.durationMs });
   if (pl.placements.length === 0) {
     // eslint-disable-next-line no-console
     console.warn(`[pipeline] tier2 returned 0 placements (had ${ex.subjects.length} subjects) — aborting. logId=${pl.logId}.`);
@@ -476,9 +500,11 @@ export async function analyzeSourceForDocument(
 
   // Tier 3 — parallel per placement
   const tier3Start = Date.now();
+  onProgress({ kind: 't3-start', t3Total: pl.placements.length });
   // eslint-disable-next-line no-console
   console.log(`[pipeline] tier3 running ${pl.placements.length} writer(s) in parallel…`);
   const proposals = await Promise.all(pl.placements.map(async (p): Promise<FinalDocumentProposal | null> => {
+    try {
     const subj = ex.subjects[p.subjectIndex];
     if (!subj) return null;
 
@@ -547,10 +573,14 @@ export async function analyzeSourceForDocument(
     }
 
     return null;
+    } finally {
+      onProgress({ kind: 't3-writer-done' });
+    }
   }));
 
   const final = proposals.filter((p): p is FinalDocumentProposal => p !== null);
   const tier3WallMs = Date.now() - tier3Start;
+  onProgress({ kind: 't3-end', durationMs: tier3WallMs });
   const totalMs = Date.now() - wallStart;
   // Final timing summary — one line per pipeline run, easy to grep.
   // eslint-disable-next-line no-console
@@ -575,6 +605,7 @@ export interface AnalyzeForReviewsInput {
 /** Pipeline for the bulk import modal on the listing page (multi-review). */
 export async function analyzeSourceForReviews(
   input: AnalyzeForReviewsInput,
+  onProgress: PipelineProgressCallback = NOOP,
 ): Promise<{ proposals: FinalReviewProposal[]; rootLogId: number | null }> {
   const wallStart = Date.now();
   const base = {
@@ -586,7 +617,9 @@ export async function analyzeSourceForReviews(
   };
 
   // Tier 1
+  onProgress({ kind: 't1-start' });
   const ex = await tier1Extract({ ...base, sourceRaw: input.sourceRaw });
+  onProgress({ kind: 't1-end', subjectsExtracted: ex.subjects.length, rootLogId: ex.logId, durationMs: ex.durationMs });
   if (ex.subjects.length === 0) {
     // eslint-disable-next-line no-console
     console.warn(`[pipeline] tier1 returned 0 subjects — aborting. logId=${ex.logId}.`);
@@ -594,12 +627,14 @@ export async function analyzeSourceForReviews(
   }
 
   // Tier 2
+  onProgress({ kind: 't2-start' });
   const pl = await tier2PlaceReviews({
     ...base,
     subjects: ex.subjects,
     reviews: input.reviews,
     parentLogId: ex.logId,
   });
+  onProgress({ kind: 't2-end', placementsProduced: pl.placements.length, durationMs: pl.durationMs });
   if (pl.placements.length === 0) {
     // eslint-disable-next-line no-console
     console.warn(`[pipeline] tier2 returned 0 placements (had ${ex.subjects.length} subjects) — aborting. logId=${pl.logId}.`);
@@ -608,9 +643,11 @@ export async function analyzeSourceForReviews(
 
   // Tier 3 — parallel per placement
   const tier3Start = Date.now();
+  onProgress({ kind: 't3-start', t3Total: pl.placements.length });
   // eslint-disable-next-line no-console
   console.log(`[pipeline] tier3 running ${pl.placements.length} writer(s) in parallel…`);
   const proposals = await Promise.all(pl.placements.map(async (p): Promise<FinalReviewProposal | null> => {
+    try {
     const subj = ex.subjects[p.subjectIndex];
     if (!subj) return null;
 
@@ -685,10 +722,14 @@ export async function analyzeSourceForReviews(
       confidence: p.confidence,
       reasoning: p.reason,
     };
+    } finally {
+      onProgress({ kind: 't3-writer-done' });
+    }
   }));
 
   const final = proposals.filter((p): p is FinalReviewProposal => p !== null);
   const tier3WallMs = Date.now() - tier3Start;
+  onProgress({ kind: 't3-end', durationMs: tier3WallMs });
   const totalMs = Date.now() - wallStart;
   // eslint-disable-next-line no-console
   console.log(

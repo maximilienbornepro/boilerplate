@@ -405,6 +405,77 @@ export async function analyzeAndRoute(payload: {
   return response.json();
 }
 
+// ── Async / polling variant with real progress updates ────────────────
+
+export type PipelinePhase = 'queued' | 'tier1' | 'tier2' | 'tier3' | 'done' | 'error';
+
+export interface PipelineJobStatus {
+  id: string;
+  phase: PipelinePhase;
+  subjectsExtracted: number;
+  placementsProduced: number;
+  t3Total: number;
+  t3Done: number;
+  durations: { t1?: number; t2?: number; t3?: number };
+  rootLogId: number | null;
+  result: unknown | null;
+  error: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Same input as analyzeAndRoute, but non-blocking. Returns the jobId. */
+export async function startAnalyzeAndRouteJob(payload: {
+  source: SourceProvider;
+  id: string;
+  title: string;
+  date?: string | null;
+}): Promise<{ jobId: string }> {
+  const response = await fetch(`${API_BASE}/transcription/analyze-and-route-async`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function getPipelineJob(jobId: string): Promise<PipelineJobStatus> {
+  const response = await fetch(`${API_BASE}/pipeline-jobs/${encodeURIComponent(jobId)}`, {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/** High-level helper : start + poll until done, firing a callback on
+ *  every status update. Returns the final result (same shape as
+ *  analyzeAndRoute). */
+export async function analyzeAndRouteWithPolling(
+  payload: { source: SourceProvider; id: string; title: string; date?: string | null },
+  onStatus: (status: PipelineJobStatus) => void,
+  opts: { intervalMs?: number; signal?: AbortSignal } = {},
+): Promise<AnalysisResponse> {
+  const interval = opts.intervalMs ?? 500;
+  const { jobId } = await startAnalyzeAndRouteJob(payload);
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (opts.signal?.aborted) throw new Error('aborted');
+    const status = await getPipelineJob(jobId);
+    onStatus(status);
+    if (status.phase === 'done') return status.result as AnalysisResponse;
+    if (status.phase === 'error') throw new Error(status.error || 'Pipeline error');
+    await new Promise<void>(r => setTimeout(r, interval));
+  }
+}
+
 /** SSE-streamed variant : receives `journal-delta` events as the AI is
  *  writing its analysis journal, then `result` with the fully-parsed output,
  *  then `done`. Callbacks fire on every event. Returns the final result when
