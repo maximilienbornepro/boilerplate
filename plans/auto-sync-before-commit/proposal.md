@@ -9,7 +9,7 @@ Les projets derives du boilerplate doivent se synchroniser automatiquement avec 
 1. Rappeler a l'utilisateur de synchroniser avant de commit
 2. Fournir une methode simple pour verifier/appliquer les mises a jour
 3. Documenter le workflow dans CLAUDE.md
-4. **Merge automatique sur main** lors du `/opsx:validate` (archive)
+4. **Merge automatique sur main** lors du `/spec:archive` (archive)
 
 ## Scope
 

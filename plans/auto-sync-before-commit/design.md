@@ -78,7 +78,7 @@ sequenceDiagram
     participant G as Git
     participant T as Tests
 
-    D->>C: /opsx:archive (ou /opsx:validate)
+    D->>C: /spec:archive (ou /spec:archive)
     C->>T: npm test
     T-->>C: Tests OK
 
@@ -99,4 +99,4 @@ sequenceDiagram
 ## Changes Required
 
 1. CLAUDE.md : Ajouter section "Projets Derives - Sync Obligatoire"
-2. OpenSpec skill : Confirmer que `/opsx:archive` merge automatiquement sur parent (deja fait)
+2. spec skill : Confirmer que `/spec:archive` merge automatiquement sur parent (deja fait)

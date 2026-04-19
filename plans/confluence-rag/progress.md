@@ -36,6 +36,6 @@
 ### [ ] Archive
 
 ## History
-- 2026-03-27T00:00:00Z: Change créé via /opsx:propose
+- 2026-03-27T00:00:00Z: Change créé via /spec:propose
 - 2026-03-27T00:00:00Z: Tous les artifacts créés (proposal, design, specs, tasks)
-- 2026-03-27T00:00:00Z: Phase implementation démarrée via /opsx:apply
+- 2026-03-27T00:00:00Z: Phase implementation démarrée via /spec:apply

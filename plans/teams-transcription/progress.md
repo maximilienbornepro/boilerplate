@@ -61,6 +61,6 @@
 ### [ ] Archive
 
 ## History
-- 2026-03-27T22:15:00Z : Change créé via /opsx:propose
+- 2026-03-27T22:15:00Z : Change créé via /spec:propose
 - 2026-03-27T22:35:00Z : Tous les artifacts créés — prêt pour implémentation
 - 2026-03-27T23:05:00Z : Implémentation complète — 28/28 tâches, 577 tests verts

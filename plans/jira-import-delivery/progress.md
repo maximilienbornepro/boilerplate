@@ -39,6 +39,6 @@
 ### [ ] Archive
 
 ## History
-- 2026-03-27: Change créé via /opsx:propose
+- 2026-03-27: Change créé via /spec:propose
 - 2026-03-27: proposal.md, design.md, specs, tasks.md créés
 - 2026-03-27: Implémentation complète — 15/15 tâches terminées

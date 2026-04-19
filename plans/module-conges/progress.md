@@ -35,5 +35,5 @@
 ### [ ] Archive
 
 ## Historique
-- 2026-03-25T14:00:00Z : Change créé via /opsx:propose
+- 2026-03-25T14:00:00Z : Change créé via /spec:propose
 - 2026-03-25T14:30:00Z : Début de l'implémentation
