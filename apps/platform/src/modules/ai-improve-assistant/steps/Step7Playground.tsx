@@ -10,7 +10,7 @@ import {
   type PlaygroundResult,
 } from '../assistantApi';
 
-interface Variant { label: string; content: string }
+interface Variant { label: string; content: string; selected: boolean }
 interface InputPick { itemId: number; label: string; content: string; selected: boolean }
 
 export default function Step7Playground({ onAdvance: _ }: StepProps) {
@@ -37,8 +37,8 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
       ]);
       if (!keepVariants || variants.length === 0) {
         setVariants([
-          { label: 'current', content: skill.content },
-          { label: 'v2 (édite moi)', content: skill.content },
+          { label: 'current', content: skill.content, selected: true },
+          { label: 'v2 (édite moi)', content: skill.content, selected: true },
         ]);
         dispatch({ type: 'PATCH', patch: { originalSkillContent: skill.content } });
       }
@@ -76,17 +76,18 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
   };
   const addVariant = () => {
     const last = variants[variants.length - 1]?.content ?? '';
-    setVariants(v => [...v, { label: `v${v.length + 1}`, content: last }]);
+    setVariants(v => [...v, { label: `v${v.length + 1}`, content: last, selected: true }]);
   };
   const removeVariant = (i: number) => setVariants(v => v.filter((_, idx) => idx !== i));
+  const toggleVariant = (i: number) => setVariants(v => v.map((x, idx) => idx === i ? { ...x, selected: !x.selected } : x));
   const toggleItem = (id: number) => setItems(i => i.map(x => x.itemId === id ? { ...x, selected: !x.selected } : x));
 
   const doRun = async () => {
     if (!state.skillSlug) return;
     const selectedItems = items.filter(i => i.selected);
-    const nonEmptyVariants = variants.filter(v => v.content.trim().length > 0);
+    const nonEmptyVariants = variants.filter(v => v.selected && v.content.trim().length > 0);
     if (nonEmptyVariants.length === 0 || selectedItems.length === 0) {
-      setError('Sélectionne au moins 1 variante et 1 input.');
+      setError('Coche au moins 1 variante ET 1 cas du dataset avant de lancer.');
       return;
     }
     if (nonEmptyVariants.length * selectedItems.length > 40) {
@@ -112,16 +113,36 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
 
   return (
     <div className={styles.actionBlock}>
-      <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
-        Ici tu testes des variantes du prompt <strong>sans toucher au skill en prod</strong>. La <strong>v1 "current"</strong> est ton prompt actuel (copie de référence — ne la modifie pas). La <strong>v2</strong> est ton terrain d'expérimentation — modifie-la pour corriger ce qui a mal marché à l'étape 3.
-        <br />
-        Chaque cellule de la matrice (variante × input) = 1 appel IA + les scorers. Max 40 cellules pour éviter d'exploser les coûts.
-      </p>
+      <div style={{
+        padding: 'var(--spacing-sm) var(--spacing-md)',
+        background: 'rgba(102,126,234,0.08)',
+        borderLeft: '3px solid var(--accent-primary)',
+        borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
+        fontSize: 'var(--font-size-sm)', lineHeight: 1.5, margin: 0,
+      }}>
+        <strong>Comment ça marche :</strong>
+        <ol style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+          <li>
+            <strong>Coche les variantes du prompt</strong> que tu veux tester (bloc <em>Variantes</em> ci-dessous).
+            La <strong>v1</strong> est ton prompt actuel (référence, toujours cochée par défaut).
+            La <strong>v2</strong> est une copie éditable — modifie-la pour corriger ce qui clochait à l'étape 3.
+          </li>
+          <li>
+            <strong>Coche les cas du dataset</strong> à rejouer (bloc <em>Cas à rejouer</em>). Chaque cas = un
+            exemple réel capturé dans tes logs précédents.
+          </li>
+          <li>
+            Clique <strong>▶ Run all</strong>. Chaque cellule (variante × cas) = 1 appel IA + scorers. Max 40 cellules.
+          </li>
+        </ol>
+      </div>
 
       {/* Variants */}
-      <FormBlock label={`Variantes du prompt (${variants.length})`}>
+      <FormBlock label={`Variantes du prompt — ${variants.filter(v => v.selected).length} / ${variants.length} cochée(s)`}>
         <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: -2, marginBottom: 8 }}>
-          Chaque variante = une version modifiée du skill à tester. L'éditeur propose 3 vues : <strong>Éditer</strong>, <strong>Aperçu</strong>, <strong>Diff vs v1</strong>. Utilise l'outline de gauche pour sauter de section en section.
+          Chaque variante = une version modifiée du skill à tester. <strong>Coche</strong> les variantes que tu
+          veux lancer, décoche celles que tu veux ignorer pour ce run. L'éditeur propose 3 vues :
+          <strong> Éditer</strong>, <strong>Aperçu</strong>, <strong>Diff vs v1</strong>.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
           {variants.map((v, i) => {
@@ -139,8 +160,15 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
                 borderLeft: `4px solid ${badgeColor}`,
                 borderRadius: 'var(--radius-sm)',
               }}>
-                {/* Header row 1 : badge + role description (dominant). */}
+                {/* Header row 1 : checkbox + badge + role description. */}
                 <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    type="checkbox"
+                    checked={v.selected}
+                    onChange={() => toggleVariant(i)}
+                    title={v.selected ? 'Décocher pour exclure cette variante du run' : 'Cocher pour inclure cette variante dans le run'}
+                    style={{ width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--accent-primary)' }}
+                  />
                   <span style={{
                     padding: '4px 12px',
                     background: badgeBg,
@@ -150,10 +178,16 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
                     fontSize: 13,
                     borderRadius: 2,
                     whiteSpace: 'nowrap',
+                    opacity: v.selected ? 1 : 0.5,
                   }}>
                     v{i + 1}
                   </span>
-                  <span style={{ flex: 1, fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                  <span style={{
+                    flex: 1,
+                    fontSize: 'var(--font-size-sm)',
+                    fontWeight: 600,
+                    opacity: v.selected ? 1 : 0.5,
+                  }}>
                     {isBaseline
                       ? <>🔒 Ton prompt <em>actuel</em> — référence en lecture seule</>
                       : <>✏️ Variante <em>à tester</em> — édite ce prompt pour corriger ce qui ne marchait pas</>}
@@ -190,7 +224,7 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
       </FormBlock>
 
       {/* Inputs picker (from dataset) */}
-      <FormBlock label={`Inputs à tester (depuis le dataset « ${state.datasetName} »)`}>
+      <FormBlock label={`Cas à rejouer — issus du dataset « ${state.datasetName} »`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1 }}>
             {items.length === 0
@@ -264,7 +298,9 @@ export default function Step7Playground({ onAdvance: _ }: StepProps) {
       {error && <div style={{ color: 'var(--error, #f44336)', fontSize: 'var(--font-size-sm)' }}>{error}</div>}
 
       <Button variant="primary" onClick={doRun} disabled={running}>
-        {running ? 'Exécution…' : `▶ Run all (${variants.filter(v => v.content.trim()).length} × ${items.filter(i => i.selected).length})`}
+        {running
+          ? 'Exécution…'
+          : `▶ Run all — ${variants.filter(v => v.selected && v.content.trim()).length} variante(s) × ${items.filter(i => i.selected).length} cas = ${variants.filter(v => v.selected && v.content.trim()).length * items.filter(i => i.selected).length} cellule(s)`}
       </Button>
 
       {result && <MatrixPreview result={result} />}
