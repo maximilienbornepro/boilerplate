@@ -2185,6 +2185,75 @@ ${filteredContent.slice(0, 30000)}`,
 
   // ==================== Bulk transcription import (list-level) ====================
 
+  // GET /transcription/sync-meta — returns the last-sync / message-count
+  // for each collector, so the modal can show "Dernière synchro Slack :
+  // il y a 3 min (12 messages)" even when there's no new content.
+  router.get('/transcription/sync-meta', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    type ProviderMeta = {
+      configured: boolean;
+      isActive?: boolean;
+      lastSyncAt: string | null;
+      messageCount: number;
+      channelCount?: number;
+      daysToFetch?: number;
+      error?: string;
+    };
+    const meta: { slack: ProviderMeta; outlook: ProviderMeta } = {
+      slack:   { configured: false, lastSyncAt: null, messageCount: 0 },
+      outlook: { configured: false, lastSyncAt: null, messageCount: 0 },
+    };
+    try {
+      const { getSlackConfig, getSlackMessageCount } = await import('./slackCollectorService.js');
+      const sc = await getSlackConfig(userId);
+      if (sc) {
+        meta.slack = {
+          configured: true,
+          isActive: sc.isActive,
+          lastSyncAt: sc.lastSyncAt,
+          messageCount: await getSlackMessageCount(sc.id),
+          channelCount: sc.channels.length,
+          daysToFetch: sc.daysToFetch,
+        };
+      }
+    } catch (err) { meta.slack.error = (err as Error).message; }
+    try {
+      const { getOutlookMessageCount } = await import('./outlookCollectorService.js');
+      const count = await getOutlookMessageCount(userId);
+      // We don't track Outlook sync time separately — the extension posts
+      // whenever the user opens Outlook, so the latest collected email's
+      // `date` is our best proxy.
+      const { rows } = await db.pool.query(
+        `SELECT MAX(collected_at) AS last FROM outlook_messages WHERE user_id = $1`,
+        [userId],
+      ).catch(() => ({ rows: [] as Array<{ last: string | null }> }));
+      meta.outlook = {
+        configured: count > 0,
+        lastSyncAt: rows[0]?.last ?? null,
+        messageCount: count,
+      };
+    } catch (err) { meta.outlook.error = (err as Error).message; }
+    res.json(meta);
+  }));
+
+  // POST /transcription/sync-all — triggers a sync for every configured
+  // collector (currently only Slack, since Outlook is push-based).
+  // Returns the per-provider result. Non-blocking (awaited serially is
+  // fine — one Slack sync is ~1 s).
+  router.post('/transcription/sync-all', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    type Result = { ok: boolean; total?: number; error?: string };
+    const out: { slack: Result } = { slack: { ok: false } };
+    try {
+      const { syncNow } = await import('./slackCollectorService.js');
+      const r = await syncNow(userId);
+      out.slack = { ok: true, total: r.total };
+    } catch (err) {
+      out.slack = { ok: false, error: (err as Error).message };
+    }
+    res.json(out);
+  }));
+
   // Aggregate calls + emails across every connected provider.
   // Returns a unified list the UI can show and let the user re-route.
   router.get('/transcription/bulk-sources', asyncHandler(async (req, res) => {
@@ -2490,6 +2559,163 @@ ${filteredContent.slice(0, 30000)}`,
       console.error('[SuiviTess pipeline routing] error:', err);
       res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
     }
+  }));
+
+  // ── POST /transcription/analyze-and-route-async ─────────────────────
+  // Same inputs as /analyze-and-route, but returns a { jobId } IMMEDIATELY
+  // and runs the pipeline in the background. The frontend polls
+  // GET /suivitess/api/pipeline-jobs/:jobId every ~500 ms to drive the
+  // real progress indicator (T1/T2/T3 boundaries, writer count).
+  // Replaces the fake-timer PipelineStepsIndicator.
+  router.post('/transcription/analyze-and-route-async', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const userEmail = req.user!.email;
+    const isAdmin = req.user!.isAdmin;
+    const { source, id, title, date } = (req.body || {}) as {
+      source?: string; id?: string; title?: string; date?: string | null;
+    };
+    if (!source || !id) { res.status(400).json({ error: 'source et id sont requis' }); return; }
+
+    const { createJob, makeOnProgress, finishJob, failJob } = await import('../aiSkills/pipelineJobs.js');
+    const job = createJob();
+    res.json({ jobId: job.id });
+
+    // ── Run in background after the HTTP response has been sent. ──
+    // We use setImmediate so any error inside never crashes the response.
+    setImmediate(async () => {
+      try {
+        // 1) Fetch the raw transcript / email body (same as the sync route).
+        let transcript = '';
+        if (source === 'fathom') {
+          const { getFathomTranscript } = await import('./fathomService.js');
+          const entries = await getFathomTranscript(userId, id);
+          transcript = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+        } else if (source === 'otter') {
+          const { getOtterTranscript } = await import('./otterService.js');
+          const entries = await getOtterTranscript(userId, id);
+          transcript = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+        } else if (source === 'outlook') {
+          if (id.startsWith('outlook:')) {
+            const dateFilter = id.replace('outlook:', '');
+            const { getOutlookMessages } = await import('./outlookCollectorService.js');
+            const msgs = await getOutlookMessages(userId, { days: 30 });
+            const filtered = dateFilter && dateFilter !== 'unknown'
+              ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
+              : msgs;
+            transcript = filtered.map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`).join('\n');
+          } else {
+            const { getOutlookEmailBody } = await import('./emailService.js');
+            transcript = await getOutlookEmailBody(userId, id);
+          }
+        } else if (source === 'gmail') {
+          const { getGmailEmailBody } = await import('./emailService.js');
+          transcript = await getGmailEmailBody(userId, id);
+        } else if (source === 'slack') {
+          const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+          const slackConfig = await getSlackConfig(userId);
+          if (!slackConfig) { failJob(job.id, 'Slack non configuré'); return; }
+          const parts = id.split(':');
+          const channelId = parts[1] || parts[0];
+          const dateFilter = parts[2];
+          const messages = await getSlackMessages(slackConfig.id, { days: slackConfig.daysToFetch, channelId });
+          const filtered = dateFilter ? messages.filter(m => {
+            const d = new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10);
+            return d === dateFilter;
+          }) : messages;
+          transcript = filtered
+            .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+            .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
+            .join('\n');
+        } else {
+          failJob(job.id, `Source non supportée : ${source}`);
+          return;
+        }
+        if (!transcript.trim()) { failJob(job.id, 'Transcription vide'); return; }
+
+        // 2) Credits.
+        const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+        try { await deductCredits(userId, isAdmin, 'suivitess', 'transcript_analysis'); }
+        catch (e) {
+          if (e instanceof InsufficientCreditsError) { failJob(job.id, 'INSUFFICIENT_CREDITS'); return; }
+          throw e;
+        }
+
+        // 3) Build reviews snapshot.
+        const existingDocs = await db.getAllDocuments(userId, isAdmin);
+        const reviewsSnap: Array<{
+          id: string; title: string; description: string | null;
+          sections: Array<{
+            id: string; name: string;
+            subjects: Array<{ id: string; title: string; status: string | null; situationExcerpt: string; responsibility: string | null }>;
+          }>;
+        }> = [];
+        for (const d of existingDocs.slice(0, 40)) {
+          try {
+            const doc = await db.getDocumentWithSections(d.id);
+            if (!doc) continue;
+            reviewsSnap.push({
+              id: doc.id,
+              title: doc.title,
+              description: (d as { description?: string | null }).description ?? null,
+              sections: (doc.sections || []).map(s => ({
+                id: s.id,
+                name: s.name,
+                subjects: (s.subjects || []).slice(0, 20).map(sub => ({
+                  id: sub.id,
+                  title: sub.title,
+                  status: sub.status ?? null,
+                  situationExcerpt: (sub.situation || '').slice(0, 200),
+                  responsibility: sub.responsibility ?? null,
+                })),
+              })),
+            });
+          } catch { /* best effort */ }
+        }
+
+        // 4) Run pipeline with progress callbacks.
+        const { analyzeSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
+        const onProgress = makeOnProgress(job.id);
+        const { proposals, rootLogId } = await analyzeSourceForReviews({
+          sourceKind: source as 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail',
+          sourceRaw: transcript,
+          sourceTitle: title || '(sans titre)',
+          reviews: reviewsSnap,
+          userId,
+          userEmail: userEmail || '',
+        }, onProgress);
+
+        finishJob(job.id, {
+          summary: proposals.length > 0 ? `${proposals.length} sujet(s) extrait(s) et routé(s).` : 'Aucun sujet exploitable.',
+          subjects: proposals,
+          logId: rootLogId,
+          availableReviews: reviewsSnap.map(r => ({
+            id: r.id,
+            title: r.title,
+            sections: r.sections.map(s => ({
+              id: s.id,
+              name: s.name,
+              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+            })),
+          })),
+        });
+      } catch (err) {
+        console.error('[SuiviTess pipeline routing async] error:', err);
+        failJob(job.id, err instanceof Error ? err.message : 'Erreur inconnue');
+      }
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      void date;
+    });
+  }));
+
+  // ── GET /pipeline-jobs/:id ──────────────────────────────────────────
+  // Generic polling endpoint for any async pipeline job (bulk import,
+  // content-import, transcript-merge). Returns the full job state —
+  // phase, counts, durations, and the final result when phase === 'done'.
+  router.get('/pipeline-jobs/:id', asyncHandler(async (req, res) => {
+    const { getJob } = await import('../aiSkills/pipelineJobs.js');
+    const job = getJob(String(req.params.id));
+    if (!job) { res.status(404).json({ error: 'Job introuvable (ou expiré après 15 min)' }); return; }
+    res.json(job);
   }));
 
   // POST /transcription/analyze-and-route-stream
