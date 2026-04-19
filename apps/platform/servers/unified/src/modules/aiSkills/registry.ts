@@ -13,6 +13,11 @@ const MODULES_DIR = (() => {
   return resolve(here, '..');
 })();
 
+/** Root directory that hosts every AI prompt `.md` file. Centralized in
+ *  `src/prompts/` (organized by module + legacy subfolder) rather than
+ *  scattered across every feature module. */
+const PROMPTS_DIR = resolve(MODULES_DIR, '..', 'prompts');
+
 export interface SkillDefinition {
   /** Stable id used in code and DB. Never rename once deployed. */
   slug: string;
@@ -44,7 +49,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Aucun — legacy',
       trigger: 'Aucun — remplacé par le pipeline',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-route-source-to-review.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/legacy/route-source-to-review.md'),
   },
   {
     slug: 'suivitess-import-source-into-document',
@@ -56,7 +61,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Aucun — legacy',
       trigger: 'Aucun — remplacé par suivitess-extract-* / place-* / append-situation / compose-situation',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-import-source-into-document.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/legacy/import-source-into-document.md'),
   },
   {
     slug: 'suivitess-reformulate-subject',
@@ -68,7 +73,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'POST /suivitess/api/subjects/:id/reformulate',
       trigger: 'Bouton « Reformuler avec l\'IA » sur un sujet',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-reformulate-subject.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/reformulate-subject.md'),
   },
   {
     slug: 'delivery-reorganize-board',
@@ -80,7 +85,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Aucun — legacy',
       trigger: 'Aucun — remplacé par le pipeline delivery',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'delivery/skill-reorganize-board.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'delivery/legacy/reorganize-board.md'),
   },
   {
     slug: 'delivery-assess-tickets',
@@ -92,7 +97,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Interne — analyzeSanityCheckPipeline() dans delivery/reorganizeBoardPipeline.ts',
       trigger: 'Bouton « Vérifier avec l\'IA » sur un delivery board — tier 1 du pipeline',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'delivery/skill-assess-tickets.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'delivery/assess-tickets.md'),
   },
   {
     slug: 'delivery-write-reasoning',
@@ -104,7 +109,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Interne — analyzeSanityCheckPipeline()',
       trigger: 'Bouton « Vérifier avec l\'IA » sur un delivery board — tier 2 du pipeline',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'delivery/skill-write-reasoning.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'delivery/write-reasoning.md'),
   },
   {
     slug: 'llm-judge-faithfulness',
@@ -116,7 +121,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Interne — invoqué par POST /ai-skills/api/logs/:id/rescore',
       trigger: 'Auto-scoring des logs ou clic admin « Relancer scorers »',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'aiSkills/skill-llm-judge-faithfulness.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'judge/llm-judge-faithfulness.md'),
   },
 
   // ── Pipeline modulaire (ACTIF par défaut — seul path runtime) ────────
@@ -139,7 +144,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Interne — analyzeSourcePipeline() dans aiSkills/analyzeSourcePipeline.ts',
       trigger: 'Analyse d\'une transcription (Fathom / Otter / enregistreur) — tier 1 du pipeline',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-extract-transcript.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/extract-transcript.md'),
   },
   {
     slug: 'suivitess-extract-slack',
@@ -151,7 +156,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Interne — analyzeSourcePipeline()',
       trigger: 'Analyse d\'un digest Slack — tier 1 du pipeline',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-extract-slack.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/extract-slack.md'),
   },
   {
     slug: 'suivitess-extract-outlook',
@@ -163,7 +168,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Interne — analyzeSourcePipeline()',
       trigger: 'Analyse d\'une chaîne Outlook / Gmail — tier 1 du pipeline',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-extract-outlook.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/extract-outlook.md'),
   },
   {
     slug: 'suivitess-place-in-document',
@@ -175,7 +180,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Interne — analyzeSourcePipeline() (variante document-scoped)',
       trigger: 'Import dans un suivitess ouvert — tier 2 du pipeline',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-place-in-document.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/place-in-document.md'),
   },
   {
     slug: 'suivitess-place-in-reviews',
@@ -187,7 +192,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Interne — analyzeSourcePipeline() (variante multi-review)',
       trigger: 'Import en masse depuis la page listing — tier 2 du pipeline',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-place-in-reviews.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/place-in-reviews.md'),
   },
   {
     slug: 'suivitess-append-situation',
@@ -199,7 +204,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Interne — analyzeSourcePipeline() (par enrich, parallèle)',
       trigger: 'Décision enrich du tier 2 — rédaction du appendText',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-append-situation.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/append-situation.md'),
   },
   {
     slug: 'suivitess-compose-situation',
@@ -211,7 +216,7 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'Interne — analyzeSourcePipeline() (par création, parallèle)',
       trigger: 'Décision create du tier 2 — rédaction de la situation initiale',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-compose-situation.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/compose-situation.md'),
   },
 ] as const;
 

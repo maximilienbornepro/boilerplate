@@ -36,7 +36,7 @@ describe('aiSkills.registry', () => {
       const def = getSkill(slug);
       expect(def, `slug ${slug}`).toBeDefined();
       expect(def!.usage.module).toBe('suivitess');
-      expect(def!.defaultFilePath).toMatch(/suivitess\/skill-.*\.md$/);
+      expect(def!.defaultFilePath).toMatch(/prompts\/suivitess\/.*\.md$/);
     }
   });
 

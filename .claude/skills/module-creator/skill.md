@@ -6,22 +6,22 @@ invocation: user
 
 # Module Creator
 
-## ⛔ PRE-REQUIS OBLIGATOIRE : OpenSpec
+## ⛔ PRE-REQUIS OBLIGATOIRE : plan de spec
 
-**AVANT d'utiliser ce skill, verifier que le workflow OpenSpec a ete suivi :**
+**AVANT d'utiliser ce skill, verifier que le workflow plan de spec a ete suivi :**
 
 ```bash
-# 1. Verifier le mode OpenSpec
+# 1. Verifier le mode plan de spec
 cat .claude/config 2>/dev/null | grep OPENSPEC_MODE || echo "OPENSPEC_MODE=on (defaut)"
 
-# 2. Si OpenSpec est actif, une spec DOIT exister
-ls openspec/changes/*/progress.md
+# 2. Si plan de spec est actif, une spec DOIT exister
+ls spec/changes/*/progress.md
 ```
 
 **Si aucune spec n'existe :**
 
 1. **REFUSER** d'utiliser ce skill
-2. **DIRE** a l'utilisateur : "Utilise d'abord `/opsx:propose 'Nouveau module <nom>'` pour creer la spec"
+2. **DIRE** a l'utilisateur : "Utilise d'abord `/spec:propose 'Nouveau module <nom>'` pour creer la spec"
 3. **ATTENDRE** que la spec soit validee (phase = implementation)
 
 **Ce skill ne doit PAS etre utilise directement sans spec validee.**
@@ -1186,7 +1186,7 @@ const copyEmbedLink = useCallback((item: <Entity>) => {
 ### 8. Verification finale
 
 ```bash
-# Creer la branche (mode OpenSpec)
+# Creer la branche (mode plan de spec)
 git checkout -b feat/<module>
 
 # Lancer les tests

@@ -180,21 +180,6 @@ cd /opt/apps/boilerplate
 
 Checklist détaillée dans `CLAUDE.md`.
 
-## Mode OpenSpec (Claude Code)
-
-Mode qui impose spec + branche dédiée avant toute modification. Activé par défaut.
-
-```bash
-# Désactiver (travail libre sur main)
-mkdir -p .claude && echo "OPENSPEC_MODE=off" > .claude/config
-
-# Réactiver
-mkdir -p .claude && echo "OPENSPEC_MODE=on" > .claude/config
-
-# Vérifier
-cat .claude/config 2>/dev/null | grep OPENSPEC_MODE || echo "activé (défaut)"
-```
-
 ## Variables d'environnement
 
 | Variable | Obligatoire | Description |
@@ -214,7 +199,7 @@ cat .claude/config 2>/dev/null | grep OPENSPEC_MODE || echo "activé (défaut)"
 | `.env.prod` | Config production (serveur) | Ignoré |
 | `.deploy.env` | Config SSH pour deploy-remote | Ignoré |
 | `.deploy.env.example` | Template pour `.deploy.env` | Commité |
-| `.claude/config` | Config Claude (OpenSpec) | Ignoré |
+| `.claude/config` | Config Claude Code locale | Ignoré |
 
 ## Scripts npm
 
