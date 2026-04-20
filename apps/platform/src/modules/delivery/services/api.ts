@@ -1,3 +1,5 @@
+import type { Task } from '../types';
+
 const API_BASE = '/delivery-api';
 
 // ============ Jira Integration ============
@@ -75,6 +77,50 @@ export async function fetchJiraSprints(projectKey: string): Promise<JiraSprint[]
 export async function fetchJiraIssues(sprintIds: number[]): Promise<JiraIssue[]> {
   const response = await fetch(`${API_BASE}/jira/issues?sprintIds=${sprintIds.join(',')}`, { credentials: 'include' });
   return handleResponse<JiraIssue[]>(response);
+}
+
+// ============ Jira ticket by URL / key (ad-hoc add) ============
+
+export interface JiraIssueFromUrl {
+  id: string;
+  key: string;
+  summary: string;
+  status: string;
+  assignee: string | null;
+  storyPoints: number | null;
+  estimatedDays: number | null;
+  issueType: string;
+  sprintName: string | null;
+  fixVersion: string | null;
+  priority: string | null;
+  hasDescription: boolean;
+  authMode: 'oauth' | 'basic';
+}
+
+/** Fetch preview of a Jira issue by URL or bare key (e.g. "TVSMART-2181"
+ *  or "https://…/browse/TVSMART-2181"). Requires an existing Jira
+ *  auth context (OAuth token OR basic-auth connector). */
+export async function fetchJiraIssueByUrl(url: string): Promise<JiraIssueFromUrl> {
+  const response = await fetch(
+    `${API_BASE}/jira/issue-by-url?url=${encodeURIComponent(url)}`,
+    { credentials: 'include' },
+  );
+  return handleResponse<JiraIssueFromUrl>(response);
+}
+
+/** Create a delivery task from a Jira URL + add it to a board. Returns
+ *  the created task (same shape as `createTask`). */
+export async function createTaskFromJiraUrl(
+  boardId: string,
+  payload: { url: string; incrementId?: string | null },
+): Promise<Task> {
+  const response = await fetch(`${API_BASE}/boards/${boardId}/tasks-from-jira-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<Task>(response);
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {

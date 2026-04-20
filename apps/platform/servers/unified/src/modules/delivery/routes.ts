@@ -704,6 +704,166 @@ export function createDeliveryRoutes(): Router {
   }));
 
   // List issues for selected sprints
+  // ─── Add a Jira ticket by URL ────────────────────────────────────────
+  //
+  // Accepts any Jira URL shape :
+  //   https://francetv.atlassian.net/browse/TVSMART-2181
+  //   https://francetv.atlassian.net/jira/software/c/projects/TV/boards/N?selectedIssue=TVSMART-2181
+  //   TVSMART-2181                                           (bare key)
+  //
+  // Extracts the issue key via regex, fetches the issue from Jira
+  // (OAuth or Basic auth — whichever the user has), returns a
+  // normalized shape the frontend uses to add a task to a board.
+  //
+  // GET so it's easy to call from a quick-add UI ; no side-effect.
+  router.get('/jira/issue-by-url', asyncHandler(async (req, res) => {
+    const raw = String((req.query.url ?? '').toString()).trim();
+    if (!raw) { res.status(400).json({ error: 'url (ou clé Jira) requis' }); return; }
+
+    // Extract the Jira key : 2-10 uppercase letters + hyphen + digits.
+    // Covers bare keys and URLs (browse/KEY-NUM, ?selectedIssue=KEY-NUM).
+    const match = raw.match(/\b([A-Z][A-Z0-9]{1,9}-\d+)\b/);
+    if (!match) {
+      res.status(400).json({ error: 'Impossible d\'extraire la clé Jira depuis cette URL' });
+      return;
+    }
+    const issueKey = match[1];
+
+    const ctx = await getJiraContext(req.user!.id);
+    if (!ctx) {
+      res.status(401).json({ error: 'Aucune authentification Jira disponible (OAuth ou token)' });
+      return;
+    }
+
+    const params = new URLSearchParams({
+      fields: 'summary,status,assignee,customfield_10016,issuetype,customfield_10020,timetracking,description,fixVersions,priority',
+    });
+    const issueUrl = `${ctx.baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}?${params}`;
+    const resp = await fetch(issueUrl, { headers: ctx.headers });
+
+    if (resp.status === 404) {
+      res.status(404).json({ error: `Ticket ${issueKey} introuvable ou inaccessible avec tes droits Jira` });
+      return;
+    }
+    if (!resp.ok) {
+      const text = await resp.text();
+      res.status(resp.status).json({ error: `Jira API error : ${text.slice(0, 300)}` });
+      return;
+    }
+
+    const data = await resp.json() as {
+      id: string;
+      key: string;
+      fields: {
+        summary?: string;
+        status?: { name: string };
+        assignee?: { displayName: string };
+        customfield_10016?: number;
+        issuetype?: { name: string };
+        customfield_10020?: Array<{ id: number; name: string; state: string }>;
+        timetracking?: { originalEstimateSeconds?: number };
+        description?: unknown;
+        fixVersions?: Array<{ name: string; releaseDate?: string }>;
+        priority?: { name: string };
+      };
+    };
+
+    const f = data.fields;
+    const activeSprint = f.customfield_10020?.find(s => s.state === 'active') || f.customfield_10020?.[0];
+    const estDays = f.timetracking?.originalEstimateSeconds
+      ? Math.round((f.timetracking.originalEstimateSeconds / (8 * 60 * 60)) * 10) / 10
+      : null;
+    const hasDesc = typeof f.description === 'string'
+      ? f.description.trim().length > 0
+      : !!f.description;
+
+    res.json({
+      id: data.id,
+      key: data.key,
+      summary: f.summary || data.key,
+      status: f.status?.name || 'To Do',
+      assignee: f.assignee?.displayName || null,
+      storyPoints: f.customfield_10016 ?? null,
+      estimatedDays: estDays,
+      issueType: f.issuetype?.name || 'Task',
+      sprintName: activeSprint?.name ?? null,
+      fixVersion: f.fixVersions?.[0]?.name ?? null,
+      priority: f.priority?.name ?? null,
+      hasDescription: hasDesc,
+      authMode: ctx.isOAuth ? 'oauth' : 'basic',
+    });
+  }));
+
+  // Create a delivery task from a Jira URL (or bare key). Convenience
+  // wrapper — fetches the issue then calls createTask with the
+  // normalized fields. Lets the user add "missing" Jira tickets to a
+  // board without leaving the delivery view.
+  router.post('/boards/:boardId/tasks-from-jira-url', asyncHandler(async (req, res) => {
+    const { boardId } = req.params;
+    const { url, incrementId } = (req.body || {}) as { url?: string; incrementId?: string | null };
+    if (!url) { res.status(400).json({ error: 'url requis' }); return; }
+
+    const board = await db.getBoardById(boardId);
+    if (!board) { res.status(404).json({ error: 'Board non trouvé' }); return; }
+
+    const match = url.match(/\b([A-Z][A-Z0-9]{1,9}-\d+)\b/);
+    if (!match) { res.status(400).json({ error: 'Clé Jira introuvable dans l\'URL' }); return; }
+    const issueKey = match[1];
+
+    const ctx = await getJiraContext(req.user!.id);
+    if (!ctx) {
+      res.status(401).json({ error: 'Aucune authentification Jira disponible (OAuth ou token)' });
+      return;
+    }
+
+    const params = new URLSearchParams({
+      fields: 'summary,status,assignee,customfield_10016,issuetype,timetracking,description,fixVersions,priority',
+    });
+    const resp = await fetch(`${ctx.baseUrl}/rest/api/3/issue/${encodeURIComponent(issueKey)}?${params}`, {
+      headers: ctx.headers,
+    });
+    if (resp.status === 404) { res.status(404).json({ error: `Ticket ${issueKey} introuvable` }); return; }
+    if (!resp.ok) { res.status(resp.status).json({ error: await resp.text() }); return; }
+
+    const data = await resp.json() as {
+      id: string;
+      key: string;
+      fields: {
+        summary?: string;
+        status?: { name: string };
+        assignee?: { displayName: string };
+        customfield_10016?: number;
+        issuetype?: { name: string };
+        timetracking?: { originalEstimateSeconds?: number };
+        description?: unknown;
+        fixVersions?: Array<{ name: string; releaseDate?: string }>;
+        priority?: { name: string };
+      };
+    };
+
+    const f = data.fields;
+    const estDays = f.timetracking?.originalEstimateSeconds
+      ? Math.round((f.timetracking.originalEstimateSeconds / (8 * 60 * 60)) * 10) / 10
+      : undefined;
+    const description = typeof f.description === 'string' ? f.description : null;
+
+    const task = await db.createTask({
+      title: `[${data.key}] ${f.summary || data.key}`,
+      type: f.issuetype?.name ?? undefined,
+      status: f.status?.name ?? 'To Do',
+      storyPoints: f.customfield_10016 ?? undefined,
+      estimatedDays: estDays,
+      assignee: f.assignee?.displayName ?? undefined,
+      priority: f.priority?.name ?? undefined,
+      incrementId: incrementId ?? undefined,
+      sprintName: undefined,
+      source: 'jira',
+      description,
+    });
+
+    res.status(201).json(task);
+  }));
+
   router.get('/jira/issues', asyncHandler(async (req, res) => {
     const { sprintIds } = req.query as { sprintIds?: string };
     if (!sprintIds) {

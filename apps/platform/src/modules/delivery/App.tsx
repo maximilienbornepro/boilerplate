@@ -7,6 +7,7 @@ import { SnapshotModal } from './components/SnapshotModal';
 import { ImportModal } from './components/ImportModal';
 import { SanityCheckModal } from './components/SanityCheckModal/SanityCheckModal';
 import { LayoutRulesModal } from './components/LayoutRulesModal/LayoutRulesModal';
+import { JiraQuickAddModal } from './components/JiraQuickAddModal/JiraQuickAddModal';
 import { generateSprintsForBoard, type BoardConfig } from './utils/sprintGeneration';
 import { Layout, ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import type { Board } from './services/api';
@@ -103,6 +104,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSanityModal, setShowSanityModal] = useState(false);
   const [showLayoutRulesModal, setShowLayoutRulesModal] = useState(false);
+  const [showJiraQuickAdd, setShowJiraQuickAdd] = useState(false);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
   const [showHistoryMenu, setShowHistoryMenu] = useState(false);
@@ -743,6 +745,21 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                   >
                     Importer des tâches
                   </button>
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      if (activeConnectors.some(c => c.service === 'jira') || jiraSiteUrl) {
+                        setShowJiraQuickAdd(true);
+                      } else if (onNavigate) {
+                        onNavigate('/reglages');
+                      }
+                    }}
+                    title="Coller une URL Jira (ou juste la clé) pour ajouter rapidement un ticket"
+                  >
+                    🔗 Ajouter par URL Jira
+                  </button>
 
                   <div className="delivery-actions-divider" />
 
@@ -881,6 +898,15 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
 
           {showLayoutRulesModal && (
             <LayoutRulesModal onClose={() => setShowLayoutRulesModal(false)} />
+          )}
+
+          {showJiraQuickAdd && board && (
+            <JiraQuickAddModal
+              boardId={board.id}
+              incrementId={null}
+              onClose={() => setShowJiraQuickAdd(false)}
+              onAdded={() => { loadTasks(); setShowJiraQuickAdd(false); }}
+            />
           )}
         </div>
       </div>
