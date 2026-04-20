@@ -173,11 +173,11 @@ export function SkillButton({ skillSlug, pipeline, children, disabled, showCapti
           }}
           title={pipeline ? 'Voir la pipeline et éditer un skill' : 'Éditer le skill IA utilisé par ce bouton'}
         >
-          <span className={styles.captionLabel}>{pipeline ? '🔗' : 'skill :'}</span>
+          {!pipeline && <span className={styles.captionLabel}>skill :</span>}
           <span className={styles.captionName}>
             {captionLabel}
           </span>
-          <span className={styles.captionEdit}>✎ éditer</span>
+          <span className={styles.captionEdit}>éditer</span>
         </button>
       )}
 
@@ -233,19 +233,17 @@ export function SkillButton({ skillSlug, pipeline, children, disabled, showCapti
                     {step.slugs.map(slug => {
                       const m = metaBySlug[slug];
                       return (
-                        <li key={slug} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>•</span>
-                          <span style={{ flex: 1, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {m?.name ?? (loadingSlugs.has(slug) ? '…' : slug)}
-                          </span>
+                        <li key={slug}>
                           <button
                             type="button"
-                            className={styles.editBtn}
+                            className={styles.pipelineItem}
                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditorFor(slug); }}
                             disabled={!m}
-                            style={{ fontSize: 10, padding: '1px 6px' }}
                           >
-                            ✎
+                            <span>•</span>
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {m?.name ?? (loadingSlugs.has(slug) ? '…' : slug)}
+                            </span>
                           </button>
                         </li>
                       );

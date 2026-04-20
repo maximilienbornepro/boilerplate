@@ -195,7 +195,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-sm);
 }
 .summaryItemMode {
   flex-shrink: 0;
@@ -920,4 +920,15 @@
 .evidenceSummary {
   color: var(--text-primary);
   line-height: 1.4;
+}
+
+.syncBtn {
+  min-width: 160px;
+  white-space: nowrap;
+}
+
+/* Override secondary button hover inside the SuiviTess modal:
+   the border picks up the module's accent (green) instead of the default muted. */
+.content :global(.shared-btn--secondary):hover:not(:disabled) {
+  border-color: var(--accent-primary);
 }

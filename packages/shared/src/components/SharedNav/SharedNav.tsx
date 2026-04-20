@@ -164,22 +164,19 @@ export function SharedNav({
           {extraDrawerLinks && extraDrawerLinks.length > 0 && (
             <>
               <hr className="shared-nav-drawer-sep" aria-hidden="true" />
-              <ul className="shared-nav-drawer-list">
+              <ul className="shared-nav-drawer-list shared-nav-drawer-list-compact">
               {extraDrawerLinks.map(link => (
                 <li key={link.path}>
                   <a
-                    className="shared-nav-drawer-item"
+                    className="shared-nav-drawer-item shared-nav-drawer-item-compact"
                     href={link.path}
                     onClick={(e) => handleNavClick(e, link.path)}
                   >
-                    <span className="shared-nav-drawer-icon">
-                      {link.icon ?? (
-                        <span
-                          className="shared-nav-drawer-dot"
-                          style={{ backgroundColor: link.color ?? 'var(--accent-primary)' }}
-                        />
-                      )}
-                    </span>
+                    {link.icon && (
+                      <span className="shared-nav-drawer-icon">
+                        {link.icon}
+                      </span>
+                    )}
                     <span className="shared-nav-drawer-name">{link.label}</span>
                   </a>
                 </li>
@@ -188,6 +185,7 @@ export function SharedNav({
             </>
           )}
 
+          <hr className="shared-nav-drawer-sep" aria-hidden="true" />
           {/* Settings (separated, no bullet, gear icon) */}
           <a
             className="shared-nav-drawer-settings"

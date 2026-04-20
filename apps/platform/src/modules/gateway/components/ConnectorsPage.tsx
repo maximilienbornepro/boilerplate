@@ -1478,8 +1478,19 @@ function CollectorsSection() {
         <div className="connector-card">
           <div className="connector-card-header" onClick={() => setSlackExpanded(v => !v)}>
             <div className="connector-card-left">
-              <div className="connector-card-icon" style={{ background: '#4A154B', color: '#fff' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm6.312 5.852a2.528 2.528 0 0 1 2.521-2.52A2.528 2.528 0 0 1 24 12.165a2.528 2.528 0 0 1-2.333 2.52h-6.521v-2.52zm-1.271 0a2.527 2.527 0 0 1-2.521 2.52 2.527 2.527 0 0 1-2.521-2.52V5.852a2.528 2.528 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313z"/></svg>
+              <div className="connector-card-icon" style={{ background: 'transparent' }}>
+                <svg style={{ width: 36, height: 36 }} viewBox="0 0 270 270" xmlns="http://www.w3.org/2000/svg">
+                  <g>
+                    <path fill="#E01E5A" d="M99.4,151.2c0,7.1-5.8,12.9-12.9,12.9c-7.1,0-12.9-5.8-12.9-12.9c0-7.1,5.8-12.9,12.9-12.9h12.9V151.2z"/>
+                    <path fill="#E01E5A" d="M105.9,151.2c0-7.1,5.8-12.9,12.9-12.9s12.9,5.8,12.9,12.9v32.3c0,7.1-5.8,12.9-12.9,12.9s-12.9-5.8-12.9-12.9V151.2z"/>
+                    <path fill="#36C5F0" d="M118.8,99.4c-7.1,0-12.9-5.8-12.9-12.9c0-7.1,5.8-12.9,12.9-12.9s12.9,5.8,12.9,12.9v12.9H118.8z"/>
+                    <path fill="#36C5F0" d="M118.8,105.9c7.1,0,12.9,5.8,12.9,12.9s-5.8,12.9-12.9,12.9H86.5c-7.1,0-12.9-5.8-12.9-12.9s5.8-12.9,12.9-12.9H118.8z"/>
+                    <path fill="#2EB67D" d="M170.6,118.8c0-7.1,5.8-12.9,12.9-12.9c7.1,0,12.9,5.8,12.9,12.9s-5.8,12.9-12.9,12.9h-12.9V118.8z"/>
+                    <path fill="#2EB67D" d="M164.1,118.8c0,7.1-5.8,12.9-12.9,12.9c-7.1,0-12.9-5.8-12.9-12.9V86.5c0-7.1,5.8-12.9,12.9-12.9c7.1,0,12.9,5.8,12.9,12.9V118.8z"/>
+                    <path fill="#ECB22E" d="M151.2,170.6c7.1,0,12.9,5.8,12.9,12.9c0,7.1-5.8,12.9-12.9,12.9c-7.1,0-12.9-5.8-12.9-12.9v-12.9H151.2z"/>
+                    <path fill="#ECB22E" d="M151.2,164.1c-7.1,0-12.9-5.8-12.9-12.9c0-7.1,5.8-12.9,12.9-12.9h32.3c7.1,0,12.9,5.8,12.9,12.9c0,7.1-5.8,12.9-12.9,12.9H151.2z"/>
+                  </g>
+                </svg>
               </div>
               <div className="connector-card-info">
                 <div className="connector-card-name">Slack</div>
@@ -1553,8 +1564,8 @@ function CollectorsSection() {
         <div className="connector-card">
           <div className="connector-card-header" onClick={() => setOutlookExpanded(v => !v)}>
             <div className="connector-card-left">
-              <div className="connector-card-icon" style={{ background: '#0078D4', color: '#fff' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M24 7.387v10.478c0 .23-.08.424-.238.576-.16.156-.354.234-.582.234h-8.39v-6.61l1.612 1.224a.379.379 0 0 0 .479-.005l.005-.005 6.884-5.261c.07-.054.13-.077.163-.077h.005c.074 0 .062.048.062.048v-.602zm-.324-1.063c.07 0 .232.022.324.196l-7.69 5.875-4.92-3.746V7.387c0-.23.08-.424.238-.576.16-.156.354-.234.582-.234h11.466zM13.5 12.61l-1.5 1.142V5.063l3-2.25v8.555l-1.5 1.142V12.61zM0 3.61L8.813 2v20L0 20.39V3.61z"/></svg>
+              <div className="connector-card-icon" style={{ background: 'transparent' }}>
+                <OutlookIcon />
               </div>
               <div className="connector-card-info">
                 <div className="connector-card-name">Outlook</div>

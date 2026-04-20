@@ -205,7 +205,7 @@
 
 .seeAllLink:hover {
   color: var(--text-primary);
-  border-color: var(--text-muted);
+  border-color: var(--module-color, var(--text-muted));
   background: var(--bg-primary);
 }
 

@@ -3,6 +3,7 @@ import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
 import { SkillButton } from '../SkillButton/SkillButton';
 import { getStatusOption } from '../../types';
 import * as api from '../../services/api';
+import '../../../gateway/components/ConnectorsPage.css';
 import styles from './BulkTranscriptionImportModal.module.css';
 
 interface Props {
@@ -510,7 +511,11 @@ function SubjectRow({
         </div>
       )}
 
-      {subject.situation && <p className={styles.situation}>{subject.situation}</p>}
+      {subject.situation && (
+        <p className={styles.situation}>
+          {renderWithBullets(subject.situation)}
+        </p>
+      )}
       {subject.reasoning && <p className={styles.reasoning}>{subject.reasoning}</p>}
 
       <div className={styles.routing}>
@@ -721,6 +726,21 @@ function formatDate(iso: string): string {
   }
 }
 
+/** Renders a text that may contain "•" bullets, putting each bullet on its own line. */
+function renderWithBullets(text: string): ReactNode {
+  if (!text.includes('•')) return text;
+  const parts = text.split(/\s*•\s*/).map(s => s.trim()).filter(Boolean);
+  return (
+    <>
+      {parts.map((part, i) => (
+        <span key={i} style={{ display: 'block' }}>
+          {i === 0 ? part : `• ${part}`}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function stanceLabel(stance: 'propose' | 'confirm' | 'complement' | 'contradict'): string {
   switch (stance) {
     case 'propose':    return 'Propose';
@@ -757,43 +777,80 @@ interface SyncStatusBannerProps {
 }
 
 function SyncStatusBanner({ meta, syncing, onRefresh }: SyncStatusBannerProps) {
-  const row = (label: string, p: api.ProviderSyncMeta | undefined) => {
-    if (!p || !p.configured) {
-      return (
-        <span style={{ color: 'var(--text-secondary)', opacity: 0.6 }}>
-          {label}: non configuré
-        </span>
-      );
-    }
-    const errColor = p.error ? 'var(--error, #f44336)' : undefined;
+  const card = (
+    name: string,
+    iconBg: string,
+    icon: ReactNode,
+    p: api.ProviderSyncMeta | undefined,
+  ) => {
+    const configured = !!p?.configured;
+    const desc = !configured
+      ? null
+      : p?.error
+        ? `Erreur : ${p.error}`
+        : `${p?.messageCount ?? 0} message${(p?.messageCount ?? 0) > 1 ? 's' : ''} · dernière synchro ${formatRelative(p?.lastSyncAt ?? null)}`;
     return (
-      <span style={{ color: errColor }}>
-        <strong>{label}</strong> : {p.messageCount} message{p.messageCount > 1 ? 's' : ''}
-        {' · '}dernière synchro {formatRelative(p.lastSyncAt)}
-        <span style={{ opacity: 0.6, marginLeft: 4 }}>({formatDateTime(p.lastSyncAt)})</span>
-        {p.error && <span> · erreur : {p.error}</span>}
-      </span>
+      <div className="connector-card">
+        <div className="connector-card-header" style={{ cursor: 'default', padding: 'var(--spacing-sm) var(--spacing-md)' }}>
+          <div className="connector-card-left">
+            <div className="connector-card-icon" style={{ background: iconBg, color: '#fff', width: 40, height: 40 }}>
+              {icon}
+            </div>
+            <div className="connector-card-info">
+              <div className="connector-card-name">{name}</div>
+              {desc && <div className="connector-card-desc">{desc}</div>}
+            </div>
+          </div>
+          <div className="connector-card-right">
+            <div className={`connector-status ${configured && !p?.error ? 'active' : 'inactive'}`}>
+              <span className="connector-status-dot" />
+              {configured && !p?.error ? 'Connecté' : configured ? 'Erreur' : 'Non connecté'}
+            </div>
+          </div>
+        </div>
+      </div>
     );
   };
+
+  const slackIcon = (
+    <svg style={{ width: 36, height: 36 }} viewBox="0 0 270 270" xmlns="http://www.w3.org/2000/svg">
+      <g>
+        <path fill="#E01E5A" d="M99.4,151.2c0,7.1-5.8,12.9-12.9,12.9c-7.1,0-12.9-5.8-12.9-12.9c0-7.1,5.8-12.9,12.9-12.9h12.9V151.2z"/>
+        <path fill="#E01E5A" d="M105.9,151.2c0-7.1,5.8-12.9,12.9-12.9s12.9,5.8,12.9,12.9v32.3c0,7.1-5.8,12.9-12.9,12.9s-12.9-5.8-12.9-12.9V151.2z"/>
+        <path fill="#36C5F0" d="M118.8,99.4c-7.1,0-12.9-5.8-12.9-12.9c0-7.1,5.8-12.9,12.9-12.9s12.9,5.8,12.9,12.9v12.9H118.8z"/>
+        <path fill="#36C5F0" d="M118.8,105.9c7.1,0,12.9,5.8,12.9,12.9s-5.8,12.9-12.9,12.9H86.5c-7.1,0-12.9-5.8-12.9-12.9s5.8-12.9,12.9-12.9H118.8z"/>
+        <path fill="#2EB67D" d="M170.6,118.8c0-7.1,5.8-12.9,12.9-12.9c7.1,0,12.9,5.8,12.9,12.9s-5.8,12.9-12.9,12.9h-12.9V118.8z"/>
+        <path fill="#2EB67D" d="M164.1,118.8c0,7.1-5.8,12.9-12.9,12.9c-7.1,0-12.9-5.8-12.9-12.9V86.5c0-7.1,5.8-12.9,12.9-12.9c7.1,0,12.9,5.8,12.9,12.9V118.8z"/>
+        <path fill="#ECB22E" d="M151.2,170.6c7.1,0,12.9,5.8,12.9,12.9c0,7.1-5.8,12.9-12.9,12.9c-7.1,0-12.9-5.8-12.9-12.9v-12.9H151.2z"/>
+        <path fill="#ECB22E" d="M151.2,164.1c-7.1,0-12.9-5.8-12.9-12.9c0-7.1,5.8-12.9,12.9-12.9h32.3c7.1,0,12.9,5.8,12.9,12.9c0,7.1-5.8,12.9-12.9,12.9H151.2z"/>
+      </g>
+    </svg>
+  );
+  const outlookIcon = (
+    <svg style={{ width: 24, height: 24 }} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="4" width="22" height="16" rx="2" fill="#0078D4" />
+      <path d="M1 6l11 7 11-7" fill="none" stroke="white" strokeWidth="1.5" />
+      <ellipse cx="8" cy="14" rx="4" ry="3.5" fill="#005A9E" />
+      <text x="8" y="16" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold" fontFamily="Arial">O</text>
+    </svg>
+  );
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '6px 12px',
-      marginBottom: 'var(--spacing-sm)',
-      background: 'var(--bg-secondary, rgba(128,128,128,0.05))',
-      border: '1px solid var(--border-color)',
-      borderRadius: 'var(--radius-sm)',
-      fontSize: 11, fontFamily: 'var(--font-mono)',
-      color: 'var(--text-secondary)',
-      flexWrap: 'wrap',
-    }}>
-      <span style={{ display: 'flex', flex: 1, gap: 16, flexWrap: 'wrap' }}>
-        {row('Slack', meta?.slack)}
-        {row('Outlook', meta?.outlook)}
-      </span>
-      <Button variant="secondary" onClick={onRefresh} disabled={syncing}>
-        {syncing ? '🔄 Synchro…' : '🔄 Synchroniser'}
-      </Button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-sm)' }}>
+      <div className="connectors-list" style={{ gap: 'var(--spacing-sm)' }}>
+        {card('Slack', 'transparent', slackIcon, meta?.slack)}
+        {card('Outlook', 'transparent', outlookIcon, meta?.outlook)}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Button
+          variant="secondary"
+          onClick={onRefresh}
+          disabled={syncing}
+          className={styles.syncBtn}
+        >
+          {syncing ? 'Synchronisation…' : 'Synchroniser'}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -834,13 +891,13 @@ function PipelineStepsIndicator({ status }: { status: api.PipelineJobStatus | nu
   const isMulti = (status?.sourcesCount ?? 1) >= 2;
 
   // Lightweight step model kept inline — no external state, no timers.
-  const ALL_STEPS: ReadonlyArray<{ key: PhaseKey; icon: string; label: string; multiOnly?: boolean }> = [
-    { key: 'source',   icon: '🔎', label: isMulti ? `Lecture de ${status?.sourcesCount ?? 0} sources` : 'Lecture de la source' },
-    { key: 'extract',  icon: '🧩', label: isMulti ? 'Extraction (par source, en parallèle)' : 'Extraction des sujets atomiques' },
-    { key: 'reconcile', icon: '🔀', label: 'Réconciliation multi-source (croisements + contradictions)', multiOnly: true },
-    { key: 'place',    icon: '🗂️',  label: 'Analyse de placement (review + section)' },
-    { key: 'write',    icon: '✍️',  label: `Rédaction des situations (en parallèle)${t3Progress}` },
-    { key: 'finalize', icon: '🎯', label: 'Finalisation' },
+  const ALL_STEPS: ReadonlyArray<{ key: PhaseKey; label: string; multiOnly?: boolean }> = [
+    { key: 'source',   label: isMulti ? `Lecture de ${status?.sourcesCount ?? 0} sources` : 'Lecture de la source' },
+    { key: 'extract',  label: isMulti ? 'Extraction (par source, en parallèle)' : 'Extraction des sujets atomiques' },
+    { key: 'reconcile', label: 'Réconciliation multi-source (croisements + contradictions)', multiOnly: true },
+    { key: 'place',    label: 'Analyse de placement (review + section)' },
+    { key: 'write',    label: `Rédaction des situations (en parallèle)${t3Progress}` },
+    { key: 'finalize', label: 'Finalisation' },
   ];
   const STEPS = ALL_STEPS.filter(s => !s.multiOnly || isMulti);
   const activeIdx = STEPS.findIndex(s => s.key === active);
@@ -870,7 +927,7 @@ function PipelineStepsIndicator({ status }: { status: api.PipelineJobStatus | nu
           const stepStatus: 'done' | 'active' | 'pending' =
             i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending';
           const color =
-            stepStatus === 'done' ? 'var(--success, #4caf50)' :
+            stepStatus === 'done' ? 'var(--accent-primary)' :
             stepStatus === 'active' ? 'var(--accent-primary)' :
             'var(--text-secondary)';
           const opacity = stepStatus === 'pending' ? 0.45 : 1;
@@ -886,7 +943,6 @@ function PipelineStepsIndicator({ status }: { status: api.PipelineJobStatus | nu
               }}>
                 {marker}
               </span>
-              <span aria-hidden>{step.icon}</span>
               <span>{step.label}</span>
             </li>
           );
