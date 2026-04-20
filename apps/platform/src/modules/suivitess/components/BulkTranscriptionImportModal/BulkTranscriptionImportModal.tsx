@@ -609,11 +609,18 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                     `${reviewIsExisting ? 'Review trouvée' : 'Nouvelle review'} : "${reviewLabel}"`
                     + ` › ${sectionIsExisting ? 'Section trouvée' : 'Nouvelle section'} : "${sectionLabel}"`;
                   return (
-                    <a key={r.key} className={styles.summaryItem} href={`#subj-${r.key}`}>
-                      {/* Col 1 : title */}
-                      <span className={styles.summaryItemTitle} title={r.subject.title}>
+                    <div
+                      key={r.key}
+                      className={`${styles.summaryItem} ${r.confirmed ? styles.summaryItemConfirmed : ''}`}
+                    >
+                      {/* Col 1 : title (clickable link to the detailed row) */}
+                      <a
+                        href={`#subj-${r.key}`}
+                        className={styles.summaryItemTitle}
+                        title={r.subject.title}
+                      >
                         {r.subject.title}
-                      </span>
+                      </a>
                       {/* Col 2 : mode */}
                       <span className={`${styles.summaryItemMode} ${r.subjectAction === 'update' ? styles.modeUpdate : styles.modeCreate}`}>
                         {r.subjectAction === 'update' ? 'Mise à jour' : 'Nouveau'}
@@ -643,7 +650,21 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                           ↻ statut
                         </span>
                       ) : <span aria-hidden="true" />}
-                    </a>
+                      {/* Col 7 : validate button — click to mark as confirmed
+                          (AI proposal accepted as-is). The detailed row will
+                          disappear below, only rows needing more work stay. */}
+                      <button
+                        type="button"
+                        className={`${styles.summaryItemValidate} ${r.confirmed ? styles.summaryItemValidateActive : ''}`}
+                        onClick={() => updateRow(r.key, { confirmed: !r.confirmed, skipped: false })}
+                        title={r.confirmed
+                          ? 'Cliquer pour revenir dessus (la ligne détaillée réapparaîtra)'
+                          : 'Valider la proposition IA — la ligne détaillée disparaîtra en bas'}
+                        aria-pressed={r.confirmed}
+                      >
+                        {r.confirmed ? '✓' : 'Valider'}
+                      </button>
+                    </div>
                   );
                 })}
               </nav>
@@ -651,7 +672,11 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
             <div className={styles.subjectsList}>
               {displayRows.length === 0 ? (
                 <p className={styles.emptyHint}>L'IA n'a identifié aucun sujet digne d'un suivi dans ce contenu.</p>
-              ) : displayRows.map(({ r, origIdx }, i) => {
+              ) : displayRows.filter(({ r }) => !r.confirmed).length === 0 ? (
+                <p className={styles.emptyHint}>
+                  ✓ Tous les sujets ont été validés dans le sommaire. Clique sur « Importer la sélection » pour finaliser.
+                </p>
+              ) : displayRows.filter(({ r }) => !r.confirmed).map(({ r, origIdx }, i, filteredArr) => {
                 // A row is part of a multi-placement group when the same
                 // subject.title appears on ≥2 rows (AI emitted multiple
                 // targets OR the user clicked "+ ajouter à une autre review").
@@ -683,7 +708,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                     onRemove={isCopyRow ? () => removeRow(r.key) : undefined}
                     isMultiPlacement={sameTitleCount >= 2}
                     sameNewSectionCount={sameSectionCount}
-                    nextRowKey={displayRows[i + 1]?.r.key ?? null}
+                    nextRowKey={filteredArr[i + 1]?.r.key ?? null}
                   />
                 );
               })}
