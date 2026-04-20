@@ -110,6 +110,26 @@ export function createDeliveryRoutes(): Router {
   // ============ Authenticated routes below ============
   router.use(authMiddleware);
 
+  // ============ Layout engine rules doc (human-readable) ============
+  // Returns the hand-maintained markdown catalog that describes every
+  // placement rule applied by the layout engine. Source of truth is the
+  // TS code ; this .md is what a non-dev reads to understand why a
+  // ticket landed where it did. Updated alongside any rule change.
+  router.get('/layout-rules', asyncHandler(async (_req, res) => {
+    const { readFile } = await import('node:fs/promises');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const here = dirname(fileURLToPath(import.meta.url));
+    // modules/delivery → modules → src → prompts/delivery/layout-rules.md
+    const rulesPath = resolve(here, '..', '..', 'prompts', 'delivery', 'layout-rules.md');
+    try {
+      const content = await readFile(rulesPath, 'utf8');
+      res.type('text/markdown').send(content);
+    } catch {
+      res.status(404).type('text/markdown').send('# Règles indisponibles\n\nLe fichier `layout-rules.md` est introuvable.');
+    }
+  }));
+
   // ============ Boards CRUD ============
 
   router.get('/boards', asyncHandler(async (req, res) => {

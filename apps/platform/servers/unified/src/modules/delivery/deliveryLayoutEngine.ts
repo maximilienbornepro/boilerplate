@@ -15,6 +15,10 @@
 // Everything else — choosing the column, the row, detecting no-op moves,
 // handling missing tickets as additions, clamping out-of-grid values — is
 // handled here, tested in isolation with unit tests.
+//
+// HUMAN-READABLE RULE CATALOG : `src/prompts/delivery/layout-rules.md`.
+// Keep it in sync when you touch any of the rules below — the unit tests
+// in `deliveryLayoutEngine.test.ts` are the drift filter.
 // ═══════════════════════════════════════════════════════════════════════
 
 import type {
@@ -77,7 +81,8 @@ function clamp(v: number, lo: number, hi: number): number {
 /** Tickets in an "abandoned" workflow state must never surface on a
  *  delivery board — they were consciously dropped. Includes common Jira /
  *  ClickUp / Linear labels (FR + EN). Keep this list narrow on purpose :
- *  a false-positive silently drops work from the board. */
+ *  a false-positive silently drops work from the board.
+ *  @see prompts/delivery/layout-rules.md §1 */
 export function isAbandonedStatus(raw: string | null | undefined): boolean {
   if (!raw) return false;
   const s = raw.toLowerCase().trim();
@@ -111,7 +116,8 @@ export function isAbandonedStatus(raw: string | null | undefined): boolean {
  *      the today bar (endCol = todayCol).
  *  Detected here so the rule is shared between board repositionings and
  *  additions from the sprint. Kept narrow on purpose — false-positives
- *  would silently pull ongoing work into the past. */
+ *  would silently pull ongoing work into the past.
+ *  @see prompts/delivery/layout-rules.md §2 */
 export function isReviewOrDeliveryStatus(raw: string | null | undefined): boolean {
   if (!raw) return false;
   const s = raw.toLowerCase().trim();
@@ -132,7 +138,8 @@ export function isReviewOrDeliveryStatus(raw: string | null | undefined): boolea
 
 /** Single mapping to keep Jira/ClickUp/Linear status labels consistent.
  *  Any label we don't recognize defaults to `todo` (safest — ticket ends
- *  up on the right-hand side, user can re-check). */
+ *  up on the right-hand side, user can re-check).
+ *  @see prompts/delivery/layout-rules.md §3 */
 export function statusCategory(raw: string | null | undefined): StatusCategory {
   if (!raw) return 'todo';
   const s = raw.toLowerCase().trim();
@@ -144,7 +151,8 @@ export function statusCategory(raw: string | null | undefined): StatusCategory {
 
 /** Estimation → width in columns. Matches the original skill's formula :
  *  0.5–5 days → 1 col, 5.1–10 → 2, 10.1–15 → 3, etc.
- *  Returns null when no estimation is available — caller keeps current width. */
+ *  Returns null when no estimation is available — caller keeps current width.
+ *  @see prompts/delivery/layout-rules.md §7 */
 export function widthFromEstimation(
   estimatedDays: number | null | undefined,
   storyPoints: number | null | undefined,
@@ -160,7 +168,8 @@ export function widthFromEstimation(
 
 /** Pick the target column based on status category + version category +
  *  today column. Returns the `startCol` for a width=1 ticket ; caller may
- *  adjust depending on actual width. Always clamped to the grid. */
+ *  adjust depending on actual width. Always clamped to the grid.
+ *  @see prompts/delivery/layout-rules.md §5 */
 export function chooseStartCol(
   statusCat: StatusCategory,
   versionCat: VersionCategory,
@@ -203,7 +212,8 @@ export function chooseStartCol(
 
 /** Guarantee an in_progress / blocked ticket's range [startCol, endCol]
  *  covers `todayCol`. Shifts left if the ticket ended before today, shifts
- *  right if it starts after. Returns the new startCol. */
+ *  right if it starts after. Returns the new startCol.
+ *  @see prompts/delivery/layout-rules.md §6 */
 export function ensureOverlapsToday(
   startCol: number,
   width: number,
@@ -230,7 +240,8 @@ export function ensureOverlapsToday(
  *  keep their own row.
  *
  *  Deterministic : given the same input order, always produces the same
- *  row assignment. */
+ *  row assignment.
+ *  @see prompts/delivery/layout-rules.md §8 */
 export function packRows(
   column: Array<{ taskId: string; startCol: number; endCol: number; qualityFlags: QualityFlags }>,
 ): Map<string, number> {
@@ -273,6 +284,13 @@ export function packRows(
  * Compute the full reorganization plan for a board.
  * No LLM calls — pure function over (tickets + assessment + grid).
  * Caller wires this between tier 1 (assess) and tier 2 (write reasoning).
+ *
+ * Rule application order (§ numbers refer to the catalog) :
+ *   §1 filter abandoned → §2 past-only for review/delivery → §5 pick col
+ *   → §6 ensure in_progress overlaps today → §7 width from estimation
+ *   → §8 pack rows → §9 skip no-op moves → §10 caps.
+ *
+ * @see prompts/delivery/layout-rules.md
  */
 export function computeBoardPlan(input: LayoutInput): BoardPlan {
   const { tickets, missingFromBoard, assessment, grid } = input;

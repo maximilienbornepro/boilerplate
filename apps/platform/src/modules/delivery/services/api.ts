@@ -553,3 +553,13 @@ export async function applySanityMoves(
   });
   return handleResponse<{ applied: number; movesApplied: number; additionsApplied: number }>(res);
 }
+
+// ============ Layout engine rules doc ============
+
+/** Fetches the human-readable layout rules catalog as raw markdown.
+ *  The response Content-Type is `text/markdown`. */
+export async function fetchLayoutRules(): Promise<string> {
+  const res = await fetch(`${API_BASE}/layout-rules`, { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
