@@ -97,7 +97,10 @@ function groupSlackMessagesByDay(
     items.push({
       id: `slack:${channelId}:${dateStr}`,
       provider: 'slack',
-      title: `#${channelName} — ${dateLabel} (${msgs.length} messages)`,
+      // Title explicitly says 'Messages du …' so the user doesn't confuse
+      // the date in the title (= date of the collected messages) with the
+      // sync time shown in the banner at the top of the modal.
+      title: `#${channelName} — Messages du ${dateLabel} (${msgs.length} messages)`,
       date: dateStr + 'T12:00:00.000Z',
       preview,
       participants,
@@ -406,66 +409,43 @@ export function createRoutes(): Router {
     try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'reformulation'); }
     catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
-    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
-    const { client, model } = await getAnthropicClient(req.user!.id);
-
-    // Load the editable skill (DB first, file fallback) — admin can tune it
-    // from Admin → AI Skills.
-    const { loadSkill } = await import('../aiSkills/skillLoader.js');
-    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
-    const reformSkill = await loadSkill('suivitess-reformulate-subject');
-
     const inputSummary = `Titre : ${subject.title}
 État de la situation : ${subject.situation || '(vide)'}
 Responsable : ${subject.responsibility || 'Non assigné'}
 Statut : ${subject.status}`;
 
-    const promptText = `${reformSkill}
-
----
-
-# Sujet à reformuler
-
-${inputSummary}
-
-Applique les règles ci-dessus et réponds uniquement en JSON.`;
-
-    const startedAt = Date.now();
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: promptText }],
+    const { runSkill } = await import('../aiSkills/runSkill.js');
+    const runRes = await runSkill({
+      slug: 'suivitess-reformulate-subject',
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      buildPrompt: (skill) => `${skill}\n\n---\n\n# Sujet à reformuler\n\n${inputSummary}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
+      inputContent: inputSummary,
+      sourceKind: 'subject',
+      sourceTitle: subject.title,
+      documentId: null,
+      maxTokens: 2000,
     });
 
-    const text = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
     let result: { title?: string; situation?: string } = {};
     try {
-      let json = text.trim();
+      let json = runRes.outputText.trim();
       if (json.startsWith('```json')) json = json.slice(7);
       if (json.startsWith('```')) json = json.slice(3);
       if (json.endsWith('```')) json = json.slice(0, -3);
       result = JSON.parse(json.trim());
     } catch {
-      const match = text.match(/\{[\s\S]*\}/);
+      const match = runRes.outputText.match(/\{[\s\S]*\}/);
       if (match) result = JSON.parse(match[0]);
     }
 
     const finalTitle = result.title || subject.title;
     const finalSituation = result.situation || subject.situation;
-    const logId = await logAnalysis({
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      skillSlug: 'suivitess-reformulate-subject',
-      sourceKind: 'subject',
-      sourceTitle: subject.title,
-      documentId: null,
-      inputContent: inputSummary,
-      fullPrompt: promptText,
-      aiOutputRaw: text,
-      proposals: [{ title: finalTitle, situation: finalSituation }],
-      durationMs: Date.now() - startedAt,
-    });
-    res.json({ title: finalTitle, situation: finalSituation, logId });
+    if (runRes.logId != null) {
+      const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+      await attachProposalsToLog(runRes.logId, [{ title: finalTitle, situation: finalSituation }]);
+    }
+    res.json({ title: finalTitle, situation: finalSituation, logId: runRes.logId });
   }));
 
   // Generate an email summary for one or all subjects
@@ -521,21 +501,52 @@ Format tableau ou liste numérotée. Ton direct et actionnable.`,
     const { getAnthropicClient } = await import('../connectors/aiProvider.js');
     const { client, model } = await getAnthropicClient(req.user!.id);
 
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 3000,
-      messages: [{
-        role: 'user',
-        content: `${templatePrompts[template] || templatePrompts.listing}
+    const fullPrompt = `${templatePrompts[template] || templatePrompts.listing}
 
 Document : "${doc.title}"
 ${content}
 
-Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En français.`,
-      }],
-    });
+Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En français.`;
 
-    const emailBody = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
+    // ── Best-effort logging : capture latency, tokens, cost and output.
+    //    Logged in both success and failure paths so /ai-logs stays
+    //    complete even when the AI call itself throws. ──
+    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
+    const startedAt = Date.now();
+    let aiResponse: Awaited<ReturnType<typeof client.messages.create>> | null = null;
+    let emailBody = '';
+    let logError: string | null = null;
+    try {
+      aiResponse = await client.messages.create({
+        model,
+        max_tokens: 3000,
+        messages: [{ role: 'user', content: fullPrompt }],
+      });
+      emailBody = aiResponse.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('');
+    } catch (e) {
+      logError = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      const usage = aiResponse && 'usage' in aiResponse ? aiResponse.usage as { input_tokens?: number; output_tokens?: number } | undefined : undefined;
+      await logAnalysis({
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        skillSlug: 'suivitess-email-summary',
+        sourceKind: 'email-summary',
+        sourceTitle: `${template} — ${doc.title}`,
+        documentId: String(documentId),
+        inputContent: content,
+        fullPrompt,
+        aiOutputRaw: emailBody,
+        proposals: null,
+        durationMs: Date.now() - startedAt,
+        error: logError,
+        provider: 'anthropic',
+        model,
+        inputTokens: usage?.input_tokens ?? null,
+        outputTokens: usage?.output_tokens ?? null,
+      });
+    }
 
     res.json({ email: emailBody, template });
   }));
@@ -992,12 +1003,7 @@ Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En fran
         const { getAnthropicClient } = await import('../connectors/aiProvider.js');
         const { client, model } = await getAnthropicClient(req.user!.id);
 
-        const aiResponse = await client.messages.create({
-          model,
-          max_tokens: 4096,
-          messages: [{
-            role: 'user',
-            content: `Tu es un assistant de suivi de réunion. Analyse cette transcription et extrais les sujets clés discutés.
+        const fullPrompt = `Tu es un assistant de suivi de réunion. Analyse cette transcription et extrais les sujets clés discutés.
 
 Pour chaque sujet, retourne :
 - "title": un titre court et clair (max 100 caractères)
@@ -1011,14 +1017,48 @@ Exemple: [{"title":"...", "situation":"...", "responsibility":"...", "status":"�
 Maximum 15 sujets, priorise les plus importants.
 
 Transcription:
-${transcriptText.slice(0, 30000)}`,
-          }],
-        });
+${transcriptText.slice(0, 30000)}`;
 
-        const responseText = aiResponse.content
-          .filter(c => c.type === 'text')
-          .map(c => (c as { type: 'text'; text: string }).text)
-          .join('');
+        // ── Best-effort logging (see /ai-logs).
+        const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
+        const startedAt = Date.now();
+        let aiResponse: Awaited<ReturnType<typeof client.messages.create>> | null = null;
+        let responseText = '';
+        let logError: string | null = null;
+        try {
+          aiResponse = await client.messages.create({
+            model,
+            max_tokens: 4096,
+            messages: [{ role: 'user', content: fullPrompt }],
+          });
+          responseText = aiResponse.content
+            .filter(c => c.type === 'text')
+            .map(c => (c as { type: 'text'; text: string }).text)
+            .join('');
+        } catch (e) {
+          logError = e instanceof Error ? e.message : String(e);
+          throw e;
+        } finally {
+          const usage = aiResponse && 'usage' in aiResponse ? aiResponse.usage as { input_tokens?: number; output_tokens?: number } | undefined : undefined;
+          await logAnalysis({
+            userId: req.user!.id,
+            userEmail: req.user!.email,
+            skillSlug: 'suivitess-import-source-into-document',
+            sourceKind: provider, // fathom / otter — grouped under "transcript" by /ai-logs
+            sourceTitle: callTitle || 'Call',
+            documentId: String(docId),
+            inputContent: transcriptText,
+            fullPrompt,
+            aiOutputRaw: responseText,
+            proposals: null,
+            durationMs: Date.now() - startedAt,
+            error: logError,
+            provider: 'anthropic',
+            model,
+            inputTokens: usage?.input_tokens ?? null,
+            outputTokens: usage?.output_tokens ?? null,
+          });
+        }
 
         // Parse JSON
         let subjects: Array<{ title: string; situation: string; responsibility?: string | null; status?: string }> = [];
@@ -1136,12 +1176,7 @@ ${transcriptText.slice(0, 30000)}`,
     const { loadSkill } = await import('../aiSkills/skillLoader.js');
     const importSkill = await loadSkill('suivitess-import-source-into-document');
 
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 4096,
-      messages: [{
-        role: 'user',
-        content: `${importSkill}
+    const fullPrompt = `${importSkill}
 
 ---
 
@@ -1153,14 +1188,48 @@ ${existingContext || '(aucun sujet existant)'}
 ## Contenu de la transcription
 ${transcriptionSubjects}
 
-Applique les règles ci-dessus et réponds uniquement en JSON.`,
-      }],
-    });
+Applique les règles ci-dessus et réponds uniquement en JSON.`;
 
-    const responseText = aiResponse.content
-      .filter(c => c.type === 'text')
-      .map(c => (c as { type: 'text'; text: string }).text)
-      .join('');
+    const { logAnalysis, attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+    const startedAt = Date.now();
+    let aiResponse: Awaited<ReturnType<typeof client.messages.create>> | null = null;
+    let responseText = '';
+    let logError: string | null = null;
+    let logId: number | null = null;
+    try {
+      aiResponse = await client.messages.create({
+        model,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: fullPrompt }],
+      });
+      responseText = aiResponse.content
+        .filter(c => c.type === 'text')
+        .map(c => (c as { type: 'text'; text: string }).text)
+        .join('');
+    } catch (e) {
+      logError = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      const usage = aiResponse && 'usage' in aiResponse ? aiResponse.usage as { input_tokens?: number; output_tokens?: number } | undefined : undefined;
+      logId = await logAnalysis({
+        userId: req.user!.id,
+        userEmail: req.user!.email,
+        skillSlug: 'suivitess-import-source-into-document',
+        sourceKind: 'transcript',
+        sourceTitle: sourceSection.name,
+        documentId: String(docId),
+        inputContent: transcriptionSubjects,
+        fullPrompt,
+        aiOutputRaw: responseText,
+        proposals: null,
+        durationMs: Date.now() - startedAt,
+        error: logError,
+        provider: 'anthropic',
+        model,
+        inputTokens: usage?.input_tokens ?? null,
+        outputTokens: usage?.output_tokens ?? null,
+      });
+    }
 
     let proposals: Array<Record<string, unknown>> = [];
     try {
@@ -1176,6 +1245,7 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`,
 
     // Add an index to each proposal for selection
     const indexed = proposals.map((p, i) => ({ ...p, id: i }));
+    if (logId != null) await attachProposalsToLog(logId, indexed);
 
     res.json({ proposals: indexed });
   }));
@@ -1306,67 +1376,47 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`,
     try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'transcript_analysis'); }
     catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
 
-    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
-    const { client, model } = await getAnthropicClient(req.user!.id);
-
-    // Uses the shared editable skill — admin can tweak rules from Admin → AI Skills.
-    const { loadSkill } = await import('../aiSkills/skillLoader.js');
-    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
-    const skill = await loadSkill('suivitess-import-source-into-document');
-
-    const promptText = `${skill}
-
----
-
-# Contexte exécutable
-
-## Document existant (avec IDs)
-${existingContext || '(aucun sujet existant)'}
-
-## Transcription du call "${callTitle || 'Call'}"
-${transcriptText.slice(0, 30000)}
-
-Applique les règles ci-dessus et réponds uniquement en JSON.`;
-
-    const startedAt = Date.now();
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: promptText }],
+    // ── Modular 3-tier pipeline (always active, no flag) ──
+    // Each tier log (T1 extract → T2 place → T3 writers) already has its
+    // own output attached via analyzeSourcePipeline — we don't overwrite
+    // the root log here so /ai-logs keeps a honest count per tier.
+    const { analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+    const documentCtx = {
+      id: String(doc.id),
+      title: doc.title,
+      sections: doc.sections.map(s => ({
+        id: String(s.id),
+        name: s.name,
+        subjects: s.subjects.map(sub => ({
+          id: String(sub.id),
+          title: sub.title,
+          situationExcerpt: (sub.situation || '').slice(0, 2000),
+          status: sub.status,
+          responsibility: sub.responsibility ?? null,
+        })),
+      })),
+    };
+    const { proposals, rootLogId } = await analyzeSourceForDocument({
+      sourceKind: 'transcript',
+      sourceRaw: transcriptText,
+      sourceTitle: callTitle || 'Call',
+      document: documentCtx,
+      userId: req.user!.id,
+      userEmail: req.user!.email || '',
     });
+    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
 
-    const responseText = aiResponse.content
-      .filter(c => c.type === 'text')
-      .map(c => (c as { type: 'text'; text: string }).text)
-      .join('');
-
-    let proposals: Array<Record<string, unknown>> = [];
-    try {
-      let jsonText = responseText.trim();
-      if (jsonText.startsWith('```json')) jsonText = jsonText.slice(7);
-      if (jsonText.startsWith('```')) jsonText = jsonText.slice(3);
-      if (jsonText.endsWith('```')) jsonText = jsonText.slice(0, -3);
-      proposals = JSON.parse(jsonText.trim());
-    } catch {
-      const match = responseText.match(/\[[\s\S]*\]/);
-      if (match) proposals = JSON.parse(match[0]);
+    if (indexed.length === 0) {
+      res.json({
+        proposals: [],
+        logId: rootLogId,
+        pipelineEmpty: true,
+        message: `Aucun sujet proposé. Ouvre /ai-logs/${rootLogId ?? '??'} pour voir le détail (tier 1/2/3 chaînés par parent_log_id).`,
+      });
+      return;
     }
 
-    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
-    const logId = await logAnalysis({
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      skillSlug: 'suivitess-import-source-into-document',
-      sourceKind: 'transcript',
-      sourceTitle: callTitle || 'Call',
-      documentId: String(docId),
-      inputContent: transcriptText,
-      fullPrompt: promptText,
-      aiOutputRaw: responseText,
-      proposals: indexed,
-      durationMs: Date.now() - startedAt,
-    });
-    res.json({ proposals: indexed, logId });
+    res.json({ proposals: indexed, logId: rootLogId });
   }));
 
   // ── Streaming version of the analysis (SSE) ──
@@ -1660,65 +1710,38 @@ ${filteredContent.slice(0, 30000)}`,
 
     const sourceLabel = source === 'outlook' ? 'emails' : 'messages Slack';
 
-    const { getAnthropicClient } = await import('../connectors/aiProvider.js');
-    const { client, model } = await getAnthropicClient(req.user!.id);
-
-    // Uses the shared editable skill — admin can tweak rules from Admin → AI Skills.
-    const { loadSkill } = await import('../aiSkills/skillLoader.js');
-    const { logAnalysis } = await import('../aiSkills/analysisLogsService.js');
-    const skill = await loadSkill('suivitess-import-source-into-document');
-
-    const promptText = `${skill}
-
----
-
-# Contexte exécutable
-
-## Document existant (avec IDs)
-${existingContext || '(Document vide)'}
-
-## Contenu à analyser (${sourceLabel})
-${filteredContent.slice(0, 30000)}
-
-Applique les règles ci-dessus et réponds uniquement en JSON au format attendu (tableau ou objet { "proposals": [...] }).`;
-
-    const startedAt = Date.now();
-    const aiResponse = await client.messages.create({
-      model,
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: promptText }],
-    });
-
-    const text = aiResponse.content[0]?.type === 'text' ? aiResponse.content[0].text : '';
-    // Handles both shapes — bare array `[...]` (from the shared skill) OR
-    // legacy `{ "proposals": [...] }` wrapper.
-    let proposals: Array<Record<string, unknown>> = [];
-    try {
-      const arrayMatch = text.match(/\[[\s\S]*\]/);
-      const objectMatch = text.match(/\{[\s\S]*\}/);
-      if (arrayMatch && (!objectMatch || arrayMatch.index! < objectMatch.index!)) {
-        proposals = JSON.parse(arrayMatch[0]);
-      } else if (objectMatch) {
-        const parsed = JSON.parse(objectMatch[0]);
-        proposals = Array.isArray(parsed) ? parsed : (parsed.proposals || []);
-      }
-    } catch { /* parse error */ }
-
-    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
-    const logId = await logAnalysis({
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      skillSlug: 'suivitess-import-source-into-document',
-      sourceKind: source,
+    // ── Modular 3-tier pipeline (always active). ──
+    const { analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+    const documentCtx = {
+      id: String(doc.id),
+      title: doc.title,
+      sections: doc.sections.map(s => ({
+        id: String(s.id),
+        name: s.name,
+        subjects: s.subjects.map(sub => ({
+          id: String(sub.id),
+          title: sub.title,
+          situationExcerpt: (sub.situation || '').slice(0, 2000),
+          status: sub.status,
+          responsibility: sub.responsibility ?? null,
+        })),
+      })),
+    };
+    const pipelineKind = source === 'slack' ? 'slack' : 'outlook';
+    const { proposals, rootLogId } = await analyzeSourceForDocument({
+      sourceKind: pipelineKind,
+      sourceRaw: filteredContent,
       sourceTitle: sourceTitle || 'Import',
-      documentId: String(docId),
-      inputContent: filteredContent,
-      fullPrompt: promptText,
-      aiOutputRaw: text,
-      proposals: indexed,
-      durationMs: Date.now() - startedAt,
+      document: documentCtx,
+      userId: req.user!.id,
+      userEmail: req.user!.email || '',
     });
-    res.json({ proposals: indexed, skipped, logId });
+    // Consistent with sourceLabel kept for future logging/UI ; the pipeline
+    // already logs per-tier via analyzeSourcePipeline.
+    void sourceLabel;
+    const indexed = proposals.map((p, i) => ({ ...p, id: i }));
+
+    res.json({ proposals: indexed, skipped, logId: rootLogId });
   }));
 
   // ==================== SUBJECT EXTERNAL LINKS (Jira/Notion/Roadmap) ====================
@@ -2165,6 +2188,75 @@ Applique les règles ci-dessus et réponds uniquement en JSON au format attendu 
 
   // ==================== Bulk transcription import (list-level) ====================
 
+  // GET /transcription/sync-meta — returns the last-sync / message-count
+  // for each collector, so the modal can show "Dernière synchro Slack :
+  // il y a 3 min (12 messages)" even when there's no new content.
+  router.get('/transcription/sync-meta', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    type ProviderMeta = {
+      configured: boolean;
+      isActive?: boolean;
+      lastSyncAt: string | null;
+      messageCount: number;
+      channelCount?: number;
+      daysToFetch?: number;
+      error?: string;
+    };
+    const meta: { slack: ProviderMeta; outlook: ProviderMeta } = {
+      slack:   { configured: false, lastSyncAt: null, messageCount: 0 },
+      outlook: { configured: false, lastSyncAt: null, messageCount: 0 },
+    };
+    try {
+      const { getSlackConfig, getSlackMessageCount } = await import('./slackCollectorService.js');
+      const sc = await getSlackConfig(userId);
+      if (sc) {
+        meta.slack = {
+          configured: true,
+          isActive: sc.isActive,
+          lastSyncAt: sc.lastSyncAt,
+          messageCount: await getSlackMessageCount(sc.id),
+          channelCount: sc.channels.length,
+          daysToFetch: sc.daysToFetch,
+        };
+      }
+    } catch (err) { meta.slack.error = (err as Error).message; }
+    try {
+      const { getOutlookMessageCount } = await import('./outlookCollectorService.js');
+      const count = await getOutlookMessageCount(userId);
+      // We don't track Outlook sync time separately — the extension posts
+      // whenever the user opens Outlook, so the latest collected email's
+      // `date` is our best proxy.
+      const { rows } = await db.pool.query(
+        `SELECT MAX(collected_at) AS last FROM outlook_messages WHERE user_id = $1`,
+        [userId],
+      ).catch(() => ({ rows: [] as Array<{ last: string | null }> }));
+      meta.outlook = {
+        configured: count > 0,
+        lastSyncAt: rows[0]?.last ?? null,
+        messageCount: count,
+      };
+    } catch (err) { meta.outlook.error = (err as Error).message; }
+    res.json(meta);
+  }));
+
+  // POST /transcription/sync-all — triggers a sync for every configured
+  // collector (currently only Slack, since Outlook is push-based).
+  // Returns the per-provider result. Non-blocking (awaited serially is
+  // fine — one Slack sync is ~1 s).
+  router.post('/transcription/sync-all', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    type Result = { ok: boolean; total?: number; error?: string };
+    const out: { slack: Result } = { slack: { ok: false } };
+    try {
+      const { syncNow } = await import('./slackCollectorService.js');
+      const r = await syncNow(userId);
+      out.slack = { ok: true, total: r.total };
+    } catch (err) {
+      out.slack = { ok: false, error: (err as Error).message };
+    }
+    res.json(out);
+  }));
+
   // Aggregate calls + emails across every connected provider.
   // Returns a unified list the UI can show and let the user re-route.
   router.get('/transcription/bulk-sources', asyncHandler(async (req, res) => {
@@ -2438,31 +2530,195 @@ Applique les règles ci-dessus et réponds uniquement en JSON au format attendu 
       }
     }
 
-    // 4) Run AI.
-    const { analyzeTranscriptionAndRoute } = await import('./transcriptionRoutingService.js');
+    // 4) Run AI — modular 3-tier pipeline (always active).
+    const availableReviewsPayload = reviews.map(r => ({
+      id: r.id,
+      title: r.title,
+      sections: r.sections.map(s => ({
+        id: s.id,
+        name: s.name,
+        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+      })),
+    }));
+
+    const { analyzeSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
+
     try {
-      const result = await analyzeTranscriptionAndRoute(
-        userId,
-        transcript,
+      const { proposals, rootLogId } = await analyzeSourceForReviews({
+        sourceKind: source as 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail',
+        sourceRaw: transcript,
+        sourceTitle: title || '(sans titre)',
         reviews,
-        { title: title || '(sans titre)', date: date ?? null, provider: source, userEmail: req.user!.email },
-      );
+        userId,
+        userEmail: req.user!.email || '',
+      });
       res.json({
-        ...result,
-        availableReviews: reviews.map(r => ({
-          id: r.id,
-          title: r.title,
-          sections: r.sections.map(s => ({
-            id: s.id,
-            name: s.name,
-            subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
-          })),
-        })),
+        summary: proposals.length > 0 ? `${proposals.length} sujet(s) extrait(s) et routé(s).` : 'Aucun sujet exploitable.',
+        subjects: proposals,
+        logId: rootLogId,
+        availableReviews: availableReviewsPayload,
       });
     } catch (err) {
-      console.error('[SuiviTess routing] error:', err);
+      console.error('[SuiviTess pipeline routing] error:', err);
       res.status(500).json({ error: (err as Error).message || 'Analyse échouée' });
     }
+  }));
+
+  // ── POST /transcription/analyze-and-route-async ─────────────────────
+  // Same inputs as /analyze-and-route, but returns a { jobId } IMMEDIATELY
+  // and runs the pipeline in the background. The frontend polls
+  // GET /suivitess/api/pipeline-jobs/:jobId every ~500 ms to drive the
+  // real progress indicator (T1/T2/T3 boundaries, writer count).
+  // Replaces the fake-timer PipelineStepsIndicator.
+  router.post('/transcription/analyze-and-route-async', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const userEmail = req.user!.email;
+    const isAdmin = req.user!.isAdmin;
+    const { source, id, title, date } = (req.body || {}) as {
+      source?: string; id?: string; title?: string; date?: string | null;
+    };
+    if (!source || !id) { res.status(400).json({ error: 'source et id sont requis' }); return; }
+
+    const { createJob, makeOnProgress, finishJob, failJob } = await import('../aiSkills/pipelineJobs.js');
+    const job = createJob();
+    res.json({ jobId: job.id });
+
+    // ── Run in background after the HTTP response has been sent. ──
+    // We use setImmediate so any error inside never crashes the response.
+    setImmediate(async () => {
+      try {
+        // 1) Fetch the raw transcript / email body (same as the sync route).
+        let transcript = '';
+        if (source === 'fathom') {
+          const { getFathomTranscript } = await import('./fathomService.js');
+          const entries = await getFathomTranscript(userId, id);
+          transcript = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+        } else if (source === 'otter') {
+          const { getOtterTranscript } = await import('./otterService.js');
+          const entries = await getOtterTranscript(userId, id);
+          transcript = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+        } else if (source === 'outlook') {
+          if (id.startsWith('outlook:')) {
+            const dateFilter = id.replace('outlook:', '');
+            const { getOutlookMessages } = await import('./outlookCollectorService.js');
+            const msgs = await getOutlookMessages(userId, { days: 30 });
+            const filtered = dateFilter && dateFilter !== 'unknown'
+              ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
+              : msgs;
+            transcript = filtered.map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`).join('\n');
+          } else {
+            const { getOutlookEmailBody } = await import('./emailService.js');
+            transcript = await getOutlookEmailBody(userId, id);
+          }
+        } else if (source === 'gmail') {
+          const { getGmailEmailBody } = await import('./emailService.js');
+          transcript = await getGmailEmailBody(userId, id);
+        } else if (source === 'slack') {
+          const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+          const slackConfig = await getSlackConfig(userId);
+          if (!slackConfig) { failJob(job.id, 'Slack non configuré'); return; }
+          const parts = id.split(':');
+          const channelId = parts[1] || parts[0];
+          const dateFilter = parts[2];
+          const messages = await getSlackMessages(slackConfig.id, { days: slackConfig.daysToFetch, channelId });
+          const filtered = dateFilter ? messages.filter(m => {
+            const d = new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10);
+            return d === dateFilter;
+          }) : messages;
+          transcript = filtered
+            .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+            .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
+            .join('\n');
+        } else {
+          failJob(job.id, `Source non supportée : ${source}`);
+          return;
+        }
+        if (!transcript.trim()) { failJob(job.id, 'Transcription vide'); return; }
+
+        // 2) Credits.
+        const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+        try { await deductCredits(userId, isAdmin, 'suivitess', 'transcript_analysis'); }
+        catch (e) {
+          if (e instanceof InsufficientCreditsError) { failJob(job.id, 'INSUFFICIENT_CREDITS'); return; }
+          throw e;
+        }
+
+        // 3) Build reviews snapshot.
+        const existingDocs = await db.getAllDocuments(userId, isAdmin);
+        const reviewsSnap: Array<{
+          id: string; title: string; description: string | null;
+          sections: Array<{
+            id: string; name: string;
+            subjects: Array<{ id: string; title: string; status: string | null; situationExcerpt: string; responsibility: string | null }>;
+          }>;
+        }> = [];
+        for (const d of existingDocs.slice(0, 40)) {
+          try {
+            const doc = await db.getDocumentWithSections(d.id);
+            if (!doc) continue;
+            reviewsSnap.push({
+              id: doc.id,
+              title: doc.title,
+              description: (d as { description?: string | null }).description ?? null,
+              sections: (doc.sections || []).map(s => ({
+                id: s.id,
+                name: s.name,
+                subjects: (s.subjects || []).slice(0, 20).map(sub => ({
+                  id: sub.id,
+                  title: sub.title,
+                  status: sub.status ?? null,
+                  situationExcerpt: (sub.situation || '').slice(0, 200),
+                  responsibility: sub.responsibility ?? null,
+                })),
+              })),
+            });
+          } catch { /* best effort */ }
+        }
+
+        // 4) Run pipeline with progress callbacks.
+        const { analyzeSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
+        const onProgress = makeOnProgress(job.id);
+        const { proposals, rootLogId } = await analyzeSourceForReviews({
+          sourceKind: source as 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail',
+          sourceRaw: transcript,
+          sourceTitle: title || '(sans titre)',
+          reviews: reviewsSnap,
+          userId,
+          userEmail: userEmail || '',
+        }, onProgress);
+
+        finishJob(job.id, {
+          summary: proposals.length > 0 ? `${proposals.length} sujet(s) extrait(s) et routé(s).` : 'Aucun sujet exploitable.',
+          subjects: proposals,
+          logId: rootLogId,
+          availableReviews: reviewsSnap.map(r => ({
+            id: r.id,
+            title: r.title,
+            sections: r.sections.map(s => ({
+              id: s.id,
+              name: s.name,
+              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+            })),
+          })),
+        });
+      } catch (err) {
+        console.error('[SuiviTess pipeline routing async] error:', err);
+        failJob(job.id, err instanceof Error ? err.message : 'Erreur inconnue');
+      }
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      void date;
+    });
+  }));
+
+  // ── GET /pipeline-jobs/:id ──────────────────────────────────────────
+  // Generic polling endpoint for any async pipeline job (bulk import,
+  // content-import, transcript-merge). Returns the full job state —
+  // phase, counts, durations, and the final result when phase === 'done'.
+  router.get('/pipeline-jobs/:id', asyncHandler(async (req, res) => {
+    const { getJob } = await import('../aiSkills/pipelineJobs.js');
+    const job = getJob(String(req.params.id));
+    if (!job) { res.status(404).json({ error: 'Job introuvable (ou expiré après 15 min)' }); return; }
+    res.json(job);
   }));
 
   // POST /transcription/analyze-and-route-stream

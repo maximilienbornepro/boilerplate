@@ -6,9 +6,11 @@
 //
 // Never deletes a task, never changes a task's duration, only repositions.
 
-import { getAnthropicClient } from '../connectors/aiProvider.js';
+import { getAnthropicClient, logAnthropicUsage } from '../connectors/aiProvider.js';
 import { loadSkill as loadAiSkill } from '../aiSkills/skillLoader.js';
 import { logAnalysis } from '../aiSkills/analysisLogsService.js';
+import { ensureSkillVersion } from '../aiSkills/skillVersionService.js';
+import { computeCostUsd } from '../aiSkills/pricing.js';
 
 /**
  * Slug of the editable skill that holds the rules injected into the Claude
@@ -325,6 +327,7 @@ export async function analyzeSanityCheck(
   // skill-reorganize-board.md as fallback. Edit from the admin UI
   // (Admin → AI Skills) or tweak the markdown file to change defaults.
   const skill = await loadSkill();
+  const { hash: skillVersionHash } = await ensureSkillVersion(SKILL_SLUG, skill, null);
 
   const prompt = `${skill}
 
@@ -357,6 +360,9 @@ Applique les règles ci-dessus à cet état et réponds uniquement en JSON.`;
   const text = aiResponse.content.find(b => b.type === 'text')?.type === 'text'
     ? (aiResponse.content.find(b => b.type === 'text') as { type: 'text'; text: string }).text
     : '';
+  const inputTokens = aiResponse.usage?.input_tokens ?? 0;
+  const outputTokens = aiResponse.usage?.output_tokens ?? 0;
+  logAnthropicUsage(userId, model, aiResponse.usage, `aiSkills:${SKILL_SLUG}`);
 
   let parsed: { summary?: string; columns?: unknown[] } = {};
   try {
@@ -477,6 +483,12 @@ Applique les règles ci-dessus à cet état et réponds uniquement en JSON.`;
     aiOutputRaw: text,
     proposals: columns,
     durationMs: Date.now() - startedAt,
+    skillVersionHash,
+    provider: 'anthropic',
+    model,
+    inputTokens,
+    outputTokens,
+    costUsd: computeCostUsd(model, inputTokens, outputTokens),
   });
 
   const result: SanityCheckResult & { logId?: number | null } = {

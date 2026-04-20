@@ -13,6 +13,11 @@ const MODULES_DIR = (() => {
   return resolve(here, '..');
 })();
 
+/** Root directory that hosts every AI prompt `.md` file. Centralized in
+ *  `src/prompts/` (organized by module + legacy subfolder) rather than
+ *  scattered across every feature module. */
+const PROMPTS_DIR = resolve(MODULES_DIR, '..', 'prompts');
+
 export interface SkillDefinition {
   /** Stable id used in code and DB. Never rename once deployed. */
   slug: string;
@@ -36,27 +41,27 @@ export interface SkillDefinition {
 export const SKILLS: readonly SkillDefinition[] = [
   {
     slug: 'suivitess-route-source-to-review',
-    name: 'SuiviTess — Router une source vers la bonne review',
+    name: 'SuiviTess — Router une source (LEGACY — plus appelé)',
     description:
-      'Page listing SuiviTess : analyse une transcription / mail / Slack et décide dans QUELLE review et QUELLE section chaque sujet doit aller. Détecte les doublons avec les sujets existants.',
+      'LEGACY — skill monolithique remplacé par le pipeline 3-tiers (extract → place-in-reviews → write). Conservé pour la navigation historique dans /ai-logs. N\'est plus invoqué depuis avril 2026.',
     usage: {
       module: 'suivitess',
-      endpoint: 'POST /suivitess/api/transcription/analyze-and-route',
-      trigger: 'Import en masse depuis la page listing (BulkTranscriptionImportModal)',
+      endpoint: 'Aucun — legacy',
+      trigger: 'Aucun — remplacé par le pipeline',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-route-source-to-review.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/legacy/route-source-to-review.md'),
   },
   {
     slug: 'suivitess-import-source-into-document',
-    name: 'SuiviTess — Intégrer une source dans un suivitess ouvert',
+    name: 'SuiviTess — Intégrer une source (LEGACY — plus appelé)',
     description:
-      'Page d\'un suivitess : analyse une transcription / mail / Slack et propose d\'enrichir les sujets existants ou de créer de nouveaux sujets / sections dans le document courant.',
+      'LEGACY — skill monolithique remplacé par le pipeline 3-tiers (extract → place → write). Conservé dans le registre uniquement pour la navigation historique dans /ai-logs. N\'est plus invoqué à aucun endroit du code depuis avril 2026.',
     usage: {
       module: 'suivitess',
-      endpoint: 'POST /suivitess/api/documents/:docId/transcript-analyze-and-propose (et .../content-analyze-and-propose)',
-      trigger: 'Assistant d\'import dans un suivitess (TranscriptionWizard — bouton « Analyser et fusionner »)',
+      endpoint: 'Aucun — legacy',
+      trigger: 'Aucun — remplacé par suivitess-extract-* / place-* / append-situation / compose-situation',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-import-source-into-document.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/legacy/import-source-into-document.md'),
   },
   {
     slug: 'suivitess-reformulate-subject',
@@ -68,19 +73,150 @@ export const SKILLS: readonly SkillDefinition[] = [
       endpoint: 'POST /suivitess/api/subjects/:id/reformulate',
       trigger: 'Bouton « Reformuler avec l\'IA » sur un sujet',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'suivitess/skill-reformulate-subject.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/reformulate-subject.md'),
   },
   {
     slug: 'delivery-reorganize-board',
-    name: 'Delivery — Réorganiser un board',
+    name: 'Delivery — Réorganiser un board (LEGACY — plus appelé)',
     description:
-      'Analyse un delivery board et propose un plan de réorganisation colonne par colonne selon statut, estimation et version fix des tickets externes (Jira, ClickUp, Linear, ...).',
+      'LEGACY — ancien skill monolithique remplacé par le pipeline modulaire (assess-tickets → layout engine TS → write-reasoning). Conservé dans le registre pour la navigation historique dans /ai-logs. N\'est plus invoqué depuis avril 2026.',
     usage: {
       module: 'delivery',
-      endpoint: 'POST /delivery/api/boards/:id/ai-sanity-check',
-      trigger: 'Bouton « Vérifier avec l\'IA » sur un delivery board',
+      endpoint: 'Aucun — legacy',
+      trigger: 'Aucun — remplacé par le pipeline delivery',
     },
-    defaultFilePath: resolve(MODULES_DIR, 'delivery/skill-reorganize-board.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'delivery/legacy/reorganize-board.md'),
+  },
+  {
+    slug: 'delivery-assess-tickets',
+    name: 'Delivery — Pipeline/T1 : évaluer la qualité des tickets',
+    description:
+      'Tier 1 du pipeline delivery. Produit des flags qualité (hasEstimation, hasMeaningfulDescription, ready) + risk notes optionnelles par ticket. Aucun placement — juste une évaluation du contenu pour alimenter le layout engine.',
+    usage: {
+      module: 'delivery',
+      endpoint: 'Interne — analyzeSanityCheckPipeline() dans delivery/reorganizeBoardPipeline.ts',
+      trigger: 'Bouton « Vérifier avec l\'IA » sur un delivery board — tier 1 du pipeline',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'delivery/assess-tickets.md'),
+  },
+  {
+    slug: 'delivery-write-reasoning',
+    name: 'Delivery — Pipeline/T2 : rédiger les justifications de placement',
+    description:
+      'Tier 2 du pipeline delivery. Prend le plan décidé par le layout engine (pure TS) et produit une phrase de justification ≤ 200 chars par ticket, citant statut + version + qualité + raison du déplacement.',
+    usage: {
+      module: 'delivery',
+      endpoint: 'Interne — analyzeSanityCheckPipeline()',
+      trigger: 'Bouton « Vérifier avec l\'IA » sur un delivery board — tier 2 du pipeline',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'delivery/write-reasoning.md'),
+  },
+  {
+    slug: 'llm-judge-faithfulness',
+    name: 'Juge IA — Fidélité de l\'output',
+    description:
+      'Scorer llm-judge : évalue la fidélité factuelle d\'un output IA par rapport à son input source. Utilisé automatiquement dans le scoring des logs.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — invoqué par POST /ai-skills/api/logs/:id/rescore',
+      trigger: 'Auto-scoring des logs ou clic admin « Relancer scorers »',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'judge/llm-judge-faithfulness.md'),
+  },
+
+  // ── Pipeline modulaire (ACTIF par défaut — seul path runtime) ────────
+  //
+  // Architecture 3 tiers qui a remplacé les monolithes
+  // `suivitess-import-source-into-document` et `suivitess-route-source-to-
+  // review` (maintenant marqués LEGACY) :
+  //   Tier 1 (adapters) : extract-transcript / extract-slack / extract-outlook
+  //   Tier 2 (placement) : place-in-document / place-in-reviews
+  //   Tier 3 (writers)   : append-situation / compose-situation
+  // Chaque skill ≤ 80 lignes, focus strict, testable en isolation dans le
+  // playground et via les datasets /ai-evals.
+  {
+    slug: 'suivitess-extract-transcript',
+    name: 'SuiviTess — Pipeline/T1 : extraire les sujets d\'une transcription',
+    description:
+      'Tier 1 du pipeline modulaire. Parcourt une transcription d\'appel (Fathom/Otter) et en sort des sujets atomiques avec citations brutes, sans interprétation. Matériel downstream pour les tiers placement et writer.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline() dans aiSkills/analyzeSourcePipeline.ts',
+      trigger: 'Analyse d\'une transcription (Fathom / Otter / enregistreur) — tier 1 du pipeline',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/extract-transcript.md'),
+  },
+  {
+    slug: 'suivitess-extract-slack',
+    name: 'SuiviTess — Pipeline/T1 : extraire les sujets d\'un fil Slack',
+    description:
+      'Tier 1 du pipeline modulaire. Parcourt un digest Slack (threads, mentions, réactions) et en sort des sujets atomiques avec citations brutes.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline()',
+      trigger: 'Analyse d\'un digest Slack — tier 1 du pipeline',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/extract-slack.md'),
+  },
+  {
+    slug: 'suivitess-extract-outlook',
+    name: 'SuiviTess — Pipeline/T1 : extraire les sujets d\'emails Outlook/Gmail',
+    description:
+      'Tier 1 du pipeline modulaire. Parcourt une chaîne d\'emails et en sort des sujets atomiques avec citations brutes. Gère les quotes, signatures, CC.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline()',
+      trigger: 'Analyse d\'une chaîne Outlook / Gmail — tier 1 du pipeline',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/extract-outlook.md'),
+  },
+  {
+    slug: 'suivitess-place-in-document',
+    name: 'SuiviTess — Pipeline/T2 : placer les sujets dans un suivitess ouvert',
+    description:
+      'Tier 2 du pipeline modulaire. Prend des sujets pré-extraits + le suivitess courant, décide pour chacun enrich/create_subject/create_section (sans rédiger le contenu).',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline() (variante document-scoped)',
+      trigger: 'Import dans un suivitess ouvert — tier 2 du pipeline',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/place-in-document.md'),
+  },
+  {
+    slug: 'suivitess-place-in-reviews',
+    name: 'SuiviTess — Pipeline/T2 : router les sujets vers la bonne review',
+    description:
+      'Tier 2 du pipeline modulaire. Prend des sujets pré-extraits + toutes les reviews, décide pour chacun la review+section cible (sans rédiger le contenu).',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline() (variante multi-review)',
+      trigger: 'Import en masse depuis la page listing — tier 2 du pipeline',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/place-in-reviews.md'),
+  },
+  {
+    slug: 'suivitess-append-situation',
+    name: 'SuiviTess — Pipeline/T3 : rédiger le texte à ajouter (enrich)',
+    description:
+      'Tier 3 du pipeline modulaire. Rédige uniquement le appendText à concaténer à une situation existante, strictement à partir des rawQuotes. Aucune invention permise.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline() (par enrich, parallèle)',
+      trigger: 'Décision enrich du tier 2 — rédaction du appendText',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/append-situation.md'),
+  },
+  {
+    slug: 'suivitess-compose-situation',
+    name: 'SuiviTess — Pipeline/T3 : rédiger la situation d\'un nouveau sujet',
+    description:
+      'Tier 3 du pipeline modulaire. Rédige une situation initiale pour un create_subject/new-subject, strictement à partir des rawQuotes.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeSourcePipeline() (par création, parallèle)',
+      trigger: 'Décision create du tier 2 — rédaction de la situation initiale',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/compose-situation.md'),
   },
 ] as const;
 

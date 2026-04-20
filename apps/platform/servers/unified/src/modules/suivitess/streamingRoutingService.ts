@@ -7,6 +7,9 @@ import type { Response } from 'express';
 import { getAnthropicClient } from '../connectors/aiProvider.js';
 import { loadSkill } from '../aiSkills/skillLoader.js';
 import { logAnalysis } from '../aiSkills/analysisLogsService.js';
+import { ensureSkillVersion } from '../aiSkills/skillVersionService.js';
+import { computeCostUsd } from '../aiSkills/pricing.js';
+import { logAnthropicUsage } from '../connectors/aiProvider.js';
 import { JournalStreamer, extractResultJson } from './journalStreamer.js';
 import type {
   ReviewWithSections,
@@ -58,6 +61,10 @@ export async function streamRouting(res: Response, params: StreamRoutingParams):
   let fullText = '';
   let errorMsg: string | null = null;
   let subjectsForLog: AnalyzedSubject[] = [];
+  let skillVersionHash = '';
+  let usedModel = '';
+  let finalInputTokens = 0;
+  let finalOutputTokens = 0;
 
   try {
     if (!params.transcript.trim()) {
@@ -67,7 +74,10 @@ export async function streamRouting(res: Response, params: StreamRoutingParams):
     }
 
     const skill = await loadSkill(SKILL_SLUG);
+    const versionInfo = await ensureSkillVersion(SKILL_SLUG, skill, null);
+    skillVersionHash = versionInfo.hash;
     const { client, model } = await getAnthropicClient(params.userId);
+    usedModel = model;
 
     const reviewsJson = params.reviews.map(r => ({
       id: r.id,
@@ -127,7 +137,17 @@ puis un <result>…</result> contenant l'objet JSON { "summary", "subjects" }.`;
           text => sendEvent(res, { type: 'journal-delta', text }),
           () => sendEvent(res, { type: 'journal-complete' }),
         );
+      } else {
+        const anyEvent = event as { type: string; message?: { usage?: { input_tokens?: number } }; usage?: { output_tokens?: number } };
+        if (anyEvent.type === 'message_start' && anyEvent.message?.usage) {
+          finalInputTokens = anyEvent.message.usage.input_tokens ?? 0;
+        } else if (anyEvent.type === 'message_delta' && anyEvent.usage) {
+          finalOutputTokens = anyEvent.usage.output_tokens ?? 0;
+        }
       }
+    }
+    if (finalInputTokens > 0 || finalOutputTokens > 0) {
+      logAnthropicUsage(params.userId, usedModel, { input_tokens: finalInputTokens, output_tokens: finalOutputTokens }, `aiSkills:${SKILL_SLUG}`);
     }
 
     // ── Resolve the final subjects against the caller's reviews (same
@@ -240,6 +260,8 @@ puis un <result>…</result> contenant l'objet JSON { "summary", "subjects" }.`;
     sendEvent(res, { type: 'error', message: errorMsg });
   } finally {
     res.end();
+    const inputTokens = finalInputTokens;
+    const outputTokens = finalOutputTokens;
     await logAnalysis({
       userId: params.userId,
       userEmail: params.userEmail ?? null,
@@ -253,6 +275,12 @@ puis un <result>…</result> contenant l'objet JSON { "summary", "subjects" }.`;
       proposals: subjectsForLog,
       durationMs: Date.now() - startedAt,
       error: errorMsg,
+      skillVersionHash: skillVersionHash || null,
+      provider: 'anthropic',
+      model: usedModel || null,
+      inputTokens,
+      outputTokens,
+      costUsd: computeCostUsd(usedModel, inputTokens, outputTokens),
     });
   }
 }

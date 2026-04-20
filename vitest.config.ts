@@ -184,6 +184,15 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      // Server: promptLogs (Claude Code hook ingestion)
+      {
+        test: {
+          name: 'server-prompt-logs',
+          root: '.',
+          include: ['apps/platform/servers/unified/src/modules/__tests__/promptLogs/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
       // Client: suivitess-recorder
       {
         test: {

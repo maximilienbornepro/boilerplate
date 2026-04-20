@@ -275,7 +275,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
             <span>Importez vos mails Outlook et messages Slack directement dans vos reviews</span>
           </div>
           <a
-            href="https://github.com/maximilienbornepro/boilerplate/tree/main/apps/platform/extensions/suivitess-importer"
+            href="https://github.com/maximilienbornepro/boilerplate/tree/main/extensions/suivitess-importer"
             target="_blank"
             rel="noopener noreferrer"
             className={styles.extensionLink}

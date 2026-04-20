@@ -53,14 +53,49 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   // "voir le log" link during the routing step.
   const [lastLogId, setLastLogId] = useState<number | null>(null);
 
+  // Real pipeline progress (replaces the fake timer-based indicator).
+  // Updated ~500 ms while the async job is running.
+  const [pipelineStatus, setPipelineStatus] = useState<api.PipelineJobStatus | null>(null);
+
+  // Per-provider sync status — shows "Dernière synchro Slack : 14:23
+  // (12 messages)" even when no new message was collected.
+  const [syncMeta, setSyncMeta] = useState<api.SyncMetaResponse | null>(null);
+  const [syncingNow, setSyncingNow] = useState(false);
+
+  // ── Reusable loader : trigger the Slack sync, then fetch the list +
+  // meta in parallel. Called on mount AND by the 🔄 button. ──
+  const reloadAll = async () => {
+    setSyncingNow(true);
+    try {
+      // 1) Fire the sync first. If it fails (expired cookies, etc.) we
+      //    don't block — just surface the error in the banner.
+      try {
+        const res = await api.triggerSyncAll();
+        if (!res.slack.ok && res.slack.error) {
+          console.warn('[slack sync]', res.slack.error);
+        }
+      } catch (err) {
+        console.warn('[slack sync] trigger failed:', err);
+      }
+      // 2) Fetch meta + list in parallel.
+      const [meta, items] = await Promise.all([
+        api.fetchSyncMeta(),
+        api.fetchBulkSources(),
+      ]);
+      setSyncMeta(meta);
+      setSources(items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Chargement échoué');
+      setPhase('error');
+    } finally {
+      setSyncingNow(false);
+    }
+  };
+
   // ============ Load sources on mount ============
   useEffect(() => {
-    api.fetchBulkSources()
-      .then(setSources)
-      .catch(err => {
-        setError(err instanceof Error ? err.message : 'Chargement échoué');
-        setPhase('error');
-      });
+    reloadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedItem = useMemo(
@@ -73,13 +108,20 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     if (!selectedItem) return;
     setPhase('analyzing');
     setLastLogId(null);
+    setPipelineStatus(null);
     try {
-      const res = await api.analyzeAndRoute({
-        source: selectedItem.provider,
-        id: selectedItem.id,
-        title: selectedItem.title,
-        date: selectedItem.date,
-      });
+      // Use the async polling variant : backend returns a jobId immediately,
+      // we poll every 500 ms to drive the real progress indicator.
+      const res = await api.analyzeAndRouteWithPolling(
+        {
+          source: selectedItem.provider,
+          id: selectedItem.id,
+          title: selectedItem.title,
+          date: selectedItem.date,
+        },
+        (status) => setPipelineStatus(status),
+        { intervalMs: 500 },
+      );
       if (res.logId != null) setLastLogId(res.logId);
       setSummary(res.summary);
       setAvailableReviews(res.availableReviews);
@@ -176,6 +218,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
         {phase === 'picking' && (
           <>
+            <SyncStatusBanner meta={syncMeta} syncing={syncingNow} onRefresh={reloadAll} />
             {sources === null ? (
               <div className={styles.loading}>
                 <LoadingSpinner message="Récupération des transcriptions et emails…" />
@@ -219,7 +262,14 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                 </div>
                 <div className={styles.actions}>
                   <Button variant="secondary" onClick={onClose}>Annuler</Button>
-                  <SkillButton skillSlug="suivitess-route-source-to-review" disabled={!selectedId}>
+                  <SkillButton
+                    pipeline={[
+                      { tier: 'T1', label: 'Extract (selon la source)', slugs: ['suivitess-extract-transcript', 'suivitess-extract-slack', 'suivitess-extract-outlook'] },
+                      { tier: 'T2', label: 'Place (router vers la review)', slugs: ['suivitess-place-in-reviews'] },
+                      { tier: 'T3', label: 'Write (rédiger)', slugs: ['suivitess-append-situation', 'suivitess-compose-situation'] },
+                    ]}
+                    disabled={!selectedId}
+                  >
                     <Button variant="primary" onClick={handleAnalyze} disabled={!selectedId}>
                       {selectedItem?.alreadyImported ? 'Ré-importer' : 'Analyser'}
                     </Button>
@@ -233,6 +283,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
         {phase === 'analyzing' && (
           <div className={styles.loading}>
             <LoadingSpinner message="L'IA lit la transcription et décide où ranger chaque sujet…" />
+            <PipelineStepsIndicator status={pipelineStatus} />
           </div>
         )}
 
@@ -560,4 +611,170 @@ function formatDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/** "il y a 3 min" / "il y a 2 h" / "il y a 4 j" / "à l'instant". */
+function formatRelative(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 60_000) return 'à l\'instant';
+  if (diffMs < 3_600_000) return `il y a ${Math.floor(diffMs / 60_000)} min`;
+  if (diffMs < 86_400_000) return `il y a ${Math.floor(diffMs / 3_600_000)} h`;
+  return `il y a ${Math.floor(diffMs / 86_400_000)} j`;
+}
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('fr-FR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// ── Sync status banner ────────────────────────────────────────────────
+
+interface SyncStatusBannerProps {
+  meta: api.SyncMetaResponse | null;
+  syncing: boolean;
+  onRefresh: () => void;
+}
+
+function SyncStatusBanner({ meta, syncing, onRefresh }: SyncStatusBannerProps) {
+  const row = (label: string, p: api.ProviderSyncMeta | undefined) => {
+    if (!p || !p.configured) {
+      return (
+        <span style={{ color: 'var(--text-secondary)', opacity: 0.6 }}>
+          {label}: non configuré
+        </span>
+      );
+    }
+    const errColor = p.error ? 'var(--error, #f44336)' : undefined;
+    return (
+      <span style={{ color: errColor }}>
+        <strong>{label}</strong> : {p.messageCount} message{p.messageCount > 1 ? 's' : ''}
+        {' · '}dernière synchro {formatRelative(p.lastSyncAt)}
+        <span style={{ opacity: 0.6, marginLeft: 4 }}>({formatDateTime(p.lastSyncAt)})</span>
+        {p.error && <span> · erreur : {p.error}</span>}
+      </span>
+    );
+  };
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '6px 12px',
+      marginBottom: 'var(--spacing-sm)',
+      background: 'var(--bg-secondary, rgba(128,128,128,0.05))',
+      border: '1px solid var(--border-color)',
+      borderRadius: 'var(--radius-sm)',
+      fontSize: 11, fontFamily: 'var(--font-mono)',
+      color: 'var(--text-secondary)',
+      flexWrap: 'wrap',
+    }}>
+      <span style={{ display: 'flex', flex: 1, gap: 16, flexWrap: 'wrap' }}>
+        {row('Slack', meta?.slack)}
+        {row('Outlook', meta?.outlook)}
+      </span>
+      <Button variant="secondary" onClick={onRefresh} disabled={syncing}>
+        {syncing ? '🔄 Synchro…' : '🔄 Synchroniser'}
+      </Button>
+    </div>
+  );
+}
+
+// ── Pipeline progress indicator (driven by real backend status) ───────
+//
+// `status` comes from polling GET /suivitess/api/pipeline-jobs/:id every
+// 500 ms in the parent. Each update reflects a real tier transition :
+//   phase 'queued'   → nothing yet (job just created)
+//   phase 'tier1'    → extractor running
+//   phase 'tier2'    → placement running (after tier1 finished)
+//   phase 'tier3'    → writers running (t3Done/t3Total live count)
+//   phase 'done'     → component unmounts, caller switches to next step
+//   phase 'error'    → shows the last-reached step as failed
+//
+// No more fake timers — a step flips to 'done' only when the server
+// actually moved past it.
+
+type PhaseKey = 'source' | 'extract' | 'place' | 'write' | 'finalize';
+
+function PipelineStepsIndicator({ status }: { status: api.PipelineJobStatus | null }) {
+  // Derive the active step from the backend phase.
+  const phase = status?.phase ?? 'queued';
+  const active: PhaseKey =
+    phase === 'queued' ? 'source'
+    : phase === 'tier1' ? 'extract'
+    : phase === 'tier2' ? 'place'
+    : phase === 'tier3' ? 'write'
+    : 'finalize';
+
+  // For the T3 writer step, show "N / M writers done" in real time.
+  const t3Progress = phase === 'tier3' && status && status.t3Total > 0
+    ? ` — ${status.t3Done} / ${status.t3Total} writers`
+    : '';
+
+  // Lightweight step model kept inline — no external state, no timers.
+  const STEPS: ReadonlyArray<{ key: PhaseKey; icon: string; label: string }> = [
+    { key: 'source',   icon: '🔎', label: 'Lecture de la source' },
+    { key: 'extract',  icon: '🧩', label: 'Extraction des sujets atomiques' },
+    { key: 'place',    icon: '🗂️',  label: 'Analyse de placement (review + section)' },
+    { key: 'write',    icon: '✍️',  label: `Rédaction des situations (en parallèle)${t3Progress}` },
+    { key: 'finalize', icon: '🎯', label: 'Finalisation' },
+  ];
+  const activeIdx = STEPS.findIndex(s => s.key === active);
+
+  // Subtitle with per-tier durations once they're known.
+  const { t1, t2, t3 } = status?.durations ?? {};
+  const durLine = [
+    t1 != null ? `T1 ${(t1 / 1000).toFixed(1)}s` : null,
+    t2 != null ? `T2 ${(t2 / 1000).toFixed(1)}s` : null,
+    t3 != null ? `T3 ${(t3 / 1000).toFixed(1)}s` : null,
+  ].filter(Boolean).join(' · ');
+
+  return (
+    <>
+      <style>{`@keyframes pipelinePulse { 0%,100% { opacity: 1 } 50% { opacity: 0.4 } }`}</style>
+      <ul style={{
+        listStyle: 'none',
+        padding: 0,
+        margin: '16px auto 0',
+        maxWidth: 560,
+        fontFamily: 'var(--font-mono)',
+        fontSize: 13,
+        lineHeight: 1.8,
+      }}>
+        {STEPS.map((step, i) => {
+          const stepStatus: 'done' | 'active' | 'pending' =
+            i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending';
+          const color =
+            stepStatus === 'done' ? 'var(--success, #4caf50)' :
+            stepStatus === 'active' ? 'var(--accent-primary)' :
+            'var(--text-secondary)';
+          const opacity = stepStatus === 'pending' ? 0.45 : 1;
+          const marker =
+            stepStatus === 'done' ? '✓' :
+            stepStatus === 'active' ? '◉' :
+            '○';
+          return (
+            <li key={step.key} style={{ color, opacity, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{
+                display: 'inline-block', width: 14, textAlign: 'center', fontWeight: 700,
+                animation: stepStatus === 'active' ? 'pipelinePulse 1.2s ease-in-out infinite' : undefined,
+              }}>
+                {marker}
+              </span>
+              <span aria-hidden>{step.icon}</span>
+              <span>{step.label}</span>
+            </li>
+          );
+        })}
+      </ul>
+      {durLine && (
+        <div style={{
+          marginTop: 8, textAlign: 'center',
+          fontFamily: 'var(--font-mono)', fontSize: 11,
+          color: 'var(--text-secondary)',
+        }}>{durLine}</div>
+      )}
+    </>
+  );
 }

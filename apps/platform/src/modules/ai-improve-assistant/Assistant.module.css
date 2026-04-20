@@ -1,0 +1,290 @@
+/* Assistant d'amélioration — layout inside the existing Modal "xl" (1100px). */
+
+.root {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-sm);
+	font-family: var(--font-mono);
+	color: var(--text-primary);
+	max-height: calc(90vh - 80px);
+	min-height: 500px;
+}
+
+/* ─── Stepper ─── */
+
+.stepperRow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--spacing-xs) 0;
+	border-bottom: 1px solid var(--border-color);
+	gap: var(--spacing-sm);
+}
+
+.stepperCount {
+	font-size: var(--font-size-sm);
+	color: var(--accent-primary);
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.stepperBar {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 1;
+	overflow-x: auto;
+}
+
+.stepperDot {
+	flex: 1;
+	min-width: 60px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 3px;
+	background: none;
+	border: none;
+	cursor: default;
+	color: var(--text-secondary);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	padding: 2px 0;
+}
+
+.stepperDotClickable { cursor: pointer; }
+.stepperDotClickable:hover .stepperBullet { border-color: var(--accent-primary); }
+
+.stepperBullet {
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	border: 2px solid var(--border-color);
+	background: var(--bg-primary);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 10px;
+	color: var(--text-secondary);
+}
+
+.stepperBulletDone {
+	background: var(--accent-primary);
+	border-color: var(--accent-primary);
+	color: #000;
+}
+
+.stepperBulletActive {
+	border-color: var(--accent-primary);
+	box-shadow: 0 0 0 3px rgba(0, 188, 212, 0.2);
+	color: var(--accent-primary);
+	font-weight: 700;
+}
+
+.stepperLabel {
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 80px;
+}
+
+.stepperLabelActive { color: var(--accent-primary); font-weight: 600; }
+
+/* ─── Content area ─── */
+
+.content {
+	flex: 1;
+	overflow-y: auto;
+	padding: var(--spacing-sm) 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-md);
+}
+
+.stepHeader {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding-bottom: var(--spacing-xs);
+	border-bottom: 1px solid var(--border-color);
+}
+
+.stepTitle {
+	font-size: var(--font-size-lg);
+	color: var(--text-primary);
+	margin: 0;
+	font-family: var(--font-mono);
+	font-weight: 600;
+}
+
+.stepPourquoi {
+	background: rgba(0, 188, 212, 0.08);
+	border-left: 3px solid var(--accent-primary);
+	padding: var(--spacing-xs) var(--spacing-sm);
+	font-size: var(--font-size-sm);
+	line-height: 1.5;
+	color: var(--text-primary);
+	border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.stepPourquoiLabel {
+	font-size: var(--font-size-xs);
+	color: var(--accent-primary);
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+/* ─── Action area ─── */
+
+.actionBlock {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-sm);
+}
+
+.input, .textarea, .select {
+	width: 100%;
+	padding: 6px 10px;
+	font-family: var(--font-mono);
+	font-size: var(--font-size-sm);
+	background: var(--bg-primary);
+	color: var(--text-primary);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-sm);
+}
+.textarea { min-height: 80px; resize: vertical; }
+
+.label {
+	font-size: var(--font-size-xs);
+	color: var(--text-secondary);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	margin-bottom: 3px;
+}
+
+/* ─── Table (used by Step2 / Step8 / Step10) ─── */
+
+.table {
+	width: 100%;
+	border-collapse: collapse;
+	font-family: var(--font-mono);
+	font-size: var(--font-size-sm);
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-sm);
+	overflow: hidden;
+}
+.table th {
+	text-align: left; padding: 6px 10px;
+	background: var(--bg-secondary, rgba(128,128,128,0.05));
+	color: var(--text-secondary);
+	font-size: var(--font-size-xs);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	border-bottom: 1px solid var(--border-color);
+}
+.table td {
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--border-color);
+	vertical-align: top;
+}
+.table tr:last-child td { border-bottom: none; }
+.table tr.selected td { background: rgba(0, 188, 212, 0.08); }
+
+/* ─── Code / preview blocks ─── */
+
+.codeBlock {
+	margin: 0;
+	padding: var(--spacing-sm);
+	max-height: 420px;
+	overflow: auto;
+	background: var(--bg-secondary, rgba(128,128,128,0.05));
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-sm);
+	font-family: var(--font-mono);
+	font-size: var(--font-size-xs);
+	color: var(--text-primary);
+	white-space: pre-wrap;
+	word-break: break-word;
+	line-height: 1.4;
+}
+
+/* ─── Footer ─── */
+
+.footer {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding-top: var(--spacing-sm);
+	border-top: 1px solid var(--border-color);
+	gap: var(--spacing-xs);
+}
+
+.footerRight { display: flex; gap: var(--spacing-xs); }
+
+/* ─── Status / progress ─── */
+
+.progressBar {
+	width: 100%;
+	height: 6px;
+	background: var(--border-color);
+	border-radius: 3px;
+	overflow: hidden;
+	margin: var(--spacing-xs) 0;
+}
+.progressFill {
+	height: 100%;
+	background: var(--accent-primary);
+	transition: width 0.3s;
+}
+
+.statusLine {
+	font-size: var(--font-size-sm);
+	color: var(--text-secondary);
+	font-family: var(--font-mono);
+}
+
+/* ─── Summary cards ─── */
+
+.summaryGrid {
+	display: flex;
+	gap: var(--spacing-md);
+	flex-wrap: wrap;
+}
+.summaryCard {
+	padding: 8px 12px;
+	border: 1px solid var(--border-color);
+	border-radius: var(--radius-sm);
+	min-width: 140px;
+	background: var(--bg-secondary, rgba(128,128,128,0.05));
+}
+.summaryLabel {
+	font-size: var(--font-size-xs);
+	color: var(--text-secondary);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+.summaryValue {
+	font-size: var(--font-size-md);
+	color: var(--accent-primary);
+	font-weight: 600;
+	margin-top: 2px;
+}
+
+.deltaUp { color: var(--success, #4caf50); }
+.deltaDown { color: var(--error, #f44336); }
+.deltaNeutral { color: var(--text-secondary); }
+
+/* ─── Kind badge (same logic as the playground picker) ─── */
+
+.kindBadge {
+	display: inline-block;
+	padding: 1px 6px;
+	font-size: 10px;
+	font-weight: 600;
+	border-radius: 2px;
+	color: #fff;
+	margin-right: 4px;
+}

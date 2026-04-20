@@ -2,14 +2,42 @@ import { describe, it, expect } from 'vitest';
 import { SKILLS, getSkill } from '../../aiSkills/registry.js';
 
 describe('aiSkills.registry', () => {
-  it('exposes the 4 expected slugs', () => {
+  it('exposes the 14 expected slugs (legacy + modular pipelines)', () => {
     const slugs = SKILLS.map(s => s.slug).sort();
     expect(slugs).toEqual([
+      'delivery-assess-tickets',
       'delivery-reorganize-board',
+      'delivery-write-reasoning',
+      'llm-judge-faithfulness',
+      'suivitess-append-situation',
+      'suivitess-compose-situation',
+      'suivitess-extract-outlook',
+      'suivitess-extract-slack',
+      'suivitess-extract-transcript',
       'suivitess-import-source-into-document',
+      'suivitess-place-in-document',
+      'suivitess-place-in-reviews',
       'suivitess-reformulate-subject',
       'suivitess-route-source-to-review',
     ]);
+  });
+
+  it('all pipeline skills are registered under the suivitess module', () => {
+    const pipelineSlugs = [
+      'suivitess-extract-transcript',
+      'suivitess-extract-slack',
+      'suivitess-extract-outlook',
+      'suivitess-place-in-document',
+      'suivitess-place-in-reviews',
+      'suivitess-append-situation',
+      'suivitess-compose-situation',
+    ];
+    for (const slug of pipelineSlugs) {
+      const def = getSkill(slug);
+      expect(def, `slug ${slug}`).toBeDefined();
+      expect(def!.usage.module).toBe('suivitess');
+      expect(def!.defaultFilePath).toMatch(/prompts\/suivitess\/.*\.md$/);
+    }
   });
 
   it('each skill has a non-empty name, description and default file path', () => {

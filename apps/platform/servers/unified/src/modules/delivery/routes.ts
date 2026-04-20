@@ -110,6 +110,26 @@ export function createDeliveryRoutes(): Router {
   // ============ Authenticated routes below ============
   router.use(authMiddleware);
 
+  // ============ Layout engine rules doc (human-readable) ============
+  // Returns the hand-maintained markdown catalog that describes every
+  // placement rule applied by the layout engine. Source of truth is the
+  // TS code ; this .md is what a non-dev reads to understand why a
+  // ticket landed where it did. Updated alongside any rule change.
+  router.get('/layout-rules', asyncHandler(async (_req, res) => {
+    const { readFile } = await import('node:fs/promises');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const here = dirname(fileURLToPath(import.meta.url));
+    // modules/delivery → modules → src → prompts/delivery/layout-rules.md
+    const rulesPath = resolve(here, '..', '..', 'prompts', 'delivery', 'layout-rules.md');
+    try {
+      const content = await readFile(rulesPath, 'utf8');
+      res.type('text/markdown').send(content);
+    } catch {
+      res.status(404).type('text/markdown').send('# Règles indisponibles\n\nLe fichier `layout-rules.md` est introuvable.');
+    }
+  }));
+
   // ============ Boards CRUD ============
 
   router.get('/boards', asyncHandler(async (req, res) => {
@@ -784,8 +804,10 @@ export function createDeliveryRoutes(): Router {
     }
 
     const {
-      parseExternalKey, computeTodayCol, analyzeSanityCheck, categorizeVersions, categoryOf,
+      parseExternalKey, computeTodayCol, categorizeVersions, categoryOf,
     } = await import('./deliveryAISanityService.js');
+    const { analyzeSanityCheckPipeline } = await import('./reorganizeBoardPipeline.js');
+    const { isAbandonedStatus } = await import('./deliveryLayoutEngine.js');
 
     // external key → board task id, only for Jira-sourced tasks (the only
     // provider for which we currently fetch live data). Other sources still
@@ -918,6 +940,10 @@ export function createDeliveryRoutes(): Router {
           for (const issue of data.issues || []) {
             if (boardJiraKeys.has(issue.key)) continue; // already on the board
             const f = issue.fields;
+            // Skip abandoned / cancelled / won't do / rejected / obsolete
+            // tickets — they were consciously dropped and must never be
+            // re-proposed as additions.
+            if (isAbandonedStatus(f.status?.name)) continue;
             const activeSprint = f.customfield_10020?.find(s => s.state === 'active');
             const estDays = f.timetracking?.originalEstimateSeconds
               ? Math.round((f.timetracking.originalEstimateSeconds / (8 * 60 * 60)) * 10) / 10
@@ -1001,7 +1027,7 @@ export function createDeliveryRoutes(): Router {
     const MAX_TASKS = 50;
     const capped = snapshotTasks.slice(0, MAX_TASKS);
 
-    const result = await analyzeSanityCheck(req.user!.id, {
+    const result = await analyzeSanityCheckPipeline(req.user!.id, {
       boardId,
       boardName: board.name,
       totalCols,

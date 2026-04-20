@@ -1,0 +1,114 @@
+/* Full-page playground — editable variants on the left, editable inputs on
+ * top, result matrix in the middle. */
+
+.root {
+	padding: var(--spacing-lg);
+	background: var(--bg-primary);
+	color: var(--text-primary);
+	font-family: var(--font-mono);
+	min-height: calc(100vh - var(--nav-height, 48px));
+}
+
+.header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--spacing-md);
+	padding-bottom: var(--spacing-sm);
+	border-bottom: 1px solid var(--border-color);
+	margin-bottom: var(--spacing-md);
+}
+
+.title { margin: 0; font-size: var(--font-size-lg); color: var(--text-primary); font-family: var(--font-mono); }
+.subtitle { margin: 4px 0 0; font-size: var(--font-size-sm); color: var(--text-secondary); }
+.actions { display: flex; gap: var(--spacing-xs); }
+
+.skillPicker {
+	display: flex; align-items: center; gap: var(--spacing-xs);
+	padding: var(--spacing-sm); margin-bottom: var(--spacing-md);
+	border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+	background: var(--bg-secondary, rgba(128,128,128,0.05));
+}
+
+.skillSelect {
+	padding: 4px 8px; font-family: var(--font-mono); font-size: var(--font-size-sm);
+	background: var(--bg-primary); color: var(--text-primary);
+	border: 1px solid var(--border-color); border-radius: var(--radius-sm);
+}
+
+/* Two-column editor */
+.editorsGrid {
+	display: grid; grid-template-columns: 1fr 1fr;
+	gap: var(--spacing-md); margin-bottom: var(--spacing-md);
+}
+
+.editorCol { display: flex; flex-direction: column; gap: var(--spacing-xs); }
+
+.colTitle {
+	font-size: var(--font-size-sm); color: var(--accent-primary);
+	font-weight: 600; margin: 0 0 4px;
+}
+
+.row {
+	display: flex; gap: var(--spacing-xs); align-items: flex-start;
+	padding: var(--spacing-xs); border: 1px solid var(--border-color);
+	border-radius: var(--radius-sm); background: var(--bg-secondary, rgba(128,128,128,0.05));
+}
+
+.labelInput {
+	width: 120px; padding: 4px 8px; font-family: var(--font-mono); font-size: var(--font-size-sm);
+	background: var(--bg-primary); color: var(--text-primary);
+	border: 1px solid var(--border-color); border-radius: 2px;
+}
+
+.contentTextarea {
+	flex: 1; min-height: 120px; padding: var(--spacing-xs);
+	font-family: var(--font-mono); font-size: var(--font-size-sm); line-height: 1.4;
+	background: var(--bg-primary); color: var(--text-primary);
+	border: 1px solid var(--border-color); border-radius: 2px; resize: vertical;
+}
+
+.removeBtn {
+	background: none; border: 1px solid var(--border-color); color: var(--error);
+	padding: 4px 8px; cursor: pointer; border-radius: 2px;
+	font-family: var(--font-mono); font-size: var(--font-size-xs);
+}
+
+.addRow {
+	padding: 6px 10px; background: transparent;
+	border: 1px dashed var(--border-color); color: var(--text-secondary);
+	font-family: var(--font-mono); font-size: var(--font-size-xs);
+	cursor: pointer; border-radius: 2px;
+}
+
+.runBar {
+	padding: var(--spacing-sm); display: flex; gap: var(--spacing-xs);
+	align-items: center; justify-content: space-between;
+	border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);
+	margin-bottom: var(--spacing-md);
+}
+
+.matrixWrap { overflow-x: auto; border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+
+.matrix { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: var(--font-size-sm); }
+.matrix th, .matrix td {
+	border: 1px solid var(--border-color);
+	padding: 8px 10px;
+	vertical-align: top;
+	min-width: 180px;
+}
+.matrix th {
+	background: var(--bg-secondary, rgba(128,128,128,0.05));
+	color: var(--text-secondary);
+	font-size: var(--font-size-xs); text-transform: uppercase; letter-spacing: 0.05em;
+	text-align: left;
+}
+
+.cellHeader { font-size: var(--font-size-xs); color: var(--text-secondary); margin-bottom: 4px; }
+.cellOutput { max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.cellMeta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; color: var(--text-secondary); }
+.cellScores { margin-top: 6px; }
+.cellScoreRow { display: flex; gap: 6px; font-size: 11px; color: var(--text-secondary); }
+.cellScoreValue { color: var(--accent-primary); font-weight: 600; }
+
+.cellError { color: var(--error); font-size: var(--font-size-xs); margin-top: 4px; }

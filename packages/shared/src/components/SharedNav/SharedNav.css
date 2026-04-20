@@ -255,6 +255,14 @@
   flex: 1;
 }
 
+/* Separator between module list and admin-only links (Logs IA, etc.) */
+.shared-nav-drawer-sep {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: var(--spacing-md) 0;
+  width: 100%;
+}
+
 /* Settings link (separated, no bullet, gear icon) */
 .shared-nav-drawer-settings {
   display: flex;

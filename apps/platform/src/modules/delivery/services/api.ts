@@ -78,11 +78,33 @@ export async function fetchJiraIssues(sprintIds: number[]): Promise<JiraIssue[]>
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || 'Une erreur est survenue');
+  // Read as text first so we can handle empty / non-JSON bodies (e.g. the
+  // server restarted mid-request, or returned an HTML error page).
+  const text = await response.text();
+  if (!text) {
+    // No body — usually happens when the dev server restarted mid-request
+    // or the network dropped. Friendlier than 'Unexpected end of JSON input'.
+    throw new Error(
+      response.ok
+        ? 'Le serveur a renvoyé une réponse vide. Retente dans quelques secondes.'
+        : `Le serveur a renvoyé ${response.status} sans corps. Retente dans quelques secondes.`,
+    );
   }
-  return data;
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      response.ok
+        ? 'Réponse serveur non JSON — le serveur redémarre ou la route n\'existe plus.'
+        : `Le serveur a renvoyé ${response.status} : ${text.slice(0, 200)}`,
+    );
+  }
+  if (!response.ok) {
+    const err = (data as { error?: string }).error;
+    throw new Error(err || 'Une erreur est survenue');
+  }
+  return data as T;
 }
 
 // ============ Tasks CRUD ============
@@ -530,4 +552,14 @@ export async function applySanityMoves(
     body: JSON.stringify({ moves, additions }),
   });
   return handleResponse<{ applied: number; movesApplied: number; additionsApplied: number }>(res);
+}
+
+// ============ Layout engine rules doc ============
+
+/** Fetches the human-readable layout rules catalog as raw markdown.
+ *  The response Content-Type is `text/markdown`. */
+export async function fetchLayoutRules(): Promise<string> {
+  const res = await fetch(`${API_BASE}/layout-rules`, { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
 }

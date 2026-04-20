@@ -14,6 +14,7 @@ import { initMonCv, createMonCvRouter } from './modules/mon-cv/index.js';
 import { initConnectors, createConnectorsRouter } from './modules/connectors/index.js';
 import { initRag, createRagRouter } from './modules/rag/index.js';
 import { initAiSkills, createAiSkillsRouter } from './modules/aiSkills/index.js';
+import { initPromptLogs, createPromptLogsRouter } from './modules/promptLogs/index.js';
 
 const app = express();
 
@@ -77,6 +78,10 @@ async function init() {
   // AI Skills (admin editor)
   await initAiSkills();
   app.use('/ai-skills/api', createAiSkillsRouter());
+
+  // Prompt Logs (Claude Code hook ingestion + admin viewer)
+  await initPromptLogs();
+  app.use('/prompt-logs/api', createPromptLogsRouter());
 
   // Error handling
   app.use(errorMiddleware);
