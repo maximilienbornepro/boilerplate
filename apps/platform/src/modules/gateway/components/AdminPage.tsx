@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { ConfirmModal, APPS, ModuleHeader, Card, Badge, Button, SectionTitle, ExpandableSection, LoadingSpinner, ToastContainer } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import { AdminAiSkillsSection } from './AdminAiSkillsSection';
+import { AdminLegacyBulletsSection } from './AdminLegacyBulletsSection';
 
 interface User {
   id: number;
@@ -314,6 +315,9 @@ export function AdminPage({ onBack }: { onBack: () => void }) {
 
         {/* AI Skills */}
         <AdminAiSkillsSection onToast={addToast} />
+
+        {/* One-shot data cleanups */}
+        <AdminLegacyBulletsSection onToast={addToast} />
 
         {/* Credits Management */}
         {platformSettings.find(s => s.key === 'credits_enabled' && s.value === 'true') && (

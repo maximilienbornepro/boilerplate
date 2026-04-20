@@ -117,6 +117,97 @@ export function createRoutes(): Router {
 
   router.use(authMiddleware);
 
+  // ==================== ADMIN — LEGACY BULLET CLEANUP ====================
+  //
+  // One-shot migration endpoint : the AI writer skills used to insert
+  // literal `•` characters into `situation` texts, which the editor
+  // then double-rendered (`• •`). The writers have been fixed since
+  // (see `src/prompts/suivitess/{compose,append}-situation.md`) but
+  // existing DB rows still carry legacy bullets. This endpoint runs a
+  // deterministic text transformation (strip leading bullet glyphs,
+  // normalize tabs to 2 spaces) across every subject and returns a
+  // diff (dry-run mode) or applies it in a single transaction.
+  //
+  // Admin-gated — dry-runs are also admin-only because the preview
+  // reveals every situation text across the platform.
+
+  router.post('/admin/cleanup-legacy-bullets', asyncHandler(async (req, res) => {
+    if (!req.user?.isAdmin) {
+      res.status(403).json({ error: 'Admin uniquement' });
+      return;
+    }
+    const apply = Boolean((req.body ?? {}).apply);
+    const { cleanSituation, situationNeedsCleaning } = await import('./legacyBulletCleanup.js');
+    const { pool } = await import('./dbService.js');
+
+    // Fetch every subject + its owning section/document for context in
+    // the diff. Capped at 5000 rows as a safety net — if the platform
+    // ever gets bigger, we'd paginate ; for current scale this fits in
+    // memory easily.
+    const result = await pool.query<{
+      id: string; title: string; situation: string | null;
+      section_name: string; document_title: string; document_id: string;
+    }>(`
+      SELECT s.id, s.title, s.situation,
+             sec.name AS section_name,
+             d.id AS document_id, d.title AS document_title
+      FROM suivitess_subjects s
+      JOIN suivitess_sections sec ON sec.id = s.section_id
+      JOIN suivitess_documents d  ON d.id  = sec.document_id
+      ORDER BY d.title, sec.position, s.position
+      LIMIT 5000
+    `);
+
+    const dirty = result.rows
+      .filter(r => situationNeedsCleaning(r.situation))
+      .map(r => ({
+        id: r.id,
+        title: r.title,
+        documentId: r.document_id,
+        documentTitle: r.document_title,
+        sectionName: r.section_name,
+        before: r.situation ?? '',
+        after: cleanSituation(r.situation),
+      }));
+
+    if (!apply) {
+      res.json({
+        mode: 'dry-run',
+        totalScanned: result.rows.length,
+        rowsToClean: dirty.length,
+        rows: dirty.slice(0, 500), // preview cap
+        truncated: dirty.length > 500,
+      });
+      return;
+    }
+
+    // ── Apply in a single transaction ──
+    const client = await pool.connect();
+    let updated = 0;
+    try {
+      await client.query('BEGIN');
+      for (const row of dirty) {
+        await client.query(
+          'UPDATE suivitess_subjects SET situation = $1, updated_at = NOW() WHERE id = $2',
+          [row.after, row.id],
+        );
+        updated++;
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    res.json({
+      mode: 'applied',
+      totalScanned: result.rows.length,
+      rowsUpdated: updated,
+    });
+  }));
+
   // ==================== SUBJECT SEARCH (cross-document) ====================
 
   // GET /subjects/search?q=<query>
