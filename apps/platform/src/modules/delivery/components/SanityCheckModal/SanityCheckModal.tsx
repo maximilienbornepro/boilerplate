@@ -254,56 +254,86 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
 function AnalysisPanel({ summary, analysis }: { summary: string; analysis: BoardAnalysis }) {
   const statusEntries = Object.entries(analysis.byStatus).sort((a, b) => b[1] - a[1]);
   const versionEntries = analysis.versions;
+  // Collapsed by default — the summary line carries the essential signal
+  // and users asked for the stats grid not to crowd the proposals view.
+  // Persist the preference so it sticks across modal opens.
+  const [expanded, setExpanded] = useState<boolean>(() => {
+    try { return localStorage.getItem('delivery:sanity:analysis-expanded') === '1'; }
+    catch { return false; }
+  });
+  const toggle = () => {
+    setExpanded(v => {
+      const next = !v;
+      try { localStorage.setItem('delivery:sanity:analysis-expanded', next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   return (
     <div className={styles.analysis}>
-      <p className={styles.analysisSummary}>{summary}</p>
-      <div className={styles.analysisStats}>
-        <div className={styles.statGroup}>
-          <div className={styles.statLabel}>Total analysé</div>
-          <div className={styles.statValue}>{analysis.totalJiraTasks}</div>
-        </div>
-        <div className={styles.statGroup}>
-          <div className={styles.statLabel}>Par statut</div>
-          <div className={styles.statChips}>
-            {statusEntries.map(([status, count]) => (
-              <span key={status} className={styles.chip}>
-                {status} <strong>{count}</strong>
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className={styles.statGroup}>
-          <div className={styles.statLabel}>Tickets incomplets</div>
-          <div className={styles.statChips}>
-            <span className={styles.chip}>Sans estimation <strong>{analysis.missingEstimation}</strong></span>
-            <span className={styles.chip}>Sans description <strong>{analysis.missingDescription}</strong></span>
-          </div>
-        </div>
-        {analysis.missingFromBoard > 0 && (
-          <div className={styles.statGroup}>
-            <div className={styles.statLabel}>Dans le sprint, hors board</div>
-            <div className={styles.statChips}>
-              <span className={`${styles.chip} ${styles.chipHighlight}`}>
-                <strong>{analysis.missingFromBoard}</strong> ticket{analysis.missingFromBoard > 1 ? 's' : ''} à ajouter
-              </span>
-            </div>
-          </div>
+      <button
+        type="button"
+        className={styles.analysisToggle}
+        onClick={toggle}
+        aria-expanded={expanded}
+        title={expanded ? 'Masquer les détails de l\'analyse' : 'Voir les détails de l\'analyse'}
+      >
+        <span className={styles.analysisChevron}>{expanded ? '▼' : '▶'}</span>
+        <span className={styles.analysisSummary}>{summary}</span>
+        {!expanded && (
+          <span className={styles.analysisQuickStats}>
+            {analysis.totalJiraTasks} tickets · {analysis.missingFromBoard} à ajouter
+          </span>
         )}
-        {versionEntries.length > 0 && (
+      </button>
+      {expanded && (
+        <div className={styles.analysisStats}>
           <div className={styles.statGroup}>
-            <div className={styles.statLabel}>Versions cibles détectées</div>
+            <div className={styles.statLabel}>Total analysé</div>
+            <div className={styles.statValue}>{analysis.totalJiraTasks}</div>
+          </div>
+          <div className={styles.statGroup}>
+            <div className={styles.statLabel}>Par statut</div>
             <div className={styles.statChips}>
-              {versionEntries.map(v => (
-                <span key={v.name} className={`${styles.chip} ${styles[`chipVersion_${v.category}`]}`}>
-                  {v.name}
-                  <span className={styles.chipCat}>{categoryLabel(v.category)}</span>
+              {statusEntries.map(([status, count]) => (
+                <span key={status} className={styles.chip}>
+                  {status} <strong>{count}</strong>
                 </span>
               ))}
             </div>
           </div>
-        )}
-      </div>
+          <div className={styles.statGroup}>
+            <div className={styles.statLabel}>Tickets incomplets</div>
+            <div className={styles.statChips}>
+              <span className={styles.chip}>Sans estimation <strong>{analysis.missingEstimation}</strong></span>
+              <span className={styles.chip}>Sans description <strong>{analysis.missingDescription}</strong></span>
+            </div>
+          </div>
+          {analysis.missingFromBoard > 0 && (
+            <div className={styles.statGroup}>
+              <div className={styles.statLabel}>Dans le sprint, hors board</div>
+              <div className={styles.statChips}>
+                <span className={`${styles.chip} ${styles.chipHighlight}`}>
+                  <strong>{analysis.missingFromBoard}</strong> ticket{analysis.missingFromBoard > 1 ? 's' : ''} à ajouter
+                </span>
+              </div>
+            </div>
+          )}
+          {versionEntries.length > 0 && (
+            <div className={styles.statGroup}>
+              <div className={styles.statLabel}>Versions cibles détectées</div>
+              <div className={styles.statChips}>
+                {versionEntries.map(v => (
+                  <span key={v.name} className={`${styles.chip} ${styles[`chipVersion_${v.category}`]}`}>
+                    {v.name}
+                    <span className={styles.chipCat}>{categoryLabel(v.category)}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
