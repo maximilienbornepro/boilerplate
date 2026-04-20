@@ -74,6 +74,35 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, Math.round(v)));
 }
 
+/** Tickets in an "abandoned" workflow state must never surface on a
+ *  delivery board — they were consciously dropped. Includes common Jira /
+ *  ClickUp / Linear labels (FR + EN). Keep this list narrow on purpose :
+ *  a false-positive silently drops work from the board. */
+export function isAbandonedStatus(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const s = raw.toLowerCase().trim();
+  return (
+    s === 'abandoned' ||
+    s === 'abandonné' ||
+    s === 'abandonne' ||
+    s === 'cancelled' ||
+    s === 'canceled' ||
+    s === 'annulé' ||
+    s === 'annule' ||
+    s === "won't do" ||
+    s === 'wont do' ||
+    s === "won't fix" ||
+    s === 'wont fix' ||
+    s === 'obsolete' ||
+    s === 'rejected' ||
+    s === 'rejeté' ||
+    s === 'rejete' ||
+    s === 'duplicate' ||
+    s === 'dupliqué' ||
+    s === 'duplique'
+  );
+}
+
 /** Single mapping to keep Jira/ClickUp/Linear status labels consistent.
  *  Any label we don't recognize defaults to `todo` (safest — ticket ends
  *  up on the right-hand side, user can re-check). */
@@ -233,6 +262,12 @@ export function computeBoardPlan(input: LayoutInput): BoardPlan {
   }>>();
 
   for (const t of tickets) {
+    // Defense-in-depth : abandoned / cancelled tickets must never surface,
+    // even if they slipped past the source-level filter in routes.ts.
+    if (isAbandonedStatus(t.externalStatus ?? t.boardStatus)) {
+      skipped.push({ taskId: t.id, reason: 'abandoned status' });
+      continue;
+    }
     const statusCat = statusCategory(t.externalStatus ?? t.boardStatus);
     const qf: QualityFlags = assessment[t.id] ?? {
       hasEstimation: t.hasEstimation,
@@ -300,6 +335,12 @@ export function computeBoardPlan(input: LayoutInput): BoardPlan {
   }>>();
 
   for (const m of missingFromBoard) {
+    // Abandoned / cancelled tickets are never re-proposed as additions,
+    // regardless of their sprint membership.
+    if (isAbandonedStatus(m.status)) {
+      skipped.push({ taskId: m.externalKey, reason: 'abandoned status' });
+      continue;
+    }
     const statusCat = statusCategory(m.status);
     const qf: QualityFlags = assessment[m.externalKey] ?? {
       hasEstimation: m.hasEstimation,

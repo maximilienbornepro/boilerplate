@@ -787,6 +787,7 @@ export function createDeliveryRoutes(): Router {
       parseExternalKey, computeTodayCol, categorizeVersions, categoryOf,
     } = await import('./deliveryAISanityService.js');
     const { analyzeSanityCheckPipeline } = await import('./reorganizeBoardPipeline.js');
+    const { isAbandonedStatus } = await import('./deliveryLayoutEngine.js');
 
     // external key → board task id, only for Jira-sourced tasks (the only
     // provider for which we currently fetch live data). Other sources still
@@ -919,6 +920,10 @@ export function createDeliveryRoutes(): Router {
           for (const issue of data.issues || []) {
             if (boardJiraKeys.has(issue.key)) continue; // already on the board
             const f = issue.fields;
+            // Skip abandoned / cancelled / won't do / rejected / obsolete
+            // tickets — they were consciously dropped and must never be
+            // re-proposed as additions.
+            if (isAbandonedStatus(f.status?.name)) continue;
             const activeSprint = f.customfield_10020?.find(s => s.state === 'active');
             const estDays = f.timetracking?.originalEstimateSeconds
               ? Math.round((f.timetracking.originalEstimateSeconds / (8 * 60 * 60)) * 10) / 10

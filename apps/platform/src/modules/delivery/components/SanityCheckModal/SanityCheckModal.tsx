@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
 import {
   runSanityCheck, applySanityMoves, fetchTasksForBoard, fetchPositionsForBoard,
@@ -15,7 +15,7 @@ interface Props {
   onToast?: (toast: { type: 'success' | 'error' | 'warning'; message: string }) => void;
 }
 
-type ViewMode = 'list' | 'grid';
+type ViewMode = 'list' | 'grid' | 'compare';
 
 /** Keys used in the selection set — prefixes disambiguate tasks vs additions. */
 const taskKey = (id: string) => `t:${id}`;
@@ -179,6 +179,14 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
                 >
                   Aperçu grille
                 </button>
+                <button
+                  type="button"
+                  className={`${styles.viewBtn} ${view === 'compare' ? styles.viewBtnActive : ''}`}
+                  onClick={() => setView('compare')}
+                  title="Comparaison avant / après"
+                >
+                  Comparaison
+                </button>
               </div>
               <div className={styles.toolbarRight}>
                 <button type="button" className={styles.linkBtn} onClick={toggleAll}>
@@ -195,6 +203,17 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
                 tasks={tasks}
                 positions={positions}
                 recommendations={allTasks}
+                additions={allAdditions}
+                selectedIds={selected}
+              />
+            )}
+
+            {view === 'compare' && (
+              <ComparePreview
+                tasks={tasks}
+                positions={positions}
+                recommendations={allTasks}
+                additions={allAdditions}
                 selectedIds={selected}
               />
             )}
@@ -439,16 +458,18 @@ interface GridPreviewProps {
   tasks: Task[];
   positions: TaskPosition[];
   recommendations: AnalyzedTask[];
+  additions: ProposedAddition[];
   selectedIds: Set<string>;
 }
 
-function GridPreview({ tasks, positions, recommendations, selectedIds }: GridPreviewProps) {
-  const positionByTaskId = useMemo(
-    () => new Map(positions.map(p => [p.taskId, p])),
-    [positions],
-  );
-
-  const { cols, rows } = useMemo(() => {
+// Shared sizing logic — computes how many cols/rows the grid needs given
+// all placements (current + recommended + additions).
+function useGridSize(
+  positions: TaskPosition[],
+  recommendations: AnalyzedTask[],
+  additions: ProposedAddition[],
+) {
+  return useMemo(() => {
     let maxCol = 4;
     let maxRow = 0;
     for (const p of positions) {
@@ -458,9 +479,88 @@ function GridPreview({ tasks, positions, recommendations, selectedIds }: GridPre
     for (const r of recommendations) {
       if (r.recommended.endCol > maxCol) maxCol = r.recommended.endCol;
       if (r.recommended.row > maxRow) maxRow = r.recommended.row;
+      if (r.current.endCol > maxCol) maxCol = r.current.endCol;
+      if (r.current.row > maxRow) maxRow = r.current.row;
+    }
+    for (const a of additions) {
+      if (a.recommended.endCol > maxCol) maxCol = a.recommended.endCol;
+      if (a.recommended.row > maxRow) maxRow = a.recommended.row;
     }
     return { cols: Math.max(4, maxCol), rows: Math.max(2, maxRow + 1) };
-  }, [positions, recommendations]);
+  }, [positions, recommendations, additions]);
+}
+
+/** Render a `gridTask` block with the full title revealed on hover via a
+ *  floating label that doesn't get clipped by the cell's `overflow: hidden`.
+ *  Falls back to native `title=` attribute when the pointer lingers. */
+function GridTask({
+  startCol, endCol, row,
+  label, fullTitle, tooltipSuffix,
+  className,
+}: {
+  startCol: number; endCol: number; row: number;
+  label: string;
+  fullTitle: string;
+  tooltipSuffix?: string;
+  className: string;
+}) {
+  const [hover, setHover] = useState(false);
+  const span = Math.max(1, endCol - startCol);
+  return (
+    <div
+      className={`${styles.gridTask} ${className} ${hover ? styles.gridTaskHover : ''}`}
+      style={{ gridColumn: `${startCol + 2} / span ${span}`, gridRow: row + 2 }}
+      title={tooltipSuffix ? `${fullTitle}\n${tooltipSuffix}` : fullTitle}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <span className={styles.gridTaskLabel}>{label}</span>
+      {hover && (
+        <div className={styles.gridTaskTooltip} role="tooltip">
+          <strong>{fullTitle}</strong>
+          {tooltipSuffix && <div className={styles.gridTaskTooltipSub}>{tooltipSuffix}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GridLegend({ showAdditions, showMoves }: { showAdditions: boolean; showMoves: boolean }) {
+  return (
+    <div className={styles.gridLegend}>
+      <span className={styles.legendItem}>
+        <span className={`${styles.legendDot} ${styles.legendDotStatic}`} /> Tâche non déplacée
+      </span>
+      {showMoves && (
+        <>
+          <span className={styles.legendItem}>
+            <span className={`${styles.legendDot} ${styles.legendDotGhost}`} /> Position actuelle (à déplacer)
+          </span>
+          <span className={styles.legendItem}>
+            <span className={`${styles.legendDot} ${styles.legendDotNew}`} /> Nouvelle position proposée
+          </span>
+        </>
+      )}
+      {showAdditions && (
+        <span className={styles.legendItem}>
+          <span className={`${styles.legendDot} ${styles.legendDotAddition}`} /> Nouveau ticket à ajouter
+        </span>
+      )}
+    </div>
+  );
+}
+
+function shortenTitle(s: string, max = 22) {
+  return s.length > max ? s.slice(0, max) + '…' : s;
+}
+
+function GridPreview({ tasks, positions, recommendations, additions, selectedIds }: GridPreviewProps) {
+  const positionByTaskId = useMemo(
+    () => new Map(positions.map(p => [p.taskId, p])),
+    [positions],
+  );
+
+  const { cols, rows } = useGridSize(positions, recommendations, additions);
 
   const recoByTaskId = useMemo(
     () => new Map(recommendations.map(r => [r.taskId, r])),
@@ -469,17 +569,7 @@ function GridPreview({ tasks, positions, recommendations, selectedIds }: GridPre
 
   return (
     <div className={styles.gridWrapper}>
-      <div className={styles.gridLegend}>
-        <span className={styles.legendItem}>
-          <span className={`${styles.legendDot} ${styles.legendDotStatic}`} /> Tâche non déplacée
-        </span>
-        <span className={styles.legendItem}>
-          <span className={`${styles.legendDot} ${styles.legendDotGhost}`} /> Position actuelle (à déplacer)
-        </span>
-        <span className={styles.legendItem}>
-          <span className={`${styles.legendDot} ${styles.legendDotNew}`} /> Nouvelle position proposée
-        </span>
-      </div>
+      <GridLegend showAdditions={additions.length > 0} showMoves />
 
       <div
         className={styles.grid}
@@ -517,39 +607,209 @@ function GridPreview({ tasks, positions, recommendations, selectedIds }: GridPre
             if (!pos) return null;
             const reco = recoByTaskId.get(task.id);
             const isSelectedMove = !!reco && selectedIds.has(task.id);
-            const currentSpan = Math.max(1, pos.endCol - pos.startCol);
-            const titleShort = task.title.length > 22 ? task.title.slice(0, 22) + '…' : task.title;
 
             return (
               <div key={`task-${task.id}`} style={{ display: 'contents' }}>
-                <div
-                  className={`${styles.gridTask} ${
-                    isSelectedMove ? styles.gridTaskGhost : reco ? styles.gridTaskGhostDim : styles.gridTaskStatic
-                  }`}
-                  style={{
-                    gridColumn: `${pos.startCol + 2} / span ${currentSpan}`,
-                    gridRow: pos.row + 2,
-                  }}
-                  title={task.title}
-                >
-                  <span className={styles.gridTaskLabel}>{titleShort}</span>
-                </div>
+                <GridTask
+                  startCol={pos.startCol} endCol={pos.endCol} row={pos.row}
+                  label={shortenTitle(task.title)}
+                  fullTitle={task.title}
+                  className={
+                    isSelectedMove
+                      ? styles.gridTaskGhost
+                      : reco
+                        ? styles.gridTaskGhostDim
+                        : styles.gridTaskStatic
+                  }
+                />
 
                 {reco && isSelectedMove && (
-                  <div
-                    className={`${styles.gridTask} ${styles.gridTaskNew}`}
-                    style={{
-                      gridColumn: `${reco.recommended.startCol + 2} / span ${Math.max(1, reco.recommended.endCol - reco.recommended.startCol)}`,
-                      gridRow: reco.recommended.row + 2,
-                    }}
-                    title={`→ ${task.taskTitle}\n${reco.reasoning}`}
-                  >
-                    <span className={styles.gridTaskLabel}>{titleShort}</span>
-                  </div>
+                  <GridTask
+                    startCol={reco.recommended.startCol}
+                    endCol={reco.recommended.endCol}
+                    row={reco.recommended.row}
+                    label={shortenTitle(task.title)}
+                    fullTitle={task.title}
+                    tooltipSuffix={`→ déplacement proposé · ${reco.reasoning}`}
+                    className={styles.gridTaskNew}
+                  />
                 )}
               </div>
             );
           })}
+
+        {/* Additions — rendered in green so they stand out from moves */}
+        {additions.map(addition => {
+          const label = `+ ${shortenTitle(`[${addition.externalKey}] ${addition.summary}`, 20)}`;
+          const fullTitle = `[${addition.externalKey}] ${addition.summary}`;
+          return (
+            <GridTask
+              key={`add-${addition.externalKey}`}
+              startCol={addition.recommended.startCol}
+              endCol={addition.recommended.endCol}
+              row={addition.recommended.row}
+              label={label}
+              fullTitle={fullTitle}
+              tooltipSuffix={`+ Ajout · ${addition.status}${addition.version ? ' · ' + addition.version : ''}\n${addition.reasoning}`}
+              className={styles.gridTaskAddition}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ==================== Compare preview (avant/après) ====================
+
+interface ComparePreviewProps {
+  tasks: Task[];
+  positions: TaskPosition[];
+  recommendations: AnalyzedTask[];
+  additions: ProposedAddition[];
+  selectedIds: Set<string>;
+}
+
+/** Side-by-side grid rendering the board before vs after the proposed
+ *  plan (moves + additions) would be applied. Unselected proposals are
+ *  treated as "not applied" in the AFTER view. */
+function ComparePreview({
+  tasks, positions, recommendations, additions, selectedIds,
+}: ComparePreviewProps) {
+  const { cols, rows } = useGridSize(positions, recommendations, additions);
+
+  const jiraTasks = useMemo(() => tasks.filter(t => t.source === 'jira'), [tasks]);
+
+  const recoByTaskId = useMemo(
+    () => new Map(recommendations.map(r => [r.taskId, r])),
+    [recommendations],
+  );
+
+  const positionByTaskId = useMemo(
+    () => new Map(positions.map(p => [p.taskId, p])),
+    [positions],
+  );
+
+  return (
+    <div className={styles.compareWrapper}>
+      <GridLegend showAdditions={additions.length > 0} showMoves={false} />
+      <div className={styles.compareGrids}>
+        <CompareSide
+          label="Avant"
+          sublabel={`${jiraTasks.length} ticket${jiraTasks.length > 1 ? 's' : ''}`}
+          cols={cols} rows={rows}
+          renderTasks={() => (
+            <>
+              {jiraTasks.map(task => {
+                const pos = positionByTaskId.get(task.id);
+                if (!pos) return null;
+                return (
+                  <GridTask
+                    key={`before-${task.id}`}
+                    startCol={pos.startCol} endCol={pos.endCol} row={pos.row}
+                    label={shortenTitle(task.title)}
+                    fullTitle={task.title}
+                    className={styles.gridTaskStatic}
+                  />
+                );
+              })}
+            </>
+          )}
+        />
+
+        <CompareSide
+          label="Après"
+          sublabel={(() => {
+            const movesApplied = recommendations.filter(r => selectedIds.has(`t:${r.taskId}`)).length;
+            const addsApplied = additions.filter(a => selectedIds.has(`a:${a.externalKey}`)).length;
+            return `${movesApplied} dépl. · ${addsApplied} ajout${addsApplied > 1 ? 's' : ''}`;
+          })()}
+          cols={cols} rows={rows}
+          renderTasks={() => (
+            <>
+              {jiraTasks.map(task => {
+                const pos = positionByTaskId.get(task.id);
+                if (!pos) return null;
+                const reco = recoByTaskId.get(task.id);
+                const applied = !!reco && selectedIds.has(`t:${task.id}`);
+                const target = applied && reco
+                  ? reco.recommended
+                  : { startCol: pos.startCol, endCol: pos.endCol, row: pos.row };
+                return (
+                  <GridTask
+                    key={`after-${task.id}`}
+                    startCol={target.startCol} endCol={target.endCol} row={target.row}
+                    label={shortenTitle(task.title)}
+                    fullTitle={task.title}
+                    tooltipSuffix={applied ? `déplacé · ${reco!.reasoning}` : undefined}
+                    className={applied ? styles.gridTaskNew : styles.gridTaskStatic}
+                  />
+                );
+              })}
+              {additions.filter(a => selectedIds.has(`a:${a.externalKey}`)).map(addition => (
+                <GridTask
+                  key={`after-add-${addition.externalKey}`}
+                  startCol={addition.recommended.startCol}
+                  endCol={addition.recommended.endCol}
+                  row={addition.recommended.row}
+                  label={`+ ${shortenTitle(`[${addition.externalKey}] ${addition.summary}`, 20)}`}
+                  fullTitle={`[${addition.externalKey}] ${addition.summary}`}
+                  tooltipSuffix={`+ Nouveau · ${addition.status}\n${addition.reasoning}`}
+                  className={styles.gridTaskAddition}
+                />
+              ))}
+            </>
+          )}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CompareSide({
+  label, sublabel, cols, rows, renderTasks,
+}: {
+  label: string;
+  sublabel: string;
+  cols: number;
+  rows: number;
+  renderTasks: () => ReactNode;
+}) {
+  return (
+    <div className={styles.compareSide}>
+      <div className={styles.compareSideHeader}>
+        <span className={styles.compareSideLabel}>{label}</span>
+        <span className={styles.compareSideSub}>{sublabel}</span>
+      </div>
+      <div
+        className={styles.grid}
+        style={{
+          gridTemplateColumns: `36px repeat(${cols}, minmax(44px, 1fr))`,
+          gridTemplateRows: `22px repeat(${rows}, 30px)`,
+          minWidth: 0,
+        }}
+      >
+        <div className={`${styles.gridCell} ${styles.gridHeader}`} />
+        {Array.from({ length: cols }).map((_, c) => (
+          <div key={`ch-${c}`} className={`${styles.gridCell} ${styles.gridHeader}`}>
+            S{c + 1}
+          </div>
+        ))}
+        {Array.from({ length: rows }).map((_, r) => (
+          <div key={`rh-${r}`} className={`${styles.gridCell} ${styles.gridRowHeader}`}>
+            L{r + 1}
+          </div>
+        ))}
+        {Array.from({ length: rows }).map((_, r) => (
+          Array.from({ length: cols }).map((_, c) => (
+            <div
+              key={`bg-${r}-${c}`}
+              className={styles.gridCell}
+              style={{ gridColumn: c + 2, gridRow: r + 2 }}
+            />
+          ))
+        ))}
+        {renderTasks()}
       </div>
     </div>
   );
