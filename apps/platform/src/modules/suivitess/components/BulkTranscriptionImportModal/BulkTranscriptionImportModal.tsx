@@ -573,35 +573,44 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                   const statusChanged = r.subjectAction === 'update'
                     && !!r.subject.updatedStatus
                     && r.subject.updatedStatus !== r.subject.status;
+                  const breadcrumbTitle =
+                    `${reviewIsExisting ? 'Review trouvée' : 'Nouvelle review'} : "${reviewLabel}"`
+                    + ` › ${sectionIsExisting ? 'Section trouvée' : 'Nouvelle section'} : "${sectionLabel}"`;
                   return (
                     <a key={r.key} className={styles.summaryItem} href={`#subj-${r.key}`}>
-                      <span className={styles.summaryItemTitle}>{r.subject.title}</span>
+                      {/* Col 1 : title */}
+                      <span className={styles.summaryItemTitle} title={r.subject.title}>
+                        {r.subject.title}
+                      </span>
+                      {/* Col 2 : mode */}
                       <span className={`${styles.summaryItemMode} ${r.subjectAction === 'update' ? styles.modeUpdate : styles.modeCreate}`}>
-                        {r.subjectAction === 'update' ? 'Mise à jour sujet' : 'Nouveau sujet'}
+                        {r.subjectAction === 'update' ? 'Mise à jour' : 'Nouveau'}
                       </span>
+                      {/* Col 3 : review pill */}
                       <span
-                        className={styles.summaryItemBreadcrumb}
-                        title={
-                          `${reviewIsExisting ? 'Review trouvée' : 'Nouvelle review'} : "${reviewLabel}"`
-                          + ` › ${sectionIsExisting ? 'Section trouvée' : 'Nouvelle section'} : "${sectionLabel}"`
-                        }
+                        className={`${styles.breadcrumbPart} ${reviewIsExisting ? styles.summaryItemReviewExisting : styles.summaryItemReviewNew}`}
+                        title={breadcrumbTitle}
                       >
-                        <span className={`${styles.breadcrumbPart} ${reviewIsExisting ? styles.summaryItemReviewExisting : styles.summaryItemReviewNew}`}>
-                          {reviewIsExisting ? '✓' : '+'} {reviewLabel}
-                        </span>
-                        <span className={styles.breadcrumbSep}>›</span>
-                        <span className={`${styles.breadcrumbPart} ${sectionIsExisting ? styles.summaryItemReviewExisting : styles.summaryItemReviewNew}`}>
-                          {sectionIsExisting ? '✓' : '+'} {sectionLabel}
-                        </span>
+                        {reviewIsExisting ? '✓' : '+'} {reviewLabel}
                       </span>
-                      {statusChanged && (
+                      {/* Col 4 : separator */}
+                      <span className={styles.breadcrumbSep} aria-hidden="true">›</span>
+                      {/* Col 5 : section pill */}
+                      <span
+                        className={`${styles.breadcrumbPart} ${sectionIsExisting ? styles.summaryItemReviewExisting : styles.summaryItemReviewNew}`}
+                        title={breadcrumbTitle}
+                      >
+                        {sectionIsExisting ? '✓' : '+'} {sectionLabel}
+                      </span>
+                      {/* Col 6 : status-change (optional, placeholder when absent) */}
+                      {statusChanged ? (
                         <span
                           className={styles.summaryItemStatusChange}
                           title={`Statut : "${r.subject.status}" → "${r.subject.updatedStatus}"`}
                         >
                           ↻ statut
                         </span>
-                      )}
+                      ) : <span aria-hidden="true" />}
                     </a>
                   );
                 })}

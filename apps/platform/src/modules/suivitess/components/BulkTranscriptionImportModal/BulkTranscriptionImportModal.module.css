@@ -161,29 +161,38 @@
 .summaryList {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 2px;
   margin: 0 0 var(--spacing-sm) 0;
   padding: 0;
   border: none;
   background: transparent;
 }
+/* Grid layout so every row has exactly the same visual shape, no matter
+   how long the title or how many badges. Columns :
+     1. Title                    → takes remaining space (ellipsis if long)
+     2. Mode tag                 → fixed 130px, right-aligned
+     3. Breadcrumb (review › section) → fixed 2×180px + separator
+     4. Optional status-change badge → auto, fixed slot on the right */
 .summaryItem {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px minmax(0, 180px) 14px minmax(0, 180px) 90px;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: 2px 0;
+  padding: 2px 4px;
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   text-decoration: none;
-  transition: color var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.summaryItem:hover {
+  background: color-mix(in srgb, var(--accent-primary) 5%, transparent);
 }
 .summaryItem:hover .summaryItemTitle {
   color: var(--text-primary);
 }
 .summaryItemTitle {
-  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -191,15 +200,15 @@
   font-size: var(--font-size-sm);
 }
 .summaryItemMode {
-  flex-shrink: 0;
-  margin-left: auto;
-  padding: 1px 6px;
+  padding: 1px 8px;
   border-radius: var(--radius-sm);
   font-size: 10px;
   font-weight: var(--font-weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   background: transparent;
+  text-align: center;
+  justify-self: stretch;
 }
 
 /* === Step 1 : source picker === */
@@ -1169,20 +1178,8 @@
   font-weight: var(--font-weight-semibold);
 }
 
-/* Summary list — per-subject breadcrumb (review › section) + status
-   change indicators, appearing in the sommaire nav above the rows. */
-
-/* Breadcrumb wrapper that glues review and section together, rendered
-   as REVIEW › SECTION with coloured pills for each part. */
-.summaryItemBreadcrumb {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: 6px;
-  flex-wrap: nowrap;
-  min-width: 0;
-  cursor: help;
-}
+/* Summary list — per-subject breadcrumb (review › section) pills,
+   rendered as individual grid cells (see .summaryItem). */
 
 .breadcrumbPart {
   padding: 1px 6px;
@@ -1190,16 +1187,19 @@
   font-size: 10px;
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;
-  max-width: 220px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: center;
+  cursor: help;
+  justify-self: stretch;
 }
 
 .breadcrumbSep {
   color: var(--text-muted);
   font-size: 12px;
-  padding: 0 2px;
   user-select: none;
+  text-align: center;
 }
 
 .summaryItemReview {
@@ -1233,8 +1233,6 @@
 }
 
 .summaryItemStatusChange {
-  flex-shrink: 0;
-  margin-left: 4px;
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-size: 10px;
@@ -1244,4 +1242,6 @@
   color: var(--accent-primary);
   cursor: help;
   white-space: nowrap;
+  text-align: center;
+  justify-self: stretch;
 }
