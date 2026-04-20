@@ -173,23 +173,27 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   };
 
   function buildRowsFromSubjects(subjects: api.AnalyzedSubject[]): Row[] {
-    return subjects.map((s, i) => ({
-      key: `s-${i}`,
-      subject: s,
-      // Respecte la décision de l'IA : si elle a matché une review existante,
-      // le tab se positionne sur "Sélectionner une review existante" ; sinon
-      // "Nouvelle review" avec le titre suggéré pré-rempli. L'utilisateur
-      // peut toujours basculer via le toggle.
-      reviewId: s.action === 'existing-review' ? s.reviewId : null,
-      newReviewTitle: s.suggestedNewReviewTitle ?? '',
-      sectionId: s.sectionAction === 'existing-section' ? s.sectionId : null,
-      newSectionName: s.suggestedNewSectionName ?? '',
-      subjectAction: s.subjectAction === 'update-existing-subject' ? 'update' : 'create',
-      targetSubjectId: s.targetSubjectId,
-      skipped: false,
-      confirmed: false,
-      mode: 'create',
-    }));
+    return subjects.map((s, i) => {
+      const matchedExisting = s.action === 'existing-review' && !!s.reviewId;
+      return {
+        key: `s-${i}`,
+        subject: s,
+        // Respecte la décision de l'IA : si elle a matché une review
+        // existante, on positionne reviewId ET mode 'existing' pour que
+        // le toggle segmented affiche "Sélectionner une review existante"
+        // par défaut. Sinon on tombe sur "Nouvelle review" avec le titre
+        // suggéré pré-rempli.
+        reviewId: matchedExisting ? s.reviewId : null,
+        newReviewTitle: s.suggestedNewReviewTitle ?? '',
+        sectionId: s.sectionAction === 'existing-section' ? s.sectionId : null,
+        newSectionName: s.suggestedNewSectionName ?? '',
+        subjectAction: s.subjectAction === 'update-existing-subject' ? 'update' : 'create',
+        targetSubjectId: s.targetSubjectId,
+        skipped: false,
+        confirmed: false,
+        mode: matchedExisting ? 'existing' : 'create',
+      };
+    });
   }
 
   const updateRow = (key: string, patch: Partial<Row>) => {
