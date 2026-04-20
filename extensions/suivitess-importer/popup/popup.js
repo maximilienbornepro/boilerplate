@@ -31,6 +31,50 @@
   const progressText = $('progress-text');
   const resultSection = $('result-section');
   const resultMsg = $('result-msg');
+  const envBadge = $('env-badge');
+
+  // ==================== BRAND LOGOS ====================
+
+  /** Minimal Slack mark (4-color hash). Sized 12×12 to sit inline next to the
+   *  badge label. Uses official Slack palette so the logo reads correctly
+   *  on both the purple badge and any theme. */
+  const SLACK_LOGO_SVG = `
+    <svg class="provider-logo" width="12" height="12" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M22 37a5 5 0 1 1-5-5h5v5z" fill="#E01E5A"/>
+      <path d="M24.5 37a5 5 0 0 1 10 0v12.5a5 5 0 0 1-10 0V37z" fill="#E01E5A"/>
+      <path d="M29.5 17a5 5 0 1 1 5-5v5h-5z" fill="#ECB22E"/>
+      <path d="M29.5 19.5a5 5 0 0 1 0 10H17a5 5 0 0 1 0-10h12.5z" fill="#ECB22E"/>
+      <path d="M49.5 24.5a5 5 0 1 1 5 5h-5v-5z" fill="#2EB67D"/>
+      <path d="M47 24.5a5 5 0 0 1-10 0V12a5 5 0 0 1 10 0v12.5z" fill="#2EB67D"/>
+      <path d="M42 44.5a5 5 0 1 1-5 5v-5h5z" fill="#ECB22E"/>
+      <path d="M42 42a5 5 0 0 1 0-10h12.5a5 5 0 0 1 0 10H42z" fill="#ECB22E"/>
+    </svg>
+  `;
+
+  /** Simplified Outlook "O + envelope" mark in white — reads cleanly against
+   *  the blue Outlook badge. */
+  const OUTLOOK_LOGO_SVG = `
+    <svg class="provider-logo" width="12" height="12" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="2" y="5" width="20" height="14" rx="1.5" fill="#fff"/>
+      <path d="M2.5 6L12 13l9.5-7" stroke="#0078d4" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <circle cx="8" cy="12" r="3" fill="#0078d4"/>
+      <circle cx="8" cy="12" r="1.4" fill="#fff"/>
+    </svg>
+  `;
+
+  function setProviderBadge(kind, label) {
+    providerBadge.className = `badge badge-${kind}`;
+    if (kind === 'slack') {
+      providerBadge.innerHTML = SLACK_LOGO_SVG + `<span>${label}</span>`;
+    } else if (kind === 'outlook') {
+      providerBadge.innerHTML = OUTLOOK_LOGO_SVG + `<span>${label}</span>`;
+    } else {
+      providerBadge.textContent = label;
+    }
+  }
+
+  // Dev build marker — visible "D" next to the header title.
+  if (ENV.isDev && envBadge) envBadge.classList.remove('hidden');
 
   // ==================== CONFIG ====================
 
@@ -353,27 +397,23 @@
 
     if (!serverUrl || !jwtToken) {
       configSection.classList.remove('hidden');
-      providerBadge.textContent = 'Configuration requise';
-      providerBadge.className = 'badge badge-unknown';
+      setProviderBadge('unknown', 'Configuration requise');
       return;
     }
 
     // Detect provider
     provider = await detectProvider();
     if (provider === 'outlook') {
-      providerBadge.textContent = 'Outlook';
-      providerBadge.className = 'badge badge-outlook';
+      setProviderBadge('outlook', 'Outlook');
       // Scrape emails and push them to the server — no analysis in the extension.
       await syncOutlookToServer();
       return;
     } else if (provider === 'slack') {
-      providerBadge.textContent = 'Slack';
-      providerBadge.className = 'badge badge-slack';
+      setProviderBadge('slack', 'Slack');
       // For Slack, just show the connect section.
       return;
     } else {
-      providerBadge.textContent = 'Page non supportee';
-      providerBadge.className = 'badge badge-unknown';
+      setProviderBadge('unknown', 'Page non supportee');
       showError('Ouvrez Outlook ou Slack dans cet onglet pour importer du contenu.');
       return;
     }
@@ -421,7 +461,7 @@
 
   async function syncOutlookToServer() {
     hideError();
-    statusSection.querySelector('#provider-badge').textContent = 'Outlook — Synchronisation...';
+    setProviderBadge('outlook', 'Outlook — Synchronisation...');
 
     try {
       // 1) Scrape emails from the page
@@ -448,16 +488,14 @@
         body: JSON.stringify({ emails: payload }),
       });
 
-      providerBadge.textContent = 'Outlook';
-      providerBadge.className = 'badge badge-outlook';
+      setProviderBadge('outlook', 'Outlook');
 
       resultSection.classList.remove('hidden');
       resultMsg.textContent = `✓ ${result.stored} email(s) synchronisé(s). Ouvrez SuiviTess > "Importer & ranger" pour les analyser.`;
       resultMsg.className = 'result-msg';
 
     } catch (err) {
-      providerBadge.textContent = 'Outlook';
-      providerBadge.className = 'badge badge-outlook';
+      setProviderBadge('outlook', 'Outlook');
 
       if (err.message.includes('Non connecte')) {
         resultSection.classList.remove('hidden');
