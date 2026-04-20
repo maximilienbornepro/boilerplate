@@ -245,6 +245,36 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     setRows(prev => prev.filter(r => r.key !== rowKey));
   };
 
+  /** Rename the "new section" name on a row, and propagate the rename to
+   *  every sibling row that shared the SAME previous name + same review
+   *  target. Prevents the user from having to rename the same section in
+   *  10 rows one by one when the AI proposed the same name for a cluster.
+   *
+   *  Only fires when the rename is triggered on a newSectionName (not on
+   *  section dropdown pick). Silently no-op if the row has no siblings. */
+  const renameNewSectionCluster = (rowKey: string, newName: string) => {
+    setRows(prev => {
+      const src = prev.find(r => r.key === rowKey);
+      if (!src) return prev;
+      // Only group by (review target, previous name). A row with a
+      // sectionId picked (existing section) is never part of the rename.
+      if (src.sectionId) return prev.map(r => r.key === rowKey ? { ...r, newSectionName: newName } : r);
+      const prevName = src.newSectionName.trim();
+      const reviewKey = src.reviewId ?? src.newReviewTitle ?? '';
+      const shouldPropagate = (r: Row) => (
+        !r.sectionId
+        && r.newSectionName.trim() === prevName
+        && prevName.length > 0
+        && (r.reviewId ?? r.newReviewTitle ?? '') === reviewKey
+      );
+      return prev.map(r => (
+        r.key === rowKey || shouldPropagate(r)
+          ? { ...r, newSectionName: newName }
+          : r
+      ));
+    });
+  };
+
   const handleApply = async () => {
     if (!primaryItem) return;
     const subjectsToApply: api.ApplyRoutingSubject[] = rows
@@ -473,6 +503,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                     consolidation={consolidationByRow[i] ?? null}
                     reviews={availableReviews}
                     onUpdate={patch => updateRow(r.key, patch)}
+                    onRenameNewSection={(name) => renameNewSectionCluster(r.key, name)}
                     onDuplicate={() => duplicateRowForOtherReview(r.key)}
                     onRemove={isCopyRow ? () => removeRow(r.key) : undefined}
                     isMultiPlacement={sameTitleCount >= 2}
@@ -528,13 +559,17 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 // ==================== Subject row ====================
 
 function SubjectRow({
-  row, consolidation, reviews, onUpdate, id, nextRowKey,
+  row, consolidation, reviews, onUpdate, onRenameNewSection, id, nextRowKey,
   onDuplicate, onRemove, isMultiPlacement, sameNewSectionCount,
 }: {
   row: Row;
   consolidation: api.ConsolidationMeta | null;
   reviews: api.AvailableReview[];
   onUpdate: (patch: Partial<Row>) => void;
+  /** Rename the row's `newSectionName` AND propagate to every sibling
+   *  row that shared the same previous name + same review target. Lets
+   *  the user fix a proposed section name once for the whole cluster. */
+  onRenameNewSection: (newName: string) => void;
   id?: string;
   nextRowKey?: string | null;
   /** Clone this row so the subject can be routed to another review.
@@ -744,7 +779,7 @@ function SubjectRow({
               placeholder="Nom de la nouvelle section"
               value={newSectionName}
               disabled={skipped}
-              onChange={e => onUpdate({ newSectionName: e.target.value })}
+              onChange={e => onRenameNewSection(e.target.value)}
               maxLength={80}
               className={showValidation && !newSectionName.trim() ? styles.inputError : ''}
             />
@@ -777,7 +812,7 @@ function SubjectRow({
                 placeholder="Nom de la nouvelle section"
                 value={newSectionName}
                 disabled={skipped}
-                onChange={e => onUpdate({ newSectionName: e.target.value })}
+                onChange={e => onRenameNewSection(e.target.value)}
                 maxLength={80}
                 className={showValidation && !newSectionName.trim() ? styles.inputError : ''}
               />
