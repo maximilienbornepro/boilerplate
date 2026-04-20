@@ -168,9 +168,12 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     return subjects.map((s, i) => ({
       key: `s-${i}`,
       subject: s,
-      reviewId: s.action === 'existing-review' ? s.reviewId : null,
+      // Par défaut : toujours en mode "création d'une nouvelle review"
+      // (même si l'IA a matché une review existante, l'utilisateur
+      //  peut basculer via le toggle). Le titre suggéré reste pré-rempli.
+      reviewId: null,
       newReviewTitle: s.suggestedNewReviewTitle ?? '',
-      sectionId: s.sectionAction === 'existing-section' ? s.sectionId : null,
+      sectionId: null,
       newSectionName: s.suggestedNewSectionName ?? '',
       subjectAction: s.subjectAction === 'update-existing-subject' ? 'update' : 'create',
       targetSubjectId: s.targetSubjectId,
@@ -352,12 +355,9 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
           <>
             {lastLogId != null && (
               <div className={styles.logBanner}>
-                <span>🧠 Analyse loggée — <a href={`/ai-logs/${lastLogId}`} target="_blank" rel="noreferrer">voir le log #{lastLogId}</a></span>
-                <button
-                  type="button"
-                  className={styles.logBannerCopy}
-                  onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/ai-logs/${lastLogId}`)}
-                >📋 copier l'URL</button>
+                <a href={`/ai-logs/${lastLogId}`} target="_blank" rel="noreferrer" className={styles.logBannerLink}>
+                  Analyse loggée — voir le log #{lastLogId}
+                </a>
               </div>
             )}
             <p className={styles.summaryIntro}>
@@ -464,22 +464,30 @@ function SubjectRow({
   // no longer contains the target subject → force back to "create".
   const updateIsPossible = currentSection && currentSection.subjects.length > 0;
   const statusColor = getStatusOption(subject.status).color;
+  // Mode color = based on the AI's INITIAL proposal only:
+  //   - yellow if the IA proposed a new subject (subject.subjectAction !== 'update-existing-subject')
+  //   - blue if the IA proposed updating an existing subject
+  // Does NOT track the user's later toggle to "Mettre à jour un sujet existant"
+  // so the block colour stays consistent with what the IA originally extracted.
+  const initialIsUpdate = subject.subjectAction === 'update-existing-subject';
+  const modeColor = initialIsUpdate ? '#3b82f6' : '#eab308';
   const rowStyle: CSSProperties = {
-    borderColor: statusColor,
-    background: `color-mix(in srgb, ${statusColor} 4%, transparent)`,
-    ['--row-accent' as string]: statusColor,
+    borderColor: modeColor,
+    background: `color-mix(in srgb, ${modeColor} 4%, transparent)`,
+    ['--row-accent' as string]: modeColor,
+    ['--status-color' as string]: statusColor,
   };
 
   return (
     <div
       id={id}
-      className={`${styles.subjectRow} ${skipped ? styles.subjectRowSkipped : ''} ${subjectAction === 'update' ? styles.subjectRowUpdate : ''}`}
+      className={`${styles.subjectRow} ${skipped ? styles.subjectRowSkipped : ''} ${initialIsUpdate ? styles.subjectRowUpdate : ''}`}
       style={rowStyle}
     >
       <div className={styles.subjectHeader}>
         <span className={styles.subjectTitle}>{subject.title}</span>
-        <span className={`${styles.modeTag} ${subjectAction === 'update' ? styles.modeUpdate : styles.modeCreate}`}>
-          {subjectAction === 'update' ? '↻ Mise à jour' : '+ Nouveau'}
+        <span className={`${styles.modeTag} ${initialIsUpdate ? styles.modeUpdate : styles.modeCreate}`}>
+          {initialIsUpdate ? 'Mise à jour' : '+ Nouveau'}
         </span>
         {isMultiSource && (
           <span
@@ -489,7 +497,7 @@ function SubjectRow({
             {hasContradiction ? '⚠️' : '🔀'} {consolidation!.evidence.length} sources
           </span>
         )}
-        <span className={styles.statusTag}>{subject.status}</span>
+        <span className={styles.statusTag}>{capitalizeFirstLetter(subject.status)}</span>
       </div>
 
       {consolidation && consolidation.reconciliationNote && (
@@ -519,69 +527,124 @@ function SubjectRow({
       {subject.reasoning && <p className={styles.reasoning}>{subject.reasoning}</p>}
 
       <div className={styles.routing}>
+        {/* Toggle drives both Review and Section modes — placed under the
+            separator so it reads as "for this subject, choose how to route it". */}
+        <div className={styles.routingToggleRow}>
+          <div className={styles.segmented}>
+            <button
+              type="button"
+              className={`${styles.segmentedBtn} ${!reviewId ? styles.segmentedBtnActive : ''}`}
+              disabled={skipped}
+              onClick={() => onUpdate({ reviewId: null, sectionId: null })}
+            >
+              + Créer une nouvelle review
+            </button>
+            <button
+              type="button"
+              className={`${styles.segmentedBtn} ${reviewId ? styles.segmentedBtnActive : ''}`}
+              disabled={skipped || reviews.length === 0}
+              onClick={() => {
+                const first = reviews[0];
+                if (first) {
+                  onUpdate({ reviewId: first.id, sectionId: first.sections[0]?.id ?? null });
+                }
+              }}
+            >
+              Sélectionner une review existante
+            </button>
+          </div>
+        </div>
         <div className={styles.routingField}>
           <label>Review de destination</label>
-          <CustomDropdown
-            value={reviewId ?? '__new__'}
-            displayLabel={reviewId ? (reviews.find(r => r.id === reviewId)?.title ?? '—') : '+ Nouvelle review…'}
-            disabled={skipped}
-            options={[
-              { value: '__new__', label: '+ Nouvelle review…' },
-              ...reviews.map(r => ({ value: r.id, label: r.title })),
-            ]}
-            onChange={(val) => {
-              if (val === '__new__') {
-                onUpdate({ reviewId: null, sectionId: null });
-              } else {
+          {!reviewId ? (
+            <>
+              {subject.suggestedNewReviewTitle && (
+                <span className={styles.aiHint}>Suggestion IA</span>
+              )}
+              <input
+                type="text"
+                placeholder="Titre de la nouvelle review"
+                value={newReviewTitle}
+                disabled={skipped}
+                onChange={e => onUpdate({ newReviewTitle: e.target.value })}
+                maxLength={100}
+              />
+            </>
+          ) : (
+            <CustomDropdown
+              value={reviewId}
+              displayLabel={reviews.find(r => r.id === reviewId)?.title ?? '—'}
+              disabled={skipped}
+              options={reviews.map(r => ({ value: r.id, label: r.title }))}
+              onChange={(val) => {
                 const firstSection = reviews.find(r => r.id === val)?.sections[0]?.id ?? null;
                 onUpdate({ reviewId: val, sectionId: firstSection });
-              }
-            }}
-          />
-          {!reviewId && (
-            <input
-              type="text"
-              placeholder="Titre de la nouvelle review"
-              value={newReviewTitle}
-              disabled={skipped}
-              onChange={e => onUpdate({ newReviewTitle: e.target.value })}
-              maxLength={100}
+              }}
             />
           )}
         </div>
 
         <div className={styles.routingField}>
           <label>Section</label>
-          {currentReview && currentReview.sections.length > 0 ? (
-            <CustomDropdown
-              value={sectionId ?? '__new__'}
-              displayLabel={sectionId ? (currentReview.sections.find(s => s.id === sectionId)?.name ?? '—') : '+ Nouvelle section…'}
-              disabled={skipped}
-              options={[
-                { value: '__new__', label: '+ Nouvelle section…' },
-                ...currentReview.sections.map(s => ({ value: s.id, label: s.name })),
-              ]}
-              onChange={(val) => {
-                const next = val === '__new__' ? null : val;
-                onUpdate({
-                  sectionId: next,
-                  subjectAction: 'create',
-                  targetSubjectId: null,
-                });
-              }}
-            />
+          {!reviewId ? (
+            // Nouvelle review → section toujours nouvelle (avec suggestion IA)
+            <>
+              {subject.suggestedNewSectionName && (
+                <span className={styles.aiHint}>Suggestion IA</span>
+              )}
+              <input
+                type="text"
+                placeholder="Nom de la nouvelle section"
+                value={newSectionName}
+                disabled={skipped}
+                onChange={e => onUpdate({ newSectionName: e.target.value })}
+                maxLength={80}
+              />
+            </>
+          ) : currentReview && currentReview.sections.length > 0 ? (
+            // Review existante avec sections → dropdown + option "nouvelle section"
+            <>
+              {sectionId === null ? (
+                <input
+                  type="text"
+                  placeholder="Nom de la nouvelle section"
+                  value={newSectionName}
+                  disabled={skipped}
+                  onChange={e => onUpdate({ newSectionName: e.target.value })}
+                  maxLength={80}
+                />
+              ) : (
+                <CustomDropdown
+                  value={sectionId}
+                  displayLabel={currentReview.sections.find(s => s.id === sectionId)?.name ?? '—'}
+                  disabled={skipped}
+                  options={[
+                    ...currentReview.sections.map(s => ({ value: s.id, label: s.name })),
+                    { value: '__new__', label: '+ Créer une nouvelle section' },
+                  ]}
+                  onChange={(val) => {
+                    if (val === '__new__') {
+                      onUpdate({ sectionId: null, subjectAction: 'create', targetSubjectId: null });
+                    } else {
+                      onUpdate({ sectionId: val, subjectAction: 'create', targetSubjectId: null });
+                    }
+                  }}
+                />
+              )}
+            </>
           ) : (
-            <span className={styles.hint}>La nouvelle review aura cette section :</span>
-          )}
-          {(!reviewId || sectionId === null) && (
-            <input
-              type="text"
-              placeholder="Nom de la nouvelle section"
-              value={newSectionName}
-              disabled={skipped}
-              onChange={e => onUpdate({ newSectionName: e.target.value })}
-              maxLength={80}
-            />
+            // Review existante sans sections → toujours créer
+            <>
+              <span className={styles.hint}>Cette review n'a pas encore de section</span>
+              <input
+                type="text"
+                placeholder="Nom de la nouvelle section"
+                value={newSectionName}
+                disabled={skipped}
+                onChange={e => onUpdate({ newSectionName: e.target.value })}
+                maxLength={80}
+              />
+            </>
           )}
         </div>
 
@@ -700,16 +763,38 @@ function CustomDropdown({
       </button>
       {open && (
         <div className="suivitess-exports-menu" role="menu" style={{ width: '100%', maxHeight: 240, overflowY: 'auto' }}>
-          {options.map(opt => (
-            <button
-              key={opt.value}
-              type="button"
-              className={`suivitess-exports-item ${opt.value === value ? styles.customDropdownItemActive : ''}`}
-              onClick={() => { onChange(opt.value); setOpen(false); }}
-            >
-              {opt.label}
-            </button>
-          ))}
+          {options.map(opt => {
+            if (opt.value === '__sep__') {
+              return (
+                <div
+                  key="__sep__"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    pointerEvents: 'none',
+                    cursor: 'default',
+                    borderTop: '1px solid var(--border-color)',
+                    marginTop: 2,
+                  }}
+                >
+                  {opt.label}
+                </div>
+              );
+            }
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                className={`suivitess-exports-item ${opt.value === value ? styles.customDropdownItemActive : ''}`}
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -724,6 +809,15 @@ function formatDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/** Uppercases the first ALPHABETIC character found in the string (skipping
+ *  leading emojis/spaces). Leaves the rest untouched. */
+function capitalizeFirstLetter(s: string): string {
+  if (!s) return s;
+  const match = s.match(/\p{L}/u);
+  if (!match || match.index === undefined) return s;
+  return s.slice(0, match.index) + match[0].toUpperCase() + s.slice(match.index + 1);
 }
 
 /** Renders a text that may contain "•" bullets, putting each bullet on its own line. */
