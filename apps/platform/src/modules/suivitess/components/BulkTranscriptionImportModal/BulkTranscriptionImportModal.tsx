@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useRef, type ReactNode, type CSSProperties } from 'react';
 import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
 import { SkillButton } from '../SkillButton/SkillButton';
+import { getStatusOption } from '../../types';
 import * as api from '../../services/api';
 import styles from './BulkTranscriptionImportModal.module.css';
 
@@ -203,8 +204,18 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   };
 
   // ============ Render ============
+  const sourceTitle = selectedItem?.title;
+  const modalTitle = (
+    <>
+      Analyser & ranger une transcription
+      {phase === 'routing' && sourceTitle && (
+        <span className={styles.modalTitleSource}>{sourceTitle}</span>
+      )}
+    </>
+  );
+
   return (
-    <Modal title="Analyser & ranger une transcription" onClose={onClose} size="xl">
+    <Modal title={modalTitle} onClose={onClose} size="xl">
       <div className={styles.content}>
         {phase === 'error' && (
           <div className={styles.error}>
@@ -299,9 +310,21 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                 >📋 copier l'URL</button>
               </div>
             )}
-            <div className={styles.summaryBlock}>
+            <p className={styles.summaryIntro}>
               <strong>{summary}</strong>
-            </div>
+            </p>
+            {rows.length > 0 && (
+              <nav className={styles.summaryList} aria-label="Sommaire des sujets extraits">
+                {rows.map(r => (
+                  <a key={r.key} className={styles.summaryItem} href={`#subj-${r.key}`}>
+                    <span className={styles.summaryItemTitle}>{r.subject.title}</span>
+                    <span className={`${styles.summaryItemMode} ${r.subjectAction === 'update' ? styles.modeUpdate : styles.modeCreate}`}>
+                      {r.subjectAction === 'update' ? 'Mise à jour' : 'Nouveau'}
+                    </span>
+                  </a>
+                ))}
+              </nav>
+            )}
             <div className={styles.subjectsList}>
               {rows.length === 0 ? (
                 <p className={styles.emptyHint}>L'IA n'a identifié aucun sujet digne d'un suivi dans ce contenu.</p>
@@ -309,6 +332,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                 <SubjectRow
                   key={r.key}
                   row={r}
+                  id={`subj-${r.key}`}
                   reviews={availableReviews}
                   onUpdate={patch => updateRow(r.key, patch)}
                 />
@@ -360,11 +384,12 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 // ==================== Subject row ====================
 
 function SubjectRow({
-  row, reviews, onUpdate,
+  row, reviews, onUpdate, id,
 }: {
   row: Row;
   reviews: api.AvailableReview[];
   onUpdate: (patch: Partial<Row>) => void;
+  id?: string;
 }) {
   const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped } = row;
 
@@ -383,32 +408,29 @@ function SubjectRow({
   // When the action is "update" but the selected review/section changed and
   // no longer contains the target subject → force back to "create".
   const updateIsPossible = currentSection && currentSection.subjects.length > 0;
+  const statusColor = getStatusOption(subject.status).color;
+  const rowStyle: CSSProperties = {
+    borderColor: statusColor,
+    background: `color-mix(in srgb, ${statusColor} 4%, transparent)`,
+    ['--row-accent' as string]: statusColor,
+  };
 
   return (
-    <div className={`${styles.subjectRow} ${skipped ? styles.subjectRowSkipped : ''} ${subjectAction === 'update' ? styles.subjectRowUpdate : ''}`}>
+    <div
+      id={id}
+      className={`${styles.subjectRow} ${skipped ? styles.subjectRowSkipped : ''} ${subjectAction === 'update' ? styles.subjectRowUpdate : ''}`}
+      style={rowStyle}
+    >
       <div className={styles.subjectHeader}>
+        <span className={styles.subjectTitle}>{subject.title}</span>
         <span className={`${styles.modeTag} ${subjectAction === 'update' ? styles.modeUpdate : styles.modeCreate}`}>
           {subjectAction === 'update' ? '↻ Mise à jour' : '+ Nouveau'}
         </span>
         <span className={styles.statusTag}>{subject.status}</span>
-        <span className={styles.subjectTitle}>{subject.title}</span>
-        {subject.responsibility && (
-          <span className={styles.responsibility}>@{subject.responsibility}</span>
-        )}
-        <span className={`${styles.confidence} ${styles[`conf_${subject.confidence}`]}`}>
-          IA · {subject.confidence === 'high' ? 'haute confiance' : subject.confidence === 'low' ? 'à valider' : 'moyenne'}
-        </span>
       </div>
 
       {subject.situation && <p className={styles.situation}>{subject.situation}</p>}
       {subject.reasoning && <p className={styles.reasoning}>{subject.reasoning}</p>}
-
-      {subjectAction === 'update' && targetSubject && (
-        <div className={styles.updateBox}>
-          <strong>Sujet existant ciblé :</strong> <span>{targetSubject.title}</span>
-          {targetSubject.status && <span className={styles.updateStatus}>{targetSubject.status}</span>}
-        </div>
-      )}
 
       <div className={styles.routing}>
         <div className={styles.routingField}>
@@ -482,37 +504,42 @@ function SubjectRow({
             <label>Que faire de ce sujet ?</label>
             <div className={styles.modeChoice}>
               <label className={styles.modeRadio}>
-                <input
-                  type="radio"
-                  name={`mode-${row.key}`}
-                  checked={subjectAction === 'create'}
-                  disabled={skipped}
-                  onChange={() => onUpdate({ subjectAction: 'create', targetSubjectId: null })}
-                />
-                <span>Créer un nouveau sujet</span>
+                <span className={styles.modeRadioHeader}>
+                  <input
+                    type="radio"
+                    name={`mode-${row.key}`}
+                    checked={subjectAction === 'create'}
+                    disabled={skipped}
+                    onChange={() => onUpdate({ subjectAction: 'create', targetSubjectId: null })}
+                  />
+                  <span>Créer un nouveau sujet</span>
+                </span>
               </label>
+              <span className={styles.modeChoiceSeparator}>ou</span>
               <label className={styles.modeRadio}>
-                <input
-                  type="radio"
-                  name={`mode-${row.key}`}
-                  checked={subjectAction === 'update'}
-                  disabled={skipped}
-                  onChange={() => onUpdate({
-                    subjectAction: 'update',
-                    targetSubjectId: targetSubjectId ?? currentSection?.subjects[0]?.id ?? null,
-                  })}
-                />
-                <span>Mettre à jour un sujet existant</span>
+                <span className={styles.modeRadioHeader}>
+                  <input
+                    type="radio"
+                    name={`mode-${row.key}`}
+                    checked={subjectAction === 'update'}
+                    disabled={skipped}
+                    onChange={() => onUpdate({
+                      subjectAction: 'update',
+                      targetSubjectId: targetSubjectId ?? currentSection?.subjects[0]?.id ?? null,
+                    })}
+                  />
+                  <span>Mettre à jour un sujet existant</span>
+                </span>
+                {subjectAction === 'update' && currentSection && (
+                  <CustomDropdown
+                    value={targetSubjectId ?? ''}
+                    displayLabel={currentSection.subjects.find(s => s.id === targetSubjectId)?.title ?? '—'}
+                    disabled={skipped}
+                    options={currentSection.subjects.map(s => ({ value: s.id, label: s.title }))}
+                    onChange={(val) => onUpdate({ targetSubjectId: val })}
+                  />
+                )}
               </label>
-              {subjectAction === 'update' && currentSection && (
-                <CustomDropdown
-                  value={targetSubjectId ?? ''}
-                  displayLabel={currentSection.subjects.find(s => s.id === targetSubjectId)?.title ?? '—'}
-                  disabled={skipped}
-                  options={currentSection.subjects.map(s => ({ value: s.id, label: s.title }))}
-                  onChange={(val) => onUpdate({ targetSubjectId: val })}
-                />
-              )}
             </div>
           </div>
         )}

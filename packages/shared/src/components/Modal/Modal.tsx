@@ -5,7 +5,7 @@ import styles from './Modal.module.css';
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface ModalProps {
-  title: string;
+  title: ReactNode;
   children: ReactNode;
   onClose: () => void;
   size?: ModalSize;
