@@ -117,6 +117,29 @@ export function createRoutes(): Router {
 
   router.use(authMiddleware);
 
+  // ==================== ROUTING MEMORY — admin inspection ====================
+  //
+  // Per-user pgvector memory of past (subject → review/section) decisions,
+  // used to make the place-in-reviews skill more accurate over time via
+  // in-context few-shot examples. These endpoints let the user inspect
+  // what's been learned and delete entries that are pushing the skill in
+  // the wrong direction.
+
+  // GET /routing-memory — last 50 decisions of the current user
+  router.get('/routing-memory', asyncHandler(async (req, res) => {
+    const { listRecentMemory } = await import('./routingMemoryService.js');
+    const rows = await listRecentMemory(req.user!.id, 50);
+    res.json({ rows });
+  }));
+
+  // DELETE /routing-memory/:id — forget one specific decision
+  router.delete('/routing-memory/:id', asyncHandler(async (req, res) => {
+    const { deleteMemory } = await import('./routingMemoryService.js');
+    const ok = await deleteMemory(req.user!.id, req.params.id);
+    if (!ok) { res.status(404).json({ error: 'Mémoire introuvable' }); return; }
+    res.status(204).send();
+  }));
+
   // ==================== ADMIN — LEGACY BULLET CLEANUP ====================
   //
   // One-shot migration endpoint : the AI writer skills used to insert
@@ -3118,6 +3141,12 @@ ${filteredContent.slice(0, 30000)}`,
         updatedSituation?: string | null;
         updatedStatus?: string | null;
         updatedResponsibility?: string | null;
+        /** Context used for per-user routing memory embedding (pgvector). */
+        rawQuotes?: string[];
+        entities?: string[];
+        participants?: string[];
+        aiProposedReviewId?: string | null;
+        aiProposedReviewTitle?: string | null;
       }>;
     };
     if (!Array.isArray(subjects) || subjects.length === 0) {
@@ -3145,6 +3174,22 @@ ${filteredContent.slice(0, 30000)}`,
     const subjectsCreated: Array<{ id: string; title: string; reviewId: string; sectionId: string }> = [];
     const subjectsUpdated: Array<{ id: string; title: string }> = [];
     const errors: Array<{ title: string; error: string }> = [];
+
+    /** Captures the validated decisions so we can feed the per-user routing
+     *  memory (pgvector) fire-and-forget at the end of the request. */
+    const memoryEntries: Array<{
+      subjectTitle: string;
+      subjectSituationExcerpt: string | null;
+      rawQuotes: string[];
+      entities: string[];
+      participants: string[];
+      targetDocumentId: string;
+      targetSectionId: string | null;
+      targetSectionName: string;
+      targetSubjectAction: 'new-subject' | 'update-existing-subject';
+      aiProposedDocumentId: string | null;
+      aiProposedDocumentTitle: string | null;
+    }> = [];
 
     for (const s of subjects) {
       const title = (s.title || '').trim();
@@ -3183,6 +3228,28 @@ ${filteredContent.slice(0, 30000)}`,
               await db.updateSubjectFields(s.targetSubjectId, updateFragments, updateValues);
             }
             subjectsUpdated.push({ id: s.targetSubjectId, title });
+
+            // Capture for the routing memory — we want to remember that the
+            // user chose to ENRICH this existing subject (vs create a new
+            // one), so future similar subjects are also routed to enrich.
+            try {
+              const sec = await db.getSection(existing.section_id);
+              if (sec) {
+                memoryEntries.push({
+                  subjectTitle: title,
+                  subjectSituationExcerpt: (s.updatedSituation || existing.situation || '').slice(0, 300),
+                  rawQuotes: s.rawQuotes ?? [],
+                  entities: s.entities ?? [],
+                  participants: s.participants ?? [],
+                  targetDocumentId: sec.document_id,
+                  targetSectionId: sec.id,
+                  targetSectionName: sec.name,
+                  targetSubjectAction: 'update-existing-subject',
+                  aiProposedDocumentId: s.aiProposedReviewId ?? null,
+                  aiProposedDocumentTitle: s.aiProposedReviewTitle ?? null,
+                });
+              }
+            } catch { /* memory is best-effort */ }
             continue;
           }
         }
@@ -3257,9 +3324,76 @@ ${filteredContent.slice(0, 30000)}`,
           s.responsibility ?? null,
         );
         subjectsCreated.push({ id: subject.id, title, reviewId, sectionId });
+
+        // Capture for the routing memory — a "new-subject" decision here
+        // teaches the model to create rather than enrich for similar
+        // incoming subjects.
+        const sectionName = sectionsCreated.find(x => x.id === sectionId)?.name
+          || (s.newSectionName?.trim() || '').slice(0, 80)
+          || 'Section';
+        memoryEntries.push({
+          subjectTitle: title,
+          subjectSituationExcerpt: (s.situation ?? '').slice(0, 300),
+          rawQuotes: s.rawQuotes ?? [],
+          entities: s.entities ?? [],
+          participants: s.participants ?? [],
+          targetDocumentId: reviewId,
+          targetSectionId: sectionId,
+          targetSectionName: sectionName,
+          targetSubjectAction: 'new-subject',
+          aiProposedDocumentId: s.aiProposedReviewId ?? null,
+          aiProposedDocumentTitle: s.aiProposedReviewTitle ?? null,
+        });
       } catch (err) {
         errors.push({ title, error: (err as Error).message || 'Échec' });
       }
+    }
+
+    // Fire-and-forget : feed the routing memory AFTER the response is sent.
+    // The user doesn't wait on embedding latency, and if the embedding
+    // provider is down, the import still succeeds.
+    if (memoryEntries.length > 0) {
+      setImmediate(async () => {
+        try {
+          const { storeDecision } = await import('./routingMemoryService.js');
+          // Look up document titles once — we store them denormalized so
+          // the memory survives review renames.
+          const docTitleCache = new Map<string, string>();
+          for (const entry of memoryEntries) {
+            let docTitle = docTitleCache.get(entry.targetDocumentId);
+            if (!docTitle) {
+              try {
+                const q = await db.pool.query<{ title: string }>(
+                  'SELECT title FROM suivitess_documents WHERE id = $1',
+                  [entry.targetDocumentId],
+                );
+                docTitle = q.rows[0]?.title ?? entry.targetDocumentId;
+                docTitleCache.set(entry.targetDocumentId, docTitle);
+              } catch { docTitle = entry.targetDocumentId; }
+            }
+            await storeDecision({
+              userId,
+              subjectTitle: entry.subjectTitle,
+              subjectSituationExcerpt: entry.subjectSituationExcerpt,
+              rawQuotes: entry.rawQuotes,
+              entities: entry.entities,
+              participants: entry.participants,
+              targetDocumentId: entry.targetDocumentId,
+              targetDocumentTitle: docTitle,
+              targetSectionId: entry.targetSectionId,
+              targetSectionName: entry.targetSectionName,
+              targetSubjectAction: entry.targetSubjectAction,
+              aiProposedDocumentId: entry.aiProposedDocumentId,
+              aiProposedDocumentTitle: entry.aiProposedDocumentTitle,
+            });
+          }
+          // eslint-disable-next-line no-console
+          console.log(`[SuiVitess routing-memory] stored ${memoryEntries.length} decision(s) for user ${userId}`);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[SuiVitess routing-memory] batch store failed:', err);
+        }
+      });
     }
 
     // Mark the source as imported so it does not appear in bulk-sources again.

@@ -161,6 +161,17 @@ export interface FinalReviewProposal {
   updatedResponsibility: string | null;
   confidence: 'high' | 'medium' | 'low';
   reasoning: string;
+  /** Source-level context kept on the proposal so the frontend can forward
+   *  it back to `POST /apply-routing`, which feeds the per-user routing
+   *  memory (pgvector few-shot learning). Safe to ignore — nothing breaks
+   *  if these are empty. */
+  sourceRawQuotes: string[];
+  sourceEntities: string[];
+  sourceParticipants: string[];
+  /** What the AI originally proposed before any user edit. Lets the
+   *  backend track override rates in the memory for observability. */
+  aiProposedReviewId: string | null;
+  aiProposedReviewTitle: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -337,6 +348,48 @@ async function tier2PlaceReviews(base: TierBase & {
   parentLogId: number | null;
 }): Promise<{ logId: number | null; placements: ReviewPlacement[]; durationMs: number }> {
   const t0 = Date.now();
+
+  // ── RAG-learning : retrieve past routing decisions of this user that are
+  //    semantically similar to the subjects we're about to route. They get
+  //    injected as few-shot examples in the prompt so the skill learns the
+  //    user's routing habits without any fine-tuning. Silently degrades to
+  //    no-examples if pgvector / embedding provider is unreachable.
+  let learnedExamplesBlock = '';
+  try {
+    const { retrieveSimilar, formatExamplesBlock } = await import('../suivitess/routingMemoryService.js');
+    // One query per subject, in parallel — retrieveSimilar internally embeds
+    // the query text (1 API call per subject). Cheap enough for typical
+    // batches of 5-15 subjects.
+    const examplesLists = await Promise.all(base.subjects.map(s => retrieveSimilar({
+      userId: base.userId,
+      subjectTitle: s.title,
+      rawQuotes: s.rawQuotes,
+      entities: s.entities,
+      k: 3,
+    })));
+    // Merge + dedupe by memory id, keep the best score per memory.
+    const byId = new Map<string, { row: Awaited<ReturnType<typeof retrieveSimilar>>[number]; bestSim: number }>();
+    for (const list of examplesLists) {
+      for (const row of list) {
+        const existing = byId.get(row.id);
+        if (!existing || (row.similarity ?? 0) > existing.bestSim) {
+          byId.set(row.id, { row, bestSim: row.similarity ?? 0 });
+        }
+      }
+    }
+    const merged = Array.from(byId.values())
+      .sort((a, b) => b.bestSim - a.bestSim)
+      .map(x => x.row);
+    learnedExamplesBlock = formatExamplesBlock(merged);
+    if (learnedExamplesBlock) {
+      // eslint-disable-next-line no-console
+      console.log(`[pipeline] tier2 RAG-learning → ${merged.length} past decision(s) injected as examples`);
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[pipeline] tier2 RAG-learning retrieval skipped:', err);
+  }
+
   // CRITICAL : reviews MUST come before subjects in the serialized payload.
   // If the context ever gets truncated (huge multi-source runs with 40+
   // subjects), we never want the reviews array to be the casualty — the
@@ -347,11 +400,26 @@ async function tier2PlaceReviews(base: TierBase & {
   // headroom. With 40+ subjects + a 10-review portfolio, 30k was capping
   // mid-array and dropping the reviews entirely.
   const ctxJson = JSON.stringify(ctx, null, 2).slice(0, 150000);
+  // Build the user message : start with past-decisions examples if we
+  // have any, then the fresh context. The examples act as in-context
+  // few-shot learning — the skill treats them as strong signal in its
+  // step 2 "match an existing review" procedure.
+  const pastDecisionsSection = learnedExamplesBlock
+    ? `## Décisions de routage passées de cet utilisateur (apprentissage in-context)
+
+Voici les décisions précédentes les plus proches sémantiquement des sujets à router. Elles reflètent les habitudes de l'utilisateur. **Traite-les comme un signal fort** : si un nouveau sujet est proche d'un passé, reproduis le même routing par défaut. Si les rawQuotes du nouveau sujet contredisent clairement le signal, priorité aux rawQuotes.
+
+${learnedExamplesBlock}
+
+---
+
+`
+    : '';
   const run = await runSkill({
     slug: 'suivitess-place-in-reviews',
     userId: base.userId,
     userEmail: base.userEmail,
-    buildContext: () => `## Contexte\n\n\`\`\`json\n${ctxJson}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des décisions de routage.`,
+    buildContext: () => `${pastDecisionsSection}## Contexte\n\n\`\`\`json\n${ctxJson}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des décisions de routage.`,
     // Store the real context JSON (not a summary) so /ai-logs → "Input
     // brut" shows what the model really received.
     inputContent: ctxJson,
@@ -705,6 +773,11 @@ export async function analyzeSourceForReviews(
         updatedResponsibility: null,
         confidence: p.confidence,
         reasoning: p.reason,
+        sourceRawQuotes: subj.rawQuotes,
+        sourceEntities: subj.entities,
+        sourceParticipants: subj.participants,
+        aiProposedReviewId: p.reviewId ?? null,
+        aiProposedReviewTitle: p.suggestedNewReviewTitle ?? null,
       };
     }
 
@@ -733,6 +806,11 @@ export async function analyzeSourceForReviews(
       updatedResponsibility: null,
       confidence: p.confidence,
       reasoning: p.reason,
+      sourceRawQuotes: subj.rawQuotes,
+      sourceEntities: subj.entities,
+      sourceParticipants: subj.participants,
+      aiProposedReviewId: p.reviewId ?? null,
+      aiProposedReviewTitle: p.suggestedNewReviewTitle ?? null,
     };
     } finally {
       onProgress({ kind: 't3-writer-done' });

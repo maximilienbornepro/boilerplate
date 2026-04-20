@@ -265,6 +265,14 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
           updatedSituation: isUpdate ? (r.subject.updatedSituation ?? r.subject.situation) : null,
           updatedStatus: isUpdate ? (r.subject.updatedStatus ?? r.subject.status) : null,
           updatedResponsibility: isUpdate ? r.subject.updatedResponsibility : null,
+          // Forward the source context so the backend can feed the per-user
+          // pgvector routing memory with the validated decision. Pure
+          // observability at this layer ; safe to drop if undefined.
+          rawQuotes: r.subject.sourceRawQuotes,
+          entities: r.subject.sourceEntities,
+          participants: r.subject.sourceParticipants,
+          aiProposedReviewId: r.subject.aiProposedReviewId ?? null,
+          aiProposedReviewTitle: r.subject.aiProposedReviewTitle ?? null,
         };
       });
     if (subjectsToApply.length === 0) return;
@@ -444,6 +452,19 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                 // targets OR the user clicked "+ ajouter à une autre review").
                 const sameTitleCount = rows.filter(x => x.subject.title === r.subject.title).length;
                 const isCopyRow = r.key.includes('-copy-');
+                // Detect "same-section cluster" : several rows are about to
+                // land in the SAME new section (same review + same proposed
+                // section name, all with no existing sectionId). The backend
+                // dedupes anyway (`newSectionByKey`) but users like to know
+                // upfront that N subjects will be grouped in one section.
+                const clusterKey = !r.sectionId && r.newSectionName.trim().length > 0
+                  ? `${r.reviewId ?? r.newReviewTitle ?? ''}::${r.newSectionName.trim()}`
+                  : null;
+                const sameSectionCount = clusterKey
+                  ? rows.filter(x => !x.skipped && !x.sectionId && x.newSectionName.trim() &&
+                      `${x.reviewId ?? x.newReviewTitle ?? ''}::${x.newSectionName.trim()}` === clusterKey
+                    ).length
+                  : 0;
                 return (
                   <SubjectRow
                     key={r.key}
@@ -455,6 +476,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                     onDuplicate={() => duplicateRowForOtherReview(r.key)}
                     onRemove={isCopyRow ? () => removeRow(r.key) : undefined}
                     isMultiPlacement={sameTitleCount >= 2}
+                    sameNewSectionCount={sameSectionCount}
                     nextRowKey={rows[i + 1]?.key ?? null}
                   />
                 );
@@ -507,7 +529,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
 function SubjectRow({
   row, consolidation, reviews, onUpdate, id, nextRowKey,
-  onDuplicate, onRemove, isMultiPlacement,
+  onDuplicate, onRemove, isMultiPlacement, sameNewSectionCount,
 }: {
   row: Row;
   consolidation: api.ConsolidationMeta | null;
@@ -526,6 +548,10 @@ function SubjectRow({
   /** True when the same source subject appears on ≥2 rows. Drives the
    *  compact "part of a multi-review dispatch" badge. */
   isMultiPlacement: boolean;
+  /** How many rows in the current batch will land in the same new
+   *  section (same review + same newSectionName). ≥2 → surfaces a
+   *  "N sujets regroupés ici" hint so the user sees the dedup upfront. */
+  sameNewSectionCount: number;
 }) {
   const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped, confirmed, mode } = row;
   // Only show inline "required field" error after the user attempted to confirm.
@@ -701,6 +727,14 @@ function SubjectRow({
             </label>
             {mode === 'create' && subject.suggestedNewSectionName && (
               <span className={styles.aiHint}>Suggestion IA</span>
+            )}
+            {sameNewSectionCount >= 2 && !sectionId && newSectionName.trim() && (
+              <span
+                className={styles.clusterHint}
+                title={`${sameNewSectionCount} sujets seront regroupés dans la même nouvelle section "${newSectionName.trim()}" (dédupliqué au moment de l'import).`}
+              >
+                📚 {sameNewSectionCount} sujets regroupés
+              </span>
             )}
           </div>
           {mode === 'create' ? (

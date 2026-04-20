@@ -394,6 +394,14 @@ export interface AnalyzedSubject {
   updatedResponsibility: string | null;
   confidence: 'high' | 'medium' | 'low';
   reasoning: string;
+  /** Source context carried through so the frontend can forward it back
+   *  to apply-routing — feeds the per-user pgvector routing memory. */
+  sourceRawQuotes?: string[];
+  sourceEntities?: string[];
+  sourceParticipants?: string[];
+  /** What the AI originally proposed before user edits. */
+  aiProposedReviewId?: string | null;
+  aiProposedReviewTitle?: string | null;
 }
 
 export interface AvailableReviewSubject {
@@ -656,6 +664,16 @@ export interface ApplyRoutingSubject {
   updatedSituation?: string | null;
   updatedStatus?: string | null;
   updatedResponsibility?: string | null;
+  /** Optional context the backend uses to feed the per-user routing
+   *  memory (pgvector). Passing these lets future imports benefit from
+   *  what the user just validated. Safe to omit — routing still works. */
+  rawQuotes?: string[];
+  entities?: string[];
+  participants?: string[];
+  /** What the AI originally proposed before the user's edits — used to
+   *  track override rates in the memory for observability. */
+  aiProposedReviewId?: string | null;
+  aiProposedReviewTitle?: string | null;
 }
 
 export interface ApplyRoutingResponse {

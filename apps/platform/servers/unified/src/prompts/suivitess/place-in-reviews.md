@@ -28,6 +28,35 @@ sujet à une review existante.** La création d'une nouvelle review est un
 
 ---
 
+## 📚 Apprentissage — décisions passées de l'utilisateur
+
+Une section `## Décisions de routage passées de cet utilisateur` peut
+apparaître **avant** le bloc `## Contexte` du message user. Elle contient
+jusqu'à 8 exemples de routings récents sémantiquement proches des sujets
+à router, sous la forme :
+
+```
+- « Titre du sujet passé » (sim=0.87)
+  → Review "Nom de la review" / section "Nom de la section" [mis à jour]
+```
+
+**Ces exemples reflètent les habitudes de routing de l'utilisateur et
+sont un SIGNAL FORT.** Règle :
+
+- Si un nouveau sujet est proche d'un exemple passé (entités, thème,
+  participants similaires), **reproduis le même routing par défaut**.
+- Les exemples `[mis à jour]` indiquent que l'utilisateur préfère
+  enrichir un sujet existant plutôt que d'en créer un nouveau pour ce
+  type de sujet → favorise `update-existing-subject`.
+- **Exception** : si les `rawQuotes` du nouveau sujet contiennent une
+  information qui contredit clairement l'exemple (ex : nouveau projet,
+  bascule d'équipe), priorité aux `rawQuotes`. Dans ce cas explique
+  dans `reason` pourquoi tu t'écartes du pattern appris.
+
+Si aucune section d'exemples n'est présente, ignore cette règle — c'est
+que l'utilisateur n'a pas encore validé assez d'imports pour que
+l'apprentissage soit significatif.
+
 ## ⚠️ RÈGLE ABSOLUE — Priorité existant > création
 
 **Avant de proposer `suggestedNewReviewTitle` pour un sujet, tu DOIS avoir
