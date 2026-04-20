@@ -176,12 +176,13 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     return subjects.map((s, i) => ({
       key: `s-${i}`,
       subject: s,
-      // Par défaut : toujours en mode "création d'une nouvelle review"
-      // (même si l'IA a matché une review existante, l'utilisateur
-      //  peut basculer via le toggle). Le titre suggéré reste pré-rempli.
-      reviewId: null,
+      // Respecte la décision de l'IA : si elle a matché une review existante,
+      // le tab se positionne sur "Sélectionner une review existante" ; sinon
+      // "Nouvelle review" avec le titre suggéré pré-rempli. L'utilisateur
+      // peut toujours basculer via le toggle.
+      reviewId: s.action === 'existing-review' ? s.reviewId : null,
       newReviewTitle: s.suggestedNewReviewTitle ?? '',
-      sectionId: null,
+      sectionId: s.sectionAction === 'existing-section' ? s.sectionId : null,
       newSectionName: s.suggestedNewSectionName ?? '',
       subjectAction: s.subjectAction === 'update-existing-subject' ? 'update' : 'create',
       targetSubjectId: s.targetSubjectId,
