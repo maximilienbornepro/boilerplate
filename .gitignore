@@ -69,3 +69,4 @@ sync-boilerplate.sh
 .modules
 .claude/worktrees/
 .claire/
+.claude/scheduled_tasks.lock
