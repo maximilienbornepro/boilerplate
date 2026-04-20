@@ -560,6 +560,15 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                     ? (availableReviews.find(rv => rv.id === r.reviewId)?.title ?? r.reviewId)
                     : (r.newReviewTitle || r.subject.suggestedNewReviewTitle || 'nouvelle review');
                   const reviewIsExisting = !!r.reviewId;
+                  // Section label mirrors the section field : existing
+                  // section name OR suggested new section name.
+                  const matchingReview = reviewIsExisting
+                    ? availableReviews.find(rv => rv.id === r.reviewId)
+                    : null;
+                  const sectionLabel = r.sectionMode === 'existing' && r.sectionId
+                    ? (matchingReview?.sections.find(s => s.id === r.sectionId)?.name ?? r.sectionId)
+                    : (r.newSectionName || r.subject.suggestedNewSectionName || 'nouvelle section');
+                  const sectionIsExisting = r.sectionMode === 'existing' && !!r.sectionId;
                   // For updates : does the AI want to change the status ?
                   const statusChanged = r.subjectAction === 'update'
                     && !!r.subject.updatedStatus
@@ -571,12 +580,19 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                         {r.subjectAction === 'update' ? 'Mise à jour sujet' : 'Nouveau sujet'}
                       </span>
                       <span
-                        className={`${styles.summaryItemReview} ${reviewIsExisting ? styles.summaryItemReviewExisting : styles.summaryItemReviewNew}`}
-                        title={reviewIsExisting
-                          ? `Review trouvée : "${reviewLabel}"`
-                          : `Nouvelle review proposée : "${reviewLabel}"`}
+                        className={styles.summaryItemBreadcrumb}
+                        title={
+                          `${reviewIsExisting ? 'Review trouvée' : 'Nouvelle review'} : "${reviewLabel}"`
+                          + ` › ${sectionIsExisting ? 'Section trouvée' : 'Nouvelle section'} : "${sectionLabel}"`
+                        }
                       >
-                        {reviewIsExisting ? '✓' : '+'} {reviewLabel}
+                        <span className={`${styles.breadcrumbPart} ${reviewIsExisting ? styles.summaryItemReviewExisting : styles.summaryItemReviewNew}`}>
+                          {reviewIsExisting ? '✓' : '+'} {reviewLabel}
+                        </span>
+                        <span className={styles.breadcrumbSep}>›</span>
+                        <span className={`${styles.breadcrumbPart} ${sectionIsExisting ? styles.summaryItemReviewExisting : styles.summaryItemReviewNew}`}>
+                          {sectionIsExisting ? '✓' : '+'} {sectionLabel}
+                        </span>
                       </span>
                       {statusChanged && (
                         <span

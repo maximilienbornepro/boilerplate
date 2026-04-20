@@ -1169,8 +1169,38 @@
   font-weight: var(--font-weight-semibold);
 }
 
-/* Summary list — per-subject review target + status-change indicators.
-   Appear in the sommaire nav shown above the rows list. */
+/* Summary list — per-subject breadcrumb (review › section) + status
+   change indicators, appearing in the sommaire nav above the rows. */
+
+/* Breadcrumb wrapper that glues review and section together, rendered
+   as REVIEW › SECTION with coloured pills for each part. */
+.summaryItemBreadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  cursor: help;
+}
+
+.breadcrumbPart {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.breadcrumbSep {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 0 2px;
+  user-select: none;
+}
 
 .summaryItemReview {
   flex-shrink: 0;
