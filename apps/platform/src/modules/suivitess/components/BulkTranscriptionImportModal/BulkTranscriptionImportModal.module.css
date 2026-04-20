@@ -113,7 +113,7 @@
 .doneTitle {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
-  color: var(--success);
+  color: var(--accent-primary);
   margin: 0;
 }
 
@@ -360,20 +360,29 @@
 }
 
 .statusTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-primary);
   margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+  line-height: 1.4;
 }
 
 .subjectTitle {
-  flex: 0 1 auto;
+  flex: 1 1 200px;
   min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.4;
 }
 
 .responsibility {
@@ -459,6 +468,12 @@
   flex-direction: column;
   gap: 4px;
 }
+.routingLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
 
 .routingField label {
   font-family: var(--font-mono);
@@ -509,8 +524,51 @@
 .rowActions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: var(--spacing-sm);
   margin-top: var(--spacing-sm);
+}
+
+.confirmedBadge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--row-accent, var(--accent-primary));
+  font-weight: var(--font-weight-semibold);
+  animation: confirmedFadeIn 0.3s ease-out;
+  margin-right: auto;
+}
+
+.missingFieldsHint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--row-accent, var(--accent-primary));
+  margin-right: auto;
+}
+
+.requiredMark {
+  color: inherit;
+  margin-left: 2px;
+  vertical-align: super;
+  font-size: 0.7em;
+}
+
+/* Highlight required inputs that are empty at submission */
+.routingField input.inputError,
+.routingField input.inputError:focus {
+  border-color: var(--row-accent, var(--accent-primary)) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--row-accent, var(--accent-primary)) 25%, transparent);
+}
+
+/* Same for dropdown-style selectors */
+.subjectRow .dropdownError,
+.subjectRow .customDropdownBtn.dropdownError {
+  border-color: var(--row-accent, var(--accent-primary)) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--row-accent, var(--accent-primary)) 25%, transparent);
+}
+
+@keyframes confirmedFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .rowActionBtn {
@@ -611,6 +669,11 @@
   border-top: 1px solid var(--border-color);
   flex-wrap: wrap;
 }
+.done .actions,
+.empty .actions {
+  border-top: none;
+  padding-top: 0;
+}
 
 .selectionCounter {
   margin-right: auto;
@@ -662,6 +725,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .modeCreate {
