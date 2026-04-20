@@ -160,6 +160,31 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   // selected source for logging purposes (backend accepts any source id
   // from the run — it's purely bookkeeping for the touchedReviewIds).
   const primaryItem = selectedItems[0] ?? null;
+
+  /** Rows re-ordered by cluster so entries that target the SAME section
+   *  (existing id OR same review + same new section name) render
+   *  consecutively. Shared by the sommaire nav and the subject list so
+   *  both are always in sync — no jumping around between the two. */
+  const displayRows = useMemo(() => {
+    const clusterKey = (x: Row): string => {
+      const reviewPart = x.reviewId ?? x.newReviewTitle.trim() ?? '';
+      if (x.sectionMode === 'existing' && x.sectionId) return `${reviewPart}::EXISTING::${x.sectionId}`;
+      if (x.sectionMode === 'new' && x.newSectionName.trim()) return `${reviewPart}::NEW::${x.newSectionName.trim().toLowerCase()}`;
+      return `${reviewPart}::UNSET::${x.key}`;
+    };
+    const firstIndexByKey = new Map<string, number>();
+    rows.forEach((r, i) => {
+      const k = clusterKey(r);
+      if (!firstIndexByKey.has(k)) firstIndexByKey.set(k, i);
+    });
+    return [...rows].map((r, origIdx) => ({ r, origIdx }))
+      .sort((a, b) => {
+        const ka = firstIndexByKey.get(clusterKey(a.r))!;
+        const kb = firstIndexByKey.get(clusterKey(b.r))!;
+        if (ka !== kb) return ka - kb;
+        return a.origIdx - b.origIdx;
+      });
+  }, [rows]);
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -550,9 +575,9 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
             <p className={styles.summaryIntro}>
               <strong>{summary}</strong>
             </p>
-            {rows.length > 0 && (
+            {displayRows.length > 0 && (
               <nav className={styles.summaryList} aria-label="Sommaire des sujets extraits">
-                {rows.map(r => {
+                {displayRows.map(({ r }) => {
                   // Resolve the target review label : existing review name
                   // (looked up in availableReviews) OR the AI-suggested title
                   // OR a placeholder if the user hasn't filled it yet.
@@ -617,35 +642,9 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
               </nav>
             )}
             <div className={styles.subjectsList}>
-              {rows.length === 0 ? (
+              {displayRows.length === 0 ? (
                 <p className={styles.emptyHint}>L'IA n'a identifié aucun sujet digne d'un suivi dans ce contenu.</p>
-              ) : (() => {
-                // ── Visual grouping : sort rows so that entries targeting the
-                //    same section (existing id OR same review + same new name)
-                //    render consecutively. Non-clustered rows keep their
-                //    original relative order thanks to the stable sort seed.
-                const clusterKey = (x: Row): string => {
-                  const reviewPart = x.reviewId ?? x.newReviewTitle.trim() ?? '';
-                  if (x.sectionMode === 'existing' && x.sectionId) return `${reviewPart}::EXISTING::${x.sectionId}`;
-                  if (x.sectionMode === 'new' && x.newSectionName.trim()) return `${reviewPart}::NEW::${x.newSectionName.trim().toLowerCase()}`;
-                  return `${reviewPart}::UNSET::${x.key}`; // singletons keep their key for stability
-                };
-                const firstIndexByKey = new Map<string, number>();
-                rows.forEach((r, i) => {
-                  const k = clusterKey(r);
-                  if (!firstIndexByKey.has(k)) firstIndexByKey.set(k, i);
-                });
-                // Sort rows by the index of their cluster's first member, then
-                // by their original index within the cluster. Guarantees stable
-                // output — no jumps when the user edits a newSectionName.
-                const displayRows = [...rows].map((r, origIdx) => ({ r, origIdx }))
-                  .sort((a, b) => {
-                    const ka = firstIndexByKey.get(clusterKey(a.r))!;
-                    const kb = firstIndexByKey.get(clusterKey(b.r))!;
-                    if (ka !== kb) return ka - kb;
-                    return a.origIdx - b.origIdx;
-                  });
-                return displayRows.map(({ r, origIdx }, i) => {
+              ) : displayRows.map(({ r, origIdx }, i) => {
                 // A row is part of a multi-placement group when the same
                 // subject.title appears on ≥2 rows (AI emitted multiple
                 // targets OR the user clicked "+ ajouter à une autre review").
@@ -656,12 +655,12 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                 // section name, all with no existing sectionId). The backend
                 // dedupes anyway (`newSectionByKey`) but users like to know
                 // upfront that N subjects will be grouped in one section.
-                const clusterKey = !r.sectionId && r.newSectionName.trim().length > 0
+                const sectionClusterKey = !r.sectionId && r.newSectionName.trim().length > 0
                   ? `${r.reviewId ?? r.newReviewTitle ?? ''}::${r.newSectionName.trim()}`
                   : null;
-                const sameSectionCount = clusterKey
+                const sameSectionCount = sectionClusterKey
                   ? rows.filter(x => !x.skipped && !x.sectionId && x.newSectionName.trim() &&
-                      `${x.reviewId ?? x.newReviewTitle ?? ''}::${x.newSectionName.trim()}` === clusterKey
+                      `${x.reviewId ?? x.newReviewTitle ?? ''}::${x.newSectionName.trim()}` === sectionClusterKey
                     ).length
                   : 0;
                 return (
@@ -680,8 +679,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                     nextRowKey={displayRows[i + 1]?.r.key ?? null}
                   />
                 );
-              });
-              })()}
+              })}
             </div>
             <div className={styles.actions}>
               <Button variant="secondary" onClick={onClose}>Annuler</Button>
