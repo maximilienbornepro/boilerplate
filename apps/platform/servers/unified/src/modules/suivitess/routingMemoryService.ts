@@ -18,7 +18,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import pg from 'pg';
-import { config } from '../../config/env.js';
+import { config } from '../../config.js';
 
 let pool: pg.Pool | null = null;
 let pgvectorReady = false;
