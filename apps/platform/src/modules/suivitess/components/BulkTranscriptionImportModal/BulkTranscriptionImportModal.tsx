@@ -176,6 +176,10 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     return subjects.map((s, i) => {
       const matchedExisting = s.action === 'existing-review' && !!s.reviewId;
       return {
+        // Row keys must be unique even when the AI emits multiple proposals
+        // for the same source subject (multi-review dispatch). Using the
+        // flat index `i` guarantees uniqueness ; grouping by source is done
+        // visually based on subject.title match.
         key: `s-${i}`,
         subject: s,
         // Respecte la décision de l'IA : si elle a matché une review
@@ -198,6 +202,47 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
   const updateRow = (key: string, patch: Partial<Row>) => {
     setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r));
+  };
+
+  /** Clone a row so the same source subject can be routed to another
+   *  review. Appends right after the source row so the group stays
+   *  visually contiguous. Mode is reset to 'existing' so the user can
+   *  pick a different review ; reviewId/sectionId are cleared. */
+  const duplicateRowForOtherReview = (sourceKey: string) => {
+    setRows(prev => {
+      const sourceIdx = prev.findIndex(r => r.key === sourceKey);
+      if (sourceIdx === -1) return prev;
+      const src = prev[sourceIdx];
+      const newRow: Row = {
+        ...src,
+        // Unique key using the subject title + timestamp — survives re-renders.
+        key: `${sourceKey}-copy-${Date.now()}`,
+        reviewId: null,
+        sectionId: null,
+        newSectionName: '',
+        // Keep the AI's new-review-title suggestion in case the user wants
+        // to fall back to a create flow after all.
+        mode: 'existing',
+        // Always a fresh create when user manually adds a target — they can
+        // still switch to "update" in the row UI if the target review has a
+        // matching subject.
+        subjectAction: 'create',
+        targetSubjectId: null,
+        confirmed: false,
+        skipped: false,
+      };
+      return [
+        ...prev.slice(0, sourceIdx + 1),
+        newRow,
+        ...prev.slice(sourceIdx + 1),
+      ];
+    });
+  };
+
+  /** Remove a duplicated row (the original, non-copy row cannot be removed —
+   *  use skipped for that). */
+  const removeRow = (rowKey: string) => {
+    setRows(prev => prev.filter(r => r.key !== rowKey));
   };
 
   const handleApply = async () => {
@@ -393,17 +438,27 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
             <div className={styles.subjectsList}>
               {rows.length === 0 ? (
                 <p className={styles.emptyHint}>L'IA n'a identifié aucun sujet digne d'un suivi dans ce contenu.</p>
-              ) : rows.map((r, i) => (
-                <SubjectRow
-                  key={r.key}
-                  row={r}
-                  id={`subj-${r.key}`}
-                  consolidation={consolidationByRow[i] ?? null}
-                  reviews={availableReviews}
-                  onUpdate={patch => updateRow(r.key, patch)}
-                  nextRowKey={rows[i + 1]?.key ?? null}
-                />
-              ))}
+              ) : rows.map((r, i) => {
+                // A row is part of a multi-placement group when the same
+                // subject.title appears on ≥2 rows (AI emitted multiple
+                // targets OR the user clicked "+ ajouter à une autre review").
+                const sameTitleCount = rows.filter(x => x.subject.title === r.subject.title).length;
+                const isCopyRow = r.key.includes('-copy-');
+                return (
+                  <SubjectRow
+                    key={r.key}
+                    row={r}
+                    id={`subj-${r.key}`}
+                    consolidation={consolidationByRow[i] ?? null}
+                    reviews={availableReviews}
+                    onUpdate={patch => updateRow(r.key, patch)}
+                    onDuplicate={() => duplicateRowForOtherReview(r.key)}
+                    onRemove={isCopyRow ? () => removeRow(r.key) : undefined}
+                    isMultiPlacement={sameTitleCount >= 2}
+                    nextRowKey={rows[i + 1]?.key ?? null}
+                  />
+                );
+              })}
             </div>
             <div className={styles.actions}>
               <Button variant="secondary" onClick={onClose}>Annuler</Button>
@@ -452,6 +507,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
 function SubjectRow({
   row, consolidation, reviews, onUpdate, id, nextRowKey,
+  onDuplicate, onRemove, isMultiPlacement,
 }: {
   row: Row;
   consolidation: api.ConsolidationMeta | null;
@@ -459,6 +515,17 @@ function SubjectRow({
   onUpdate: (patch: Partial<Row>) => void;
   id?: string;
   nextRowKey?: string | null;
+  /** Clone this row so the subject can be routed to another review.
+   *  Always available — the AI might emit a single placement that the
+   *  user wants to dispatch elsewhere too. */
+  onDuplicate: () => void;
+  /** Only set for user-created duplicate rows (key contains "-copy-").
+   *  The original AI-emitted row is never removable — use `skipped`
+   *  to exclude it from the import. */
+  onRemove?: () => void;
+  /** True when the same source subject appears on ≥2 rows. Drives the
+   *  compact "part of a multi-review dispatch" badge. */
+  isMultiPlacement: boolean;
 }) {
   const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped, confirmed, mode } = row;
   // Only show inline "required field" error after the user attempted to confirm.
@@ -528,6 +595,14 @@ function SubjectRow({
             title={consolidation!.chronology ?? undefined}
           >
             {hasContradiction ? '⚠️' : '🔀'} {consolidation!.evidence.length} sources
+          </span>
+        )}
+        {isMultiPlacement && (
+          <span
+            className={styles.multiPlacementBadge}
+            title="Ce sujet est dispatché dans plusieurs reviews"
+          >
+            📡 Multi-review
           </span>
         )}
         <span className={styles.statusTag}>{capitalizeFirstLetter(subject.status)}</span>
@@ -727,6 +802,29 @@ function SubjectRow({
           <span className={styles.missingFieldsHint}>
             Champ{missingFields.length > 1 ? 's' : ''} requis : {missingFields.join(', ')}
           </span>
+        )}
+        {/* "Ajouter à une autre review" — clones this row so the subject
+            can be dispatched to a second (or third) review. Works whether
+            the current row is the AI's original or a user-added copy. */}
+        <button
+          type="button"
+          className={styles.rowActionBtn}
+          onClick={onDuplicate}
+          title="Ce sujet concerne aussi une autre review — dupliquer la ligne"
+        >
+          + Ajouter à une autre review
+        </button>
+        {/* Remove button only on user-created duplicate rows. The original
+            AI proposal row uses "Ignorer" to exclude it from the import. */}
+        {onRemove && (
+          <button
+            type="button"
+            className={styles.rowActionBtn}
+            onClick={onRemove}
+            title="Supprimer cette copie"
+          >
+            Supprimer
+          </button>
         )}
         <button
           type="button"

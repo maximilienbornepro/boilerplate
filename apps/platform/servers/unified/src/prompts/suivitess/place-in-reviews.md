@@ -125,15 +125,80 @@ backend ne créera la review qu'une seule fois.
 - **Ne rédige pas** `situation` ni `updatedSituation`. Tu ne produis que des
   décisions. Le tier 3 (`append-situation` / `compose-situation`) rédige.
 - **Référence par `subjectIndex`** (ordre d'arrivée dans `subjects[]`).
-- Un sujet → **une seule** décision.
 - **Silencieusement ignorer** un sujet si l'info est déjà intégralement dans la
   `situationExcerpt` du sujet cible — n'inclus pas ce sujet dans le résultat.
-- Maximum **15 décisions**.
+- Maximum **15 décisions** au total.
 - **`confidence`** : `"high"` = match explicite sur un sujet/entité existant.
   `"medium"` = thématique ou domaine partagé. `"low"` = dernier recours —
   déclenche aussi `suggestedNewReviewTitle`. **Si tu mets `low` avec un
   `reviewId` existant, tu fais probablement une erreur : soit tu es `medium`
   (tu as trouvé une vraie review), soit tu crées.**
+
+## Sujets concernant plusieurs reviews (multi-placement)
+
+Un sujet peut légitimement concerner **2 ou 3 reviews à la fois** — par exemple :
+
+- Un incident qui affecte **SFR et Orange** → 1 placement dans "Copil SFR"
+  + 1 placement dans "Copil Orange".
+- Une release **Smart TV** qui change une API dont dépendent aussi les
+  partenaires **Amazon** → 1 placement dans "Suivi Hebdo TV" + 1 dans
+  "Copil Amazon".
+- Une décision de sécurité qui touche le **produit mobile et le backend**.
+
+Dans ce cas, produis **plusieurs placements avec le même `subjectIndex`** —
+un par review cible. Chaque placement a sa propre `reason` expliquant
+pourquoi **cette review spécifiquement** est concernée.
+
+**Règles strictes sur le multi-placement** :
+
+- Maximum **3 reviews par sujet**.
+- Chaque placement doit avoir une **justification indépendante et propre à
+  cette review** (pas de copier-coller). Si tu ne peux pas justifier
+  spécifiquement pourquoi la review N°2 est concernée, ne la produis pas.
+- Seulement quand le sujet est **pertinent pour les deux équipes** — pas
+  juste parce qu'il mentionne accessoirement une entité d'une autre review.
+- Les placements multiples sont **l'exception**, pas la norme. Par défaut,
+  un sujet = un placement.
+
+**Exemple multi-placement** :
+
+Reviews existantes :
+- `Copil SFR` (responsable de l'intégration SFR)
+- `Copil Orange` (responsable de l'intégration Orange)
+- `Hebdo TV` (équipe Smart TV, owner de l'app)
+
+Sujet extrait : « Bug de l'authentification OAuth sur iframe — impacte SFR
+et Orange identique, fix prévu par l'équipe TV en v1.25 »
+
+Sortie attendue (3 placements) :
+```json
+[
+  {
+    "subjectIndex": 5,
+    "reviewId": "hebdo-tv",
+    "suggestedNewSectionName": "Bug OAuth iframe",
+    "subjectAction": "new-subject",
+    "confidence": "high",
+    "reason": "L'équipe Smart TV est owner du fix (v1.25). Hebdo TV suit les bugs à corriger dans les prochaines releases TV."
+  },
+  {
+    "subjectIndex": 5,
+    "reviewId": "copil-sfr",
+    "suggestedNewSectionName": "Auth iframe",
+    "subjectAction": "new-subject",
+    "confidence": "medium",
+    "reason": "SFR est client direct du fix, doit être tenu informé du planning v1.25 via son copil dédié."
+  },
+  {
+    "subjectIndex": 5,
+    "reviewId": "copil-orange",
+    "suggestedNewSectionName": "Auth iframe",
+    "subjectAction": "new-subject",
+    "confidence": "medium",
+    "reason": "Orange est client direct du même fix avec la même iframe, même suivi nécessaire dans son copil."
+  }
+]
+```
 
 ---
 
