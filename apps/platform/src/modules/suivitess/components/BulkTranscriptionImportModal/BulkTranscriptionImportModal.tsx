@@ -349,7 +349,10 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   };
 
   const handleApply = async () => {
-    if (!primaryItem) return;
+    // primaryItem is null when the user arrived via the "Rejouer un
+    // import précédent" path — they didn't re-pick sources. We still
+    // want to honor their import. The sourceId is optional in the
+    // backend (used only to mark bookkeeping in suivitess_transcript_imports).
     const subjectsToApply: api.ApplyRoutingSubject[] = rows
       .filter(r => !r.skipped)
       .map(r => {
@@ -388,7 +391,11 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
     setPhase('applying');
     try {
-      const res = await api.applyRouting(primaryItem.id, subjectsToApply);
+      // Synthetic sourceId for replay runs so the bookkeeping query still
+      // runs without marking a real source as imported again.
+      const sourceId = primaryItem?.id
+        ?? (replayedFromLogId != null ? `replay:${replayedFromLogId}` : 'manual');
+      const res = await api.applyRouting(sourceId, subjectsToApply);
       setApplyResult(res);
       setPhase('done');
 
