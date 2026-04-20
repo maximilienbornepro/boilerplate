@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SKILLS, getSkill } from '../../aiSkills/registry.js';
 
 describe('aiSkills.registry', () => {
-  it('exposes the 14 expected slugs (legacy + modular pipelines)', () => {
+  it('exposes the 15 expected slugs (legacy + modular pipelines + multi-source reconciliation)', () => {
     const slugs = SKILLS.map(s => s.slug).sort();
     expect(slugs).toEqual([
       'delivery-assess-tickets',
@@ -17,6 +17,7 @@ describe('aiSkills.registry', () => {
       'suivitess-import-source-into-document',
       'suivitess-place-in-document',
       'suivitess-place-in-reviews',
+      'suivitess-reconcile-multi-source',
       'suivitess-reformulate-subject',
       'suivitess-route-source-to-review',
     ]);
@@ -109,5 +110,107 @@ describe('streamingAnalysisService — extractProposals (pure parser)', () => {
 
   it('returns an empty array when no JSON can be found', () => {
     expect(extractProposals('(pas de json ici)')).toEqual([]);
+  });
+});
+
+// ── Multi-source reconciliation parser ─────────────────────────────────
+// Pure-parser tests — exercises the shape expected from the
+// suivitess-reconcile-multi-source skill. The orchestrator's
+// `buildPassThroughConsolidation` fallback is covered here too, since
+// its shape must match what the parser outputs (same type).
+
+describe('reconcile-multi-source — output parser', () => {
+  interface ConsolidatedSubject {
+    canonicalTitle: string;
+    evidence: Array<{
+      sourceId: string;
+      sourceType: string;
+      ts: string;
+      subjectIndex: number;
+      rawQuotes: string[];
+      stance: 'propose' | 'confirm' | 'complement' | 'contradict';
+      summary: string;
+    }>;
+    chronology: string | null;
+    reconciliationNote: string | null;
+    mergedRawQuotes: string[];
+    mergedParticipants: string[];
+    mergedEntities: string[];
+    mergedStatusHint: string | null;
+    mergedResponsibilityHint: string | null;
+  }
+
+  /** Mirror of the extractJson() helper in analyzeSourcePipeline.ts — kept
+   *  inline so this test file doesn't import the pipeline (which pulls
+   *  in Anthropic SDK + pg). */
+  function parseReconcileOutput(text: string): ConsolidatedSubject[] | null {
+    let s = text.trim();
+    if (s.startsWith('```json')) s = s.slice(7).trim();
+    else if (s.startsWith('```')) s = s.slice(3).trim();
+    if (s.endsWith('```')) s = s.slice(0, -3).trim();
+    try {
+      const parsed = JSON.parse(s);
+      return Array.isArray(parsed) ? parsed as ConsolidatedSubject[] : null;
+    } catch { return null; }
+  }
+
+  it('parses a well-formed consolidation with contradiction', () => {
+    const output = JSON.stringify([{
+      canonicalTitle: 'Refonte login',
+      evidence: [
+        { sourceId: 't-1', sourceType: 'transcription', ts: '2026-04-18T10:00:00Z',
+          subjectIndex: 0, rawQuotes: ['OAuth direct'], stance: 'propose',
+          summary: 'Équipe propose OAuth' },
+        { sourceId: 'e-2', sourceType: 'outlook', ts: '2026-04-19T14:30:00Z',
+          subjectIndex: 0, rawQuotes: ['RSSI refuse OAuth'], stance: 'contradict',
+          summary: 'RSSI refuse' },
+      ],
+      chronology: 'transcription jeudi → email vendredi (contradiction)',
+      reconciliationNote: 'La décision OAuth est invalidée vendredi.',
+      mergedRawQuotes: ['OAuth direct', 'RSSI refuse OAuth'],
+      mergedParticipants: ['Alice'],
+      mergedEntities: ['OAuth', 'SSO'],
+      mergedStatusHint: null,
+      mergedResponsibilityHint: 'Alice',
+    }]);
+    const parsed = parseReconcileOutput(output);
+    expect(parsed).not.toBeNull();
+    expect(parsed!).toHaveLength(1);
+    expect(parsed![0].evidence[1].stance).toBe('contradict');
+    expect(parsed![0].reconciliationNote).toContain('OAuth');
+  });
+
+  it('parses a pass-through (single-source) consolidation', () => {
+    const output = JSON.stringify([{
+      canonicalTitle: 'Incident API',
+      evidence: [
+        { sourceId: 't-1', sourceType: 'transcription', ts: '2026-04-18T10:00:00Z',
+          subjectIndex: 0, rawQuotes: ['API down à 10h'], stance: 'propose',
+          summary: 'Incident' },
+      ],
+      chronology: null,
+      reconciliationNote: null,
+      mergedRawQuotes: ['API down à 10h'],
+      mergedParticipants: [],
+      mergedEntities: [],
+      mergedStatusHint: null,
+      mergedResponsibilityHint: null,
+    }]);
+    const parsed = parseReconcileOutput(output);
+    expect(parsed).not.toBeNull();
+    expect(parsed![0].evidence).toHaveLength(1);
+    expect(parsed![0].reconciliationNote).toBeNull();
+  });
+
+  it('tolerates a ```json fence wrapper', () => {
+    const output = '```json\n[{"canonicalTitle":"x","evidence":[],"chronology":null,"reconciliationNote":null,"mergedRawQuotes":[],"mergedParticipants":[],"mergedEntities":[],"mergedStatusHint":null,"mergedResponsibilityHint":null}]\n```';
+    const parsed = parseReconcileOutput(output);
+    expect(parsed).not.toBeNull();
+    expect(parsed![0].canonicalTitle).toBe('x');
+  });
+
+  it('returns null on malformed JSON', () => {
+    expect(parseReconcileOutput('(nothing)')).toBeNull();
+    expect(parseReconcileOutput('{"not":"an array"}')).toBeNull();
   });
 });

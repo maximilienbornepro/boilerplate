@@ -61,11 +61,47 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  padding: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
   border-left: 3px solid var(--accent-primary);
+}
+
+/* Collapse toggle — clicking the header row expands the stats grid.
+   Reused state is persisted in localStorage so the user's preference
+   sticks between modal opens. */
+.analysisToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.analysisToggle:hover .analysisChevron {
+  color: var(--accent-primary);
+}
+
+.analysisChevron {
+  color: var(--text-muted);
+  font-size: 10px;
+  width: 12px;
+  flex-shrink: 0;
+  transition: color var(--transition-fast);
+}
+
+.analysisQuickStats {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .analysisSummary {

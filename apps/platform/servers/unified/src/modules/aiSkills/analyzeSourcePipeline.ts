@@ -27,8 +27,10 @@ import { updateLogError, attachProposalsToLog } from './analysisLogsService.js';
 //    timer-based progress indicator in BulkTranscriptionImportModal). ──
 
 export type PipelineProgressEvent =
-  | { kind: 't1-start' }
+  | { kind: 't1-start'; sourcesCount?: number }
   | { kind: 't1-end'; subjectsExtracted: number; rootLogId: number | null; durationMs: number }
+  | { kind: 'reconcile-start' }
+  | { kind: 'reconcile-end'; subjectsConsolidated: number; durationMs: number }
   | { kind: 't2-start' }
   | { kind: 't2-end'; placementsProduced: number; durationMs: number }
   | { kind: 't3-start'; t3Total: number }
@@ -739,5 +741,431 @@ export async function analyzeSourceForReviews(
     `TOTAL=${fmtDur(totalMs)} · final=${final.length}/${pl.placements.length} proposals`,
   );
   return { proposals: final, rootLogId: ex.logId };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// MULTI-SOURCE PIPELINE (T1 per-source → T1.5 reconcile → T2 → T3)
+//
+// Invoked when the user selects ≥2 sources at once in the import modal.
+// Each source goes through its own T1 extractor (same 3 extractors as
+// single-source), then the outputs are fed to the new T1.5 reconciler
+// which produces a CONSOLIDATED list of subjects (with multi-source
+// evidence, chronology, and reconciliation notes). T2 and T3 then run
+// over the consolidated list — they never know multiple sources existed.
+// ═══════════════════════════════════════════════════════════════════════
+
+/** One source descriptor as the caller passes it in — the raw content
+ *  plus enough metadata for the reconciler to order and attribute the
+ *  extracted subjects. */
+export interface MultiSourceInput {
+  sourceId: string;
+  sourceKind: SourceKind;
+  sourceTitle: string;
+  sourceTimestamp: string; // ISO 8601
+  sourceRaw: string;
+}
+
+/** Output of the T1.5 reconciler — one consolidated subject per unique
+ *  topic, with 1..N evidence entries (one per source that mentions it). */
+export interface ConsolidatedSubject {
+  canonicalTitle: string;
+  evidence: Array<{
+    sourceId: string;
+    sourceType: string;
+    ts: string;
+    subjectIndex: number;
+    rawQuotes: string[];
+    stance: 'propose' | 'confirm' | 'complement' | 'contradict';
+    summary: string;
+  }>;
+  chronology: string | null;
+  reconciliationNote: string | null;
+  mergedRawQuotes: string[];
+  mergedParticipants: string[];
+  mergedEntities: string[];
+  mergedStatusHint: string | null;
+  mergedResponsibilityHint: string | null;
+}
+
+/** Run tier 1 extractors for every source in parallel. Preserves the order
+ *  of the input array in the output (best-effort — failed extractions are
+ *  kept as empty arrays with the error annotated on the log row). */
+async function tier1ExtractMulti(params: {
+  sources: MultiSourceInput[];
+  userId: number;
+  userEmail: string;
+  documentId: string | null;
+}): Promise<Array<{
+  source: MultiSourceInput;
+  logId: number | null;
+  subjects: ExtractedSubject[];
+  durationMs: number;
+}>> {
+  const { sources, userId, userEmail, documentId } = params;
+  return Promise.all(sources.map(async (src) => {
+    const res = await tier1Extract({
+      userId, userEmail,
+      sourceKind: src.sourceKind,
+      sourceTitle: src.sourceTitle,
+      documentId,
+      sourceRaw: src.sourceRaw,
+    });
+    return { source: src, ...res };
+  }));
+}
+
+/** Tier 1.5 — reconcile multi-source extractions into a consolidated list.
+ *  Invokes the `suivitess-reconcile-multi-source` skill with the full N
+ *  extractions as JSON context. Tolerant parser — if the skill fails or
+ *  returns malformed JSON, we fall back to a simple concatenation of all
+ *  extractions (each subject becomes its own consolidated entry). */
+async function tier15Reconcile(params: {
+  extractions: Array<{ source: MultiSourceInput; subjects: ExtractedSubject[] }>;
+  userId: number;
+  userEmail: string;
+  documentId: string | null;
+  parentLogId: number | null;
+}): Promise<{ logId: number | null; consolidated: ConsolidatedSubject[]; durationMs: number }> {
+  const t0 = Date.now();
+  const payload = {
+    sources: params.extractions.map(e => ({
+      sourceId: e.source.sourceId,
+      sourceType: e.source.sourceKind,
+      sourceTitle: e.source.sourceTitle,
+      sourceTimestamp: e.source.sourceTimestamp,
+      extractedSubjects: e.subjects.map(s => ({
+        index: s.index,
+        title: s.title,
+        rawQuotes: s.rawQuotes,
+        participants: s.participants,
+        entities: s.entities,
+        statusHint: s.statusHint,
+        responsibilityHint: s.responsibilityHint,
+        confidence: s.confidence,
+      })),
+    })),
+  };
+  const ctxJson = JSON.stringify(payload, null, 2).slice(0, 40000);
+
+  const run = await runSkill({
+    slug: 'suivitess-reconcile-multi-source',
+    userId: params.userId,
+    userEmail: params.userEmail,
+    buildContext: () => `## Extractions multi-source\n\n\`\`\`json\n${ctxJson}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON consolidé.`,
+    inputContent: ctxJson,
+    sourceKind: 'multi-source',
+    sourceTitle: `Reconcile ${params.extractions.length} sources`,
+    documentId: params.documentId,
+    parentLogId: params.parentLogId,
+    // The reconciler can produce verbose evidence arrays — size for
+    // ~15 consolidated subjects × 3 evidence each × 200 tokens.
+    maxTokens: 10000,
+  });
+  const durationMs = Date.now() - t0;
+
+  const raw = extractJson<ConsolidatedSubject[]>(run.outputText);
+  let consolidated: ConsolidatedSubject[];
+  if (Array.isArray(raw) && raw.length > 0) {
+    consolidated = raw;
+  } else {
+    // Fallback — pass-through : each extracted subject becomes its own
+    // consolidated entry. Preserves zero-loss guarantee even if the
+    // reconciler fails. The UI will show "source unique" for each.
+    if (run.logId != null) {
+      await updateLogError(run.logId, `[PIPELINE T1.5] Parse failed or empty — falling back to pass-through consolidation across ${params.extractions.length} sources.`);
+    }
+    consolidated = buildPassThroughConsolidation(params.extractions);
+  }
+
+  // eslint-disable-next-line no-console
+  console.log(`[pipeline] tier1.5 reconcile → ${consolidated.length} consolidated · ${fmtDur(durationMs)} · logId=${run.logId}`);
+  if (run.logId != null && consolidated.length > 0) {
+    await attachProposalsToLog(run.logId, consolidated);
+  }
+  return { logId: run.logId, consolidated, durationMs };
+}
+
+/** Deterministic fallback : each extracted subject becomes its own
+ *  consolidated entry, no cross-source linking. Used when the T1.5 skill
+ *  fails to parse — ensures the pipeline never loses data. */
+function buildPassThroughConsolidation(
+  extractions: Array<{ source: MultiSourceInput; subjects: ExtractedSubject[] }>,
+): ConsolidatedSubject[] {
+  const out: ConsolidatedSubject[] = [];
+  for (const { source, subjects } of extractions) {
+    for (const s of subjects) {
+      out.push({
+        canonicalTitle: s.title,
+        evidence: [{
+          sourceId: source.sourceId,
+          sourceType: source.sourceKind,
+          ts: source.sourceTimestamp,
+          subjectIndex: s.index,
+          rawQuotes: s.rawQuotes,
+          stance: 'propose',
+          summary: s.title,
+        }],
+        chronology: null,
+        reconciliationNote: null,
+        mergedRawQuotes: s.rawQuotes,
+        mergedParticipants: s.participants,
+        mergedEntities: s.entities,
+        mergedStatusHint: s.statusHint,
+        mergedResponsibilityHint: s.responsibilityHint,
+      });
+    }
+  }
+  return out;
+}
+
+/** Convert a ConsolidatedSubject back to the ExtractedSubject shape that
+ *  T2 and T3 expect. The multi-source evidence is flattened into the
+ *  existing fields — rawQuotes becomes mergedRawQuotes, participants /
+ *  entities become the merged union. Consumers that care about the
+ *  evidence chain read it separately from the pipeline output. */
+function consolidatedToExtracted(
+  consolidated: ConsolidatedSubject[],
+): ExtractedSubject[] {
+  return consolidated.map((c, i) => ({
+    index: i,
+    title: c.canonicalTitle,
+    rawQuotes: c.mergedRawQuotes,
+    participants: c.mergedParticipants,
+    entities: c.mergedEntities,
+    statusHint: c.mergedStatusHint,
+    responsibilityHint: c.mergedResponsibilityHint,
+    confidence: 'medium' as const,
+  }));
+}
+
+export interface AnalyzeMultiSourceForReviewsInput {
+  sources: MultiSourceInput[];
+  reviews: ReviewContext[];
+  userId: number;
+  userEmail: string;
+}
+
+export interface AnalyzeMultiSourceForReviewsResult {
+  proposals: FinalReviewProposal[];
+  /** Consolidation metadata — one entry per final proposal at the same
+   *  index. Lets the frontend surface "3 sources" badges and chronology
+   *  tooltips next to each proposal. `null` entries = single-source
+   *  pass-throughs (no reconciliation needed). */
+  consolidationByProposal: Array<ConsolidatedSubject | null>;
+  rootLogId: number | null;
+}
+
+/** Multi-source variant of `analyzeSourceForReviews`. If `sources.length`
+ *  is 1, falls back to the single-source pipeline (same behavior as
+ *  before). For ≥2 sources, runs the full T1 × N → T1.5 → T2 → T3 flow. */
+export async function analyzeMultiSourceForReviews(
+  input: AnalyzeMultiSourceForReviewsInput,
+  onProgress: PipelineProgressCallback = NOOP,
+): Promise<AnalyzeMultiSourceForReviewsResult> {
+  const { sources, reviews, userId, userEmail } = input;
+  const wallStart = Date.now();
+
+  // Single-source fast path — reuse the existing pipeline verbatim so we
+  // don't pay for a reconciliation call that would do nothing useful.
+  if (sources.length === 1) {
+    const only = sources[0];
+    const res = await analyzeSourceForReviews({
+      sourceKind: only.sourceKind,
+      sourceRaw: only.sourceRaw,
+      sourceTitle: only.sourceTitle,
+      reviews,
+      userId,
+      userEmail,
+    }, onProgress);
+    return {
+      proposals: res.proposals,
+      consolidationByProposal: res.proposals.map(() => null), // no consolidation
+      rootLogId: res.rootLogId,
+    };
+  }
+
+  // ── Multi-source flow ──
+  // T1 per-source in parallel
+  onProgress({ kind: 't1-start', sourcesCount: sources.length });
+  const extractions = await tier1ExtractMulti({
+    sources,
+    userId,
+    userEmail,
+    documentId: null,
+  });
+  const t1WallMs = Math.max(...extractions.map(e => e.durationMs));
+  const totalExtracted = extractions.reduce((s, e) => s + e.subjects.length, 0);
+  const firstLogId = extractions.find(e => e.logId != null)?.logId ?? null;
+  onProgress({
+    kind: 't1-end',
+    subjectsExtracted: totalExtracted,
+    rootLogId: firstLogId,
+    durationMs: t1WallMs,
+  });
+
+  if (totalExtracted === 0) {
+    // eslint-disable-next-line no-console
+    console.warn(`[pipeline-multi] tier1 returned 0 subjects across ${sources.length} sources — aborting.`);
+    return { proposals: [], consolidationByProposal: [], rootLogId: firstLogId };
+  }
+
+  // T1.5 reconciliation
+  onProgress({ kind: 'reconcile-start' });
+  const rec = await tier15Reconcile({
+    extractions,
+    userId,
+    userEmail,
+    documentId: null,
+    parentLogId: firstLogId,
+  });
+  onProgress({
+    kind: 'reconcile-end',
+    subjectsConsolidated: rec.consolidated.length,
+    durationMs: rec.durationMs,
+  });
+
+  if (rec.consolidated.length === 0) {
+    return { proposals: [], consolidationByProposal: [], rootLogId: firstLogId };
+  }
+
+  // Flatten to ExtractedSubject for T2 (placement) — T2 doesn't need to
+  // know about multi-source evidence. Still exposes the consolidation
+  // metadata to the UI at the end.
+  const flattened = consolidatedToExtracted(rec.consolidated);
+
+  const base = {
+    userId,
+    userEmail,
+    sourceKind: 'multi-source',
+    sourceTitle: `${sources.length} sources (${sources.map(s => s.sourceKind).join(' + ')})`,
+    documentId: null,
+  };
+
+  onProgress({ kind: 't2-start' });
+  const pl = await tier2PlaceReviews({
+    ...base,
+    subjects: flattened,
+    reviews,
+    parentLogId: rec.logId,
+  });
+  onProgress({ kind: 't2-end', placementsProduced: pl.placements.length, durationMs: pl.durationMs });
+
+  if (pl.placements.length === 0) {
+    return { proposals: [], consolidationByProposal: [], rootLogId: firstLogId };
+  }
+
+  // T3 writers — parallel, same logic as single-source review path.
+  const tier3Start = Date.now();
+  onProgress({ kind: 't3-start', t3Total: pl.placements.length });
+  // eslint-disable-next-line no-console
+  console.log(`[pipeline-multi] tier3 running ${pl.placements.length} writer(s) in parallel…`);
+
+  type ProposalWithConsolidation = { proposal: FinalReviewProposal; consolidation: ConsolidatedSubject | null };
+
+  const results = await Promise.all(pl.placements.map(async (p): Promise<ProposalWithConsolidation | null> => {
+    try {
+      const subj = flattened[p.subjectIndex];
+      if (!subj) return null;
+      const consolidation = rec.consolidated[p.subjectIndex] ?? null;
+
+      const reviewAction: 'new-review' | 'existing-review' = p.reviewId ? 'existing-review' : 'new-review';
+      const sectionAction: 'new-section' | 'existing-section' = p.sectionId ? 'existing-section' : 'new-section';
+      const status = defaultStatus(subj.statusHint);
+      const responsibility = subj.responsibilityHint ?? null;
+
+      if (p.subjectAction === 'update-existing-subject') {
+        let existing = '';
+        const rev = reviews.find(r => r.id === p.reviewId);
+        if (rev) {
+          for (const s of rev.sections) {
+            const match = s.subjects.find(x => x.id === p.targetSubjectId);
+            if (match) { existing = match.situationExcerpt; break; }
+          }
+        }
+        const w = await tier3Append({
+          ...base,
+          existingSituation: existing,
+          rawQuotes: subj.rawQuotes,
+          subjectTitle: subj.title,
+          parentLogId: pl.logId,
+        });
+        if (!w.appendText || !w.appendText.trim()) return null;
+        return {
+          consolidation,
+          proposal: {
+            title: subj.title,
+            situation: '',
+            status,
+            responsibility,
+            action: reviewAction,
+            reviewId: p.reviewId ?? null,
+            suggestedNewReviewTitle: p.suggestedNewReviewTitle ?? null,
+            sectionAction,
+            sectionId: p.sectionId ?? null,
+            suggestedNewSectionName: p.suggestedNewSectionName ?? null,
+            subjectAction: 'update-existing-subject',
+            targetSubjectId: p.targetSubjectId ?? null,
+            updatedSituation: (existing ? existing + '\n' : '') + w.appendText,
+            updatedStatus: null,
+            updatedResponsibility: null,
+            confidence: p.confidence,
+            reasoning: p.reason,
+          },
+        };
+      }
+
+      // new-subject
+      const w = await tier3Compose({
+        ...base,
+        title: subj.title,
+        rawQuotes: subj.rawQuotes,
+        parentLogId: pl.logId,
+      });
+      return {
+        consolidation,
+        proposal: {
+          title: subj.title,
+          situation: w.situation,
+          status,
+          responsibility,
+          action: reviewAction,
+          reviewId: p.reviewId ?? null,
+          suggestedNewReviewTitle: p.suggestedNewReviewTitle ?? null,
+          sectionAction,
+          sectionId: p.sectionId ?? null,
+          suggestedNewSectionName: p.suggestedNewSectionName ?? null,
+          subjectAction: 'new-subject',
+          targetSubjectId: null,
+          updatedSituation: null,
+          updatedStatus: null,
+          updatedResponsibility: null,
+          confidence: p.confidence,
+          reasoning: p.reason,
+        },
+      };
+    } finally {
+      onProgress({ kind: 't3-writer-done' });
+    }
+  }));
+
+  const kept = results.filter((r): r is ProposalWithConsolidation => r !== null);
+  const tier3WallMs = Date.now() - tier3Start;
+  onProgress({ kind: 't3-end', durationMs: tier3WallMs });
+  const totalMs = Date.now() - wallStart;
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `[pipeline-multi:summary] (${sources.length} sources) ` +
+    `T1=${fmtDur(t1WallMs)} · T1.5=${fmtDur(rec.durationMs)} · ` +
+    `T2=${fmtDur(pl.durationMs)} · T3=${fmtDur(tier3WallMs)} · ` +
+    `TOTAL=${fmtDur(totalMs)} · final=${kept.length}/${pl.placements.length} proposals · ` +
+    `consolidated=${rec.consolidated.length} (from ${totalExtracted} extracted)`,
+  );
+
+  return {
+    proposals: kept.map(k => k.proposal),
+    consolidationByProposal: kept.map(k => k.consolidation),
+    rootLogId: firstLogId,
+  };
 }
 

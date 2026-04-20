@@ -441,16 +441,19 @@ export async function analyzeAndRoute(payload: {
 
 // ── Async / polling variant with real progress updates ────────────────
 
-export type PipelinePhase = 'queued' | 'tier1' | 'tier2' | 'tier3' | 'done' | 'error';
+export type PipelinePhase = 'queued' | 'tier1' | 'reconcile' | 'tier2' | 'tier3' | 'done' | 'error';
 
 export interface PipelineJobStatus {
   id: string;
   phase: PipelinePhase;
   subjectsExtracted: number;
+  /** Present only for multi-source jobs — subjects after T1.5 reconciliation. */
+  subjectsConsolidated: number;
+  sourcesCount: number;
   placementsProduced: number;
   t3Total: number;
   t3Done: number;
-  durations: { t1?: number; t2?: number; t3?: number };
+  durations: { t1?: number; reconcile?: number; t2?: number; t3?: number };
   rootLogId: number | null;
   result: unknown | null;
   error: string | null;
@@ -505,6 +508,78 @@ export async function analyzeAndRouteWithPolling(
     const status = await getPipelineJob(jobId);
     onStatus(status);
     if (status.phase === 'done') return status.result as AnalysisResponse;
+    if (status.phase === 'error') throw new Error(status.error || 'Pipeline error');
+    await new Promise<void>(r => setTimeout(r, interval));
+  }
+}
+
+// ── Multi-source variant ──────────────────────────────────────────────
+
+/** One source descriptor for the multi-source import endpoint. */
+export interface MultiSourceDescriptor {
+  source: SourceProvider;
+  id: string;
+  title: string;
+  date?: string | null;
+}
+
+/** Per-proposal consolidation metadata — matches the backend's
+ *  ConsolidatedSubject type. Used by the UI to surface "N sources"
+ *  badges, chronology tooltips, and contradiction warnings. null when
+ *  the proposal comes from a single-source subject (pass-through). */
+export interface ConsolidationMeta {
+  canonicalTitle: string;
+  evidence: Array<{
+    sourceId: string;
+    sourceType: string;
+    ts: string;
+    subjectIndex: number;
+    rawQuotes: string[];
+    stance: 'propose' | 'confirm' | 'complement' | 'contradict';
+    summary: string;
+  }>;
+  chronology: string | null;
+  reconciliationNote: string | null;
+}
+
+/** Extended analysis response for the multi-source endpoint : same as
+ *  AnalysisResponse + consolidation metadata aligned by proposal index. */
+export interface MultiSourceAnalysisResponse extends AnalysisResponse {
+  consolidationByProposal: Array<ConsolidationMeta | null>;
+  sourcesCount: number;
+}
+
+export async function startMultiSourceAnalyzeJob(payload: {
+  sources: MultiSourceDescriptor[];
+}): Promise<{ jobId: string }> {
+  const response = await fetch(`${API_BASE}/multi-source/analyze-async`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/** Multi-source high-level helper : start + poll until done. Reuses
+ *  `/pipeline-jobs/:id` for polling (same job tracker on the backend). */
+export async function analyzeMultiSourceWithPolling(
+  sources: MultiSourceDescriptor[],
+  onStatus: (status: PipelineJobStatus) => void,
+  opts: { intervalMs?: number; signal?: AbortSignal } = {},
+): Promise<MultiSourceAnalysisResponse> {
+  const interval = opts.intervalMs ?? 500;
+  const { jobId } = await startMultiSourceAnalyzeJob({ sources });
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (opts.signal?.aborted) throw new Error('aborted');
+    const status = await getPipelineJob(jobId);
+    onStatus(status);
+    if (status.phase === 'done') return status.result as MultiSourceAnalysisResponse;
     if (status.phase === 'error') throw new Error(status.error || 'Pipeline error');
     await new Promise<void>(r => setTimeout(r, interval));
   }

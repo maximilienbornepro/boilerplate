@@ -43,6 +43,37 @@ body {
   font-weight: 600;
 }
 
+/* Dev build marker — amber "D" next to the title. Visible only when
+   config.js sets isDev = true (toggled from popup.js). */
+.env-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #f59e0b;
+  color: #1a1a1a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-left: auto;
+  line-height: 1;
+}
+
+.env-badge.hidden {
+  display: none;
+}
+
+/* Small inline logos inside the provider badge — keeps them visually
+   aligned with the label. Sized to match the badge font-size. */
+.provider-logo {
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
+}
+
 /* Sections */
 .section {
   padding: 10px 14px;

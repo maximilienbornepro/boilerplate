@@ -14,7 +14,8 @@ import { randomUUID } from 'node:crypto';
 
 export type PipelinePhase =
   | 'queued'
-  | 'tier1'           // extracting subjects
+  | 'tier1'           // extracting subjects (one call per source, in parallel for multi-source)
+  | 'reconcile'       // T1.5 : multi-source consolidation (only if ≥2 sources)
   | 'tier2'           // deciding placements
   | 'tier3'           // writing (parallel)
   | 'done'
@@ -23,8 +24,12 @@ export type PipelinePhase =
 export interface PipelineJob {
   id: string;
   phase: PipelinePhase;
-  /** Subjects produced by T1 (set when T1 ends). */
+  /** Subjects produced by T1 (sum across sources for multi-source jobs). */
   subjectsExtracted: number;
+  /** Consolidated subjects after T1.5 reconciliation. 0 when reconcile is skipped (single source). */
+  subjectsConsolidated: number;
+  /** Number of sources processed by T1 (always ≥1). Lets the UI show "3 sources analysed". */
+  sourcesCount: number;
   /** Placements produced by T2 (set when T2 ends). */
   placementsProduced: number;
   /** How many T3 writers are in flight (set at T3 start, decremented as
@@ -32,7 +37,7 @@ export interface PipelineJob {
   t3Total: number;
   t3Done: number;
   /** Per-tier duration in ms, filled as each tier completes. */
-  durations: { t1?: number; t2?: number; t3?: number };
+  durations: { t1?: number; reconcile?: number; t2?: number; t3?: number };
   rootLogId: number | null;
   /** Final result — only set when phase === 'done'. Shape depends on
    *  the endpoint (document variant vs reviews variant) ; the route
@@ -44,8 +49,15 @@ export interface PipelineJob {
 }
 
 export interface PipelineProgressEvent {
-  kind: 't1-start' | 't1-end' | 't2-start' | 't2-end' | 't3-start' | 't3-writer-done' | 't3-end' | 'error';
+  kind:
+    | 't1-start' | 't1-end'
+    | 'reconcile-start' | 'reconcile-end'
+    | 't2-start' | 't2-end'
+    | 't3-start' | 't3-writer-done' | 't3-end'
+    | 'error';
   subjectsExtracted?: number;
+  subjectsConsolidated?: number;
+  sourcesCount?: number;
   placementsProduced?: number;
   t3Total?: number;
   rootLogId?: number | null;
@@ -71,6 +83,8 @@ export function createJob(): PipelineJob {
     id: randomUUID(),
     phase: 'queued',
     subjectsExtracted: 0,
+    subjectsConsolidated: 0,
+    sourcesCount: 1,
     placementsProduced: 0,
     t3Total: 0,
     t3Done: 0,
@@ -98,11 +112,19 @@ export function makeOnProgress(jobId: string): (e: PipelineProgressEvent) => voi
     switch (e.kind) {
       case 't1-start':
         j.phase = 'tier1';
+        if (e.sourcesCount != null) j.sourcesCount = e.sourcesCount;
         break;
       case 't1-end':
         j.subjectsExtracted = e.subjectsExtracted ?? j.subjectsExtracted;
         j.rootLogId = e.rootLogId ?? j.rootLogId;
         if (e.durationMs != null) j.durations.t1 = e.durationMs;
+        break;
+      case 'reconcile-start':
+        j.phase = 'reconcile';
+        break;
+      case 'reconcile-end':
+        j.subjectsConsolidated = e.subjectsConsolidated ?? j.subjectsConsolidated;
+        if (e.durationMs != null) j.durations.reconcile = e.durationMs;
         break;
       case 't2-start':
         j.phase = 'tier2';
