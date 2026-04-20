@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   statusCategory,
   isAbandonedStatus,
+  isReviewOrDeliveryStatus,
   widthFromEstimation,
   chooseStartCol,
   ensureOverlapsToday,
@@ -106,6 +107,133 @@ describe('isAbandonedStatus', () => {
     expect(isAbandonedStatus('Blocked')).toBe(false);
     expect(isAbandonedStatus(null)).toBe(false);
     expect(isAbandonedStatus('')).toBe(false);
+  });
+});
+
+// ── isReviewOrDeliveryStatus ──────────────────────────────────────────
+
+describe('isReviewOrDeliveryStatus', () => {
+  it('flags review / livraison / QA / validation / test labels (FR + EN)', () => {
+    expect(isReviewOrDeliveryStatus('Review')).toBe(true);
+    expect(isReviewOrDeliveryStatus('En revue')).toBe(true);
+    expect(isReviewOrDeliveryStatus('Code Review')).toBe(true);
+    expect(isReviewOrDeliveryStatus('Livraison')).toBe(true);
+    expect(isReviewOrDeliveryStatus('En livraison')).toBe(true);
+    expect(isReviewOrDeliveryStatus('Delivery')).toBe(true);
+    expect(isReviewOrDeliveryStatus('QA')).toBe(true);
+    expect(isReviewOrDeliveryStatus('Testing')).toBe(true);
+    expect(isReviewOrDeliveryStatus('En test')).toBe(true);
+    expect(isReviewOrDeliveryStatus('In Test')).toBe(true);
+    expect(isReviewOrDeliveryStatus('Validation')).toBe(true);
+    expect(isReviewOrDeliveryStatus('En validation')).toBe(true);
+    expect(isReviewOrDeliveryStatus('UAT')).toBe(true);
+    expect(isReviewOrDeliveryStatus('Staging')).toBe(true);
+    expect(isReviewOrDeliveryStatus('Ready to deploy')).toBe(true);
+  });
+  it('does not flag todo / in-progress / done / blocked statuses', () => {
+    expect(isReviewOrDeliveryStatus('To Do')).toBe(false);
+    expect(isReviewOrDeliveryStatus('In Progress')).toBe(false);
+    expect(isReviewOrDeliveryStatus('En cours')).toBe(false);
+    expect(isReviewOrDeliveryStatus('Done')).toBe(false);
+    expect(isReviewOrDeliveryStatus('Terminé')).toBe(false);
+    expect(isReviewOrDeliveryStatus('Blocked')).toBe(false);
+    expect(isReviewOrDeliveryStatus(null)).toBe(false);
+    expect(isReviewOrDeliveryStatus('')).toBe(false);
+  });
+});
+
+describe('computeBoardPlan — review/delivery past-only rule', () => {
+  it('leaves a review ticket alone when already strictly before the today bar', () => {
+    const plan = computeBoardPlan({
+      tickets: [
+        makeTicket({
+          id: 'past-review',
+          externalStatus: 'En revue',
+          position: { startCol: 0, endCol: 1, row: 0 },
+        }),
+      ],
+      missingFromBoard: [],
+      assessment: {},
+      grid: { totalCols: 6, todayCol: 3 },
+    });
+    // Ticket's endCol (1) <= todayCol (3), so no move should be proposed.
+    expect(plan.placements.find(p => p.taskId === 'past-review')).toBeUndefined();
+    expect(plan.skipped.some(s => s.taskId === 'past-review')).toBe(true);
+  });
+
+  it('moves a review ticket from the future to the slot ending on the today bar', () => {
+    const plan = computeBoardPlan({
+      tickets: [
+        makeTicket({
+          id: 'future-review',
+          externalStatus: 'En revue',
+          position: { startCol: 4, endCol: 5, row: 0 },
+        }),
+      ],
+      missingFromBoard: [],
+      assessment: {},
+      grid: { totalCols: 6, todayCol: 3 },
+    });
+    const placement = plan.placements.find(p => p.taskId === 'future-review');
+    expect(placement).toBeDefined();
+    // Width 1 ticket ending at todayCol (3) → startCol = 2, endCol = 3.
+    expect(placement!.to.endCol).toBe(3);
+    expect(placement!.to.startCol).toBe(2);
+  });
+
+  it('moves a delivery ticket currently overlapping today backwards', () => {
+    const plan = computeBoardPlan({
+      tickets: [
+        makeTicket({
+          id: 'delivery-over-today',
+          externalStatus: 'En livraison',
+          position: { startCol: 3, endCol: 4, row: 0 },
+        }),
+      ],
+      missingFromBoard: [],
+      assessment: {},
+      grid: { totalCols: 6, todayCol: 3 },
+    });
+    const placement = plan.placements.find(p => p.taskId === 'delivery-over-today');
+    expect(placement).toBeDefined();
+    expect(placement!.to.endCol).toBe(3);
+  });
+
+  it('respects the width of wider review tickets when snapping to the past', () => {
+    const plan = computeBoardPlan({
+      tickets: [
+        makeTicket({
+          id: 'wide-review',
+          externalStatus: 'Code Review',
+          estimatedDays: 10, // → width 2
+          hasEstimation: true,
+          position: { startCol: 4, endCol: 6, row: 0 },
+        }),
+      ],
+      missingFromBoard: [],
+      assessment: {},
+      grid: { totalCols: 6, todayCol: 3 },
+    });
+    const placement = plan.placements.find(p => p.taskId === 'wide-review');
+    expect(placement).toBeDefined();
+    // Width 2, endCol must be 3 → startCol = 1, endCol = 3.
+    expect(placement!.to.startCol).toBe(1);
+    expect(placement!.to.endCol).toBe(3);
+  });
+
+  it('places review additions from the sprint directly in the past slot', () => {
+    const plan = computeBoardPlan({
+      tickets: [],
+      missingFromBoard: [
+        makeMissing({ externalKey: 'DEV-99', status: 'En revue' }),
+      ],
+      assessment: {},
+      grid: { totalCols: 6, todayCol: 3 },
+    });
+    const addition = plan.placements.find(p => p.externalKey === 'DEV-99');
+    expect(addition).toBeDefined();
+    expect(addition!.isAddition).toBe(true);
+    expect(addition!.to.endCol).toBe(3);
   });
 });
 

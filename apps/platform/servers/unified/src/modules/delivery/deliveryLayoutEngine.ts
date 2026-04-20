@@ -103,6 +103,33 @@ export function isAbandonedStatus(raw: string | null | undefined): boolean {
   );
 }
 
+/** Late-stage workflow states ("En revue", "Livraison", "QA", "Test") :
+ *  work is essentially complete, so the ticket must NEVER be placed in
+ *  the future. Business rule from the team :
+ *    - Ticket already strictly before the today bar → leave it alone.
+ *    - Ticket on today / in the future → move it to the week just before
+ *      the today bar (endCol = todayCol).
+ *  Detected here so the rule is shared between board repositionings and
+ *  additions from the sprint. Kept narrow on purpose — false-positives
+ *  would silently pull ongoing work into the past. */
+export function isReviewOrDeliveryStatus(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const s = raw.toLowerCase().trim();
+  return (
+    /\breview\b/.test(s) ||
+    /\ben revue\b|\brevue\b/.test(s) ||
+    /\blivraison\b|\ben livraison\b/.test(s) ||
+    /\bdelivery\b/.test(s) ||
+    /\bqa\b/.test(s) ||
+    /\btest(ing|s)?\b|\ben test\b/.test(s) ||
+    /\bverified\b|\bvérifié\b|\bverifie\b/.test(s) ||
+    /\bvalidation\b|\ben validation\b|\bvalidated\b/.test(s) ||
+    /\buat\b/.test(s) ||
+    /\bstaging\b|\bpré-?prod\b|\bpre-?prod\b/.test(s) ||
+    /\bready to deploy\b|\bprêt à déployer\b/.test(s)
+  );
+}
+
 /** Single mapping to keep Jira/ClickUp/Linear status labels consistent.
  *  Any label we don't recognize defaults to `todo` (safest — ticket ends
  *  up on the right-hand side, user can re-check). */
@@ -278,11 +305,32 @@ export function computeBoardPlan(input: LayoutInput): BoardPlan {
     const estWidth = widthFromEstimation(t.estimatedDays, t.storyPoints);
     const width = Math.max(1, Math.min(grid.totalCols, estWidth ?? currentDuration));
 
-    let startCol = chooseStartCol(statusCat, t.versionCategory, grid.todayCol, grid.totalCols, width);
-    if (statusCat === 'in_progress' || statusCat === 'blocked') {
-      startCol = ensureOverlapsToday(startCol, width, grid.todayCol, grid.totalCols);
+    const rawStatus = t.externalStatus ?? t.boardStatus;
+    let startCol: number;
+    let endCol: number;
+
+    // Rule : review / delivery / QA / validation tickets are essentially
+    // done and must NEVER sit in the future. If they're already strictly
+    // before the today bar, keep them put (no spurious move proposal).
+    // Otherwise, snap them to the slot ending exactly on the today bar.
+    if (isReviewOrDeliveryStatus(rawStatus) && grid.todayCol > 0) {
+      if (t.position.endCol <= grid.todayCol) {
+        // Already in the past — leave it. Using the current position means
+        // the no-op skip below will prune this placement automatically.
+        startCol = t.position.startCol;
+        endCol = t.position.endCol;
+      } else {
+        endCol = grid.todayCol;
+        startCol = clamp(grid.todayCol - width, 0, Math.max(0, grid.totalCols - width));
+        endCol = startCol + width;
+      }
+    } else {
+      startCol = chooseStartCol(statusCat, t.versionCategory, grid.todayCol, grid.totalCols, width);
+      if (statusCat === 'in_progress' || statusCat === 'blocked') {
+        startCol = ensureOverlapsToday(startCol, width, grid.todayCol, grid.totalCols);
+      }
+      endCol = startCol + width;
     }
-    const endCol = startCol + width;
 
     const bucket = byTargetCol.get(startCol) ?? [];
     bucket.push({ ticket: t, startCol, endCol, qualityFlags: qf, statusCat });
@@ -349,11 +397,23 @@ export function computeBoardPlan(input: LayoutInput): BoardPlan {
     };
     const estWidth = widthFromEstimation(m.estimatedDays, m.storyPoints);
     const width = Math.max(1, Math.min(grid.totalCols, estWidth ?? 1));
-    let startCol = chooseStartCol(statusCat, m.versionCategory, grid.todayCol, grid.totalCols, width);
-    if (statusCat === 'in_progress' || statusCat === 'blocked') {
-      startCol = ensureOverlapsToday(startCol, width, grid.todayCol, grid.totalCols);
+    let startCol: number;
+    let endCol: number;
+
+    // Same past-only rule as above — additions in review/delivery state
+    // are pulled in from the sprint but are essentially done, so they go
+    // straight to the slot ending on the today bar.
+    if (isReviewOrDeliveryStatus(m.status) && grid.todayCol > 0) {
+      endCol = grid.todayCol;
+      startCol = clamp(grid.todayCol - width, 0, Math.max(0, grid.totalCols - width));
+      endCol = startCol + width;
+    } else {
+      startCol = chooseStartCol(statusCat, m.versionCategory, grid.todayCol, grid.totalCols, width);
+      if (statusCat === 'in_progress' || statusCat === 'blocked') {
+        startCol = ensureOverlapsToday(startCol, width, grid.todayCol, grid.totalCols);
+      }
+      endCol = startCol + width;
     }
-    const endCol = startCol + width;
     const bucket = additionsByCol.get(startCol) ?? [];
     bucket.push({ missing: m, startCol, endCol, qualityFlags: qf, statusCat });
     additionsByCol.set(startCol, bucket);
