@@ -37,10 +37,15 @@ interface Row {
    *  "✓ Ajouté" badge on the row. Does not affect the final import
    *  (skipped already controls inclusion). */
   confirmed: boolean;
-  /** Explicit UI mode — tracks the toggle state since `reviewId=null`
+  /** Explicit UI mode — tracks the review toggle state since `reviewId=null`
    *  no longer unambiguously means "create new" (it can also mean
    *  "existing mode, not yet picked"). */
   mode: 'create' | 'existing';
+  /** Independent section-level mode. 'new' lets the user name a brand
+   *  new section (input field with the AI suggestion pre-filled), 'existing'
+   *  shows the dropdown of the current review's sections. Defaults from
+   *  the AI's sectionAction output. */
+  sectionMode: 'new' | 'existing';
 }
 
 export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
@@ -175,6 +180,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   function buildRowsFromSubjects(subjects: api.AnalyzedSubject[]): Row[] {
     return subjects.map((s, i) => {
       const matchedExisting = s.action === 'existing-review' && !!s.reviewId;
+      const matchedExistingSection = s.sectionAction === 'existing-section' && !!s.sectionId;
       return {
         // Row keys must be unique even when the AI emits multiple proposals
         // for the same source subject (multi-review dispatch). Using the
@@ -189,13 +195,16 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
         // suggéré pré-rempli.
         reviewId: matchedExisting ? s.reviewId : null,
         newReviewTitle: s.suggestedNewReviewTitle ?? '',
-        sectionId: s.sectionAction === 'existing-section' ? s.sectionId : null,
+        sectionId: matchedExistingSection ? s.sectionId : null,
         newSectionName: s.suggestedNewSectionName ?? '',
         subjectAction: s.subjectAction === 'update-existing-subject' ? 'update' : 'create',
         targetSubjectId: s.targetSubjectId,
         skipped: false,
         confirmed: false,
         mode: matchedExisting ? 'existing' : 'create',
+        // Section mode mirrors the AI's decision : existing if it found a
+        // matching section, 'new' if it proposed a fresh section name.
+        sectionMode: matchedExistingSection ? 'existing' : 'new',
       };
     });
   }
@@ -223,6 +232,10 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
         // Keep the AI's new-review-title suggestion in case the user wants
         // to fall back to a create flow after all.
         mode: 'existing',
+        // Default section mode for a user-added duplicate : existing if the
+        // picked review has sections to choose from, otherwise the user
+        // will end up creating a fresh section for this extra review target.
+        sectionMode: 'existing',
         // Always a fresh create when user manually adds a target — they can
         // still switch to "update" in the row UI if the target review has a
         // matching subject.
@@ -288,8 +301,14 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
           responsibility: r.subject.responsibility,
           targetReviewId: r.reviewId,
           newReviewTitle: r.reviewId ? null : (r.newReviewTitle || r.subject.suggestedNewReviewTitle || 'Nouvelle review'),
-          targetSectionId: r.reviewId && r.sectionId ? r.sectionId : null,
-          newSectionName: r.reviewId && r.sectionId ? null : (r.newSectionName || r.subject.suggestedNewSectionName || 'Nouveau point'),
+          // sectionMode is the source of truth : 'existing' → send sectionId,
+          // 'new' → send the name (even if a sectionId was previously set in
+          // the row, the user explicitly chose to ignore it). Fallback on the
+          // AI suggestion for 'new' when the user hasn't typed anything.
+          targetSectionId: r.sectionMode === 'existing' ? r.sectionId : null,
+          newSectionName: r.sectionMode === 'existing'
+            ? null
+            : (r.newSectionName || r.subject.suggestedNewSectionName || 'Nouveau point'),
           subjectAction: isUpdate ? 'update-existing-subject' : 'new-subject',
           targetSubjectId: isUpdate ? r.targetSubjectId : null,
           updatedSituation: isUpdate ? (r.subject.updatedSituation ?? r.subject.situation) : null,
@@ -588,7 +607,7 @@ function SubjectRow({
    *  "N sujets regroupés ici" hint so the user sees the dedup upfront. */
   sameNewSectionCount: number;
 }) {
-  const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped, confirmed, mode } = row;
+  const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped, confirmed, mode, sectionMode } = row;
   // Only show inline "required field" error after the user attempted to confirm.
   const [showValidation, setShowValidation] = useState(false);
   // Multi-source metadata — only shown if ≥2 evidence entries.
@@ -612,15 +631,22 @@ function SubjectRow({
   const updateIsPossible = currentSection && currentSection.subjects.length > 0;
 
   // ── Validation: surface what's missing before the user can confirm ──
-  //   - "create" mode    → newReviewTitle required + newSectionName required
-  //   - "existing" mode  → reviewId required + (sectionId OR newSectionName) required
+  // Review side :
+  //   'create'   → newReviewTitle required
+  //   'existing' → reviewId required
+  // Section side (sectionMode) :
+  //   'new'      → newSectionName required
+  //   'existing' → sectionId required
   const missingFields: string[] = [];
   if (mode === 'create') {
     if (!newReviewTitle.trim()) missingFields.push('titre de la nouvelle review');
-    if (!newSectionName.trim()) missingFields.push('nom de la nouvelle section');
   } else {
     if (!reviewId) missingFields.push('review');
-    else if (!sectionId && !newSectionName.trim()) missingFields.push('section');
+  }
+  if (sectionMode === 'new') {
+    if (!newSectionName.trim()) missingFields.push('nom de la nouvelle section');
+  } else {
+    if (!sectionId) missingFields.push('section');
   }
   const canConfirm = missingFields.length === 0;
 
@@ -704,7 +730,7 @@ function SubjectRow({
               type="button"
               className={`${styles.segmentedBtn} ${mode === 'create' ? styles.segmentedBtnActive : ''}`}
               disabled={skipped}
-              onClick={() => onUpdate({ mode: 'create', reviewId: null, sectionId: null })}
+              onClick={() => onUpdate({ mode: 'create', reviewId: null, sectionId: null, sectionMode: 'new' })}
             >
               + Créer une nouvelle review
             </button>
@@ -712,7 +738,7 @@ function SubjectRow({
               type="button"
               className={`${styles.segmentedBtn} ${mode === 'existing' ? styles.segmentedBtnActive : ''}`}
               disabled={skipped || reviews.length === 0}
-              onClick={() => onUpdate({ mode: 'existing', reviewId: null, sectionId: null })}
+              onClick={() => onUpdate({ mode: 'existing', reviewId: null, sectionId: null, sectionMode: 'existing' })}
             >
               Sélectionner une review existante
             </button>
@@ -760,10 +786,10 @@ function SubjectRow({
               Section
               <span className={styles.requiredMark}>*</span>
             </label>
-            {mode === 'create' && subject.suggestedNewSectionName && (
+            {sectionMode === 'new' && subject.suggestedNewSectionName && (
               <span className={styles.aiHint}>Suggestion IA</span>
             )}
-            {sameNewSectionCount >= 2 && !sectionId && newSectionName.trim() && (
+            {sameNewSectionCount >= 2 && sectionMode === 'new' && newSectionName.trim() && (
               <span
                 className={styles.clusterHint}
                 title={`${sameNewSectionCount} sujets seront regroupés dans la même nouvelle section "${newSectionName.trim()}" (dédupliqué au moment de l'import).`}
@@ -772,52 +798,107 @@ function SubjectRow({
               </span>
             )}
           </div>
-          {mode === 'create' ? (
-            // Nouvelle review → section toujours nouvelle (avec suggestion IA)
-            <input
-              type="text"
-              placeholder="Nom de la nouvelle section"
-              value={newSectionName}
-              disabled={skipped}
-              onChange={e => onRenameNewSection(e.target.value)}
-              maxLength={80}
-              className={showValidation && !newSectionName.trim() ? styles.inputError : ''}
-            />
-          ) : !reviewId ? (
-            // Mode existing, but no review picked yet → disabled placeholder
-            <CustomDropdown
-              value=""
-              displayLabel="Sélectionner d'abord une review…"
-              disabled={true}
-              className={showValidation ? styles.dropdownError : ''}
-              options={[]}
-              onChange={() => {}}
-            />
-          ) : currentReview && currentReview.sections.length > 0 ? (
-            // Review existante avec sections → dropdown des sections seulement
-            <CustomDropdown
-              value={sectionId ?? ''}
-              displayLabel={sectionId ? (currentReview.sections.find(s => s.id === sectionId)?.name ?? '—') : 'Sélectionner une section…'}
-              disabled={skipped}
-              className={showValidation && !sectionId ? styles.dropdownError : ''}
-              options={currentReview.sections.map(s => ({ value: s.id, label: s.name }))}
-              onChange={(val) => onUpdate({ sectionId: val, subjectAction: 'create', targetSubjectId: null })}
-            />
-          ) : (
-            // Review existante sans sections → toujours créer
-            <>
-              <span className={styles.hint}>Cette review n'a pas encore de section</span>
-              <input
-                type="text"
-                placeholder="Nom de la nouvelle section"
-                value={newSectionName}
+          {/* Section-level segmented toggle : only shown when the review is
+              existing AND has at least 1 section to pick from. Otherwise
+              we either force 'new' (review being created, or review without
+              sections) or show a disabled placeholder. */}
+          {mode === 'existing' && reviewId && currentReview && currentReview.sections.length > 0 && (
+            <div className={styles.segmented} style={{ marginBottom: 6 }}>
+              <button
+                type="button"
+                className={`${styles.segmentedBtn} ${sectionMode === 'new' ? styles.segmentedBtnActive : ''}`}
                 disabled={skipped}
-                onChange={e => onRenameNewSection(e.target.value)}
-                maxLength={80}
-                className={showValidation && !newSectionName.trim() ? styles.inputError : ''}
-              />
-            </>
+                onClick={() => onUpdate({ sectionMode: 'new', sectionId: null })}
+              >
+                + Créer une nouvelle section
+              </button>
+              <button
+                type="button"
+                className={`${styles.segmentedBtn} ${sectionMode === 'existing' ? styles.segmentedBtnActive : ''}`}
+                disabled={skipped}
+                onClick={() => onUpdate({ sectionMode: 'existing' })}
+              >
+                Sélectionner une section existante
+              </button>
+            </div>
           )}
+          {(() => {
+            // Render decision tree :
+            //   1. Review is being created → always "new section" input.
+            //   2. No review picked yet    → disabled placeholder dropdown.
+            //   3. Review picked, has sections, sectionMode='existing'
+            //                              → dropdown of existing sections.
+            //   4. Review picked, has sections, sectionMode='new'
+            //                              → input with AI suggestion pre-filled.
+            //   5. Review picked, no sections → forced "new section" input
+            //                                   (with a small hint).
+            if (mode === 'create' || !reviewId) {
+              if (!reviewId && mode === 'existing') {
+                return (
+                  <CustomDropdown
+                    value=""
+                    displayLabel="Sélectionner d'abord une review…"
+                    disabled={true}
+                    className={showValidation ? styles.dropdownError : ''}
+                    options={[]}
+                    onChange={() => {}}
+                  />
+                );
+              }
+              return (
+                <input
+                  type="text"
+                  placeholder="Nom de la nouvelle section"
+                  value={newSectionName}
+                  disabled={skipped}
+                  onChange={e => onRenameNewSection(e.target.value)}
+                  maxLength={80}
+                  className={showValidation && !newSectionName.trim() ? styles.inputError : ''}
+                />
+              );
+            }
+            // mode === 'existing' + reviewId set from here on.
+            const hasExistingSections = !!(currentReview && currentReview.sections.length > 0);
+            if (!hasExistingSections) {
+              return (
+                <>
+                  <span className={styles.hint}>Cette review n'a pas encore de section</span>
+                  <input
+                    type="text"
+                    placeholder="Nom de la nouvelle section"
+                    value={newSectionName}
+                    disabled={skipped}
+                    onChange={e => onRenameNewSection(e.target.value)}
+                    maxLength={80}
+                    className={showValidation && !newSectionName.trim() ? styles.inputError : ''}
+                  />
+                </>
+              );
+            }
+            if (sectionMode === 'new') {
+              return (
+                <input
+                  type="text"
+                  placeholder="Nom de la nouvelle section"
+                  value={newSectionName}
+                  disabled={skipped}
+                  onChange={e => onRenameNewSection(e.target.value)}
+                  maxLength={80}
+                  className={showValidation && !newSectionName.trim() ? styles.inputError : ''}
+                />
+              );
+            }
+            return (
+              <CustomDropdown
+                value={sectionId ?? ''}
+                displayLabel={sectionId ? (currentReview!.sections.find(s => s.id === sectionId)?.name ?? '—') : 'Sélectionner une section…'}
+                disabled={skipped}
+                className={showValidation && !sectionId ? styles.dropdownError : ''}
+                options={currentReview!.sections.map(s => ({ value: s.id, label: s.name }))}
+                onChange={(val) => onUpdate({ sectionId: val, subjectAction: 'create', targetSubjectId: null })}
+              />
+            );
+          })()}
         </div>
 
         {updateIsPossible && (
