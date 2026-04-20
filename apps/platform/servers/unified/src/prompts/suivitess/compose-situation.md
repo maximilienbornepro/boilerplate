@@ -33,12 +33,21 @@ qu'on te donne.
 
 ## Règles de formatage
 
+**CRITIQUE — N'ajoute JAMAIS de caractères de puce (`•`, `-`, `*`, `◦`, `▪`,
+`▸`) en début de ligne.** L'interface SuiviTess les affiche automatiquement
+en se basant sur le niveau d'indentation de chaque ligne. Ajouter un `•` toi-
+même produit un double bullet visuel (`• •`) dans l'app.
+
 - **Multilignes** : un fait = une ligne. Utilise `\n` entre les lignes.
-- **Bullets** : si tu as **2 faits ou plus**, utilise des bullets `• `. Si un
-  seul fait, écris-le en une ligne simple, sans bullet.
-- **Indentation** : utilise UNIQUEMENT des vrais caractères tab (`\t`), jamais
-  d'espaces. Si un sous-point précise un bullet, il prend un tab
-  supplémentaire.
+- **Pas de préfixe de puce** : commence chaque ligne directement par le texte
+  du fait. La puce visuelle est rendue par l'app selon l'indentation.
+- **Indentation** : utilise des **espaces** (2 par niveau), jamais de tabs ni
+  de `\t`. Niveau 0 = aucun espace, niveau 1 = 2 espaces, niveau 2 = 4 espaces.
+  Chaque niveau change automatiquement le style de puce dans l'app
+  (`•` → `◦` → `▪` → `▸`).
+- **Gras** : enveloppe une portion avec `**…**` (ex : `**deadline** fin mai`).
+- **Barré** (fait clôturé) : enveloppe toute la ligne avec `~~…~~` (rare pour
+  une nouvelle situation).
 - **Garde les emojis et la casse** des `rawQuotes` s'ils portent du sens
   (`🚀`, `P0`, `SLA`).
 - **Longueur** : tiens-toi aux infos des quotes. Si les quotes font 2 lignes,
@@ -61,9 +70,20 @@ Input :
 Output :
 ```json
 {
-  "situation": "• Call Amazon ce matin.\n• POC d'intégration FireTV demandé pour fin mai.\n• Contact technique : Sarah Jensen (s.jensen@amazon.com)."
+  "situation": "Call Amazon ce matin.\nPOC d'intégration FireTV demandé pour **fin mai**.\nContact technique : Sarah Jensen (s.jensen@amazon.com)."
 }
 ```
+
+Exemple avec sous-point (indentation niveau 1 = 2 espaces) :
+```json
+{
+  "situation": "Réunion roadmap lundi.\n  Décision : on priorise mobile en Q3.\n  Alice pilote, deadline fin août."
+}
+```
+
+Remarque : aucune ligne ne commence par `•`. L'app SuiviTess dessine les puces
+(`•` au niveau 0, `◦` au niveau 1, `▪` au niveau 2, `▸` au niveau 3) à partir
+des espaces en tête de ligne.
 
 ## Format de sortie (JSON strict, rien hors JSON)
 

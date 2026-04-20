@@ -682,3 +682,60 @@ export async function applyRouting(
   }
   return response.json();
 }
+
+// ==================== ADMIN — LEGACY BULLET CLEANUP ====================
+
+export interface LegacyBulletCleanupRow {
+  id: string;
+  title: string;
+  documentId: string;
+  documentTitle: string;
+  sectionName: string;
+  before: string;
+  after: string;
+}
+
+export interface LegacyBulletCleanupDryRun {
+  mode: 'dry-run';
+  totalScanned: number;
+  rowsToClean: number;
+  rows: LegacyBulletCleanupRow[];
+  truncated: boolean;
+}
+
+export interface LegacyBulletCleanupApplied {
+  mode: 'applied';
+  totalScanned: number;
+  rowsUpdated: number;
+}
+
+/** Admin-only. Scans every suivitess_subjects row and returns a preview
+ *  of the changes that a cleanup run would apply. */
+export async function previewLegacyBulletCleanup(): Promise<LegacyBulletCleanupDryRun> {
+  const response = await fetch(`${API_BASE}/admin/cleanup-legacy-bullets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ apply: false }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/** Admin-only. Applies the cleanup inside a single DB transaction. */
+export async function applyLegacyBulletCleanup(): Promise<LegacyBulletCleanupApplied> {
+  const response = await fetch(`${API_BASE}/admin/cleanup-legacy-bullets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ apply: true }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
