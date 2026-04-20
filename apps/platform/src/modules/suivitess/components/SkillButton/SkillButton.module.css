@@ -48,6 +48,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--transition-fast);
+}
+
+.caption:hover:not(:disabled) .captionName {
+  color: var(--text-primary);
 }
 
 .captionEdit {

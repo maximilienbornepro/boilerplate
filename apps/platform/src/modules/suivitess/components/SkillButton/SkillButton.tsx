@@ -177,7 +177,6 @@ export function SkillButton({ skillSlug, pipeline, children, disabled, showCapti
           <span className={styles.captionName}>
             {captionLabel}
           </span>
-          <span className={styles.captionEdit}>éditer</span>
         </button>
       )}
 
