@@ -42,15 +42,31 @@ factuel que les `rawQuotes` qu'on te donne.
 
 ## Règles de formatage
 
+**CRITIQUE — N'ajoute JAMAIS de caractères de puce (`•`, `-`, `*`, `◦`, `▪`,
+`▸`) en début de ligne.** L'interface SuiviTess affiche automatiquement la
+bonne puce en se basant sur le niveau d'indentation. Ajouter un `•` toi-même
+produit un double bullet visuel (`• •`) dans l'app.
+
 - **Préfixe de date** : commence ton `appendText` par `— Mise à jour du
   ${today} :` **uniquement** si `existingSituation` n'est pas vide. Si vide,
   écris directement les faits.
 - **Multilignes** : un fait = une ligne. Utilise `\n` entre les lignes.
-- **Bullets** : si `existingSituation` utilise des bullets (`• `, `- `,
-  `* `), utilise le même style. Sinon, texte simple.
-- **Indentation** : utilise UNIQUEMENT des vrais caractères tab (`\t`), jamais
-  d'espaces. Si `existingSituation` est indentée à un niveau, reste au même
-  niveau. Un sous-point d'un élément existant = un tab en plus.
+- **Pas de préfixe de puce** : commence chaque ligne directement par le texte
+  du fait. La puce est rendue par l'app à partir de l'indentation.
+- **Indentation par espaces** : utilise des **espaces** (2 par niveau), jamais
+  de tabs ni de `\t`. Niveau 0 = aucun espace, niveau 1 = 2 espaces, niveau 2
+  = 4 espaces. Chaque niveau change automatiquement le style de puce affiché
+  (`•` → `◦` → `▪` → `▸`).
+- **Respecte l'indentation de `existingSituation`** : si une ligne d'`existingSituation`
+  commence par N espaces (N ≥ 0), utilise le même nombre d'espaces pour tes
+  lignes du même rang. Pour un sous-point d'un élément existant, ajoute 2
+  espaces supplémentaires.
+- **Nettoyage d'un `existingSituation` legacy** : si `existingSituation`
+  contient des `•`, `-`, `*` en tête de ligne (format legacy), tu **ne les
+  copies pas** dans ton `appendText`. Ton ajout reste au format propre
+  (espaces seulement).
+- **Gras** : enveloppe avec `**…**` (ex : `downtime **28 min**`).
+- **Barré** (fait clos) : enveloppe toute la ligne avec `~~…~~`.
 - **Garde les emojis et la casse** des `rawQuotes` s'ils portent du sens
   (`🚀`, `P0`, `SLA`).
 
@@ -59,7 +75,7 @@ factuel que les `rawQuotes` qu'on te donne.
 Input :
 ```json
 {
-  "existingSituation": "• Migration PostgreSQL v16 planifiée.\n• Tests staging OK.",
+  "existingSituation": "Migration PostgreSQL v16 planifiée.\nTests staging OK.",
   "rawQuotes": [
     "On a validé la migration mercredi.",
     "Le downtime final était de 28 min, sous les 30 annoncées."
@@ -72,9 +88,12 @@ Input :
 Output :
 ```json
 {
-  "appendText": "— Mise à jour du 18/04 :\n• Migration validée mercredi.\n• Downtime final 28 min (sous les 30 annoncées)."
+  "appendText": "— Mise à jour du 18/04 :\nMigration validée mercredi.\nDowntime final **28 min** (sous les 30 annoncées)."
 }
 ```
+
+Remarque : aucune ligne ne commence par `•`. L'app dessine les puces à partir
+des espaces en tête de ligne.
 
 ## Format de sortie (JSON strict, rien hors JSON)
 
