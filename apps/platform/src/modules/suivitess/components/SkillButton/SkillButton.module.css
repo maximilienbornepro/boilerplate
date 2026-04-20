@@ -42,7 +42,7 @@
 }
 
 .captionName {
-  color: var(--text-primary);
+  color: var(--text-muted);
   font-weight: 500;
   flex: 1;
   overflow: hidden;
@@ -60,8 +60,7 @@
 .tooltip {
   position: absolute;
   bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 0;
   z-index: 9999;
   min-width: 280px;
   max-width: 360px;
@@ -92,8 +91,7 @@
   content: '';
   position: absolute;
   top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 24px;
   border: 6px solid transparent;
   border-top-color: var(--border-color);
 }
@@ -139,4 +137,30 @@
 .editBtn:hover {
   background: var(--accent-primary);
   color: #000;
+}
+
+.pipelineItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 2px 4px;
+  margin: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--text-muted);
+  width: 100%;
+  transition: color var(--transition-fast);
+}
+
+.pipelineItem:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.pipelineItem:disabled {
+  cursor: default;
+  opacity: 0.6;
 }

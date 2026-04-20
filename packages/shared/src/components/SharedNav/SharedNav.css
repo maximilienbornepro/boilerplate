@@ -230,6 +230,16 @@
   background: var(--bg-hover);
 }
 
+.shared-nav-drawer-list-compact {
+  gap: var(--spacing-2xs);
+}
+
+.shared-nav-drawer-item-compact {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-normal);
+}
+
 .shared-nav-drawer-item.active {
   background: var(--bg-hover);
   color: var(--accent-primary);
