@@ -552,14 +552,43 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
             </p>
             {rows.length > 0 && (
               <nav className={styles.summaryList} aria-label="Sommaire des sujets extraits">
-                {rows.map(r => (
-                  <a key={r.key} className={styles.summaryItem} href={`#subj-${r.key}`}>
-                    <span className={styles.summaryItemTitle}>{r.subject.title}</span>
-                    <span className={`${styles.summaryItemMode} ${r.subjectAction === 'update' ? styles.modeUpdate : styles.modeCreate}`}>
-                      {r.subjectAction === 'update' ? 'Mise à jour' : 'Nouveau'}
-                    </span>
-                  </a>
-                ))}
+                {rows.map(r => {
+                  // Resolve the target review label : existing review name
+                  // (looked up in availableReviews) OR the AI-suggested title
+                  // OR a placeholder if the user hasn't filled it yet.
+                  const reviewLabel = r.reviewId
+                    ? (availableReviews.find(rv => rv.id === r.reviewId)?.title ?? r.reviewId)
+                    : (r.newReviewTitle || r.subject.suggestedNewReviewTitle || 'nouvelle review');
+                  const reviewIsExisting = !!r.reviewId;
+                  // For updates : does the AI want to change the status ?
+                  const statusChanged = r.subjectAction === 'update'
+                    && !!r.subject.updatedStatus
+                    && r.subject.updatedStatus !== r.subject.status;
+                  return (
+                    <a key={r.key} className={styles.summaryItem} href={`#subj-${r.key}`}>
+                      <span className={styles.summaryItemTitle}>{r.subject.title}</span>
+                      <span className={`${styles.summaryItemMode} ${r.subjectAction === 'update' ? styles.modeUpdate : styles.modeCreate}`}>
+                        {r.subjectAction === 'update' ? 'Mise à jour sujet' : 'Nouveau sujet'}
+                      </span>
+                      <span
+                        className={`${styles.summaryItemReview} ${reviewIsExisting ? styles.summaryItemReviewExisting : styles.summaryItemReviewNew}`}
+                        title={reviewIsExisting
+                          ? `Review trouvée : "${reviewLabel}"`
+                          : `Nouvelle review proposée : "${reviewLabel}"`}
+                      >
+                        {reviewIsExisting ? '✓' : '+'} {reviewLabel}
+                      </span>
+                      {statusChanged && (
+                        <span
+                          className={styles.summaryItemStatusChange}
+                          title={`Statut : "${r.subject.status}" → "${r.subject.updatedStatus}"`}
+                        >
+                          ↻ statut
+                        </span>
+                      )}
+                    </a>
+                  );
+                })}
               </nav>
             )}
             <div className={styles.subjectsList}>
@@ -771,7 +800,7 @@ function SubjectRow({
       <div className={styles.subjectHeader}>
         <span className={styles.subjectTitle}>{subject.title}</span>
         <span className={`${styles.modeTag} ${initialIsUpdate ? styles.modeUpdate : styles.modeCreate}`}>
-          {initialIsUpdate ? 'Mise à jour' : '+ Nouveau'}
+          {initialIsUpdate ? 'Mise à jour sujet' : 'Nouveau sujet'}
         </span>
         {isMultiSource && (
           <span
