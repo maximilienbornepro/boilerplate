@@ -213,7 +213,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
                     {doc.title}
                     {recentlyUpdatedIds.has(doc.id) && (
                       <span className={styles.justUpdatedBadge} title="Mise à jour récente suite à l'import IA">
-                        ✨ mis à jour
+                        mis à jour
                       </span>
                     )}
                   </span>

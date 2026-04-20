@@ -33,6 +33,14 @@ interface Row {
   subjectAction: 'update' | 'create';
   targetSubjectId: string | null;
   skipped: boolean;
+  /** True when the user has explicitly clicked "Ajouter" — surfaces a
+   *  "✓ Ajouté" badge on the row. Does not affect the final import
+   *  (skipped already controls inclusion). */
+  confirmed: boolean;
+  /** Explicit UI mode — tracks the toggle state since `reviewId=null`
+   *  no longer unambiguously means "create new" (it can also mean
+   *  "existing mode, not yet picked"). */
+  mode: 'create' | 'existing';
 }
 
 export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
@@ -178,6 +186,8 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
       subjectAction: s.subjectAction === 'update-existing-subject' ? 'update' : 'create',
       targetSubjectId: s.targetSubjectId,
       skipped: false,
+      confirmed: false,
+      mode: 'create',
     }));
   }
 
@@ -386,6 +396,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                   consolidation={consolidationByRow[i] ?? null}
                   reviews={availableReviews}
                   onUpdate={patch => updateRow(r.key, patch)}
+                  nextRowKey={rows[i + 1]?.key ?? null}
                 />
               ))}
             </div>
@@ -410,7 +421,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
         {phase === 'done' && applyResult && (
           <div className={styles.done}>
-            <p className={styles.doneTitle}>Import terminé ✓</p>
+            <p className={styles.doneTitle}>Import terminé</p>
             <p className={styles.doneHint}>
               {applyResult.subjectsCreated.length} sujet{applyResult.subjectsCreated.length > 1 ? 's' : ''} ajouté{applyResult.subjectsCreated.length > 1 ? 's' : ''}
               {applyResult.subjectsUpdated.length > 0 && ` · ${applyResult.subjectsUpdated.length} sujet${applyResult.subjectsUpdated.length > 1 ? 's' : ''} mis à jour`}
@@ -435,15 +446,18 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 // ==================== Subject row ====================
 
 function SubjectRow({
-  row, consolidation, reviews, onUpdate, id,
+  row, consolidation, reviews, onUpdate, id, nextRowKey,
 }: {
   row: Row;
   consolidation: api.ConsolidationMeta | null;
   reviews: api.AvailableReview[];
   onUpdate: (patch: Partial<Row>) => void;
   id?: string;
+  nextRowKey?: string | null;
 }) {
-  const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped } = row;
+  const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped, confirmed, mode } = row;
+  // Only show inline "required field" error after the user attempted to confirm.
+  const [showValidation, setShowValidation] = useState(false);
   // Multi-source metadata — only shown if ≥2 evidence entries.
   const isMultiSource = !!consolidation && consolidation.evidence.length >= 2;
   const hasContradiction = !!consolidation && consolidation.evidence.some(e => e.stance === 'contradict');
@@ -463,6 +477,20 @@ function SubjectRow({
   // When the action is "update" but the selected review/section changed and
   // no longer contains the target subject → force back to "create".
   const updateIsPossible = currentSection && currentSection.subjects.length > 0;
+
+  // ── Validation: surface what's missing before the user can confirm ──
+  //   - "create" mode    → newReviewTitle required + newSectionName required
+  //   - "existing" mode  → reviewId required + (sectionId OR newSectionName) required
+  const missingFields: string[] = [];
+  if (mode === 'create') {
+    if (!newReviewTitle.trim()) missingFields.push('titre de la nouvelle review');
+    if (!newSectionName.trim()) missingFields.push('nom de la nouvelle section');
+  } else {
+    if (!reviewId) missingFields.push('review');
+    else if (!sectionId && !newSectionName.trim()) missingFields.push('section');
+  }
+  const canConfirm = missingFields.length === 0;
+
   const statusColor = getStatusOption(subject.status).color;
   // Mode color = based on the AI's INITIAL proposal only:
   //   - yellow if the IA proposed a new subject (subject.subjectAction !== 'update-existing-subject')
@@ -533,105 +561,99 @@ function SubjectRow({
           <div className={styles.segmented}>
             <button
               type="button"
-              className={`${styles.segmentedBtn} ${!reviewId ? styles.segmentedBtnActive : ''}`}
+              className={`${styles.segmentedBtn} ${mode === 'create' ? styles.segmentedBtnActive : ''}`}
               disabled={skipped}
-              onClick={() => onUpdate({ reviewId: null, sectionId: null })}
+              onClick={() => onUpdate({ mode: 'create', reviewId: null, sectionId: null })}
             >
               + Créer une nouvelle review
             </button>
             <button
               type="button"
-              className={`${styles.segmentedBtn} ${reviewId ? styles.segmentedBtnActive : ''}`}
+              className={`${styles.segmentedBtn} ${mode === 'existing' ? styles.segmentedBtnActive : ''}`}
               disabled={skipped || reviews.length === 0}
-              onClick={() => {
-                const first = reviews[0];
-                if (first) {
-                  onUpdate({ reviewId: first.id, sectionId: first.sections[0]?.id ?? null });
-                }
-              }}
+              onClick={() => onUpdate({ mode: 'existing', reviewId: null, sectionId: null })}
             >
               Sélectionner une review existante
             </button>
           </div>
         </div>
         <div className={styles.routingField}>
-          <label>Review de destination</label>
-          {!reviewId ? (
-            <>
-              {subject.suggestedNewReviewTitle && (
-                <span className={styles.aiHint}>Suggestion IA</span>
-              )}
-              <input
-                type="text"
-                placeholder="Titre de la nouvelle review"
-                value={newReviewTitle}
-                disabled={skipped}
-                onChange={e => onUpdate({ newReviewTitle: e.target.value })}
-                maxLength={100}
-              />
-            </>
+          <div className={styles.routingLabelRow}>
+            <label>
+              Review de destination
+              <span className={styles.requiredMark}>*</span>
+            </label>
+            {mode === 'create' && subject.suggestedNewReviewTitle && (
+              <span className={styles.aiHint}>Suggestion IA</span>
+            )}
+          </div>
+          {mode === 'create' ? (
+            <input
+              type="text"
+              placeholder="Titre de la nouvelle review"
+              value={newReviewTitle}
+              disabled={skipped}
+              onChange={e => onUpdate({ newReviewTitle: e.target.value })}
+              maxLength={100}
+              className={showValidation && !newReviewTitle.trim() ? styles.inputError : ''}
+            />
           ) : (
             <CustomDropdown
-              value={reviewId}
-              displayLabel={reviews.find(r => r.id === reviewId)?.title ?? '—'}
+              value={reviewId ?? ''}
+              displayLabel={reviewId ? (reviews.find(r => r.id === reviewId)?.title ?? '—') : 'Sélectionner une review…'}
               disabled={skipped}
+              className={showValidation && !reviewId ? styles.dropdownError : ''}
               options={reviews.map(r => ({ value: r.id, label: r.title }))}
               onChange={(val) => {
-                const firstSection = reviews.find(r => r.id === val)?.sections[0]?.id ?? null;
-                onUpdate({ reviewId: val, sectionId: firstSection });
+                // When picking a review, reset the section so the user has
+                // to consciously choose one (no sneaky pre-selection).
+                onUpdate({ reviewId: val, sectionId: null });
               }}
             />
           )}
         </div>
 
         <div className={styles.routingField}>
-          <label>Section</label>
-          {!reviewId ? (
+          <div className={styles.routingLabelRow}>
+            <label>
+              Section
+              <span className={styles.requiredMark}>*</span>
+            </label>
+            {mode === 'create' && subject.suggestedNewSectionName && (
+              <span className={styles.aiHint}>Suggestion IA</span>
+            )}
+          </div>
+          {mode === 'create' ? (
             // Nouvelle review → section toujours nouvelle (avec suggestion IA)
-            <>
-              {subject.suggestedNewSectionName && (
-                <span className={styles.aiHint}>Suggestion IA</span>
-              )}
-              <input
-                type="text"
-                placeholder="Nom de la nouvelle section"
-                value={newSectionName}
-                disabled={skipped}
-                onChange={e => onUpdate({ newSectionName: e.target.value })}
-                maxLength={80}
-              />
-            </>
+            <input
+              type="text"
+              placeholder="Nom de la nouvelle section"
+              value={newSectionName}
+              disabled={skipped}
+              onChange={e => onUpdate({ newSectionName: e.target.value })}
+              maxLength={80}
+              className={showValidation && !newSectionName.trim() ? styles.inputError : ''}
+            />
+          ) : !reviewId ? (
+            // Mode existing, but no review picked yet → disabled placeholder
+            <CustomDropdown
+              value=""
+              displayLabel="Sélectionner d'abord une review…"
+              disabled={true}
+              className={showValidation ? styles.dropdownError : ''}
+              options={[]}
+              onChange={() => {}}
+            />
           ) : currentReview && currentReview.sections.length > 0 ? (
-            // Review existante avec sections → dropdown + option "nouvelle section"
-            <>
-              {sectionId === null ? (
-                <input
-                  type="text"
-                  placeholder="Nom de la nouvelle section"
-                  value={newSectionName}
-                  disabled={skipped}
-                  onChange={e => onUpdate({ newSectionName: e.target.value })}
-                  maxLength={80}
-                />
-              ) : (
-                <CustomDropdown
-                  value={sectionId}
-                  displayLabel={currentReview.sections.find(s => s.id === sectionId)?.name ?? '—'}
-                  disabled={skipped}
-                  options={[
-                    ...currentReview.sections.map(s => ({ value: s.id, label: s.name })),
-                    { value: '__new__', label: '+ Créer une nouvelle section' },
-                  ]}
-                  onChange={(val) => {
-                    if (val === '__new__') {
-                      onUpdate({ sectionId: null, subjectAction: 'create', targetSubjectId: null });
-                    } else {
-                      onUpdate({ sectionId: val, subjectAction: 'create', targetSubjectId: null });
-                    }
-                  }}
-                />
-              )}
-            </>
+            // Review existante avec sections → dropdown des sections seulement
+            <CustomDropdown
+              value={sectionId ?? ''}
+              displayLabel={sectionId ? (currentReview.sections.find(s => s.id === sectionId)?.name ?? '—') : 'Sélectionner une section…'}
+              disabled={skipped}
+              className={showValidation && !sectionId ? styles.dropdownError : ''}
+              options={currentReview.sections.map(s => ({ value: s.id, label: s.name }))}
+              onChange={(val) => onUpdate({ sectionId: val, subjectAction: 'create', targetSubjectId: null })}
+            />
           ) : (
             // Review existante sans sections → toujours créer
             <>
@@ -643,6 +665,7 @@ function SubjectRow({
                 disabled={skipped}
                 onChange={e => onUpdate({ newSectionName: e.target.value })}
                 maxLength={80}
+                className={showValidation && !newSectionName.trim() ? styles.inputError : ''}
               />
             </>
           )}
@@ -695,19 +718,41 @@ function SubjectRow({
       </div>
 
       <div className={styles.rowActions}>
+        {showValidation && !canConfirm && !skipped && (
+          <span className={styles.missingFieldsHint}>
+            Champ{missingFields.length > 1 ? 's' : ''} requis : {missingFields.join(', ')}
+          </span>
+        )}
         <button
           type="button"
           className={`${styles.rowActionBtn} ${skipped ? styles.rowActionBtnIgnored : ''}`}
-          onClick={() => onUpdate({ skipped: true })}
+          onClick={() => {
+            setShowValidation(false);
+            onUpdate({ skipped: true, confirmed: false });
+          }}
         >
           Ignorer
         </button>
         <button
           type="button"
-          className={`${styles.rowActionBtn} ${!skipped ? styles.rowActionBtnActive : ''}`}
-          onClick={() => onUpdate({ skipped: false })}
+          className={`${styles.rowActionBtn} ${(!skipped && confirmed && canConfirm) ? styles.rowActionBtnActive : ''}`}
+          onClick={() => {
+            if (!canConfirm) {
+              setShowValidation(true);
+              return;
+            }
+            setShowValidation(false);
+            onUpdate({ skipped: false, confirmed: true });
+            // Scroll to the next subject card for a smooth linear workflow.
+            if (nextRowKey) {
+              setTimeout(() => {
+                const nextEl = document.getElementById(`subj-${nextRowKey}`);
+                nextEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 120);
+            }
+          }}
         >
-          Ajouter
+          {confirmed && !skipped && canConfirm ? '✓ Ajouté' : 'Ajouter'}
         </button>
       </div>
     </div>
@@ -723,6 +768,7 @@ function CustomDropdown({
   onChange,
   disabled,
   placeholder,
+  className,
 }: {
   value: string;
   displayLabel: ReactNode;
@@ -730,6 +776,7 @@ function CustomDropdown({
   onChange: (v: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -750,7 +797,7 @@ function CustomDropdown({
     <div ref={ref} className="suivitess-exports" style={{ width: '100%' }}>
       <button
         type="button"
-        className={styles.customDropdownBtn}
+        className={`${styles.customDropdownBtn} ${className || ''}`}
         onClick={() => !effectiveDisabled && setOpen(v => !v)}
         disabled={effectiveDisabled}
         aria-haspopup="menu"
