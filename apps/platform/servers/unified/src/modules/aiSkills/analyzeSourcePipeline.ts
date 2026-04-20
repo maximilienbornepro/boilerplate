@@ -295,8 +295,10 @@ async function tier2PlaceDocument(base: TierBase & {
   parentLogId: number | null;
 }): Promise<{ logId: number | null; placements: DocumentPlacement[]; durationMs: number }> {
   const t0 = Date.now();
-  const ctx = { subjects: base.subjects, document: base.document };
-  const ctxJson = JSON.stringify(ctx, null, 2).slice(0, 30000);
+  // Same ordering rule as tier2PlaceReviews : document first, subjects
+  // second — protects the document structure if the context ever clips.
+  const ctx = { document: base.document, subjects: base.subjects };
+  const ctxJson = JSON.stringify(ctx, null, 2).slice(0, 150000);
   const run = await runSkill({
     slug: 'suivitess-place-in-document',
     userId: base.userId,
@@ -335,8 +337,16 @@ async function tier2PlaceReviews(base: TierBase & {
   parentLogId: number | null;
 }): Promise<{ logId: number | null; placements: ReviewPlacement[]; durationMs: number }> {
   const t0 = Date.now();
-  const ctx = { subjects: base.subjects, reviews: base.reviews };
-  const ctxJson = JSON.stringify(ctx, null, 2).slice(0, 30000);
+  // CRITICAL : reviews MUST come before subjects in the serialized payload.
+  // If the context ever gets truncated (huge multi-source runs with 40+
+  // subjects), we never want the reviews array to be the casualty — the
+  // skill is useless without them ("aucune review fournie" → 100% new-
+  // review decisions). Subjects can survive a tail clip ; reviews cannot.
+  const ctx = { reviews: base.reviews, subjects: base.subjects };
+  // Raised from 30 000 to 150 000 chars to give Claude's 200k context
+  // headroom. With 40+ subjects + a 10-review portfolio, 30k was capping
+  // mid-array and dropping the reviews entirely.
+  const ctxJson = JSON.stringify(ctx, null, 2).slice(0, 150000);
   const run = await runSkill({
     slug: 'suivitess-place-in-reviews',
     userId: base.userId,
@@ -859,14 +869,22 @@ async function tier15Reconcile(params: {
     parentLogId: params.parentLogId,
     // The reconciler can produce verbose evidence arrays — size for
     // ~15 consolidated subjects × 3 evidence each × 200 tokens.
-    maxTokens: 10000,
+    // Bumped from 10 000 to 16 000. A 10-source run produces ~40 evidence
+    // entries across ~15 consolidated subjects, each with nested arrays :
+    // the prompt was capping at exactly 10 000 output tokens and truncating
+    // mid-structure, which defeated `extractJson`'s recovery and forced
+    // the pipeline into pass-through.
+    maxTokens: 16000,
   });
   const durationMs = Date.now() - t0;
 
   const raw = extractJson<ConsolidatedSubject[]>(run.outputText);
   let consolidated: ConsolidatedSubject[];
   if (Array.isArray(raw) && raw.length > 0) {
-    consolidated = raw;
+    // Enrich each consolidated subject with merged* fields reconstructed
+    // from evidence[]. We asked the LLM to STOP producing these (wastes
+    // tokens) so we compute them here. This is deterministic and cheap.
+    consolidated = raw.map(c => enrichConsolidated(c, params.extractions));
   } else {
     // Fallback — pass-through : each extracted subject becomes its own
     // consolidated entry. Preserves zero-loss guarantee even if the
@@ -883,6 +901,48 @@ async function tier15Reconcile(params: {
     await attachProposalsToLog(run.logId, consolidated);
   }
   return { logId: run.logId, consolidated, durationMs };
+}
+
+/** Reconstruct the `merged*` fields of a consolidated subject from its
+ *  `evidence[]` + the original extractions. The LLM output doesn't carry
+ *  them (we dropped them from the prompt to save tokens). Cheap, pure. */
+function enrichConsolidated(
+  c: ConsolidatedSubject,
+  extractions: Array<{ source: MultiSourceInput; subjects: ExtractedSubject[] }>,
+): ConsolidatedSubject {
+  const rawQuotes: string[] = [];
+  const participants = new Set<string>();
+  const entities = new Set<string>();
+  let latestStatusHint: string | null = null;
+  let latestResponsibilityHint: string | null = null;
+  let latestTs = '';
+
+  for (const ev of c.evidence) {
+    // Dedupe rawQuotes from evidence.
+    for (const q of ev.rawQuotes || []) if (!rawQuotes.includes(q)) rawQuotes.push(q);
+    // Look up the original extracted subject to get participants/entities.
+    const extr = extractions.find(e => e.source.sourceId === ev.sourceId);
+    const origSubj = extr?.subjects.find(s => s.index === ev.subjectIndex);
+    if (origSubj) {
+      for (const p of origSubj.participants || []) participants.add(p);
+      for (const e of origSubj.entities || []) entities.add(e);
+      // The most recent source wins for status / responsibility hints.
+      if (ev.ts > latestTs) {
+        latestTs = ev.ts;
+        if (origSubj.statusHint) latestStatusHint = origSubj.statusHint;
+        if (origSubj.responsibilityHint) latestResponsibilityHint = origSubj.responsibilityHint;
+      }
+    }
+  }
+
+  return {
+    ...c,
+    mergedRawQuotes: rawQuotes,
+    mergedParticipants: Array.from(participants),
+    mergedEntities: Array.from(entities),
+    mergedStatusHint: latestStatusHint,
+    mergedResponsibilityHint: latestResponsibilityHint,
+  };
 }
 
 /** Deterministic fallback : each extracted subject becomes its own

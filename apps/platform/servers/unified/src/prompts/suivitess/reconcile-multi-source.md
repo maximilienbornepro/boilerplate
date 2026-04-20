@@ -81,12 +81,7 @@ Tu peux recevoir 2 à 10 sources. Chaque source a entre 1 et ~15 sujets.
       }
     ],
     "chronology": "transcription (jeudi) → email (vendredi, contradiction)",
-    "reconciliationNote": "L'email du vendredi invalide la décision prise en call la veille. La décision finale est SSO interne.",
-    "mergedRawQuotes": ["On part sur OAuth direct", "Approche OAuth ne passe pas le RSSI, bascule SSO"],
-    "mergedParticipants": ["Alice", "Bob"],
-    "mergedEntities": ["OAuth", "SSO"],
-    "mergedStatusHint": null,
-    "mergedResponsibilityHint": "Alice"
+    "reconciliationNote": "L'email du vendredi invalide la décision prise en call la veille. La décision finale est SSO interne."
   }
 ]
 ```
@@ -101,16 +96,15 @@ Champs :
 | `evidence[].sourceType` | string | "transcription", "slack", ou "outlook" |
 | `evidence[].ts` | string ISO | Recopié de `sourceTimestamp` |
 | `evidence[].subjectIndex` | number | Index du sujet dans `extractedSubjects` de la source |
-| `evidence[].rawQuotes[]` | string[] | Les citations qui justifient la présence du sujet dans CETTE source |
+| `evidence[].rawQuotes[]` | string[] | Les citations qui justifient la présence du sujet dans CETTE source — **ne recopie QUE les citations les plus parlantes** (max 3 par évidence), pas toutes les rawQuotes source. Le backend dédupliquera. |
 | `evidence[].stance` | enum | Voir § stance ci-dessous |
 | `evidence[].summary` | string | 1 phrase courte : ce que la source apporte sur ce sujet |
 | `chronology` | string | Description textuelle de l'ordre temporel (null si source unique) |
 | `reconciliationNote` | string\|null | Si ≥2 sources ET au moins une stance ≠ `propose` : phrase explicative pour le writer (null sinon) |
-| `mergedRawQuotes[]` | string[] | Union de toutes les rawQuotes de toutes les sources, dans l'ordre chronologique |
-| `mergedParticipants[]` | string[] | Union dédupliquée |
-| `mergedEntities[]` | string[] | Union dédupliquée |
-| `mergedStatusHint` | string\|null | Priorité : statut le plus récent (dernière source chronologiquement) |
-| `mergedResponsibilityHint` | string\|null | Priorité : responsable le plus récent |
+
+**Ne produis PAS de champs `mergedRawQuotes`, `mergedParticipants`, `mergedEntities`,
+`mergedStatusHint`, ni `mergedResponsibilityHint`** — le backend les reconstruit
+depuis `evidence[]`. Les inclure dans ton JSON gâche des tokens et risque la troncature.
 
 ### `stance` — les 4 valeurs possibles
 
