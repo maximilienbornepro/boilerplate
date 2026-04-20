@@ -53,10 +53,19 @@ export async function seedSkill(
   description: string,
   content: string,
 ): Promise<boolean> {
+  // On conflict : if the row is NOT customized (admin never edited it),
+  // refresh the content from the shipped .md file. Without this, a skill
+  // that was seeded once keeps its first-version content forever — prompt
+  // fixes shipped in later deploys would never reach the runtime since
+  // loadSkill() prefers the DB when content is non-empty.
+  // Admin-customized rows (is_customized = TRUE) are left untouched.
   const { rowCount } = await pool.query(
     `INSERT INTO ai_skills (slug, name, description, content, is_customized)
      VALUES ($1, $2, $3, $4, FALSE)
-     ON CONFLICT (slug) DO NOTHING`,
+     ON CONFLICT (slug) DO UPDATE
+       SET content = EXCLUDED.content
+     WHERE ai_skills.is_customized = FALSE
+       AND ai_skills.content IS DISTINCT FROM EXCLUDED.content`,
     [slug, name, description, content],
   );
   return rowCount === 1;
