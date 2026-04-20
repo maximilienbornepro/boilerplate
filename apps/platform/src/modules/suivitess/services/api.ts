@@ -757,3 +757,40 @@ export async function applyLegacyBulletCleanup(): Promise<LegacyBulletCleanupApp
   }
   return response.json();
 }
+
+// ==================== REPLAY — rejouer un import depuis les logs ====================
+
+export interface ReplayableRun {
+  t2LogId: number;
+  createdAt: string;
+  proposalsCount: number;
+  label: string;
+  subjectsPreview: string[];
+}
+
+export async function listReplayableRuns(): Promise<ReplayableRun[]> {
+  const res = await fetch(`${API_BASE}/transcription/replay/recent`, { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json() as { runs: ReplayableRun[] };
+  return data.runs;
+}
+
+export interface ReplayResponse {
+  summary: string;
+  subjects: AnalyzedSubject[];
+  availableReviews: AvailableReview[];
+  logId: number | null;
+  replayedFromLogId: number;
+}
+
+export async function replayRun(t2LogId: number): Promise<ReplayResponse> {
+  const res = await fetch(`${API_BASE}/transcription/replay/${t2LogId}`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}

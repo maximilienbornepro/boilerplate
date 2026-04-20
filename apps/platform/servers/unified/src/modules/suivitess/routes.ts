@@ -117,6 +117,62 @@ export function createRoutes(): Router {
 
   router.use(authMiddleware);
 
+  // ==================== REPLAY — rejouer un import depuis les logs ====================
+  //
+  // Rebuild the exact pipeline response shape from the stored logs (T2
+  // placement + T3 writers). Zero LLM calls — ~100ms instead of 2-3 min.
+  // Use-case : iterate on the frontend UX without paying / waiting for
+  // the full pipeline.
+
+  // GET /transcription/replay/recent — list recent replayable runs
+  router.get('/transcription/replay/recent', asyncHandler(async (req, res) => {
+    const { listReplayableRuns } = await import('./replayService.js');
+    const runs = await listReplayableRuns(req.user!.id, 20);
+    res.json({ runs });
+  }));
+
+  // POST /transcription/replay/:t2LogId — reconstruct the result
+  router.post('/transcription/replay/:t2LogId', asyncHandler(async (req, res) => {
+    const { replayFromT2Log } = await import('./replayService.js');
+    const t2LogId = parseInt(req.params.t2LogId, 10);
+    if (Number.isNaN(t2LogId)) { res.status(400).json({ error: 'ID invalide' }); return; }
+
+    const result = await replayFromT2Log(t2LogId, req.user!.id);
+    if (!result) { res.status(404).json({ error: 'Log introuvable ou non autorisé' }); return; }
+
+    // Fresh snapshot of the reviews — the logged state might be stale.
+    const { analyzeMultiSourceForReviews: _unused } = await import('../aiSkills/analyzeSourcePipeline.js');
+    void _unused;
+    const existingDocs = await db.getAllDocuments(req.user!.id, req.user!.isAdmin);
+    const reviewsSnap: Array<{
+      id: string; title: string;
+      sections: Array<{ id: string; name: string; subjects: Array<{ id: string; title: string; status: string | null }> }>;
+    }> = [];
+    for (const d of existingDocs.slice(0, 40)) {
+      try {
+        const doc = await db.getDocumentWithSections(d.id);
+        if (!doc) continue;
+        reviewsSnap.push({
+          id: doc.id,
+          title: doc.title,
+          sections: (doc.sections || []).map(s => ({
+            id: s.id,
+            name: s.name,
+            subjects: (s.subjects || []).map(sub => ({ id: sub.id, title: sub.title, status: sub.status ?? null })),
+          })),
+        });
+      } catch { /* best effort */ }
+    }
+
+    res.json({
+      summary: result.summary,
+      subjects: result.subjects,
+      availableReviews: reviewsSnap,
+      logId: result.logId,
+      replayedFromLogId: result.replayedFromLogId,
+    });
+  }));
+
   // ==================== ROUTING MEMORY — admin inspection ====================
   //
   // Per-user pgvector memory of past (subject → review/section) decisions,
