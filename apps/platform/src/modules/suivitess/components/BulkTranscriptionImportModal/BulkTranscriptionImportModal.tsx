@@ -237,7 +237,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   };
 
   // ============ Render ============
-  const sourceTitle = selectedItem?.title;
+  const sourceTitle = primaryItem?.title;
   const modalTitle = (
     <>
       Analyser & ranger une transcription
