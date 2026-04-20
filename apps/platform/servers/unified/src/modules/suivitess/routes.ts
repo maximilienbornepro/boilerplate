@@ -3359,16 +3359,43 @@ ${filteredContent.slice(0, 30000)}`,
         // Resolve section
         let sectionId = s.targetSectionId || null;
         if (!sectionId) {
-          const name = (s.newSectionName || 'Nouveau point').trim().slice(0, 80);
-          const key = `${reviewId}::${name}`;
+          const rawName = (s.newSectionName || 'Nouveau point').trim().slice(0, 80);
+          const normalizedName = rawName.toLowerCase();
+          const key = `${reviewId}::${normalizedName}`;
           const cached = newSectionByKey.get(key);
           if (cached) {
             sectionId = cached;
           } else {
-            const section = await db.createSection(reviewId, name);
-            sectionId = section.id;
-            newSectionByKey.set(key, sectionId);
-            sectionsCreated.push({ id: sectionId, name, reviewId });
+            // SAFETY NET — the place-in-reviews skill sometimes emits
+            // `suggestedNewSectionName` for a section that ALREADY exists
+            // in the target review (e.g. "Application" in "Copil ORANGE"
+            // with the existing section id in the same input). Before
+            // creating a duplicate, scan the live sections of the review
+            // and match by name (case-insensitive, trimmed). If a match
+            // exists, reuse its id.
+            try {
+              const existingSectionsRes = await db.pool.query<{ id: string; name: string }>(
+                'SELECT id, name FROM suivitess_sections WHERE document_id = $1',
+                [reviewId],
+              );
+              const existing = existingSectionsRes.rows.find(r =>
+                r.name.trim().toLowerCase() === normalizedName,
+              );
+              if (existing) {
+                sectionId = existing.id;
+                newSectionByKey.set(key, sectionId);
+                // Track this as a dedup hit for server-side observability,
+                // but NOT as sectionsCreated — nothing new landed in the DB.
+                console.log(`[apply-routing] dedup hit : reuse existing section "${existing.name}" (${existing.id}) in ${reviewId} instead of creating duplicate "${rawName}"`);
+              }
+            } catch { /* best effort — fall through to create */ }
+
+            if (!sectionId) {
+              const section = await db.createSection(reviewId, rawName);
+              sectionId = section.id;
+              newSectionByKey.set(key, sectionId);
+              sectionsCreated.push({ id: sectionId, name: rawName, reviewId });
+            }
           }
         }
 

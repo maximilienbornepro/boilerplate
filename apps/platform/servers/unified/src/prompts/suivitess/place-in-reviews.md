@@ -126,6 +126,34 @@ section :
 - Aucune section ne colle → `suggestedNewSectionName` explicite **dans
   la review existante**.
 
+#### ⚠️ RÈGLE CRITIQUE : ne jamais créer un doublon de section
+
+**Avant de produire `suggestedNewSectionName`, parcours TOUTES les sections
+de la review choisie et compare leurs `name` (casse-insensible, espaces
+trim) avec ton nom souhaité. Si un match existe, tu DOIS utiliser son
+`sectionId`.**
+
+Exemple d'erreur à ne JAMAIS commettre :
+
+La review « Copil ORANGE » contient déjà `{ id: "abc-123", name: "Application" }`.
+Tu veux ranger un sujet dans « Application » → tu cites même explicitement
+« la section 'Application' du Copil ORANGE » dans ton `reason`.
+
+- ❌ **FAUX** (produit un doublon) :
+  ```json
+  { "reviewId": "copil-orange", "suggestedNewSectionName": "Application", ... }
+  ```
+
+- ✅ **CORRECT** (réutilise la section existante) :
+  ```json
+  { "reviewId": "copil-orange", "sectionId": "abc-123", ... }
+  ```
+
+`suggestedNewSectionName` n'est autorisé QUE pour un nom qui **n'existe
+absolument pas** dans la review cible. Si ton `reason` mentionne une
+section par son nom, ce nom doit être dans les sections existantes ET
+tu dois utiliser son `sectionId`.
+
 ### Étape 3 — Création de nouvelle review (dernier recours)
 
 Tu ne peux proposer `suggestedNewReviewTitle` **QUE SI** :
