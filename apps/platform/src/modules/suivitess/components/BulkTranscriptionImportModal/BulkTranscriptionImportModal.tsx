@@ -262,7 +262,14 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                 </div>
                 <div className={styles.actions}>
                   <Button variant="secondary" onClick={onClose}>Annuler</Button>
-                  <SkillButton skillSlug="suivitess-route-source-to-review" disabled={!selectedId}>
+                  <SkillButton
+                    pipeline={[
+                      { tier: 'T1', label: 'Extract (selon la source)', slugs: ['suivitess-extract-transcript', 'suivitess-extract-slack', 'suivitess-extract-outlook'] },
+                      { tier: 'T2', label: 'Place (router vers la review)', slugs: ['suivitess-place-in-reviews'] },
+                      { tier: 'T3', label: 'Write (rédiger)', slugs: ['suivitess-append-situation', 'suivitess-compose-situation'] },
+                    ]}
+                    disabled={!selectedId}
+                  >
                     <Button variant="primary" onClick={handleAnalyze} disabled={!selectedId}>
                       {selectedItem?.alreadyImported ? 'Ré-importer →' : 'Analyser →'}
                     </Button>

@@ -437,7 +437,14 @@ export function TranscriptionWizard({ documentId, onClose, onDone, initialProvid
                   <select className={styles.aiSelect} value={selectedAI} onChange={e => setSelectedAI(e.target.value)}>
                     {connectedAI.map(id => { const ai = AI_PROVIDERS.find(a => a.id === id); return <option key={id} value={id}>{ai?.label || id}</option>; })}
                   </select>
-                  <SkillButton skillSlug="suivitess-import-source-into-document" disabled={busy}>
+                  <SkillButton
+                    pipeline={[
+                      { tier: 'T1', label: 'Extract (selon la source)', slugs: ['suivitess-extract-transcript', 'suivitess-extract-slack', 'suivitess-extract-outlook'] },
+                      { tier: 'T2', label: 'Place (dans ce document)', slugs: ['suivitess-place-in-document'] },
+                      { tier: 'T3', label: 'Write (rédiger)', slugs: ['suivitess-append-situation', 'suivitess-compose-situation'] },
+                    ]}
+                    disabled={busy}
+                  >
                     <Button variant="primary" onClick={handleAnalyzeAndPropose} disabled={busy}>
                       {analyzing ? 'Analyse...' : 'Analyser et fusionner'}
                     </Button>
@@ -451,7 +458,14 @@ export function TranscriptionWizard({ documentId, onClose, onDone, initialProvid
                 <div className={styles.importOption}>
                   <strong>Analyser comme section</strong>
                   <span className={styles.importOptionDesc}>L'IA extrait les sujets clés dans une section dédiée</span>
-                  <SkillButton skillSlug="suivitess-import-source-into-document" disabled={busy}>
+                  <SkillButton
+                    pipeline={[
+                      { tier: 'T1', label: 'Extract (selon la source)', slugs: ['suivitess-extract-transcript', 'suivitess-extract-slack', 'suivitess-extract-outlook'] },
+                      { tier: 'T2', label: 'Place (dans ce document)', slugs: ['suivitess-place-in-document'] },
+                      { tier: 'T3', label: 'Write (rédiger)', slugs: ['suivitess-append-situation', 'suivitess-compose-situation'] },
+                    ]}
+                    disabled={busy}
+                  >
                     <Button variant="secondary" onClick={handleImportAISection} disabled={busy}>
                       {importing ? 'Analyse...' : 'Créer section IA'}
                     </Button>

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   statusCategory,
+  isAbandonedStatus,
   widthFromEstimation,
   chooseStartCol,
   ensureOverlapsToday,
@@ -77,6 +78,69 @@ describe('statusCategory', () => {
     expect(statusCategory('Something weird')).toBe('todo');
     expect(statusCategory(null)).toBe('todo');
     expect(statusCategory('')).toBe('todo');
+  });
+});
+
+// ── isAbandonedStatus ─────────────────────────────────────────────────
+
+describe('isAbandonedStatus', () => {
+  it('flags abandoned / cancelled / rejected / wont-do labels (FR + EN)', () => {
+    expect(isAbandonedStatus('Abandoned')).toBe(true);
+    expect(isAbandonedStatus('Abandonné')).toBe(true);
+    expect(isAbandonedStatus('abandonne')).toBe(true);
+    expect(isAbandonedStatus('Cancelled')).toBe(true);
+    expect(isAbandonedStatus('Canceled')).toBe(true);
+    expect(isAbandonedStatus('Annulé')).toBe(true);
+    expect(isAbandonedStatus("Won't Do")).toBe(true);
+    expect(isAbandonedStatus("Won't Fix")).toBe(true);
+    expect(isAbandonedStatus('Rejected')).toBe(true);
+    expect(isAbandonedStatus('Rejeté')).toBe(true);
+    expect(isAbandonedStatus('Obsolete')).toBe(true);
+    expect(isAbandonedStatus('Duplicate')).toBe(true);
+  });
+  it('does not flag active / done / blocked statuses', () => {
+    expect(isAbandonedStatus('To Do')).toBe(false);
+    expect(isAbandonedStatus('In Progress')).toBe(false);
+    expect(isAbandonedStatus('Done')).toBe(false);
+    expect(isAbandonedStatus('Terminé')).toBe(false);
+    expect(isAbandonedStatus('Blocked')).toBe(false);
+    expect(isAbandonedStatus(null)).toBe(false);
+    expect(isAbandonedStatus('')).toBe(false);
+  });
+});
+
+describe('computeBoardPlan — abandoned filter', () => {
+  it('does not propose additions for abandoned missing tickets', () => {
+    const plan = computeBoardPlan({
+      tickets: [],
+      missingFromBoard: [
+        makeMissing({ externalKey: 'DEV-1', status: 'To Do' }),
+        makeMissing({ externalKey: 'DEV-2', status: 'Cancelled' }),
+        makeMissing({ externalKey: 'DEV-3', status: "Won't Do" }),
+      ],
+      assessment: {},
+      grid: { totalCols: 6, todayCol: 2 },
+    });
+    const additions = plan.placements.filter(p => p.isAddition);
+    const keys = additions.map(a => a.externalKey);
+    expect(keys).toContain('DEV-1');
+    expect(keys).not.toContain('DEV-2');
+    expect(keys).not.toContain('DEV-3');
+    expect(plan.skipped.some(s => s.reason === 'abandoned status')).toBe(true);
+  });
+  it('skips existing board tickets whose external status became abandoned', () => {
+    const plan = computeBoardPlan({
+      tickets: [
+        makeTicket({ id: 'keep', externalStatus: 'In Progress' }),
+        makeTicket({ id: 'drop', externalStatus: 'Abandonné' }),
+      ],
+      missingFromBoard: [],
+      assessment: {},
+      grid: { totalCols: 6, todayCol: 2 },
+    });
+    const taskIds = plan.placements.map(p => p.taskId);
+    expect(taskIds).not.toContain('drop');
+    expect(plan.skipped.some(s => s.taskId === 'drop' && s.reason === 'abandoned status')).toBe(true);
   });
 });
 
