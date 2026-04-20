@@ -162,7 +162,9 @@ export function SharedNav({
 
           {/* Extra admin entries (Logs IA, etc.) */}
           {extraDrawerLinks && extraDrawerLinks.length > 0 && (
-            <ul className="shared-nav-drawer-list">
+            <>
+              <hr className="shared-nav-drawer-sep" aria-hidden="true" />
+              <ul className="shared-nav-drawer-list">
               {extraDrawerLinks.map(link => (
                 <li key={link.path}>
                   <a
@@ -182,7 +184,8 @@ export function SharedNav({
                   </a>
                 </li>
               ))}
-            </ul>
+              </ul>
+            </>
           )}
 
           {/* Settings (separated, no bullet, gear icon) */}
