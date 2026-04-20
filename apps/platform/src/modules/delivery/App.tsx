@@ -6,6 +6,7 @@ import { RestoreModal } from './components/RestoreModal';
 import { SnapshotModal } from './components/SnapshotModal';
 import { ImportModal } from './components/ImportModal';
 import { SanityCheckModal } from './components/SanityCheckModal/SanityCheckModal';
+import { LayoutRulesModal } from './components/LayoutRulesModal/LayoutRulesModal';
 import { generateSprintsForBoard, type BoardConfig } from './utils/sprintGeneration';
 import { Layout, ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import type { Board } from './services/api';
@@ -101,6 +102,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSanityModal, setShowSanityModal] = useState(false);
+  const [showLayoutRulesModal, setShowLayoutRulesModal] = useState(false);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
   const [showHistoryMenu, setShowHistoryMenu] = useState(false);
@@ -759,6 +761,17 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                   >
                     Vérifier avec l'IA
                   </button>
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      setShowLayoutRulesModal(true);
+                    }}
+                    title="Voir les règles de placement appliquées par le layout engine"
+                  >
+                    🧩 Règles de placement
+                  </button>
                 </div>
               )}
             </div>
@@ -864,6 +877,10 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
               onClose={() => setShowSanityModal(false)}
               onApplied={() => { setShowSanityModal(false); loadTasks(); }}
             />
+          )}
+
+          {showLayoutRulesModal && (
+            <LayoutRulesModal onClose={() => setShowLayoutRulesModal(false)} />
           )}
         </div>
       </div>
