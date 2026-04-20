@@ -2710,6 +2710,175 @@ ${filteredContent.slice(0, 30000)}`,
     });
   }));
 
+  // ── POST /multi-source/analyze-async ────────────────────────────────
+  // Multi-source import variant of analyze-and-route-async. Takes an
+  // array of source descriptors (2..10), fetches each one's raw content,
+  // then runs the full T1 × N → T1.5 reconcile → T2 → T3 pipeline.
+  // Returns a { jobId } immediately ; frontend polls /pipeline-jobs/:id.
+  // If only 1 source is passed, falls back to the single-source pipeline
+  // (same behavior as /analyze-and-route-async).
+  router.post('/multi-source/analyze-async', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const userEmail = req.user!.email;
+    const isAdmin = req.user!.isAdmin;
+    const { sources } = (req.body || {}) as {
+      sources?: Array<{ source: string; id: string; title?: string; date?: string | null }>;
+    };
+    if (!Array.isArray(sources) || sources.length === 0) {
+      res.status(400).json({ error: 'sources[] requis (au moins 1 source)' });
+      return;
+    }
+    if (sources.length > 10) {
+      res.status(400).json({ error: 'Maximum 10 sources à la fois — regroupe en 2 batches' });
+      return;
+    }
+
+    const { createJob, makeOnProgress, finishJob, failJob } = await import('../aiSkills/pipelineJobs.js');
+    const job = createJob();
+    res.json({ jobId: job.id });
+
+    setImmediate(async () => {
+      try {
+        // 1) Fetch raw content for every source in parallel.
+        const fetchSource = async (s: typeof sources[number]) => {
+          let raw = '';
+          let ts = s.date || new Date().toISOString();
+          const { source, id } = s;
+          if (source === 'fathom') {
+            const { getFathomTranscript } = await import('./fathomService.js');
+            const entries = await getFathomTranscript(userId, id);
+            raw = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+          } else if (source === 'otter') {
+            const { getOtterTranscript } = await import('./otterService.js');
+            const entries = await getOtterTranscript(userId, id);
+            raw = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+          } else if (source === 'outlook') {
+            if (id.startsWith('outlook:')) {
+              const dateFilter = id.replace('outlook:', '');
+              const { getOutlookMessages } = await import('./outlookCollectorService.js');
+              const msgs = await getOutlookMessages(userId, { days: 30 });
+              const filtered = dateFilter && dateFilter !== 'unknown'
+                ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
+                : msgs;
+              raw = filtered.map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`).join('\n');
+              if (filtered[0]?.date) ts = filtered[0].date;
+            } else {
+              const { getOutlookEmailBody } = await import('./emailService.js');
+              raw = await getOutlookEmailBody(userId, id);
+            }
+          } else if (source === 'gmail') {
+            const { getGmailEmailBody } = await import('./emailService.js');
+            raw = await getGmailEmailBody(userId, id);
+          } else if (source === 'slack') {
+            const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+            const slackConfig = await getSlackConfig(userId);
+            if (!slackConfig) throw new Error('Slack non configuré');
+            const parts = id.split(':');
+            const channelId = parts[1] || parts[0];
+            const dateFilter = parts[2];
+            const messages = await getSlackMessages(slackConfig.id, { days: slackConfig.daysToFetch, channelId });
+            const filtered = dateFilter ? messages.filter(m => {
+              const d = new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10);
+              return d === dateFilter;
+            }) : messages;
+            const sorted = filtered.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs));
+            raw = sorted.map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`).join('\n');
+            if (sorted[0]?.messageTs) ts = new Date(parseFloat(sorted[0].messageTs) * 1000).toISOString();
+          } else {
+            throw new Error(`Source non supportée : ${source}`);
+          }
+          return {
+            sourceId: `${source}:${id}`,
+            sourceKind: source as 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail',
+            sourceTitle: s.title || `(${source}) ${id}`,
+            sourceTimestamp: ts,
+            sourceRaw: raw,
+          };
+        };
+
+        const fetched = await Promise.all(sources.map(fetchSource));
+        const usable = fetched.filter(s => s.sourceRaw.trim().length > 0);
+        if (usable.length === 0) { failJob(job.id, 'Toutes les sources sont vides'); return; }
+
+        // 2) Credits — 1 deduction per source to stay fair with single-source cost.
+        const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+        try {
+          for (const _s of usable) {
+            await deductCredits(userId, isAdmin, 'suivitess', 'transcript_analysis');
+            void _s;
+          }
+        } catch (e) {
+          if (e instanceof InsufficientCreditsError) { failJob(job.id, 'INSUFFICIENT_CREDITS'); return; }
+          throw e;
+        }
+
+        // 3) Build reviews snapshot (identical to single-source endpoint).
+        const existingDocs = await db.getAllDocuments(userId, isAdmin);
+        const reviewsSnap: Array<{
+          id: string; title: string; description: string | null;
+          sections: Array<{
+            id: string; name: string;
+            subjects: Array<{ id: string; title: string; status: string | null; situationExcerpt: string; responsibility: string | null }>;
+          }>;
+        }> = [];
+        for (const d of existingDocs.slice(0, 40)) {
+          try {
+            const doc = await db.getDocumentWithSections(d.id);
+            if (!doc) continue;
+            reviewsSnap.push({
+              id: doc.id,
+              title: doc.title,
+              description: (d as { description?: string | null }).description ?? null,
+              sections: (doc.sections || []).map(s => ({
+                id: s.id,
+                name: s.name,
+                subjects: (s.subjects || []).slice(0, 20).map(sub => ({
+                  id: sub.id,
+                  title: sub.title,
+                  status: sub.status ?? null,
+                  situationExcerpt: (sub.situation || '').slice(0, 200),
+                  responsibility: sub.responsibility ?? null,
+                })),
+              })),
+            });
+          } catch { /* best effort */ }
+        }
+
+        // 4) Run multi-source pipeline.
+        const { analyzeMultiSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
+        const onProgress = makeOnProgress(job.id);
+        const result = await analyzeMultiSourceForReviews({
+          sources: usable,
+          reviews: reviewsSnap,
+          userId,
+          userEmail: userEmail || '',
+        }, onProgress);
+
+        finishJob(job.id, {
+          summary: result.proposals.length > 0
+            ? `${result.proposals.length} sujet(s) proposé(s) à partir de ${usable.length} source(s).`
+            : 'Aucun sujet exploitable.',
+          subjects: result.proposals,
+          consolidationByProposal: result.consolidationByProposal,
+          sourcesCount: usable.length,
+          logId: result.rootLogId,
+          availableReviews: reviewsSnap.map(r => ({
+            id: r.id,
+            title: r.title,
+            sections: r.sections.map(s => ({
+              id: s.id,
+              name: s.name,
+              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+            })),
+          })),
+        });
+      } catch (err) {
+        console.error('[SuiviTess multi-source async] error:', err);
+        failJob(job.id, err instanceof Error ? err.message : 'Erreur inconnue');
+      }
+    });
+  }));
+
   // ── GET /pipeline-jobs/:id ──────────────────────────────────────────
   // Generic polling endpoint for any async pipeline job (bulk import,
   // content-import, transcript-merge). Returns the full job state —

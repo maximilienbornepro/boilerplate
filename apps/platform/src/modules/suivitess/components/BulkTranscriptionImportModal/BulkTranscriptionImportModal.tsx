@@ -37,14 +37,18 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   const [phase, setPhase] = useState<Phase>('picking');
   const [error, setError] = useState('');
 
-  // Step 1 — picking
+  // Step 1 — picking (now multi-select : Set of selected source ids)
   const [sources, setSources] = useState<api.BulkSourceItem[] | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Step 2 — analysis results
   const [summary, setSummary] = useState('');
   const [availableReviews, setAvailableReviews] = useState<api.AvailableReview[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
+  /** Only set when the multi-source pipeline ran — one entry per row at
+   *  the same index. null entries = single-source pass-through. Lets the
+   *  UI surface "N sources" badges + contradiction warnings. */
+  const [consolidationByRow, setConsolidationByRow] = useState<Array<api.ConsolidationMeta | null>>([]);
 
   // Step 3 — apply progress
   const [applyResult, setApplyResult] = useState<api.ApplyRoutingResponse | null>(null);
@@ -98,44 +102,59 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selectedItem = useMemo(
-    () => sources?.find(s => s.id === selectedId) ?? null,
-    [sources, selectedId],
+  const selectedItems = useMemo(
+    () => (sources ?? []).filter(s => selectedIds.has(s.id)),
+    [sources, selectedIds],
   );
+
+  // Referenced by the apply step below — we anchor the import to the FIRST
+  // selected source for logging purposes (backend accepts any source id
+  // from the run — it's purely bookkeeping for the touchedReviewIds).
+  const primaryItem = selectedItems[0] ?? null;
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   // ============ Actions ============
   const handleAnalyze = async () => {
-    if (!selectedItem) return;
+    if (selectedItems.length === 0) return;
     setPhase('analyzing');
     setLastLogId(null);
     setPipelineStatus(null);
+    setConsolidationByRow([]);
     try {
-      // Use the async polling variant : backend returns a jobId immediately,
-      // we poll every 500 ms to drive the real progress indicator.
-      const res = await api.analyzeAndRouteWithPolling(
-        {
-          source: selectedItem.provider,
-          id: selectedItem.id,
-          title: selectedItem.title,
-          date: selectedItem.date,
-        },
-        (status) => setPipelineStatus(status),
-        { intervalMs: 500 },
-      );
-      if (res.logId != null) setLastLogId(res.logId);
-      setSummary(res.summary);
-      setAvailableReviews(res.availableReviews);
-      setRows(res.subjects.map((s, i) => ({
-        key: `s-${i}`,
-        subject: s,
-        reviewId: s.action === 'existing-review' ? s.reviewId : null,
-        newReviewTitle: s.suggestedNewReviewTitle ?? '',
-        sectionId: s.sectionAction === 'existing-section' ? s.sectionId : null,
-        newSectionName: s.suggestedNewSectionName ?? '',
-        subjectAction: s.subjectAction === 'update-existing-subject' ? 'update' : 'create',
-        targetSubjectId: s.targetSubjectId,
-        skipped: false,
-      })));
+      if (selectedItems.length === 1) {
+        // Single-source — keep the original fast path.
+        const only = selectedItems[0];
+        const res = await api.analyzeAndRouteWithPolling(
+          { source: only.provider, id: only.id, title: only.title, date: only.date },
+          (status) => setPipelineStatus(status),
+          { intervalMs: 500 },
+        );
+        if (res.logId != null) setLastLogId(res.logId);
+        setSummary(res.summary);
+        setAvailableReviews(res.availableReviews);
+        setRows(buildRowsFromSubjects(res.subjects));
+        setConsolidationByRow(res.subjects.map(() => null));
+      } else {
+        // Multi-source — runs T1 × N → T1.5 reconcile → T2 → T3.
+        const res = await api.analyzeMultiSourceWithPolling(
+          selectedItems.map(s => ({
+            source: s.provider, id: s.id, title: s.title, date: s.date,
+          })),
+          (status) => setPipelineStatus(status),
+          { intervalMs: 500 },
+        );
+        if (res.logId != null) setLastLogId(res.logId);
+        setSummary(res.summary);
+        setAvailableReviews(res.availableReviews);
+        setRows(buildRowsFromSubjects(res.subjects));
+        setConsolidationByRow(res.consolidationByProposal ?? res.subjects.map(() => null));
+      }
       setPhase('routing');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Analyse échouée');
@@ -143,12 +162,26 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     }
   };
 
+  function buildRowsFromSubjects(subjects: api.AnalyzedSubject[]): Row[] {
+    return subjects.map((s, i) => ({
+      key: `s-${i}`,
+      subject: s,
+      reviewId: s.action === 'existing-review' ? s.reviewId : null,
+      newReviewTitle: s.suggestedNewReviewTitle ?? '',
+      sectionId: s.sectionAction === 'existing-section' ? s.sectionId : null,
+      newSectionName: s.suggestedNewSectionName ?? '',
+      subjectAction: s.subjectAction === 'update-existing-subject' ? 'update' : 'create',
+      targetSubjectId: s.targetSubjectId,
+      skipped: false,
+    }));
+  }
+
   const updateRow = (key: string, patch: Partial<Row>) => {
     setRows(prev => prev.map(r => r.key === key ? { ...r, ...patch } : r));
   };
 
   const handleApply = async () => {
-    if (!selectedItem) return;
+    if (!primaryItem) return;
     const subjectsToApply: api.ApplyRoutingSubject[] = rows
       .filter(r => !r.skipped)
       .map(r => {
@@ -173,7 +206,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
     setPhase('applying');
     try {
-      const res = await api.applyRouting(selectedItem.id, subjectsToApply);
+      const res = await api.applyRouting(primaryItem.id, subjectsToApply);
       setApplyResult(res);
       setPhase('done');
 
@@ -236,20 +269,23 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
             ) : (
               <>
                 <p className={styles.summary}>
-                  Sélectionne la transcription ou l'email à analyser. L'IA va en extraire les sujets
-                  importants et te proposer pour chaque sujet la review et la section de destination.
+                  Sélectionne une ou plusieurs sources à analyser. L'IA extrait les sujets
+                  importants et te propose pour chacun la review et la section de destination.
+                  {' '}
+                  <strong>Si tu sélectionnes au moins 2 sources</strong>, un skill de
+                  réconciliation s'active : il détecte les sujets qui se croisent entre sources
+                  et gère les contradictions chronologiques (ex : un email contredit un call).
                 </p>
                 <div className={styles.sourceList}>
                   {sources.map(s => (
                     <label
                       key={s.id}
-                      className={`${styles.sourceItem} ${selectedId === s.id ? styles.sourceItemSelected : ''}`}
+                      className={`${styles.sourceItem} ${selectedIds.has(s.id) ? styles.sourceItemSelected : ''}`}
                     >
                       <input
-                        type="radio"
-                        name="source"
-                        checked={selectedId === s.id}
-                        onChange={() => setSelectedId(s.id)}
+                        type="checkbox"
+                        checked={selectedIds.has(s.id)}
+                        onChange={() => toggleSelect(s.id)}
                       />
                       <span className={styles.sourceTitle}>{s.title}</span>
                       <span className={styles.providerTag}>{s.provider}</span>
@@ -262,16 +298,29 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                 </div>
                 <div className={styles.actions}>
                   <Button variant="secondary" onClick={onClose}>Annuler</Button>
+                  <span className={styles.selectionCounter}>
+                    {selectedIds.size === 0
+                      ? 'Aucune source sélectionnée'
+                      : `${selectedIds.size} source${selectedIds.size > 1 ? 's' : ''} sélectionnée${selectedIds.size > 1 ? 's' : ''}`}
+                    {selectedIds.size >= 2 && <span className={styles.reconcileHint}> · réconciliation activée 🔀</span>}
+                  </span>
                   <SkillButton
-                    pipeline={[
+                    pipeline={selectedIds.size >= 2 ? [
+                      { tier: 'T1', label: 'Extract (par source, en parallèle)', slugs: ['suivitess-extract-transcript', 'suivitess-extract-slack', 'suivitess-extract-outlook'] },
+                      { tier: 'T1.5', label: 'Reconcile (croisement multi-source)', slugs: ['suivitess-reconcile-multi-source'] },
+                      { tier: 'T2', label: 'Place (router vers la review)', slugs: ['suivitess-place-in-reviews'] },
+                      { tier: 'T3', label: 'Write (rédiger)', slugs: ['suivitess-append-situation', 'suivitess-compose-situation'] },
+                    ] : [
                       { tier: 'T1', label: 'Extract (selon la source)', slugs: ['suivitess-extract-transcript', 'suivitess-extract-slack', 'suivitess-extract-outlook'] },
                       { tier: 'T2', label: 'Place (router vers la review)', slugs: ['suivitess-place-in-reviews'] },
                       { tier: 'T3', label: 'Write (rédiger)', slugs: ['suivitess-append-situation', 'suivitess-compose-situation'] },
                     ]}
-                    disabled={!selectedId}
+                    disabled={selectedIds.size === 0}
                   >
-                    <Button variant="primary" onClick={handleAnalyze} disabled={!selectedId}>
-                      {selectedItem?.alreadyImported ? 'Ré-importer' : 'Analyser'}
+                    <Button variant="primary" onClick={handleAnalyze} disabled={selectedIds.size === 0}>
+                      {selectedIds.size > 1
+                        ? `Analyser les ${selectedIds.size} sources`
+                        : selectedItems[0]?.alreadyImported ? 'Ré-importer' : 'Analyser'}
                     </Button>
                   </SkillButton>
                 </div>
@@ -305,10 +354,11 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
             <div className={styles.subjectsList}>
               {rows.length === 0 ? (
                 <p className={styles.emptyHint}>L'IA n'a identifié aucun sujet digne d'un suivi dans ce contenu.</p>
-              ) : rows.map(r => (
+              ) : rows.map((r, i) => (
                 <SubjectRow
                   key={r.key}
                   row={r}
+                  consolidation={consolidationByRow[i] ?? null}
                   reviews={availableReviews}
                   onUpdate={patch => updateRow(r.key, patch)}
                 />
@@ -360,13 +410,17 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 // ==================== Subject row ====================
 
 function SubjectRow({
-  row, reviews, onUpdate,
+  row, consolidation, reviews, onUpdate,
 }: {
   row: Row;
+  consolidation: api.ConsolidationMeta | null;
   reviews: api.AvailableReview[];
   onUpdate: (patch: Partial<Row>) => void;
 }) {
   const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped } = row;
+  // Multi-source metadata — only shown if ≥2 evidence entries.
+  const isMultiSource = !!consolidation && consolidation.evidence.length >= 2;
+  const hasContradiction = !!consolidation && consolidation.evidence.some(e => e.stance === 'contradict');
 
   const currentReview = reviewId
     ? reviews.find(r => r.id === reviewId) ?? null
@@ -398,7 +452,34 @@ function SubjectRow({
         <span className={`${styles.confidence} ${styles[`conf_${subject.confidence}`]}`}>
           IA · {subject.confidence === 'high' ? 'haute confiance' : subject.confidence === 'low' ? 'à valider' : 'moyenne'}
         </span>
+        {isMultiSource && (
+          <span
+            className={`${styles.multiSourceBadge} ${hasContradiction ? styles.multiSourceContradict : ''}`}
+            title={consolidation!.chronology ?? undefined}
+          >
+            {hasContradiction ? '⚠️' : '🔀'} {consolidation!.evidence.length} sources
+          </span>
+        )}
       </div>
+
+      {consolidation && consolidation.reconciliationNote && (
+        <div className={`${styles.reconcileNote} ${hasContradiction ? styles.reconcileNoteContradict : ''}`}>
+          <strong>Réconciliation multi-source :</strong> {consolidation.reconciliationNote}
+          <details className={styles.evidenceChain}>
+            <summary>Chaîne de preuves ({consolidation.evidence.length})</summary>
+            <ul>
+              {consolidation.evidence.map((ev, i) => (
+                <li key={i} className={`${styles.evidenceItem} ${styles[`stance_${ev.stance}`]}`}>
+                  <span className={styles.evidenceTs}>{new Date(ev.ts).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className={styles.evidenceType}>{ev.sourceType}</span>
+                  <span className={styles.evidenceStance}>{stanceLabel(ev.stance)}</span>
+                  <span className={styles.evidenceSummary}>{ev.summary}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      )}
 
       {subject.situation && <p className={styles.situation}>{subject.situation}</p>}
       {subject.reasoning && <p className={styles.reasoning}>{subject.reasoning}</p>}
@@ -613,6 +694,15 @@ function formatDate(iso: string): string {
   }
 }
 
+function stanceLabel(stance: 'propose' | 'confirm' | 'complement' | 'contradict'): string {
+  switch (stance) {
+    case 'propose':    return 'Propose';
+    case 'confirm':    return 'Confirme';
+    case 'complement': return 'Complète';
+    case 'contradict': return '⚠️ Contredit';
+  }
+}
+
 /** "il y a 3 min" / "il y a 2 h" / "il y a 4 j" / "à l'instant". */
 function formatRelative(iso: string | null): string {
   if (!iso) return '—';
@@ -695,7 +785,7 @@ function SyncStatusBanner({ meta, syncing, onRefresh }: SyncStatusBannerProps) {
 // No more fake timers — a step flips to 'done' only when the server
 // actually moved past it.
 
-type PhaseKey = 'source' | 'extract' | 'place' | 'write' | 'finalize';
+type PhaseKey = 'source' | 'extract' | 'reconcile' | 'place' | 'write' | 'finalize';
 
 function PipelineStepsIndicator({ status }: { status: api.PipelineJobStatus | null }) {
   // Derive the active step from the backend phase.
@@ -703,6 +793,7 @@ function PipelineStepsIndicator({ status }: { status: api.PipelineJobStatus | nu
   const active: PhaseKey =
     phase === 'queued' ? 'source'
     : phase === 'tier1' ? 'extract'
+    : phase === 'reconcile' ? 'reconcile'
     : phase === 'tier2' ? 'place'
     : phase === 'tier3' ? 'write'
     : 'finalize';
@@ -712,20 +803,26 @@ function PipelineStepsIndicator({ status }: { status: api.PipelineJobStatus | nu
     ? ` — ${status.t3Done} / ${status.t3Total} writers`
     : '';
 
+  // Reconcile step is only shown for multi-source jobs (sourcesCount >= 2).
+  const isMulti = (status?.sourcesCount ?? 1) >= 2;
+
   // Lightweight step model kept inline — no external state, no timers.
-  const STEPS: ReadonlyArray<{ key: PhaseKey; icon: string; label: string }> = [
-    { key: 'source',   icon: '🔎', label: 'Lecture de la source' },
-    { key: 'extract',  icon: '🧩', label: 'Extraction des sujets atomiques' },
+  const ALL_STEPS: ReadonlyArray<{ key: PhaseKey; icon: string; label: string; multiOnly?: boolean }> = [
+    { key: 'source',   icon: '🔎', label: isMulti ? `Lecture de ${status?.sourcesCount ?? 0} sources` : 'Lecture de la source' },
+    { key: 'extract',  icon: '🧩', label: isMulti ? 'Extraction (par source, en parallèle)' : 'Extraction des sujets atomiques' },
+    { key: 'reconcile', icon: '🔀', label: 'Réconciliation multi-source (croisements + contradictions)', multiOnly: true },
     { key: 'place',    icon: '🗂️',  label: 'Analyse de placement (review + section)' },
     { key: 'write',    icon: '✍️',  label: `Rédaction des situations (en parallèle)${t3Progress}` },
     { key: 'finalize', icon: '🎯', label: 'Finalisation' },
   ];
+  const STEPS = ALL_STEPS.filter(s => !s.multiOnly || isMulti);
   const activeIdx = STEPS.findIndex(s => s.key === active);
 
   // Subtitle with per-tier durations once they're known.
-  const { t1, t2, t3 } = status?.durations ?? {};
+  const { t1, reconcile, t2, t3 } = status?.durations ?? {};
   const durLine = [
     t1 != null ? `T1 ${(t1 / 1000).toFixed(1)}s` : null,
+    reconcile != null ? `T1.5 ${(reconcile / 1000).toFixed(1)}s` : null,
     t2 != null ? `T2 ${(t2 / 1000).toFixed(1)}s` : null,
     t3 != null ? `T3 ${(t3 / 1000).toFixed(1)}s` : null,
   ].filter(Boolean).join(' · ');

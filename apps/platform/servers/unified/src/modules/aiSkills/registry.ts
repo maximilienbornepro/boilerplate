@@ -218,6 +218,18 @@ export const SKILLS: readonly SkillDefinition[] = [
     },
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/compose-situation.md'),
   },
+  {
+    slug: 'suivitess-reconcile-multi-source',
+    name: 'SuiviTess — Pipeline/T1.5 : réconcilier plusieurs sources',
+    description:
+      'Tier 1.5 du pipeline modulaire. Prend N extractions individuelles (transcriptions / Slack / Outlook) datées et produit une liste consolidée avec détection des chevauchements, complements et contradictions chronologiques. Invoqué uniquement si ≥2 sources sont sélectionnées en même temps.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'Interne — analyzeMultiSourceForReviews() dans aiSkills/analyzeSourcePipeline.ts',
+      trigger: 'Bouton « Analyser » de l\'import multi-source — après T1, avant T2',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/reconcile-multi-source.md'),
+  },
 ] as const;
 
 export function getSkill(slug: string): SkillDefinition | undefined {
