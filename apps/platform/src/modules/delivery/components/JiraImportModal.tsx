@@ -369,33 +369,39 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
           </div>
         )}
 
-        <div className={styles.footer}>
-          {step === 'sprints' ? (
-            <>
-              <button className={styles.cancelBtn} onClick={onClose}>Annuler</button>
-              <button
-                className={styles.primaryBtn}
-                onClick={goToStep2}
-                disabled={selectedSprintIds.size === 0 || loadingIssues}
-              >
-                {loadingIssues ? 'Chargement...' : `Suivant (${selectedSprintIds.size} sprint(s))`}
-              </button>
-            </>
-          ) : (
-            <>
-              <button className={styles.cancelBtn} onClick={() => setStep('sprints')}>
-                Retour
-              </button>
-              <button
-                className={styles.primaryBtn}
-                onClick={handleImport}
-                disabled={selectedIssueIds.size === 0 || importing}
-              >
-                {importing ? 'Import en cours...' : `Importer (${selectedIssueIds.size})`}
-              </button>
-            </>
-          )}
-        </div>
+        {/* Sprints-mode footer — only rendered in sprints mode. In URL
+            mode the body already has its own footer ("Annuler" / "Importer
+            ce ticket"), so rendering this one too stacked two sets of
+            buttons on top of each other. */}
+        {mode === 'sprints' && (
+          <div className={styles.footer}>
+            {step === 'sprints' ? (
+              <>
+                <button className={styles.cancelBtn} onClick={onClose}>Annuler</button>
+                <button
+                  className={styles.primaryBtn}
+                  onClick={goToStep2}
+                  disabled={selectedSprintIds.size === 0 || loadingIssues}
+                >
+                  {loadingIssues ? 'Chargement...' : `Suivant (${selectedSprintIds.size} sprint(s))`}
+                </button>
+              </>
+            ) : (
+              <>
+                <button className={styles.cancelBtn} onClick={() => setStep('sprints')}>
+                  Retour
+                </button>
+                <button
+                  className={styles.primaryBtn}
+                  onClick={handleImport}
+                  disabled={selectedIssueIds.size === 0 || importing}
+                >
+                  {importing ? 'Import en cours...' : `Importer (${selectedIssueIds.size})`}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1300,3 +1300,655 @@
   text-align: center;
   justify-self: stretch;
 }
+
+/* ==================== Single-tile focus mode ==================== */
+
+/* Highlights the current tile's sommaire row so it's visually distinct
+   from a regular list of many rows. Only one .summaryItemCurrent is
+   ever rendered at a time in the new flow. */
+.summaryItemCurrent {
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 30%, transparent);
+  padding: 6px 8px;
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Progress header — "Sujet 3 sur 12 · 2 importés · 1 ignoré · 9 restants"
+   plus a clickable dot row for jumping between pending subjects. */
+.tileProgress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) 0 var(--spacing-sm) 0;
+  margin-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tileProgressHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.tileProgressPos {
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+}
+
+.tileProgressStats {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* Colored chips so the user can tell at a glance how much was done
+   already. Done = success green, skipped = muted, left = accent. */
+.tileProgressDone {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+  font-weight: var(--font-weight-medium);
+}
+
+.tileProgressSkipped {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary, color-mix(in srgb, var(--text-muted) 15%, transparent));
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+}
+
+.tileProgressLeft {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+  color: var(--accent-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Dot nav — one dot per pending subject. Clickable for jump-navigation. */
+.tileDots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0;
+  flex: 1;
+}
+
+/* Row combining the prev arrow + dots + next arrow so navigation is
+   all in one visual unit at the top of the tile — no more duplicate
+   bottom bar with its own Prev/Next buttons. */
+.tileDotsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 2px 0;
+}
+
+.tileNavArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.tileNavArrow:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+}
+
+.tileNavArrow:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.tileDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: all var(--transition-fast);
+}
+
+.tileDot:hover {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+  transform: scale(1.15);
+}
+
+.tileDotCurrent {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  /* Slightly larger + shadow so the current dot is unmistakable among
+     a row of 10+ dots. */
+  transform: scale(1.2);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent-primary) 60%, transparent);
+}
+
+/* Done state — shown when every subject has been processed. */
+.tileDone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xl) var(--spacing-md);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
+  border-radius: var(--radius-md);
+  margin: var(--spacing-md) 0;
+}
+
+.tileDoneTitle {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--success);
+}
+
+.tileDoneStats {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+/* Primary "Importer et passer au suivant" button inside SubjectRow —
+   made visually dominant so the user's eye lands on it after reviewing
+   the tile. Replaces the previous subtle confirm-style pill. */
+.rowActionBtnPrimary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--text-inverse, #fff);
+  font-weight: var(--font-weight-semibold);
+}
+
+.rowActionBtnPrimary:hover:not(:disabled) {
+  background: var(--accent-primary-hover, var(--accent-primary));
+  border-color: var(--accent-primary-hover, var(--accent-primary));
+  filter: brightness(1.05);
+}
+
+.rowActionBtnPrimary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==================== AI Decision Card ==================== */
+
+/* Declarative block that spells out the AI's routing choice — which
+   review, which section, update vs create — before the user starts
+   editing. Replaces the old single-line "reasoning" paragraph which
+   was opaque about WHICH entities the AI picked. */
+.aiDecisionCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  margin: var(--spacing-sm) 0;
+  border-left: 4px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--row-accent, var(--accent-primary)) 6%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+/* Left-border colour mirrors the row's "create vs update" intent so
+   the card reads as part of the same visual group. */
+.aiDecisionCardUpdate {
+  border-left-color: #3b82f6;
+}
+
+.aiDecisionCardCreate {
+  border-left-color: #eab308;
+}
+
+.aiDecisionStatement {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.aiDecisionStatementLead {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-right: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.04em;
+}
+
+/* The actual subject title being updated or created — visually louder
+   than the surrounding labels so the user can scan it without
+   reading the whole sentence. */
+.aiDecisionTargetSubject {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* État de situation du sujet cible — inline preview in the decision
+   card so the user sees without any click which subject's situation
+   they're about to append to. Only rendered in update mode. */
+.aiDecisionTargetSituation {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-left: 3px solid color-mix(in srgb, var(--accent-primary) 50%, transparent);
+  background: var(--bg-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-family: var(--font-mono);
+}
+
+.aiDecisionTargetSituationLabel {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--accent-primary);
+  margin-bottom: 4px;
+  letter-spacing: 0.03em;
+}
+
+.aiDecisionTargetSituationCount {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-normal);
+}
+
+.aiDecisionTargetSituationBody {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.aiDecisionTargetSituationLine {
+  padding: 1px 0;
+}
+
+.aiDecisionTargetSituationEmpty {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+/* "+ ajout (N lignes)" separator between existing and added lines in
+   the inline decision card preview. Green accent to match the added
+   lines below. */
+.aiDecisionTargetSituationAddedSep {
+  margin: 6px 0 2px 0;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* Added lines — highlighted with success green + left-border marker
+   + "+" bullet so they read as "this is the NEW content being
+   appended". Visually distinct from the muted existing lines above. */
+.aiDecisionTargetSituationAddedLine {
+  display: flex;
+  gap: 6px;
+  padding: 2px 6px;
+  margin: 1px 0;
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  border-left: 2px solid var(--success);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+  font-size: 11px;
+  line-height: 1.5;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.aiDecisionTargetSituationAddedBullet {
+  color: var(--success);
+  font-weight: var(--font-weight-bold);
+  flex-shrink: 0;
+}
+
+/* Placeholder while the append is being generated server-side. */
+.aiDecisionTargetSituationPendingAppend {
+  margin: 6px 0 2px 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent-primary) 40%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--accent-primary);
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+}
+
+/* "✎ modifié" badge shown when the current routing diverges from the
+   AI's original proposal — makes it visually obvious that the user
+   has overridden the IA. */
+.aiDecisionModifiedBadge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, #eab308 18%, transparent);
+  color: #eab308;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Pills identify "existing" (green) vs "new" (amber) entities inline
+   in the sentence, matching the sommaire pills above. */
+.aiDecisionPillExisting {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+}
+
+.aiDecisionPillNew {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, #eab308 15%, transparent);
+  color: #eab308;
+}
+
+.aiDecisionReason {
+  margin: 0;
+  padding-top: var(--spacing-sm);
+  border-top: 1px dashed var(--border-color);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.6;
+}
+
+.aiDecisionReasonLead {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--accent-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.05em;
+}
+
+/* ==================== Progressive wizard ==================== */
+
+/* Breadcrumb strip at the top of the form that tells the user what
+   step they're on ("Étape 2 sur 3 : Section") — only visible when
+   the user has opened the wizard by clicking "Je ne suis pas
+   d'accord". */
+.wizardBreadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin: var(--spacing-sm) 0;
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 25%, transparent);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+}
+
+.wizardStepBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-primary);
+  color: var(--text-inverse, #fff);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.04em;
+}
+
+.wizardStepLabel {
+  flex: 1;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.wizardCancelBtn {
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.wizardCancelBtn:hover {
+  border-color: var(--error, #dc2626);
+  color: var(--error, #dc2626);
+}
+
+/* Locked info rows : once the user has validated a step, we show
+   the previously-chosen review/section here as a read-only summary
+   with a "Modifier" shortcut to jump back to that step. */
+.wizardLockedInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 6px var(--spacing-md);
+  margin: var(--spacing-xs) 0;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-muted) 8%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.wizardLockedLabel {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wizardLockedSep {
+  color: var(--text-muted);
+}
+
+.wizardLockedBack {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.wizardLockedBack:hover {
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  border-color: var(--accent-primary);
+}
+
+/* "Je ne suis pas d'accord" button — tinted with the warning colour
+   so it stands out from the neutral "Ignorer" while still being
+   visually subordinate to the primary "Importer" CTA. */
+.rowActionBtnDisagree {
+  border-color: #eab308;
+  color: #eab308;
+  font-weight: var(--font-weight-medium);
+}
+
+.rowActionBtnDisagree:hover:not(:disabled) {
+  background: color-mix(in srgb, #eab308 12%, transparent);
+}
+
+/* Highlights the "+ Créer nouvelle X" option at the top of dropdowns.
+   Uses the warning accent (amber) so it stands out from plain
+   existing-entity options below. Consistent signal across review /
+   section / subject dropdowns. */
+.dropdownNewOption {
+  color: #eab308;
+  font-weight: var(--font-weight-semibold);
+}
+
+.dropdownNewHint {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: var(--font-weight-normal);
+  margin-left: 4px;
+}
+
+/* ==================== Situation preview ==================== */
+
+/* Preview block shown at the bottom of the subject step when the user
+   picked an existing subject to append to. Displays the last 4 lines
+   of the current situation, a separator, then the new content being
+   appended — so the user can see the exact result before importing. */
+.situationPreview {
+  margin-top: var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.situationPreviewLabel {
+  padding: 4px var(--spacing-sm);
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+  color: var(--accent-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.situationPreviewBody {
+  padding: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.situationPreviewEllipsis {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 2px 0;
+}
+
+/* Existing lines — neutral / muted so they read as "historical" */
+.situationPreviewExisting {
+  color: var(--text-secondary);
+  padding: 1px 0;
+}
+
+/* Separator between historical lines and the new append. Makes the
+   demarcation unmissable. */
+.situationPreviewSep {
+  margin: var(--spacing-xs) 0;
+  padding: 2px 0;
+  color: var(--accent-primary);
+  font-weight: var(--font-weight-semibold);
+  font-size: 10px;
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+
+/* New lines — highlighted (green accent) so the user clearly sees
+   WHAT the import will add. */
+.situationPreviewNew {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
+  padding: 1px 6px;
+  margin: 1px -6px;
+  border-left: 2px solid var(--success);
+  font-weight: var(--font-weight-medium);
+}
+
+.situationPreviewEmpty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 2px 0;
+}
+
+/* `~~strikethrough~~` markers inside the situation — rendered as
+   actual strikethrough so the user immediately sees which items are
+   done / obsolete versus active. */
+.situationPreviewStrike {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* "⏳ IA en cours…" chip next to the preview label while the append
+   skill is running server-side. */
+.situationPreviewGenerating {
+  color: var(--accent-primary);
+  font-weight: var(--font-weight-normal);
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Placeholder block shown in the "append" slot while the skill is
+   running — replaces "(aucun nouveau contenu)" so the user knows it's
+   temporary, not a final state. */
+.situationPreviewGeneratingBlock {
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin: var(--spacing-xs) 0;
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--accent-primary) 40%, transparent);
+  border-radius: var(--radius-sm);
+  font-style: italic;
+  text-align: center;
+}
+
+/* Header of the "create new subject" preview — shows the new tile's
+   title + status + responsibility in one compact row before the
+   situation body. */
+.situationPreviewNewSubjectTitle {
+  padding: 2px 0 6px 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  border-bottom: 1px dashed var(--border-color);
+  margin-bottom: 4px;
+}
+
+.situationPreviewNewSubjectStatus,
+.situationPreviewNewSubjectResp {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+}

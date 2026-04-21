@@ -111,6 +111,12 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const boardSwitcherRef = useRef<HTMLDivElement>(null);
   /** Boards with the same type + overlapping/similar date range — shown as a switcher. */
   const [siblingBoards, setSiblingBoards] = useState<Board[]>([]);
+  /** When true, the canvas renders every sibling board as its own
+   *  row-band stacked below the current one — lets the user see the
+   *  whole period at once. Tasks are fetched independently per board
+   *  and displayed through a separate BoardDelivery instance each,
+   *  with its own header + row range. */
+  const [showAllBoards, setShowAllBoards] = useState(false);
   const [activeConnectors, setActiveConnectors] = useState<ActiveConnector[]>([]);
   const [jiraSiteUrl, setJiraSiteUrl] = useState<string | null>(null);
   const [showAddTask, setShowAddTask] = useState(false);
@@ -665,12 +671,30 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                       <button
                         key={b.id}
                         type="button"
-                        className={`delivery-actions-item ${b.id === board.id ? 'delivery-actions-item--active' : ''}`}
-                        onClick={() => { setShowBoardSwitcher(false); if (b.id !== board.id) navigate(`/delivery/${b.id}`); }}
+                        className={`delivery-actions-item ${!showAllBoards && b.id === board.id ? 'delivery-actions-item--active' : ''}`}
+                        onClick={() => {
+                          setShowBoardSwitcher(false);
+                          setShowAllBoards(false);
+                          if (b.id !== board.id) navigate(`/delivery/${b.id}`);
+                        }}
                       >
                         {b.name}
                       </button>
                     ))}
+                    {/* Stacked view : loads the tasks of every sibling
+                        board (same period) and renders each one as its
+                        own row-band on the current canvas. Lets the user
+                        see the full picture of the period in one scroll
+                        without switching boards. */}
+                    <div className="delivery-actions-divider" />
+                    <button
+                      type="button"
+                      className={`delivery-actions-item ${showAllBoards ? 'delivery-actions-item--active' : ''}`}
+                      onClick={() => { setShowBoardSwitcher(false); setShowAllBoards(v => !v); }}
+                      title="Afficher les tâches de tous les boards de la période, chacun sur ses propres rows"
+                    >
+                      📚 {showAllBoards ? '✓ Vue consolidée activée' : 'Vue consolidée (tous les boards)'}
+                    </button>
                   </div>
                 )}
               </div>
@@ -839,6 +863,20 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                   onAddTask={() => setShowAddTask(true)}
                 />
               </div>
+              {/* Consolidated view : each sibling board (same period) gets
+                  its own row-band below the current one. Siblings are
+                  read-only here — the user has to click "Ouvrir" to edit
+                  them. Keeps the interaction model simple ("one board at
+                  a time is the owner") while surfacing the whole period
+                  in a single scroll. */}
+              {showAllBoards && siblingBoards.map(sibling => (
+                <SiblingBoardPanel
+                  key={sibling.id}
+                  board={sibling}
+                  jiraBaseUrl={jiraSiteUrl}
+                  onOpen={() => navigate(`/delivery/${sibling.id}`)}
+                />
+              ))}
             </div>
           )}
 
@@ -889,3 +927,191 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
 }
 
 export default App;
+
+// ===================================================================
+// SiblingBoardPanel — renders a sibling board (same period as the
+// active one) as a read-only row-band below the current BoardDelivery.
+// Fetches its own tasks + releases, computes its own sprint grid, and
+// surfaces a header with the board name + an "Ouvrir" CTA to switch
+// to it for editing. Mounted once per sibling when the user toggles
+// the consolidated view from the board switcher dropdown.
+// ===================================================================
+
+function SiblingBoardPanel({
+  board,
+  jiraBaseUrl,
+  onOpen,
+}: {
+  board: Board;
+  jiraBaseUrl: string | null;
+  onOpen: () => void;
+}) {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [releases, setReleases] = useState<Release[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const boardConfig: BoardConfig = useMemo(() => ({
+    id: board.id,
+    boardType: board.boardType ?? 'agile',
+    startDate: board.startDate ?? '2026-01-19',
+    endDate: board.endDate ?? '2026-03-02',
+    durationWeeks: board.durationWeeks ?? 6,
+  }), [board]);
+
+  const { sprints, totalCols } = useMemo(
+    () => generateSprintsForBoard(boardConfig),
+    [boardConfig]
+  );
+
+  // Load this sibling's tasks + positions independently from the main
+  // board. Mirrors the main `loadTasks` shape — positions API returns
+  // startCol/endCol/row/rowSpan (NOT col/widthCols), and tasks without
+  // a saved position still need a default { startCol, endCol, row } so
+  // they render on the grid. Skipping either of these silently dropped
+  // half the tasks from the consolidated view.
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      fetchTasksForBoard(board.id),
+      fetchPositionsForBoard(board.id).catch(() => []),
+    ])
+      .then(([rawTasks, posData]) => {
+        if (cancelled) return;
+        const positions = posData.map(p => ({
+          taskId: p.taskId,
+          startCol: p.startCol,
+          endCol: p.endCol,
+          row: p.row,
+          rowSpan: p.rowSpan ?? 1,
+        }));
+        const positionMap = new Map(positions.map(p => [p.taskId, p]));
+        const newTaskRowByCol = buildRowTracker(positions);
+
+        // Project → row map so un-positioned Jira tasks of the same
+        // project land in the same row range (same heuristic as the
+        // main board's loader).
+        const projectToRow = new Map<string, number>();
+        for (const t of rawTasks) {
+          const pos = positionMap.get(t.id);
+          if (!pos) continue;
+          const key = extractJiraKey(t.title);
+          if (key) {
+            const projectKey = key.split('-')[0];
+            if (!projectToRow.has(projectKey)) projectToRow.set(projectKey, pos.row);
+          }
+        }
+
+        const transformed: Task[] = rawTasks.map(taskData => {
+          const savedPosition = positionMap.get(taskData.id);
+          const defaultCol = 0;
+          let defaultRow = newTaskRowByCol[defaultCol] || 0;
+          if (!savedPosition) {
+            const extKey = extractJiraKey(taskData.title);
+            const projKey = extKey ? extKey.split('-')[0] : null;
+            if (projKey && projectToRow.has(projKey)) {
+              defaultRow = projectToRow.get(projKey)!;
+            } else if (defaultCol in newTaskRowByCol) {
+              newTaskRowByCol[defaultCol]++;
+            }
+          }
+          return transformTask(taskData, savedPosition, {
+            startCol: defaultCol,
+            endCol: defaultCol + 2,
+            row: defaultRow,
+          });
+        });
+
+        setTasks(transformed);
+      })
+      .catch(() => setTasks([]))
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [board.id]);
+
+  // Build the nested task tree (containers + children) for BoardDelivery.
+  // The main board stores the flat list in state and memoizes the tree
+  // at render time — we mirror that here so the data shape matches.
+  const displayTasks = useMemo(() => buildTaskTree(tasks), [tasks]);
+
+  // Detect Jira projects referenced by this sibling's tasks so the Jira
+  // release bands line up correctly for its own period. Looks at the
+  // task TITLE (same heuristic as the main board's extractJiraKey
+  // usage) — not `description`, which was a copy-paste bug that missed
+  // most Jira-backed tasks.
+  const jiraProjects = useMemo(() => {
+    const projects = new Set<string>();
+    for (const t of tasks) {
+      const key = extractJiraKey(t.title);
+      if (key) {
+        const project = key.split('-')[0];
+        if (project) projects.add(project);
+      }
+    }
+    return Array.from(projects);
+  }, [tasks]);
+
+  useEffect(() => {
+    if (jiraProjects.length === 0 || !boardConfig.startDate || !boardConfig.endDate) {
+      setReleases([]);
+      return;
+    }
+    fetchJiraVersions(jiraProjects, boardConfig.startDate, boardConfig.endDate)
+      .then(versions => {
+        setReleases(versions.map(v => ({
+          id: v.id,
+          name: v.name,
+          date: v.releaseDate ?? '',
+          color: '#3b82f6',
+        })));
+      })
+      .catch(() => setReleases([]));
+  }, [jiraProjects, boardConfig.startDate, boardConfig.endDate]);
+
+  return (
+    <div className="board-section delivery-sibling-panel">
+      <div className="delivery-sibling-panel-header">
+        <span className="delivery-sibling-panel-name">📋 {board.name}</span>
+        <span className="delivery-sibling-panel-badge">lecture seule</span>
+        <button
+          type="button"
+          className="module-header-btn"
+          onClick={onOpen}
+          title="Ouvrir ce board pour l'éditer"
+        >
+          Ouvrir →
+        </button>
+      </div>
+      {loading ? (
+        <LoadingSpinner message={`Chargement de "${board.name}"...`} />
+      ) : tasks.length === 0 ? (
+        <p className="delivery-sibling-panel-empty">Aucune tâche sur ce board.</p>
+      ) : (
+        <BoardDelivery
+          sprints={sprints}
+          /* Build the nested task tree at render time, same as the main
+             BoardView does — BoardDelivery expects a tree (containers +
+             children), not a flat list. Without this, any task nested
+             under a container on the board just disappeared. */
+          tasks={displayTasks}
+          releases={releases}
+          boardLabel={board.name}
+          readOnly
+          totalCols={totalCols}
+          jiraBaseUrl={jiraBaseUrl}
+          containerProjectMap={{}}
+          availableProjects={jiraProjects}
+          onContainerProjectChange={() => {}}
+          onTaskUpdate={async () => {}}
+          onTaskDelete={async () => {}}
+          onTaskResize={async () => {}}
+          onTaskMove={async () => {}}
+          onNestTask={async () => {}}
+          onUnnestTask={async () => {}}
+        />
+      )}
+    </div>
+  );
+}

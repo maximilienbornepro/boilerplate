@@ -408,6 +408,10 @@ export interface AvailableReviewSubject {
   id: string;
   title: string;
   status: string | null;
+  /** Full current situation text — surfaced so the bulk-import UI can
+   *  show a preview of "last 4 lines + the append to come" when the
+   *  user picks an existing subject to update. */
+  situation?: string | null;
 }
 
 export interface AvailableReview {
@@ -781,6 +785,31 @@ export interface ReplayResponse {
   availableReviews: AvailableReview[];
   logId: number | null;
   replayedFromLogId: number;
+}
+
+/** Re-generate an "append to situation" text on demand — used when the
+ *  user overrides the IA's routing in the bulk-import wizard (e.g.
+ *  picks a different target subject) and we need a fresh append text
+ *  adapted to the existing situation of that target. Runs the
+ *  suivitess-append-situation skill server-side. */
+export async function generateAppendText(params: {
+  existingSituation: string;
+  rawQuotes: string[];
+  subjectTitle: string;
+  sourceKind?: string;
+  sourceTitle?: string;
+}): Promise<{ appendText: string | null; logId: number | null }> {
+  const res = await fetch(`${API_BASE}/transcription/generate-append-text`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function replayRun(t2LogId: number): Promise<ReplayResponse> {

@@ -249,7 +249,7 @@ puis un <result>…</result> contenant l'objet JSON { "summary", "subjects" }.`;
       title: r.title,
       sections: r.sections.map(s => ({
         id: s.id, name: s.name,
-        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
       })),
     }));
 

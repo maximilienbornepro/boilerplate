@@ -158,7 +158,7 @@ export function createRoutes(): Router {
           sections: (doc.sections || []).map(s => ({
             id: s.id,
             name: s.name,
-            subjects: (s.subjects || []).map(sub => ({ id: sub.id, title: sub.title, status: sub.status ?? null })),
+            subjects: (s.subjects || []).map(sub => ({ id: sub.id, title: sub.title, status: sub.status ?? null, situation: sub.situation ?? null })),
           })),
         });
       } catch { /* best effort */ }
@@ -2707,7 +2707,7 @@ ${filteredContent.slice(0, 30000)}`,
       sections: r.sections.map(s => ({
         id: s.id,
         name: s.name,
-        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
       })),
     }));
 
@@ -2867,7 +2867,7 @@ ${filteredContent.slice(0, 30000)}`,
             sections: r.sections.map(s => ({
               id: s.id,
               name: s.name,
-              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
             })),
           })),
         });
@@ -3038,7 +3038,7 @@ ${filteredContent.slice(0, 30000)}`,
             sections: r.sections.map(s => ({
               id: s.id,
               name: s.name,
-              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status })),
+              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
             })),
           })),
         });
@@ -3178,6 +3178,47 @@ ${filteredContent.slice(0, 30000)}`,
   // Applies the user-confirmed routing : creates reviews and sections as
   // needed, then appends each subject. Sections with the same name inside
   // the same review are de-duplicated (created once).
+  // Re-generate an "append text" for an existing subject when the user
+  // overrides the IA's routing in the bulk-import wizard (e.g. the IA
+  // proposed "new subject" but the user picked an existing target to
+  // append to). Runs the suivitess-append-situation skill on demand.
+  router.post('/transcription/generate-append-text', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { existingSituation, rawQuotes, subjectTitle, sourceKind, sourceTitle } = (req.body || {}) as {
+      existingSituation?: string;
+      rawQuotes?: string[];
+      subjectTitle?: string;
+      sourceKind?: string;
+      sourceTitle?: string;
+    };
+    if (typeof existingSituation !== 'string' || !Array.isArray(rawQuotes) || !subjectTitle) {
+      res.status(400).json({ error: 'existingSituation, rawQuotes, subjectTitle requis' });
+      return;
+    }
+    const { runSkill } = await import('../aiSkills/runSkill.js');
+    const todayFrFr = () => new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    const ctx = { existingSituation, rawQuotes, today: todayFrFr(), subjectTitle };
+    try {
+      const run = await runSkill({
+        slug: 'suivitess-append-situation',
+        userId,
+        userEmail: req.user!.email || '',
+        buildContext: () => `## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\n\`\`\`\n\nRenvoie UNIQUEMENT l'objet JSON { "appendText": … }.`,
+        inputContent: JSON.stringify(ctx),
+        sourceKind: (sourceKind as 'transcript' | 'slack' | 'outlook') ?? 'transcript',
+        sourceTitle: sourceTitle ?? 'regeneration',
+        documentId: null,
+        parentLogId: null,
+        maxTokens: 800,
+      });
+      const match = run.outputText.match(/\{[\s\S]*\}/);
+      const parsed = match ? JSON.parse(match[0]) as { appendText?: string | null } : null;
+      res.json({ appendText: parsed?.appendText ?? null, logId: run.logId });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message || 'Échec génération' });
+    }
+  }));
+
   router.post('/transcription/apply-routing', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
     const { sourceId, subjects } = (req.body || {}) as {
