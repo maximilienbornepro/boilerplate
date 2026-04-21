@@ -1531,6 +1531,36 @@
   color: var(--text-primary);
 }
 
+/* Vertical grid : Review → Section → Sujet, one per line. Easier to
+   scan than a flowing sentence and mirrors the step ordering of the
+   wizard. */
+.aiDecisionRows {
+  display: grid;
+  grid-template-columns: max-content 1fr auto;
+  column-gap: var(--spacing-sm);
+  row-gap: 4px;
+  align-items: center;
+}
+
+.aiDecisionRow {
+  display: contents;
+}
+
+.aiDecisionRowLabel {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.aiDecisionRowValue {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+  min-width: 0;
+  word-break: break-word;
+}
+
 .aiDecisionStatementLead {
   display: inline-block;
   padding: 2px 8px;

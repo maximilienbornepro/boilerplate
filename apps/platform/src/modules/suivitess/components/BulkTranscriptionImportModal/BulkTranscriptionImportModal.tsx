@@ -1348,34 +1348,42 @@ function SubjectRow({
           || (subjectAction === 'update' && targetSubjectId !== subject.targetSubjectId);
         return (
           <div className={`${styles.aiDecisionCard} ${currentIsUpdate ? styles.aiDecisionCardUpdate : styles.aiDecisionCardCreate}`}>
-            <p className={styles.aiDecisionStatement}>
-              <strong className={styles.aiDecisionStatementLead}>
-                {currentIsUpdate ? 'CECI est une MISE À JOUR' : 'CECI est la CRÉATION'}
-              </strong>
-              {userChangedRoute && (
-                <span className={styles.aiDecisionModifiedBadge} title="Tu as modifié la proposition de l'IA">✎ modifié</span>
-              )}
-              {currentIsUpdate ? (
-                currentTargetSubjectTitle ? (
-                  <>
-                    {' '}<strong>DU SUJET EXISTANT SUIVANT :</strong>
-                    {' '}<strong className={styles.aiDecisionTargetSubject}>« {currentTargetSubjectTitle} »</strong>
-                  </>
-                ) : (
-                  <> d'un sujet existant <em>(cible non résolue — à choisir ci-dessous)</em></>
-                )
-              ) : (
-                <>
-                  {' '}<strong>D'UN NOUVEAU SUJET :</strong>
-                  {' '}<strong className={styles.aiDecisionTargetSubject}>« {subject.title} »</strong>
-                </>
-              )}
-              <br />
-              dans la {currentReviewIsExisting ? 'review existante' : <strong>nouvelle review</strong>}{' '}
-              <strong className={currentReviewIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentReviewLabel} »</strong>
-              , {currentSectionIsExisting ? 'section existante' : <strong>nouvelle section</strong>}{' '}
-              <strong className={currentSectionIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentSectionLabel} »</strong>.
-            </p>
+            {/* Decision read top-down : Review → Section → Subject.
+                Each row is its own line so the user scans by level,
+                not by sentence. */}
+            <div className={styles.aiDecisionRows}>
+              <div className={styles.aiDecisionRow}>
+                <span className={styles.aiDecisionRowLabel}>
+                  {currentReviewIsExisting ? 'Review existante' : 'Nouvelle review'}
+                </span>
+                <span className={`${styles.aiDecisionRowValue} ${currentReviewIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}`}>
+                  « {currentReviewLabel} »
+                </span>
+              </div>
+              <div className={styles.aiDecisionRow}>
+                <span className={styles.aiDecisionRowLabel}>
+                  {currentSectionIsExisting ? 'Section existante' : 'Nouvelle section'}
+                </span>
+                <span className={`${styles.aiDecisionRowValue} ${currentSectionIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}`}>
+                  « {currentSectionLabel} »
+                </span>
+              </div>
+              <div className={styles.aiDecisionRow}>
+                <span className={styles.aiDecisionRowLabel}>
+                  {currentIsUpdate ? 'Mise à jour du sujet' : 'Nouveau sujet'}
+                </span>
+                <span className={`${styles.aiDecisionRowValue} ${styles.aiDecisionTargetSubject}`}>
+                  {currentIsUpdate
+                    ? (currentTargetSubjectTitle
+                        ? <>« {currentTargetSubjectTitle} »</>
+                        : <em>(cible non résolue — à choisir ci-dessous)</em>)
+                    : <>« {subject.title} »</>}
+                </span>
+                {userChangedRoute && (
+                  <span className={styles.aiDecisionModifiedBadge} title="Tu as modifié la proposition de l'IA">✎ modifié</span>
+                )}
+              </div>
+            </div>
             {subject.reasoning && (
               <p className={styles.aiDecisionReason}>
                 <strong className={styles.aiDecisionReasonLead}>RAISON IA :</strong> {subject.reasoning}
