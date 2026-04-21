@@ -1578,11 +1578,13 @@
    reading the whole sentence. */
 .aiDecisionTargetSubject {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
+  padding: 2px 10px;
+  border-radius: 999px;
   background: color-mix(in srgb, var(--accent-primary) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 40%, transparent);
   color: var(--text-primary);
   font-weight: var(--font-weight-semibold);
+  transition: filter var(--transition-fast);
 }
 
 /* État de situation du sujet cible — inline preview in the decision
@@ -1678,11 +1680,11 @@
   text-align: center;
 }
 
-/* Inline-pill variant of CustomDropdown : used for review + section
-   dropdowns embedded right in the decision sentence. Strips the full-
-   width block styling so it flows naturally with surrounding text,
-   while keeping the chevron + click-to-open behavior of the normal
-   dropdown. */
+/* Inline-pill dropdown used in the AI decision sentence for Review /
+   Section / Sujet. Strips the full-width block styling of the normal
+   CustomDropdown and lets the pill inside (green = existant, amber =
+   nouveau, accent = sujet) carry all the visual chrome. The button
+   itself is invisible until hover, so the sentence reads as prose. */
 .aiDecisionInlineDropdown {
   display: inline-block;
   width: auto !important;
@@ -1690,31 +1692,64 @@
   vertical-align: baseline;
 }
 
-.aiDecisionInlineDropdown :global(.customDropdownBtn),
 .aiDecisionInlineDropdown > button {
   display: inline-flex;
   align-items: center;
-  width: auto;
-  padding: 1px 8px;
-  border: 1px dashed var(--border-color);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  font-size: inherit;
-  line-height: inherit;
-  cursor: pointer;
   gap: 4px;
-  transition: border-color var(--transition-fast), background var(--transition-fast);
+  width: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  /* Leave room for the hover outline without shifting content. */
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+/* The entire button area acts as the hover target for the pill. On
+   hover we glow the pill + the chevron comes out of hiding. */
 .aiDecisionInlineDropdown > button:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  border-style: solid;
-  background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
+  outline-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
 }
 
+.aiDecisionInlineDropdown > button:hover:not(:disabled) > span {
+  filter: brightness(1.08);
+}
+
+.aiDecisionInlineDropdown > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Chevron : muted by default, emphasized on hover so the affordance
+   is discoverable without cluttering the sentence at rest. */
 .aiDecisionInlineDropdown > button svg {
   flex-shrink: 0;
-  opacity: 0.5;
+  opacity: 0.35;
+  transition: opacity var(--transition-fast);
+}
+
+.aiDecisionInlineDropdown > button:hover:not(:disabled) svg {
+  opacity: 0.9;
+}
+
+.aiDecisionInlineDropdown > button[aria-expanded="true"] svg {
+  opacity: 1;
+  transform: rotate(180deg);
+}
+
+/* The menu itself : anchor it to the LEFT of the trigger when the
+   trigger is embedded mid-sentence, so the list doesn't clip against
+   the right edge of a narrow inline context. */
+.aiDecisionInlineDropdown :global(.suivitess-exports-menu) {
+  right: auto;
+  left: 0;
+  min-width: 260px;
 }
 
 /* Inline name editor : takes the place of the pill when the user
@@ -1799,21 +1834,29 @@
 }
 
 /* Pills identify "existing" (green) vs "new" (amber) entities inline
-   in the sentence, matching the sommaire pills above. */
+   in the sentence, matching the sommaire pills above. Slightly
+   heavier padding + border so they read as interactive controls (the
+   parent dropdown button wraps them and makes them clickable). */
 .aiDecisionPillExisting {
   display: inline-block;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--success) 12%, transparent);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 35%, transparent);
   color: var(--success);
+  font-weight: var(--font-weight-medium);
+  transition: filter var(--transition-fast);
 }
 
 .aiDecisionPillNew {
   display: inline-block;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, #eab308 15%, transparent);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #eab308 16%, transparent);
+  border: 1px solid color-mix(in srgb, #eab308 40%, transparent);
   color: #eab308;
+  font-weight: var(--font-weight-medium);
+  transition: filter var(--transition-fast);
 }
 
 .aiDecisionReason {
