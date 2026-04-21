@@ -1348,14 +1348,84 @@ function SubjectRow({
           || (subjectAction === 'update' && targetSubjectId !== subject.targetSubjectId);
         return (
           <div className={`${styles.aiDecisionCard} ${currentIsUpdate ? styles.aiDecisionCardUpdate : styles.aiDecisionCardCreate}`}>
-            {/* Natural-language sentence read left-to-right in the same
-                order as the wizard steps : Review → Section → Subject.
-                Pills keep the "existant vs nouveau" color signal. */}
+            {/* Natural-language sentence in the wizard order (Review →
+                Section → Sujet). Each pill is ALSO a dropdown — click
+                it to change the target inline without opening the
+                wizard. Pills keep the "existant vs nouveau" color. */}
             <p className={styles.aiDecisionStatement}>
               Dans la {currentReviewIsExisting ? 'review existante' : <strong>nouvelle review</strong>}{' '}
-              <strong className={currentReviewIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentReviewLabel} »</strong>
+              <CustomDropdown
+                value={mode === 'create' ? '__new__' : (reviewId ?? '')}
+                displayLabel={<span className={currentReviewIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentReviewLabel} »</span>}
+                disabled={skipped}
+                className={styles.aiDecisionInlineDropdown}
+                compact
+                options={[
+                  {
+                    value: '__new__',
+                    label: (
+                      <span className={styles.dropdownNewOption}>
+                        + Créer une nouvelle review{subject.suggestedNewReviewTitle && <em className={styles.dropdownNewHint}> « {subject.suggestedNewReviewTitle} »</em>}
+                      </span>
+                    ),
+                  },
+                  ...(reviews.length > 0 ? [{ value: '__sep__', label: 'Reviews existantes' }] : []),
+                  ...reviews.map(rv => ({ value: rv.id, label: rv.title })),
+                ]}
+                onChange={(val) => {
+                  if (val === '__new__') {
+                    if (mode === 'create') return;
+                    onUpdate({
+                      mode: 'create',
+                      reviewId: null,
+                      sectionId: null,
+                      sectionMode: 'new',
+                      newReviewTitle: newReviewTitle || subject.suggestedNewReviewTitle || 'Nouvelle review',
+                    });
+                  } else {
+                    if (mode === 'existing' && reviewId === val) return;
+                    onUpdate({ mode: 'existing', reviewId: val, sectionId: null, sectionMode: 'existing' });
+                  }
+                }}
+              />
               , {currentSectionIsExisting ? 'section existante' : <strong>nouvelle section</strong>}{' '}
-              <strong className={currentSectionIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentSectionLabel} »</strong>
+              <CustomDropdown
+                value={sectionMode === 'new' ? '__new__' : (sectionId ?? '')}
+                displayLabel={<span className={currentSectionIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentSectionLabel} »</span>}
+                disabled={skipped}
+                className={styles.aiDecisionInlineDropdown}
+                compact
+                options={(() => {
+                  const hasExistingSections = mode === 'existing' && !!currentReview && currentReview.sections.length > 0;
+                  return [
+                    {
+                      value: '__new__',
+                      label: (
+                        <span className={styles.dropdownNewOption}>
+                          + Créer une nouvelle section{subject.suggestedNewSectionName && <em className={styles.dropdownNewHint}> « {subject.suggestedNewSectionName} »</em>}
+                        </span>
+                      ),
+                    },
+                    ...(hasExistingSections ? [{ value: '__sep__', label: 'Sections existantes' }] : []),
+                    ...(hasExistingSections ? currentReview!.sections.map(s => ({ value: s.id, label: s.name })) : []),
+                  ];
+                })()}
+                onChange={(val) => {
+                  if (val === '__new__') {
+                    onUpdate({
+                      sectionMode: 'new',
+                      sectionId: null,
+                      subjectAction: 'create',
+                      targetSubjectId: null,
+                    });
+                    if (!newSectionName.trim() && subject.suggestedNewSectionName) {
+                      onRenameNewSection(subject.suggestedNewSectionName);
+                    }
+                  } else {
+                    onUpdate({ sectionMode: 'existing', sectionId: val, subjectAction: 'create', targetSubjectId: null });
+                  }
+                }}
+              />
               ,{' '}
               <strong className={styles.aiDecisionStatementLead}>
                 {currentIsUpdate ? 'MISE À JOUR' : 'CRÉATION'}
@@ -2023,6 +2093,7 @@ function CustomDropdown({
   disabled,
   placeholder,
   className,
+  compact,
 }: {
   value: string;
   displayLabel: ReactNode;
@@ -2031,6 +2102,10 @@ function CustomDropdown({
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  /** When true, strips the full-width wrapper styling so the dropdown
+   *  can be embedded inline in prose (review/section pills in the AI
+   *  decision sentence). */
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -2093,7 +2168,13 @@ function CustomDropdown({
   const effectiveDisabled = disabled || selectableCount === 0;
 
   return (
-    <div ref={ref} className="suivitess-exports" style={{ width: '100%' }}>
+    <div
+      ref={ref}
+      className="suivitess-exports"
+      style={compact
+        ? { width: 'auto', display: 'inline-flex', verticalAlign: 'baseline' }
+        : { width: '100%' }}
+    >
       <button
         type="button"
         className={`${styles.customDropdownBtn} ${className || ''}`}

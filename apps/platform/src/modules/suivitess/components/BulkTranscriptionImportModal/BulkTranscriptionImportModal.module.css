@@ -1678,6 +1678,45 @@
   text-align: center;
 }
 
+/* Inline-pill variant of CustomDropdown : used for review + section
+   dropdowns embedded right in the decision sentence. Strips the full-
+   width block styling so it flows naturally with surrounding text,
+   while keeping the chevron + click-to-open behavior of the normal
+   dropdown. */
+.aiDecisionInlineDropdown {
+  display: inline-block;
+  width: auto !important;
+  min-width: 0;
+  vertical-align: baseline;
+}
+
+.aiDecisionInlineDropdown :global(.customDropdownBtn),
+.aiDecisionInlineDropdown > button {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  padding: 1px 8px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  gap: 4px;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.aiDecisionInlineDropdown > button:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
+}
+
+.aiDecisionInlineDropdown > button svg {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
 /* "✎ modifié" badge shown when the current routing diverges from the
    AI's original proposal — makes it visually obvious that the user
    has overridden the IA. */
