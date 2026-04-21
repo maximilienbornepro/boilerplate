@@ -33,7 +33,11 @@ function prettyLabel(key: string): string {
 }
 
 function AdminFeaturesApp({ onNavigate }: { onNavigate?: (path: string) => void }) {
-  const user = useGatewayUser();
+  // useGatewayUser wraps the user object in { user, loading, error } —
+  // destructure explicitly so we don't end up reading .isAdmin off the
+  // hook's own return shape (which silently reads as undefined and
+  // makes every admin look like a non-admin).
+  const { user, loading: authLoading } = useGatewayUser();
   const [settings, setSettings] = useState<Setting[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<Set<string>>(new Set());
@@ -93,7 +97,7 @@ function AdminFeaturesApp({ onNavigate }: { onNavigate?: (path: string) => void 
   // gateway user is loading, a friendly 403 card if the user is not
   // an admin, the real page otherwise. No redirect — the burger menu
   // still shows so they can leave.
-  if (!user) {
+  if (authLoading || !user) {
     return (
       <Layout appId="admin-features" variant="full-width" onNavigate={onNavigate}>
         <div style={{ padding: '2rem' }}><LoadingSpinner message="Chargement..." /></div>
