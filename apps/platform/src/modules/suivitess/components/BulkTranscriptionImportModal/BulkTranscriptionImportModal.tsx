@@ -1341,15 +1341,6 @@ function SubjectRow({
                   .find(sub => sub.id === targetSubjectId)?.title
               ?? null)
           : null;
-        // Diff indicator : show a small "✎ modifié" badge if the current
-        // choice diverges from the AI's original proposal.
-        const userChangedRoute =
-          (mode === 'create') !== (subject.action !== 'existing-review')
-          || (mode === 'existing' && subject.action === 'existing-review' && reviewId !== subject.reviewId)
-          || (sectionMode === 'new') !== (subject.sectionAction !== 'existing-section')
-          || (sectionMode === 'existing' && subject.sectionAction === 'existing-section' && sectionId !== subject.sectionId)
-          || (subjectAction === 'update') !== (subject.subjectAction === 'update-existing-subject')
-          || (subjectAction === 'update' && targetSubjectId !== subject.targetSubjectId);
         return (
           <div className={`${styles.aiDecisionCard} ${currentIsUpdate ? styles.aiDecisionCardUpdate : styles.aiDecisionCardCreate}`}>
             {/* Natural-language sentence in the wizard order (Review →
@@ -1507,14 +1498,6 @@ function SubjectRow({
                 }}
               />
               .
-              {userChangedRoute && (
-                <span
-                  className={styles.aiDecisionModifiedBadge}
-                  title="Tu as choisi une review, section ou sujet différent de ce que l'IA avait proposé. Le texte en gras ci-dessus reflète ton choix."
-                >
-                  ✎ ton choix
-                </span>
-              )}
             </p>
             {subject.reasoning && (
               <p className={styles.aiDecisionReason}>
