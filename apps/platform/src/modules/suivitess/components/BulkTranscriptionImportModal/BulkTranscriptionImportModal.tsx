@@ -2276,14 +2276,11 @@ function CustomDropdown({
   const selectableCount = options.filter(o => o.value !== '__sep__').length;
   const effectiveDisabled = disabled || selectableCount === 0;
 
-  return (
-    <div
-      ref={ref}
-      className="suivitess-exports"
-      style={compact
-        ? { width: 'auto', display: 'inline-flex', verticalAlign: 'baseline' }
-        : { width: '100%' }}
-    >
+  // Render the trigger button + menu once; the outer element is a
+  // <span> in compact mode (so it can sit inside a <p>) and a <div>
+  // otherwise (default block-level wrapper).
+  const body = (
+    <>
       <button
         type="button"
         className={`${styles.customDropdownBtn} ${className || ''}`}
@@ -2301,10 +2298,6 @@ function CustomDropdown({
         <div
           className="suivitess-exports-menu"
           role="menu"
-          /* Larger max-height + explicit scroll behaviour so every
-             section is reachable when a review has many of them. The
-             previous 240px cap was silently truncating long lists
-             because the scrollbar wasn't obvious. */
           style={{ width: '100%', maxHeight: 360, overflowY: 'auto', overscrollBehavior: 'contain' }}
         >
           {options.map(opt => {
@@ -2341,6 +2334,23 @@ function CustomDropdown({
           })}
         </div>
       )}
+    </>
+  );
+
+  if (compact) {
+    return (
+      <span
+        ref={ref as unknown as React.RefObject<HTMLSpanElement>}
+        className="suivitess-exports"
+        style={{ width: 'auto', display: 'inline-flex', verticalAlign: 'baseline', position: 'relative' }}
+      >
+        {body}
+      </span>
+    );
+  }
+  return (
+    <div ref={ref} className="suivitess-exports" style={{ width: '100%' }}>
+      {body}
     </div>
   );
 }
