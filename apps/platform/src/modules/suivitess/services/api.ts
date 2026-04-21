@@ -812,6 +812,28 @@ export async function generateAppendText(params: {
   return res.json();
 }
 
+/** Compose a new subject situation text on demand — used when the
+ *  user overrides the IA's routing from update → create (the IA's
+ *  original pipeline emits situation: '' for update proposals). */
+export async function generateComposeText(params: {
+  title: string;
+  rawQuotes: string[];
+  sourceKind?: string;
+  sourceTitle?: string;
+}): Promise<{ situation: string; logId: number | null }> {
+  const res = await fetch(`${API_BASE}/transcription/generate-compose-text`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function replayRun(t2LogId: number): Promise<ReplayResponse> {
   const res = await fetch(`${API_BASE}/transcription/replay/${t2LogId}`, {
     method: 'POST',

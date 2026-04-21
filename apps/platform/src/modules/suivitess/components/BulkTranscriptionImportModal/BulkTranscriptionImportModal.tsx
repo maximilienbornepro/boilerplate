@@ -51,6 +51,11 @@ interface Row {
    *  Populated via the /generate-append-text endpoint. Null means "use
    *  subject.updatedSituation as-is". Populated string overrides. */
   overrideUpdatedSituation?: string | null;
+  /** Fresh "situation" composed on demand when the user overrides an
+   *  update-proposed row into a create-new one (the IA's original
+   *  subject.situation is empty for updates). Null means "use the
+   *  IA's original subject.situation". */
+  overrideSituation?: string | null;
 }
 
 export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
@@ -435,7 +440,10 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     const isUpdate = r.subjectAction === 'update' && !!r.targetSubjectId;
     return {
       title: r.subject.title,
-      situation: r.subject.situation,
+      // For user-overridden update → create paths the IA's original
+      // `situation` is empty — use the on-demand composed text
+      // stored on the row instead.
+      situation: r.overrideSituation ?? r.subject.situation,
       status: r.subject.status,
       responsibility: r.subject.responsibility,
       targetReviewId: r.reviewId,
@@ -1108,6 +1116,40 @@ function SubjectRow({
   // no longer contains the target subject → force back to "create".
   const updateIsPossible = currentSection && currentSection.subjects.length > 0;
 
+  /** Auto-generate a fresh "situation" (compose-situation skill) when
+   *  the user overrides an update-proposed row into a create-new one —
+   *  the IA's original subject.situation is empty for updates so
+   *  there'd be no preview to show without this regeneration. Runs
+   *  once per row (guarded by a ref). */
+  const composedForRowRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (subjectAction !== 'create') {
+      composedForRowRef.current = false;
+      return;
+    }
+    // Nothing to generate if the IA already produced a situation
+    // (this was a native "create" proposal from the start).
+    if (subject.situation && subject.situation.trim().length > 0) return;
+    // Already composed once for this row — don't re-fire.
+    if (composedForRowRef.current) return;
+    if (row.overrideSituation != null) return;
+
+    composedForRowRef.current = true;
+    setGeneratingAppend(true);
+    api.generateComposeText({
+      title: subject.title,
+      rawQuotes: subject.sourceRawQuotes ?? [],
+    })
+      .then(res => {
+        onUpdate({ overrideSituation: res.situation ?? '' });
+      })
+      .catch(err => {
+        console.warn('[generateComposeText] failed:', err);
+      })
+      .finally(() => setGeneratingAppend(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectAction, subject.title]);
+
   /** Auto-generate a fresh append text whenever the user picks an
    *  existing target subject that's different from the IA's original
    *  proposal (or when the IA proposed "create" and the user overrides
@@ -1347,10 +1389,13 @@ function SubjectRow({
             {/* Preview of the NEW subject's situation — shown right in
                 the decision card (not only inside the wizard) so the
                 user sees the full content that will be persisted even
-                when the form is collapsed. Mirrors the "target
-                situation" block below for the update path. */}
-            {!currentIsUpdate && subject.situation && (() => {
-              const lines = subject.situation.split('\n').filter(l => l.trim().length > 0);
+                when the form is collapsed. Falls back on the on-demand
+                composed situation when the IA didn't provide one
+                (happens for user-overridden update → create rows). */}
+            {!currentIsUpdate && (() => {
+              const composedSituation = row.overrideSituation ?? subject.situation ?? '';
+              if (!composedSituation.trim() && !generatingAppend) return null;
+              const lines = composedSituation.split('\n').filter(l => l.trim().length > 0);
               const renderLine = (text: string) => {
                 const parts = text.split(/(~~[^~]+~~)/g);
                 return parts.map((p, i) => p.startsWith('~~') && p.endsWith('~~')
@@ -1363,9 +1408,14 @@ function SubjectRow({
                     📝 État de situation du nouveau sujet
                     {subject.status && <span className={styles.aiDecisionTargetSituationCount}> · statut : {subject.status}</span>}
                     {subject.responsibility && <span className={styles.aiDecisionTargetSituationCount}> · resp : {subject.responsibility}</span>}
+                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · ⏳ IA en cours…</span>}
                   </div>
                   <div className={styles.aiDecisionTargetSituationBody}>
-                    {lines.map((l, i) => (
+                    {generatingAppend && lines.length === 0 ? (
+                      <div className={styles.aiDecisionTargetSituationPendingAppend}>
+                        ⏳ L'IA compose l'état de situation à partir des extraits sources…
+                      </div>
+                    ) : lines.map((l, i) => (
                       <div key={`new-subj-${i}`} className={styles.aiDecisionTargetSituationAddedLine}>
                         <span className={styles.aiDecisionTargetSituationAddedBullet}>+</span>
                         {renderLine(l)}
@@ -1691,12 +1741,14 @@ function SubjectRow({
             )}
 
             {/* Preview for the "create new subject" path : shows the
-                état de situation the IA generated for this new subject
-                (same content that will become the subject's initial
-                `situation` on import). Lets the user review the full
-                new tile before committing, not just the title. */}
-            {subjectAction === 'create' && subject.situation && (() => {
-              const lines = subject.situation.split('\n').filter(l => l.trim().length > 0);
+                état de situation that will become the subject's initial
+                `situation` on import. Falls back to the on-demand
+                composed text when the IA didn't provide one
+                (user-overridden update → create path). */}
+            {subjectAction === 'create' && (() => {
+              const effectiveSituation = row.overrideSituation ?? subject.situation ?? '';
+              if (!effectiveSituation.trim() && !generatingAppend) return null;
+              const lines = effectiveSituation.split('\n').filter(l => l.trim().length > 0);
               const renderLine = (text: string) => {
                 const parts = text.split(/(~~[^~]+~~)/g);
                 return parts.map((p, i) => p.startsWith('~~') && p.endsWith('~~')
@@ -1707,6 +1759,7 @@ function SubjectRow({
                 <div className={styles.situationPreview}>
                   <div className={styles.situationPreviewLabel}>
                     Aperçu du nouveau sujet qui sera créé
+                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · ⏳ IA en cours…</span>}
                   </div>
                   <div className={styles.situationPreviewBody}>
                     <div className={styles.situationPreviewNewSubjectTitle}>
@@ -1721,7 +1774,11 @@ function SubjectRow({
                       )}
                     </div>
                     <div className={styles.situationPreviewSep}>───── état de situation ─────</div>
-                    {lines.map((l, i) => (
+                    {generatingAppend && lines.length === 0 ? (
+                      <div className={styles.situationPreviewGeneratingBlock}>
+                        ⏳ L'IA compose l'état de situation à partir des extraits sources…
+                      </div>
+                    ) : lines.map((l, i) => (
                       <div key={`cs-${i}`} className={styles.situationPreviewNew}>{renderLine(l)}</div>
                     ))}
                   </div>

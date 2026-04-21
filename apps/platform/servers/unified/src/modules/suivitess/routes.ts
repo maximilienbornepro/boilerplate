@@ -3219,6 +3219,46 @@ ${filteredContent.slice(0, 30000)}`,
     }
   }));
 
+  // Compose a fresh subject "situation" on demand when the user
+  // overrides the IA's routing from update → create. The original
+  // IA pipeline emits `situation: ''` for update proposals (the
+  // writer runs append-situation, not compose-situation), so there's
+  // no pre-computed text to preview when the user flips the decision.
+  router.post('/transcription/generate-compose-text', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { title, rawQuotes, sourceKind, sourceTitle } = (req.body || {}) as {
+      title?: string;
+      rawQuotes?: string[];
+      sourceKind?: string;
+      sourceTitle?: string;
+    };
+    if (!title || !Array.isArray(rawQuotes)) {
+      res.status(400).json({ error: 'title, rawQuotes requis' });
+      return;
+    }
+    const { runSkill } = await import('../aiSkills/runSkill.js');
+    const ctx = { title, rawQuotes };
+    try {
+      const run = await runSkill({
+        slug: 'suivitess-compose-situation',
+        userId,
+        userEmail: req.user!.email || '',
+        buildContext: () => `## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\n\`\`\`\n\nRenvoie UNIQUEMENT l'objet JSON { "situation": … }.`,
+        inputContent: JSON.stringify(ctx),
+        sourceKind: (sourceKind as 'transcript' | 'slack' | 'outlook') ?? 'transcript',
+        sourceTitle: sourceTitle ?? 'compose',
+        documentId: null,
+        parentLogId: null,
+        maxTokens: 800,
+      });
+      const match = run.outputText.match(/\{[\s\S]*\}/);
+      const parsed = match ? JSON.parse(match[0]) as { situation?: string } : null;
+      res.json({ situation: parsed?.situation ?? '', logId: run.logId });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message || 'Échec génération' });
+    }
+  }));
+
   router.post('/transcription/apply-routing', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
     const { sourceId, subjects } = (req.body || {}) as {
