@@ -1727,11 +1727,22 @@
 }
 
 /* Chevron : muted by default, emphasized on hover so the affordance
-   is discoverable without cluttering the sentence at rest. */
+   is discoverable without cluttering the sentence at rest. Explicit
+   size + align-self center so it lands on the pill's visual middle
+   instead of floating too high (the SVG's intrinsic 14×14 was bigger
+   than needed and the default flex alignment picked a baseline that
+   sat above the pill's rounded shape). */
 .aiDecisionInlineDropdown > button svg {
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
+  align-self: center;
+  /* Nudge slightly down — text pills have asymmetric optical centers
+     due to descenders; 1px translation makes the chevron feel
+     centered with the uppercase/lowercase mix of review names. */
+  transform: translateY(1px);
   opacity: 0.35;
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 
 .aiDecisionInlineDropdown > button:hover:not(:disabled) svg {
@@ -1740,7 +1751,7 @@
 
 .aiDecisionInlineDropdown > button[aria-expanded="true"] svg {
   opacity: 1;
-  transform: rotate(180deg);
+  transform: translateY(1px) rotate(180deg);
 }
 
 /* The menu itself : anchor it to the LEFT of the trigger when the
