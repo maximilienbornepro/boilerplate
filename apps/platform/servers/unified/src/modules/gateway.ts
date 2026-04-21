@@ -64,7 +64,12 @@ export async function initGateway() {
   // the frontend (to hide UI) and can be checked server-side by any
   // route that wants to no-op when disabled.
   const defaultToggles: Array<[string, string, string]> = [
-    // Connectors
+    // Connectors — IA / LLM providers
+    ['connector_anthropic_enabled', 'true', 'Fournisseur IA Anthropic (Claude)'],
+    ['connector_openai_enabled', 'true', 'Fournisseur IA OpenAI (GPT-4, GPT-5)'],
+    ['connector_mistral_enabled', 'true', 'Fournisseur IA Mistral'],
+    ['connector_scaleway_enabled', 'true', 'Fournisseur IA Scaleway (LLM + embeddings)'],
+    // Connectors — data sources
     ['connector_gmail_enabled', 'true', 'Connecteur Gmail (import emails)'],
     ['connector_outlook_enabled', 'true', 'Connecteur Outlook (import emails)'],
     ['connector_slack_enabled', 'true', 'Connecteur Slack (import messages)'],

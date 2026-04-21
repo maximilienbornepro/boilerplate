@@ -1302,6 +1302,12 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
   const [oauthAvailable, setOauthAvailable] = useState(false);
   const [aiUsage, setAiUsage] = useState<AIUsageSummary[]>([]);
   const [credits, setCredits] = useState<CreditInfo | null>(null);
+  /** Public platform feature flags — mirrors /api/platform/settings/public.
+   *  Each `connector_<id>_enabled` key hides the corresponding card
+   *  from this page when set to false (admin toggle on /admin-features).
+   *  Missing keys default to enabled so new connectors don't get
+   *  hidden until the admin explicitly disables them. */
+  const [platformFlags, setPlatformFlags] = useState<Record<string, boolean>>({});
 
   const loadConnectors = useCallback(async () => {
     try {
@@ -1323,7 +1329,22 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
       .then(r => r.json())
       .then(setCredits)
       .catch(() => {});
+    // Fetch platform flags (global connector toggles set by admins on
+    // /admin-features). Missing keys → default to enabled.
+    fetch('/api/platform/settings/public', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : {})
+      .then((flags: Record<string, boolean>) => setPlatformFlags(flags))
+      .catch(() => setPlatformFlags({}));
   }, [loadConnectors]);
+
+  /** True if the connector is globally enabled (default : yes).
+   *  Admins can flip connector_<id>_enabled off from /admin-features
+   *  to hide the card platform-wide. */
+  const isConnectorGloballyEnabled = (serviceId: string): boolean => {
+    const key = `connector_${serviceId}_enabled`;
+    // Only hide when the flag exists AND is explicitly false.
+    return platformFlags[key] !== false;
+  };
 
   const getUsageForProvider = (provider: string): AIUsageSummary | null => {
     return aiUsage.find(u => u.provider === provider) || null;
@@ -1357,12 +1378,17 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
 
       {credits && <CreditSection credits={credits} />}
 
-      {SERVICE_GROUPS.map(group => (
+      {SERVICE_GROUPS.map(group => {
+        // Hide services globally disabled by an admin on /admin-features.
+        // If the whole group ends up empty, skip the group header too.
+        const visibleServices = group.services.filter(s => isConnectorGloballyEnabled(s.id));
+        if (visibleServices.length === 0) return null;
+        return (
         <div key={group.title} className="connectors-group">
           <h3 className="connectors-group-title">{group.title}</h3>
           <p className="connectors-group-desc">{group.description}</p>
           <div className="connectors-list">
-            {group.services.map(service => {
+            {visibleServices.map(service => {
               if (service.id === 'jira') {
                 return (
                   <JiraCard
@@ -1398,7 +1424,8 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
             })}
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {/* ==================== Collecteurs automatiques ==================== */}
       <CollectorsSection />
