@@ -1091,6 +1091,10 @@ function SubjectRow({
    *  backend. Blocks the CTAs so the user can't import a half-baked
    *  update. */
   const [generatingAppend, setGeneratingAppend] = useState(false);
+  /** Which inline name-editor is currently open. Opened when the user
+   *  picks "+ Créer nouvelle X" in one of the inline pill dropdowns.
+   *  Null = no editor, pills rendered normally. */
+  const [editingCreateName, setEditingCreateName] = useState<null | 'review' | 'section'>(null);
   /** Remembers the target for which we already generated an append —
    *  prevents re-firing the skill when the user re-opens the wizard or
    *  triggers a re-render that doesn't change the target. */
@@ -1354,78 +1358,115 @@ function SubjectRow({
                 wizard. Pills keep the "existant vs nouveau" color. */}
             <p className={styles.aiDecisionStatement}>
               Dans la {currentReviewIsExisting ? 'review existante' : <strong>nouvelle review</strong>}{' '}
-              <CustomDropdown
-                value={mode === 'create' ? '__new__' : (reviewId ?? '')}
-                displayLabel={<span className={currentReviewIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentReviewLabel} »</span>}
-                disabled={skipped}
-                className={styles.aiDecisionInlineDropdown}
-                compact
-                options={[
-                  {
-                    value: '__new__',
-                    label: (
-                      <span className={styles.dropdownNewOption}>
-                        + Créer une nouvelle review{subject.suggestedNewReviewTitle && <em className={styles.dropdownNewHint}> « {subject.suggestedNewReviewTitle} »</em>}
-                      </span>
-                    ),
-                  },
-                  ...(reviews.length > 0 ? [{ value: '__sep__', label: 'Reviews existantes' }] : []),
-                  ...reviews.map(rv => ({ value: rv.id, label: rv.title })),
-                ]}
-                onChange={(val) => {
-                  if (val === '__new__') {
-                    if (mode === 'create') return;
+              {editingCreateName === 'review' ? (
+                <InlineNameEditor
+                  kind="review"
+                  initial={newReviewTitle || subject.suggestedNewReviewTitle || ''}
+                  onValidate={(name) => {
                     onUpdate({
                       mode: 'create',
                       reviewId: null,
                       sectionId: null,
                       sectionMode: 'new',
-                      newReviewTitle: newReviewTitle || subject.suggestedNewReviewTitle || 'Nouvelle review',
+                      newReviewTitle: name.trim() || 'Nouvelle review',
                     });
-                  } else {
-                    if (mode === 'existing' && reviewId === val) return;
-                    onUpdate({ mode: 'existing', reviewId: val, sectionId: null, sectionMode: 'existing' });
-                  }
-                }}
-              />
-              , {currentSectionIsExisting ? 'section existante' : <strong>nouvelle section</strong>}{' '}
-              <CustomDropdown
-                value={sectionMode === 'new' ? '__new__' : (sectionId ?? '')}
-                displayLabel={<span className={currentSectionIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentSectionLabel} »</span>}
-                disabled={skipped}
-                className={styles.aiDecisionInlineDropdown}
-                compact
-                options={(() => {
-                  const hasExistingSections = mode === 'existing' && !!currentReview && currentReview.sections.length > 0;
-                  return [
+                    setEditingCreateName(null);
+                  }}
+                  onCancel={() => setEditingCreateName(null)}
+                  suggestParams={{
+                    kind: 'review',
+                    sourceTitle: subject.title,
+                    rawQuotes: subject.sourceRawQuotes ?? [],
+                    entities: subject.sourceEntities ?? [],
+                  }}
+                />
+              ) : (
+                <CustomDropdown
+                  value={mode === 'create' ? '__new__' : (reviewId ?? '')}
+                  displayLabel={<span className={currentReviewIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentReviewLabel} »</span>}
+                  disabled={skipped}
+                  className={styles.aiDecisionInlineDropdown}
+                  compact
+                  options={[
                     {
                       value: '__new__',
                       label: (
                         <span className={styles.dropdownNewOption}>
-                          + Créer une nouvelle section{subject.suggestedNewSectionName && <em className={styles.dropdownNewHint}> « {subject.suggestedNewSectionName} »</em>}
+                          + Créer une nouvelle review{subject.suggestedNewReviewTitle && <em className={styles.dropdownNewHint}> « {subject.suggestedNewReviewTitle} »</em>}
                         </span>
                       ),
                     },
-                    ...(hasExistingSections ? [{ value: '__sep__', label: 'Sections existantes' }] : []),
-                    ...(hasExistingSections ? currentReview!.sections.map(s => ({ value: s.id, label: s.name })) : []),
-                  ];
-                })()}
-                onChange={(val) => {
-                  if (val === '__new__') {
+                    ...(reviews.length > 0 ? [{ value: '__sep__', label: 'Reviews existantes' }] : []),
+                    ...reviews.map(rv => ({ value: rv.id, label: rv.title })),
+                  ]}
+                  onChange={(val) => {
+                    if (val === '__new__') {
+                      // Open the inline editor so the user can customize
+                      // the name (or regenerate via IA). Don't commit the
+                      // create-mode yet — that happens on validate.
+                      setEditingCreateName('review');
+                    } else {
+                      if (mode === 'existing' && reviewId === val) return;
+                      onUpdate({ mode: 'existing', reviewId: val, sectionId: null, sectionMode: 'existing' });
+                    }
+                  }}
+                />
+              )}
+              , {currentSectionIsExisting ? 'section existante' : <strong>nouvelle section</strong>}{' '}
+              {editingCreateName === 'section' ? (
+                <InlineNameEditor
+                  kind="section"
+                  initial={newSectionName || subject.suggestedNewSectionName || ''}
+                  onValidate={(name) => {
                     onUpdate({
                       sectionMode: 'new',
                       sectionId: null,
                       subjectAction: 'create',
                       targetSubjectId: null,
                     });
-                    if (!newSectionName.trim() && subject.suggestedNewSectionName) {
-                      onRenameNewSection(subject.suggestedNewSectionName);
+                    onRenameNewSection(name.trim() || 'Nouvelle section');
+                    setEditingCreateName(null);
+                  }}
+                  onCancel={() => setEditingCreateName(null)}
+                  suggestParams={{
+                    kind: 'section',
+                    sourceTitle: subject.title,
+                    rawQuotes: subject.sourceRawQuotes ?? [],
+                    entities: subject.sourceEntities ?? [],
+                    parentReviewTitle: mode === 'existing' && currentReview ? currentReview.title : (newReviewTitle || subject.suggestedNewReviewTitle || undefined),
+                  }}
+                />
+              ) : (
+                <CustomDropdown
+                  value={sectionMode === 'new' ? '__new__' : (sectionId ?? '')}
+                  displayLabel={<span className={currentSectionIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentSectionLabel} »</span>}
+                  disabled={skipped}
+                  className={styles.aiDecisionInlineDropdown}
+                  compact
+                  options={(() => {
+                    const hasExistingSections = mode === 'existing' && !!currentReview && currentReview.sections.length > 0;
+                    return [
+                      {
+                        value: '__new__',
+                        label: (
+                          <span className={styles.dropdownNewOption}>
+                            + Créer une nouvelle section{subject.suggestedNewSectionName && <em className={styles.dropdownNewHint}> « {subject.suggestedNewSectionName} »</em>}
+                          </span>
+                        ),
+                      },
+                      ...(hasExistingSections ? [{ value: '__sep__', label: 'Sections existantes' }] : []),
+                      ...(hasExistingSections ? currentReview!.sections.map(s => ({ value: s.id, label: s.name })) : []),
+                    ];
+                  })()}
+                  onChange={(val) => {
+                    if (val === '__new__') {
+                      setEditingCreateName('section');
+                    } else {
+                      onUpdate({ sectionMode: 'existing', sectionId: val, subjectAction: 'create', targetSubjectId: null });
                     }
-                  } else {
-                    onUpdate({ sectionMode: 'existing', sectionId: val, subjectAction: 'create', targetSubjectId: null });
-                  }
-                }}
-              />
+                  }}
+                />
+              )}
               ,{' '}
               <strong className={styles.aiDecisionStatementLead}>
                 {currentIsUpdate ? 'MISE À JOUR' : 'CRÉATION'}
@@ -2505,5 +2546,88 @@ function PipelineStepsIndicator({ status }: { status: api.PipelineJobStatus | nu
         }}>{durLine}</div>
       )}
     </>
+  );
+}
+
+// ==================== Inline name editor ====================
+
+/** Compact inline editor used by the "+ Créer nouvelle X" flow on the
+ *  review / section pills in the AI decision sentence. Displays a text
+ *  input pre-filled with an initial suggestion, plus a "🤖" button that
+ *  calls the suivitess-suggest-name skill to regenerate a proposal
+ *  adapted to the source content. Enter = validate, Escape = cancel. */
+function InlineNameEditor({
+  kind,
+  initial,
+  onValidate,
+  onCancel,
+  suggestParams,
+}: {
+  kind: 'review' | 'section' | 'subject';
+  initial: string;
+  onValidate: (name: string) => void;
+  onCancel: () => void;
+  suggestParams: Parameters<typeof api.suggestName>[0];
+}) {
+  const [value, setValue] = useState(initial);
+  const [loading, setLoading] = useState(false);
+
+  const regenerate = async () => {
+    setLoading(true);
+    try {
+      const res = await api.suggestName({ ...suggestParams, existingSuggestion: value });
+      if (res.name && res.name.trim()) setValue(res.name);
+    } catch (err) {
+      console.warn('[suggestName] failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const kindLabel = kind === 'review' ? 'review' : kind === 'section' ? 'section' : 'sujet';
+
+  return (
+    <span className={styles.inlineNameEditor}>
+      <input
+        type="text"
+        className={styles.inlineNameEditorInput}
+        value={value}
+        placeholder={`Nom de la nouvelle ${kindLabel}…`}
+        disabled={loading}
+        autoFocus
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); onValidate(value); }
+          if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+        }}
+      />
+      <button
+        type="button"
+        className={styles.inlineNameEditorBtn}
+        onClick={regenerate}
+        disabled={loading}
+        title="Proposer un nouveau nom avec l'IA"
+      >
+        {loading ? '⏳' : '🤖'}
+      </button>
+      <button
+        type="button"
+        className={`${styles.inlineNameEditorBtn} ${styles.inlineNameEditorValidate}`}
+        onClick={() => onValidate(value)}
+        disabled={loading || !value.trim()}
+        title="Valider ce nom"
+      >
+        ✓
+      </button>
+      <button
+        type="button"
+        className={styles.inlineNameEditorBtn}
+        onClick={onCancel}
+        disabled={loading}
+        title="Annuler"
+      >
+        ✕
+      </button>
+    </span>
   );
 }

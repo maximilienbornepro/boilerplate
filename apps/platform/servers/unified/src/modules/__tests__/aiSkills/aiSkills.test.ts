@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SKILLS, getSkill } from '../../aiSkills/registry.js';
 
 describe('aiSkills.registry', () => {
-  it('exposes the 15 expected slugs (legacy + modular pipelines + multi-source reconciliation)', () => {
+  it('exposes the 16 expected slugs (legacy + modular pipelines + multi-source reconciliation + name suggester)', () => {
     const slugs = SKILLS.map(s => s.slug).sort();
     expect(slugs).toEqual([
       'delivery-assess-tickets',
@@ -20,6 +20,7 @@ describe('aiSkills.registry', () => {
       'suivitess-reconcile-multi-source',
       'suivitess-reformulate-subject',
       'suivitess-route-source-to-review',
+      'suivitess-suggest-name',
     ]);
   });
 

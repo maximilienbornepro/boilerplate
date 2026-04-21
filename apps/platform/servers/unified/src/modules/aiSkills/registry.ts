@@ -219,6 +219,18 @@ export const SKILLS: readonly SkillDefinition[] = [
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/compose-situation.md'),
   },
   {
+    slug: 'suivitess-suggest-name',
+    name: 'SuiviTess — Proposer un nom de review / section / sujet',
+    description:
+      "Utilitaire appelé à la demande depuis la modale d'import bulk : propose un nom adapté quand l'utilisateur crée une nouvelle review, section ou sujet. Prend le contexte source (rawQuotes, entities, parents) et renvoie un nom court. Supporte aussi la re-génération avec une suggestion précédente comme input.",
+    usage: {
+      module: 'suivitess',
+      endpoint: 'POST /suivitess/api/transcription/suggest-name',
+      trigger: "Bouton « 🤖 Proposer avec l'IA » dans l'éditeur de nom du wizard d'import bulk",
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/suggest-name.md'),
+  },
+  {
     slug: 'suivitess-reconcile-multi-source',
     name: 'SuiviTess — Pipeline/T1.5 : réconcilier plusieurs sources',
     description:

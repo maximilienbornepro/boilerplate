@@ -3259,6 +3259,58 @@ ${filteredContent.slice(0, 30000)}`,
     }
   }));
 
+  // Suggest a name for a new review / section / subject via the
+  // suivitess-suggest-name skill. Called from the inline "+ Créer
+  // nouvelle X" editor in the bulk-import wizard so the user gets
+  // an AI proposal adapted to the source content, with the ability
+  // to regenerate by passing a previous suggestion back in.
+  router.post('/transcription/suggest-name', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { kind, sourceTitle, rawQuotes, entities, existingSuggestion, parentReviewTitle, parentSectionName, sourceKind } = (req.body || {}) as {
+      kind?: 'review' | 'section' | 'subject';
+      sourceTitle?: string;
+      rawQuotes?: string[];
+      entities?: string[];
+      existingSuggestion?: string;
+      parentReviewTitle?: string;
+      parentSectionName?: string;
+      sourceKind?: string;
+    };
+    if (!kind || !['review', 'section', 'subject'].includes(kind)) {
+      res.status(400).json({ error: 'kind requis (review / section / subject)' });
+      return;
+    }
+    const { runSkill } = await import('../aiSkills/runSkill.js');
+    const ctx = {
+      kind,
+      sourceTitle: sourceTitle ?? '',
+      rawQuotes: Array.isArray(rawQuotes) ? rawQuotes : [],
+      entities: Array.isArray(entities) ? entities : [],
+      existingSuggestion: existingSuggestion ?? null,
+      parentReviewTitle: parentReviewTitle ?? null,
+      parentSectionName: parentSectionName ?? null,
+    };
+    try {
+      const run = await runSkill({
+        slug: 'suivitess-suggest-name',
+        userId,
+        userEmail: req.user!.email || '',
+        buildContext: () => `## Contexte\n\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\n\`\`\`\n\nRenvoie UNIQUEMENT l'objet JSON { "name": … }.`,
+        inputContent: JSON.stringify(ctx),
+        sourceKind: (sourceKind as 'transcript' | 'slack' | 'outlook') ?? 'transcript',
+        sourceTitle: sourceTitle ?? 'suggest-name',
+        documentId: null,
+        parentLogId: null,
+        maxTokens: 200,
+      });
+      const match = run.outputText.match(/\{[\s\S]*\}/);
+      const parsed = match ? JSON.parse(match[0]) as { name?: string } : null;
+      res.json({ name: parsed?.name ?? '', logId: run.logId });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message || 'Échec suggestion' });
+    }
+  }));
+
   router.post('/transcription/apply-routing', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
     const { sourceId, subjects } = (req.body || {}) as {

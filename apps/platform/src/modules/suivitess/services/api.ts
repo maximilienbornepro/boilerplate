@@ -834,6 +834,33 @@ export async function generateComposeText(params: {
   return res.json();
 }
 
+/** Ask the AI to suggest a name for a new review / section / subject.
+ *  Runs the suivitess-suggest-name skill server-side. Passing an
+ *  `existingSuggestion` triggers a re-generation (the skill returns a
+ *  different angle). */
+export async function suggestName(params: {
+  kind: 'review' | 'section' | 'subject';
+  sourceTitle?: string;
+  rawQuotes?: string[];
+  entities?: string[];
+  existingSuggestion?: string;
+  parentReviewTitle?: string;
+  parentSectionName?: string;
+  sourceKind?: string;
+}): Promise<{ name: string; logId: number | null }> {
+  const res = await fetch(`${API_BASE}/transcription/suggest-name`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function replayRun(t2LogId: number): Promise<ReplayResponse> {
   const res = await fetch(`${API_BASE}/transcription/replay/${t2LogId}`, {
     method: 'POST',

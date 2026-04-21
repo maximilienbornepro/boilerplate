@@ -1717,6 +1717,73 @@
   opacity: 0.5;
 }
 
+/* Inline name editor : takes the place of the pill when the user
+   picks "+ Créer nouvelle X" — lets them type the name + regenerate
+   via IA without leaving the sentence. */
+.inlineNameEditor {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: baseline;
+  padding: 1px 4px;
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
+}
+
+.inlineNameEditorInput {
+  border: none;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: inherit;
+  color: var(--text-primary);
+  min-width: 180px;
+  padding: 2px 4px;
+  outline: none;
+}
+
+.inlineNameEditorInput:focus {
+  box-shadow: inset 0 -1px 0 var(--accent-primary);
+}
+
+.inlineNameEditorBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.inlineNameEditorBtn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+}
+
+.inlineNameEditorBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inlineNameEditorValidate {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--text-inverse, #fff);
+  font-weight: var(--font-weight-bold);
+}
+
+.inlineNameEditorValidate:hover:not(:disabled) {
+  background: var(--success);
+  filter: brightness(1.1);
+}
+
 /* "✎ modifié" badge shown when the current routing diverges from the
    AI's original proposal — makes it visually obvious that the user
    has overridden the IA. */
