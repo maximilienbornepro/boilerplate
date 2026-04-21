@@ -296,10 +296,15 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
       if (scopedDocumentId) {
         // Document-scoped flow : skip place-in-reviews entirely and
         // use the doc-bulk endpoint that runs place-in-document on
-        // each source, with the destination doc pre-locked.
-        const res = await api.analyzeDocumentBulk(
+        // each source, with the destination doc pre-locked. Polls
+        // the job tracker just like the global bulk flow so the
+        // PipelineStepsIndicator (T1/T2/T3) is driven by real
+        // progress events instead of a dumb spinner.
+        const res = await api.analyzeDocumentBulkWithPolling(
           scopedDocumentId,
           selectedItems.map(s => ({ source: s.provider, id: s.id, title: s.title, date: s.date })),
+          (status) => setPipelineStatus(status),
+          { intervalMs: 500 },
         );
         if (res.logId != null) setLastLogId(res.logId);
         setSummary(res.summary);

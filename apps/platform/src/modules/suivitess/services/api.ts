@@ -834,15 +834,15 @@ export async function generateComposeText(params: {
   return res.json();
 }
 
-/** Document-scoped bulk analyze — same output shape as the global
- *  bulk analyze (AnalyzedSubject[] + availableReviews) but constrained
- *  to a single suivitess document. Skips the place-in-reviews skill
- *  entirely and runs place-in-document instead, so the proposals are
- *  guaranteed to land in the scoped document. */
-export async function analyzeDocumentBulk(
+/** Document-scoped bulk analyze — async variant that returns a jobId
+ *  immediately and runs the pipeline in the background. Same output
+ *  shape as the global multi-source flow ; frontend polls
+ *  /pipeline-jobs/:id to drive the progress indicator. Skips the
+ *  place-in-reviews skill entirely (place-in-document only). */
+export async function startAnalyzeDocumentBulkJob(
   docId: string,
   sources: Array<{ source: string; id: string; title: string; date?: string | null }>,
-): Promise<AnalysisResponse> {
+): Promise<{ jobId: string }> {
   const res = await fetch(`${API_BASE}/documents/${docId}/bulk-analyze`, {
     method: 'POST',
     credentials: 'include',
@@ -854,6 +854,29 @@ export async function analyzeDocumentBulk(
     throw new Error(data.error || `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+/** High-level helper : start the doc-scoped job + poll until done,
+ *  firing a callback on every status update so the modal can show
+ *  the T1/T2/T3 progress indicator. Returns the same AnalysisResponse
+ *  shape as the global bulk flow. */
+export async function analyzeDocumentBulkWithPolling(
+  docId: string,
+  sources: Array<{ source: string; id: string; title: string; date?: string | null }>,
+  onStatus: (status: PipelineJobStatus) => void,
+  opts: { intervalMs?: number; signal?: AbortSignal } = {},
+): Promise<AnalysisResponse> {
+  const interval = opts.intervalMs ?? 500;
+  const { jobId } = await startAnalyzeDocumentBulkJob(docId, sources);
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (opts.signal?.aborted) throw new Error('aborted');
+    const status = await getPipelineJob(jobId);
+    onStatus(status);
+    if (status.phase === 'done') return status.result as AnalysisResponse;
+    if (status.phase === 'error') throw new Error(status.error || 'Pipeline error');
+    await new Promise<void>(r => setTimeout(r, interval));
+  }
 }
 
 /** Ask the AI to suggest a name for a new review / section / subject.

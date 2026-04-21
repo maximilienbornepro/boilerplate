@@ -3382,15 +3382,17 @@ ${filteredContent.slice(0, 30000)}`,
     }
   }));
 
-  // Document-scoped bulk import : same UX as the global bulk-import
-  // modal but constrained to a single suivitess document. Skips the
-  // place-in-reviews skill (useless when the destination doc is
-  // already known) and uses analyzeSourceForDocument internally to
-  // pick section + subject within THIS document only. Proposals are
-  // adapted to the FinalReviewProposal shape expected by the modal,
-  // with reviewId = docId and action = 'existing-review' pre-set so
-  // the frontend can reuse 100% of its tile UX.
+  // Document-scoped bulk import — ASYNC variant that mirrors the
+  // global multi-source flow : returns { jobId } immediately, runs
+  // the pipeline in background and feeds the PipelineStepsIndicator
+  // via `/pipeline-jobs/:id` polling. Skips place-in-reviews and
+  // uses analyzeSourceForDocument (section + subject only) per
+  // selected source, then adapts each proposal to the shape the
+  // bulk modal expects.
   router.post('/documents/:docId/bulk-analyze', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const userEmail = req.user!.email;
+    const isAdmin = req.user!.isAdmin;
     const { docId } = req.params;
     const { sources } = (req.body || {}) as {
       sources?: Array<{ source: string; id: string; title: string; date?: string | null }>;
@@ -3406,141 +3408,151 @@ ${filteredContent.slice(0, 30000)}`,
       return;
     }
 
-    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
-    try {
-      await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'transcript_analysis');
-    } catch (e) {
-      if (e instanceof InsufficientCreditsError) {
-        res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available });
-        return;
-      }
-      throw e;
-    }
+    const { createJob, makeOnProgress, finishJob, failJob } = await import('../aiSkills/pipelineJobs.js');
+    const job = createJob();
+    res.json({ jobId: job.id });
 
-    const { analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
-
-    const documentCtx = {
-      id: String(doc.id),
-      title: doc.title,
-      sections: doc.sections.map(s => ({
-        id: String(s.id),
-        name: s.name,
-        subjects: s.subjects.map(sub => ({
-          id: String(sub.id),
-          title: sub.title,
-          situationExcerpt: (sub.situation || '').slice(0, 2000),
-          status: sub.status,
-          responsibility: sub.responsibility ?? null,
-        })),
-      })),
-    };
-
-    // Fetch raw content per source (same multiplex as the streaming
-    // bulk endpoint further down in this file). Uses the collector
-    // services that back the bulk-sources list.
-    const userId = req.user!.id;
-    async function fetchSourceText(src: { source: string; id: string; title: string }): Promise<string | null> {
+    setImmediate(async () => {
       try {
-        if (src.source === 'fathom') {
-          const { getFathomTranscript } = await import('./fathomService.js');
-          const entries = await getFathomTranscript(userId, src.id);
-          return entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+        const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+        try {
+          await deductCredits(userId, isAdmin, 'suivitess', 'transcript_analysis');
+        } catch (e) {
+          if (e instanceof InsufficientCreditsError) { failJob(job.id, 'INSUFFICIENT_CREDITS'); return; }
+          throw e;
         }
-        if (src.source === 'otter') {
-          const { getOtterTranscript } = await import('./otterService.js');
-          const entries = await getOtterTranscript(userId, src.id);
-          return entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
-        }
-        if (src.source === 'outlook') {
-          if (src.id.startsWith('outlook:')) {
-            const dateFilter = src.id.replace('outlook:', '');
-            const { getOutlookMessages } = await import('./outlookCollectorService.js');
-            const msgs = await getOutlookMessages(userId, { days: 30 });
-            const filtered = dateFilter && dateFilter !== 'unknown'
-              ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
-              : msgs;
-            return filtered.map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`).join('\n');
+
+        const { analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+
+        const documentCtx = {
+          id: String(doc.id),
+          title: doc.title,
+          sections: doc.sections.map(s => ({
+            id: String(s.id),
+            name: s.name,
+            subjects: s.subjects.map(sub => ({
+              id: String(sub.id),
+              title: sub.title,
+              situationExcerpt: (sub.situation || '').slice(0, 2000),
+              status: sub.status,
+              responsibility: sub.responsibility ?? null,
+            })),
+          })),
+        };
+
+        // Same multiplex as the streaming bulk endpoint.
+        async function fetchSourceText(src: { source: string; id: string; title: string }): Promise<string | null> {
+          try {
+            if (src.source === 'fathom') {
+              const { getFathomTranscript } = await import('./fathomService.js');
+              const entries = await getFathomTranscript(userId, src.id);
+              return entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+            }
+            if (src.source === 'otter') {
+              const { getOtterTranscript } = await import('./otterService.js');
+              const entries = await getOtterTranscript(userId, src.id);
+              return entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+            }
+            if (src.source === 'outlook') {
+              if (src.id.startsWith('outlook:')) {
+                const dateFilter = src.id.replace('outlook:', '');
+                const { getOutlookMessages } = await import('./outlookCollectorService.js');
+                const msgs = await getOutlookMessages(userId, { days: 30 });
+                const filtered = dateFilter && dateFilter !== 'unknown'
+                  ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
+                  : msgs;
+                return filtered.map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`).join('\n');
+              }
+              const { getOutlookEmailBody } = await import('./emailService.js');
+              return await getOutlookEmailBody(userId, src.id);
+            }
+            if (src.source === 'gmail') {
+              const { getGmailEmailBody } = await import('./emailService.js');
+              return await getGmailEmailBody(userId, src.id);
+            }
+            if (src.source === 'slack') {
+              const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+              const slackConfig = await getSlackConfig(userId);
+              if (!slackConfig) return null;
+              const parts = src.id.split(':');
+              const channelId = parts[1] || parts[0];
+              const dateFilter = parts[2];
+              const messages = await getSlackMessages(slackConfig.id, { days: slackConfig.daysToFetch, channelId });
+              const filtered = dateFilter
+                ? messages.filter(m => new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10) === dateFilter)
+                : messages;
+              return filtered
+                .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+                .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`).join('\n');
+            }
+            return null;
+          } catch (err) {
+            console.warn(`[doc-bulk-analyze] failed to fetch ${src.source}/${src.id}:`, err);
+            return null;
           }
-          const { getOutlookEmailBody } = await import('./emailService.js');
-          return await getOutlookEmailBody(userId, src.id);
         }
-        if (src.source === 'gmail') {
-          const { getGmailEmailBody } = await import('./emailService.js');
-          return await getGmailEmailBody(userId, src.id);
-        }
-        if (src.source === 'slack') {
-          const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
-          const slackConfig = await getSlackConfig(userId);
-          if (!slackConfig) return null;
-          const parts = src.id.split(':');
-          const channelId = parts[1] || parts[0];
-          const dateFilter = parts[2];
-          const messages = await getSlackMessages(slackConfig.id, { days: slackConfig.daysToFetch, channelId });
-          const filtered = dateFilter
-            ? messages.filter(m => new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10) === dateFilter)
-            : messages;
-          return filtered
-            .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
-            .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`).join('\n');
-        }
-        return null;
-      } catch (err) {
-        console.warn(`[doc-bulk-analyze] failed to fetch ${src.source}/${src.id}:`, err);
-        return null;
-      }
-    }
 
-    // Run the pipeline per source + accumulate proposals. Each source
-    // keeps its own rawQuotes on the proposal so the frontend can
-    // forward them to /apply-routing (and to the append regen skill).
-    const allProposals: FinalReviewProposalAdapted[] = [];
-    let lastLogId: number | null = null;
-    for (const src of sources) {
-      const text = await fetchSourceText(src);
-      if (!text) continue;
-      const sourceKind: 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail' =
-        src.source === 'slack' ? 'slack'
-        : src.source === 'outlook' ? 'outlook'
-        : src.source === 'gmail' ? 'gmail'
-        : src.source === 'fathom' ? 'transcript'
-        : src.source === 'otter' ? 'transcript'
-        : 'transcript';
-      try {
-        const { proposals, rootLogId } = await analyzeSourceForDocument({
-          sourceKind,
-          sourceRaw: text,
-          sourceTitle: src.title,
-          document: documentCtx,
-          userId: req.user!.id,
-          userEmail: req.user!.email || '',
+        // Progress bridge : we have N sources and each runs a full
+        // T1 → T2 → T3 pipeline. The frontend indicator uses the
+        // first-source boundaries as a good enough signal (it's what
+        // the multi-source bulk does). We fan progress from every
+        // source into the same onProgress → the user sees t1/t2/t3
+        // ticks as they happen.
+        const onProgress = makeOnProgress(job.id);
+
+        const allProposals: FinalReviewProposalAdapted[] = [];
+        let lastLogId: number | null = null;
+        for (const src of sources) {
+          const text = await fetchSourceText(src);
+          if (!text || !text.trim()) continue;
+          const sourceKind: 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail' =
+            src.source === 'slack' ? 'slack'
+            : src.source === 'outlook' ? 'outlook'
+            : src.source === 'gmail' ? 'gmail'
+            : src.source === 'fathom' ? 'transcript'
+            : src.source === 'otter' ? 'transcript'
+            : 'transcript';
+          try {
+            const { proposals, rootLogId } = await analyzeSourceForDocument({
+              sourceKind,
+              sourceRaw: text,
+              sourceTitle: src.title,
+              document: documentCtx,
+              userId,
+              userEmail: userEmail || '',
+            }, onProgress);
+            if (rootLogId != null) lastLogId = rootLogId;
+            for (const p of proposals) {
+              const fannedOut = adaptDocProposalToReviewShape(p, doc.id);
+              for (const adapted of fannedOut) allProposals.push(adapted);
+            }
+          } catch (err) {
+            console.error(`[doc-bulk-analyze] analyzeSourceForDocument failed for ${src.source}/${src.id}:`, err);
+          }
+        }
+
+        const availableReview = {
+          id: doc.id,
+          title: doc.title,
+          sections: doc.sections.map(s => ({
+            id: s.id,
+            name: s.name,
+            subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
+          })),
+        };
+
+        finishJob(job.id, {
+          summary: allProposals.length > 0
+            ? `${allProposals.length} sujet(s) extrait(s) et routé(s) dans ${doc.title}.`
+            : 'Aucun sujet exploitable.',
+          subjects: allProposals,
+          availableReviews: [availableReview],
+          logId: lastLogId,
         });
-        if (rootLogId != null) lastLogId = rootLogId;
-        for (const p of proposals) {
-          const fannedOut = adaptDocProposalToReviewShape(p, doc.id);
-          for (const adapted of fannedOut) allProposals.push(adapted);
-        }
       } catch (err) {
-        console.error(`[doc-bulk-analyze] analyzeSourceForDocument failed for ${src.source}/${src.id}:`, err);
+        console.error('[doc-bulk-analyze async] error:', err);
+        failJob(job.id, err instanceof Error ? err.message : 'Erreur inconnue');
       }
-    }
-
-    const availableReview = {
-      id: doc.id,
-      title: doc.title,
-      sections: doc.sections.map(s => ({
-        id: s.id,
-        name: s.name,
-        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
-      })),
-    };
-
-    res.json({
-      summary: allProposals.length > 0
-        ? `${allProposals.length} sujet(s) extrait(s) et routé(s) dans ${doc.title}.`
-        : 'Aucun sujet exploitable.',
-      subjects: allProposals,
-      availableReviews: [availableReview],
-      logId: lastLogId,
     });
   }));
 
