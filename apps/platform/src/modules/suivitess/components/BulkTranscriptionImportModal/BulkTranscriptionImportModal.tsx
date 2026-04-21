@@ -1510,9 +1510,9 @@ function SubjectRow({
               {userChangedRoute && (
                 <span
                   className={styles.aiDecisionModifiedBadge}
-                  title="Tu as changé au moins une des 3 propositions de l'IA (review, section ou sujet). Ce badge disparaît si tu reviens à la proposition d'origine."
+                  title="Tu as choisi une review, section ou sujet différent de ce que l'IA avait proposé. Le texte en gras ci-dessus reflète ton choix."
                 >
-                  ✎ tu as modifié la route IA
+                  ✎ ton choix
                 </span>
               )}
             </p>
