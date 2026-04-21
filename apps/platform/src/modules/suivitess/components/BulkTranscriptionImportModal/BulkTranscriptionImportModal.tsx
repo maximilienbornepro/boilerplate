@@ -1348,42 +1348,38 @@ function SubjectRow({
           || (subjectAction === 'update' && targetSubjectId !== subject.targetSubjectId);
         return (
           <div className={`${styles.aiDecisionCard} ${currentIsUpdate ? styles.aiDecisionCardUpdate : styles.aiDecisionCardCreate}`}>
-            {/* Decision read top-down : Review → Section → Subject.
-                Each row is its own line so the user scans by level,
-                not by sentence. */}
-            <div className={styles.aiDecisionRows}>
-              <div className={styles.aiDecisionRow}>
-                <span className={styles.aiDecisionRowLabel}>
-                  {currentReviewIsExisting ? 'Review existante' : 'Nouvelle review'}
-                </span>
-                <span className={`${styles.aiDecisionRowValue} ${currentReviewIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}`}>
-                  « {currentReviewLabel} »
-                </span>
-              </div>
-              <div className={styles.aiDecisionRow}>
-                <span className={styles.aiDecisionRowLabel}>
-                  {currentSectionIsExisting ? 'Section existante' : 'Nouvelle section'}
-                </span>
-                <span className={`${styles.aiDecisionRowValue} ${currentSectionIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}`}>
-                  « {currentSectionLabel} »
-                </span>
-              </div>
-              <div className={styles.aiDecisionRow}>
-                <span className={styles.aiDecisionRowLabel}>
-                  {currentIsUpdate ? 'Mise à jour du sujet' : 'Nouveau sujet'}
-                </span>
-                <span className={`${styles.aiDecisionRowValue} ${styles.aiDecisionTargetSubject}`}>
-                  {currentIsUpdate
-                    ? (currentTargetSubjectTitle
-                        ? <>« {currentTargetSubjectTitle} »</>
-                        : <em>(cible non résolue — à choisir ci-dessous)</em>)
-                    : <>« {subject.title} »</>}
-                </span>
-                {userChangedRoute && (
-                  <span className={styles.aiDecisionModifiedBadge} title="Tu as modifié la proposition de l'IA">✎ modifié</span>
-                )}
-              </div>
-            </div>
+            {/* Natural-language sentence read left-to-right in the same
+                order as the wizard steps : Review → Section → Subject.
+                Pills keep the "existant vs nouveau" color signal. */}
+            <p className={styles.aiDecisionStatement}>
+              Dans la {currentReviewIsExisting ? 'review existante' : <strong>nouvelle review</strong>}{' '}
+              <strong className={currentReviewIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentReviewLabel} »</strong>
+              , {currentSectionIsExisting ? 'section existante' : <strong>nouvelle section</strong>}{' '}
+              <strong className={currentSectionIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentSectionLabel} »</strong>
+              ,{' '}
+              <strong className={styles.aiDecisionStatementLead}>
+                {currentIsUpdate ? 'MISE À JOUR' : 'CRÉATION'}
+              </strong>{' '}
+              {currentIsUpdate ? (
+                currentTargetSubjectTitle ? (
+                  <>
+                    du sujet existant{' '}
+                    <strong className={styles.aiDecisionTargetSubject}>« {currentTargetSubjectTitle} »</strong>
+                  </>
+                ) : (
+                  <>d'un sujet existant <em>(cible non résolue — à choisir ci-dessous)</em></>
+                )
+              ) : (
+                <>
+                  d'un nouveau sujet{' '}
+                  <strong className={styles.aiDecisionTargetSubject}>« {subject.title} »</strong>
+                </>
+              )}
+              .
+              {userChangedRoute && (
+                <span className={styles.aiDecisionModifiedBadge} title="Tu as modifié la proposition de l'IA">✎ modifié</span>
+              )}
+            </p>
             {subject.reasoning && (
               <p className={styles.aiDecisionReason}>
                 <strong className={styles.aiDecisionReasonLead}>RAISON IA :</strong> {subject.reasoning}
