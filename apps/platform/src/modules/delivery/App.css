@@ -137,6 +137,22 @@
   display: inline-flex;
 }
 
+/* Board switcher CTA : show the active board name as the button label
+   (not a generic "Boards" placeholder). Truncates at a max width so a
+   long board title doesn't push the other header CTAs off-screen. */
+.delivery-board-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  max-width: 260px;
+}
+
+.delivery-board-switcher-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .delivery-actions-menu {
   position: absolute;
   top: calc(100% + 4px);
