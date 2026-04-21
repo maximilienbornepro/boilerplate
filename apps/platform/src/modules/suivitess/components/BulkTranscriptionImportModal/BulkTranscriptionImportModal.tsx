@@ -608,6 +608,20 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                   const breadcrumbTitle =
                     `${reviewIsExisting ? 'Review trouvée' : 'Nouvelle review'} : "${reviewLabel}"`
                     + ` › ${sectionIsExisting ? 'Section trouvée' : 'Nouvelle section'} : "${sectionLabel}"`;
+                  // Validation mirrors the detailed-row rule so "Ajouter"
+                  // in the sommaire behaves identically to "Ajouter" inside
+                  // the row — we never mark a row as confirmed if it's
+                  // missing required fields, otherwise the final import
+                  // would silently push incomplete data.
+                  const missing: string[] = [];
+                  if (r.sectionMode === 'existing') {
+                    if (!r.reviewId) missing.push('review');
+                    else if (!r.sectionId && !r.newSectionName.trim()) missing.push('section');
+                  } else {
+                    if (!r.reviewId && !r.newReviewTitle.trim()) missing.push('titre de la nouvelle review');
+                    if (!r.newSectionName.trim()) missing.push('nom de la nouvelle section');
+                  }
+                  const canConfirmRow = missing.length === 0;
                   return (
                     <div
                       key={r.key}
@@ -650,19 +664,39 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                           ↻ statut
                         </span>
                       ) : <span aria-hidden="true" />}
-                      {/* Col 7 : validate button — click to mark as confirmed
-                          (AI proposal accepted as-is). The detailed row will
-                          disappear below, only rows needing more work stay. */}
+                      {/* Col 7 : confirm button — same semantics as the
+                          "Ajouter" button inside the detailed row. Marks
+                          the proposal as accepted-as-is ; the detailed
+                          row disappears below so the user focuses on what
+                          still needs attention. Second click un-confirms.
+                          Disabled (with a tooltip listing missing fields)
+                          when the row is incomplete — forces the user to
+                          open the row to fix it rather than silently
+                          pushing bad data through. */}
                       <button
                         type="button"
                         className={`${styles.summaryItemValidate} ${r.confirmed ? styles.summaryItemValidateActive : ''}`}
-                        onClick={() => updateRow(r.key, { confirmed: !r.confirmed, skipped: false })}
-                        title={r.confirmed
-                          ? 'Cliquer pour revenir dessus (la ligne détaillée réapparaîtra)'
-                          : 'Valider la proposition IA — la ligne détaillée disparaîtra en bas'}
+                        onClick={() => {
+                          if (!canConfirmRow && !r.confirmed) {
+                            // Not enough data to confirm — navigate to the
+                            // row so the user can see the validation errors.
+                            const el = document.getElementById(`subj-${r.key}`);
+                            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            return;
+                          }
+                          updateRow(r.key, { confirmed: !r.confirmed, skipped: false });
+                        }}
+                        title={
+                          r.confirmed
+                            ? 'Cliquer pour revenir dessus (la ligne détaillée réapparaîtra)'
+                            : canConfirmRow
+                              ? 'Valider la proposition IA — la ligne détaillée disparaîtra en bas'
+                              : `Incomplet — manque : ${missing.join(', ')}. Clique pour ouvrir la ligne détaillée.`
+                        }
                         aria-pressed={r.confirmed}
+                        data-incomplete={!r.confirmed && !canConfirmRow ? 'true' : undefined}
                       >
-                        {r.confirmed ? '✓' : 'Valider'}
+                        {r.confirmed ? '✓ Ajouté' : canConfirmRow ? 'Ajouter' : '⚠ Incomplet'}
                       </button>
                     </div>
                   );

@@ -175,7 +175,7 @@
      4. Optional status-change badge → auto, fixed slot on the right */
 .summaryItem {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px minmax(0, 180px) 14px minmax(0, 180px) 80px 80px;
+  grid-template-columns: minmax(0, 1fr) 110px minmax(0, 180px) 14px minmax(0, 180px) 80px 100px;
   align-items: center;
   gap: var(--spacing-sm);
   padding: 2px 4px;
@@ -231,6 +231,18 @@
 }
 .summaryItemValidateActive:hover {
   background: color-mix(in srgb, var(--success, #10b981) 25%, transparent);
+}
+
+/* Incomplete row — can't confirm until required fields are filled.
+   Click takes the user to the row so they can see what's missing,
+   rather than silently validating with bad data. */
+.summaryItemValidate[data-incomplete="true"] {
+  border-color: var(--warning, #f59e0b);
+  color: var(--warning, #f59e0b);
+  background: color-mix(in srgb, var(--warning, #f59e0b) 6%, transparent);
+}
+.summaryItemValidate[data-incomplete="true"]:hover {
+  background: color-mix(in srgb, var(--warning, #f59e0b) 15%, transparent);
 }
 .summaryItem:hover .summaryItemTitle {
   color: var(--text-primary);
