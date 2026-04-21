@@ -348,6 +348,131 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     });
   };
 
+  /** Build a single ApplyRoutingSubject payload from a Row. Shared by both
+   *  `handleApply` (bulk "Importer la sélection") and `handleImmediateAdd`
+   *  (per-row "Ajouter" that commits immediately) so the two paths never
+   *  diverge on payload shape. */
+  const buildSubjectPayload = (r: Row): api.ApplyRoutingSubject => {
+    const isUpdate = r.subjectAction === 'update' && !!r.targetSubjectId;
+    return {
+      title: r.subject.title,
+      situation: r.subject.situation,
+      status: r.subject.status,
+      responsibility: r.subject.responsibility,
+      targetReviewId: r.reviewId,
+      newReviewTitle: r.reviewId ? null : (r.newReviewTitle || r.subject.suggestedNewReviewTitle || 'Nouvelle review'),
+      // sectionMode is the source of truth : 'existing' → send sectionId,
+      // 'new' → send the name (even if a sectionId was previously set in
+      // the row, the user explicitly chose to ignore it). Fallback on the
+      // AI suggestion for 'new' when the user hasn't typed anything.
+      targetSectionId: r.sectionMode === 'existing' ? r.sectionId : null,
+      newSectionName: r.sectionMode === 'existing'
+        ? null
+        : (r.newSectionName || r.subject.suggestedNewSectionName || 'Nouveau point'),
+      subjectAction: isUpdate ? 'update-existing-subject' : 'new-subject',
+      targetSubjectId: isUpdate ? r.targetSubjectId : null,
+      updatedSituation: isUpdate ? (r.subject.updatedSituation ?? r.subject.situation) : null,
+      updatedStatus: isUpdate ? (r.subject.updatedStatus ?? r.subject.status) : null,
+      updatedResponsibility: isUpdate ? r.subject.updatedResponsibility : null,
+      // Forward the source context so the backend can feed the per-user
+      // pgvector routing memory with the validated decision. Pure
+      // observability at this layer ; safe to drop if undefined.
+      rawQuotes: r.subject.sourceRawQuotes,
+      entities: r.subject.sourceEntities,
+      participants: r.subject.sourceParticipants,
+      aiProposedReviewId: r.subject.aiProposedReviewId ?? null,
+      aiProposedReviewTitle: r.subject.aiProposedReviewTitle ?? null,
+    };
+  };
+
+  /** Validation predicate — single source of truth for "is this row
+   *  ready to be committed ?". Mirrors the rule used in the sommaire
+   *  button and the detailed-row button. Returns the list of missing
+   *  field labels (empty = complete). */
+  const getMissingFields = (r: Row): string[] => {
+    const missing: string[] = [];
+    if (r.sectionMode === 'existing') {
+      if (!r.reviewId) missing.push('review');
+      else if (!r.sectionId && !r.newSectionName.trim()) missing.push('section');
+    } else {
+      if (!r.reviewId && !r.newReviewTitle.trim()) missing.push('titre de la nouvelle review');
+      if (!r.newSectionName.trim()) missing.push('nom de la nouvelle section');
+    }
+    return missing;
+  };
+
+  // ── Cumulative result of all immediate-add clicks. Tracks counts +
+  // touched review ids so the final `onDone` (fired on modal close /
+  // "Importer le reste") reports the true total instead of only the
+  // last bulk import's numbers. Resets when phase goes back to
+  // 'picking'. ──
+  const [cumulativeApplied, setCumulativeApplied] = useState<{
+    importedSubjects: number;
+    updatedSubjects: number;
+    createdReviews: number;
+    createdSections: number;
+    touchedReviewIds: Set<string>;
+  }>({
+    importedSubjects: 0,
+    updatedSubjects: 0,
+    createdReviews: 0,
+    createdSections: 0,
+    touchedReviewIds: new Set(),
+  });
+
+  // Row key currently being committed via handleImmediateAdd — drives
+  // the per-row "Ajout en cours…" spinner without blocking the rest
+  // of the UI.
+  const [addingRowKey, setAddingRowKey] = useState<string | null>(null);
+
+  /** Commit ONE subject to the DB immediately, then remove its row from
+   *  the list. The user clicks "Ajouter" and the subject is persisted
+   *  right away (no more batch-accumulate-then-import). */
+  const handleImmediateAdd = async (rowKey: string) => {
+    const row = rows.find(r => r.key === rowKey);
+    if (!row) return;
+    const missing = getMissingFields(row);
+    if (missing.length > 0) {
+      // Surface a temporary error banner — the detailed row will still
+      // be visible below so the user can fix it.
+      setError(`Impossible d'ajouter « ${row.subject.title} » : manque ${missing.join(', ')}`);
+      setTimeout(() => setError(''), 4000);
+      return;
+    }
+
+    setAddingRowKey(rowKey);
+    try {
+      const sourceId = primaryItem?.id
+        ?? (replayedFromLogId != null ? `replay:${replayedFromLogId}` : 'manual');
+      const res = await api.applyRouting(sourceId, [buildSubjectPayload(row)]);
+
+      // Accumulate the result. Touched reviews = freshly-created reviews
+      // + reviews that received new subjects + (for updates) the row's
+      // original reviewId.
+      setCumulativeApplied(prev => {
+        const touched = new Set(prev.touchedReviewIds);
+        for (const rv of res.reviewsCreated) touched.add(rv.id);
+        for (const s of res.subjectsCreated) touched.add(s.reviewId);
+        if (row.subjectAction === 'update' && row.reviewId) touched.add(row.reviewId);
+        return {
+          importedSubjects: prev.importedSubjects + res.subjectsCreated.length,
+          updatedSubjects: prev.updatedSubjects + res.subjectsUpdated.length,
+          createdReviews: prev.createdReviews + res.reviewsCreated.length,
+          createdSections: prev.createdSections + res.sectionsCreated.length,
+          touchedReviewIds: touched,
+        };
+      });
+
+      // Remove the committed row from the list so the user sees exactly
+      // what's left to process.
+      setRows(prev => prev.filter(r => r.key !== rowKey));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ajout échoué");
+    } finally {
+      setAddingRowKey(null);
+    }
+  };
+
   const handleApply = async () => {
     // primaryItem is null when the user arrived via the "Rejouer un
     // import précédent" path — they didn't re-pick sources. We still
@@ -355,39 +480,22 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
     // backend (used only to mark bookkeeping in suivitess_transcript_imports).
     const subjectsToApply: api.ApplyRoutingSubject[] = rows
       .filter(r => !r.skipped)
-      .map(r => {
-        const isUpdate = r.subjectAction === 'update' && r.targetSubjectId;
-        return {
-          title: r.subject.title,
-          situation: r.subject.situation,
-          status: r.subject.status,
-          responsibility: r.subject.responsibility,
-          targetReviewId: r.reviewId,
-          newReviewTitle: r.reviewId ? null : (r.newReviewTitle || r.subject.suggestedNewReviewTitle || 'Nouvelle review'),
-          // sectionMode is the source of truth : 'existing' → send sectionId,
-          // 'new' → send the name (even if a sectionId was previously set in
-          // the row, the user explicitly chose to ignore it). Fallback on the
-          // AI suggestion for 'new' when the user hasn't typed anything.
-          targetSectionId: r.sectionMode === 'existing' ? r.sectionId : null,
-          newSectionName: r.sectionMode === 'existing'
-            ? null
-            : (r.newSectionName || r.subject.suggestedNewSectionName || 'Nouveau point'),
-          subjectAction: isUpdate ? 'update-existing-subject' : 'new-subject',
-          targetSubjectId: isUpdate ? r.targetSubjectId : null,
-          updatedSituation: isUpdate ? (r.subject.updatedSituation ?? r.subject.situation) : null,
-          updatedStatus: isUpdate ? (r.subject.updatedStatus ?? r.subject.status) : null,
-          updatedResponsibility: isUpdate ? r.subject.updatedResponsibility : null,
-          // Forward the source context so the backend can feed the per-user
-          // pgvector routing memory with the validated decision. Pure
-          // observability at this layer ; safe to drop if undefined.
-          rawQuotes: r.subject.sourceRawQuotes,
-          entities: r.subject.sourceEntities,
-          participants: r.subject.sourceParticipants,
-          aiProposedReviewId: r.subject.aiProposedReviewId ?? null,
-          aiProposedReviewTitle: r.subject.aiProposedReviewTitle ?? null,
-        };
-      });
-    if (subjectsToApply.length === 0) return;
+      .map(buildSubjectPayload);
+    // Nothing left to apply in bulk — but if the user committed rows
+    // one-by-one via "Ajouter", we still need to fire `onDone` with
+    // the cumulative tally so the parent refreshes and closes the modal.
+    if (subjectsToApply.length === 0) {
+      if (cumulativeApplied.importedSubjects + cumulativeApplied.updatedSubjects > 0) {
+        onDone({
+          importedSubjects: cumulativeApplied.importedSubjects,
+          updatedSubjects: cumulativeApplied.updatedSubjects,
+          createdReviews: cumulativeApplied.createdReviews,
+          createdSections: cumulativeApplied.createdSections,
+          touchedReviewIds: Array.from(cumulativeApplied.touchedReviewIds),
+        });
+      }
+      return;
+    }
 
     setPhase('applying');
     try {
@@ -403,7 +511,8 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
       // reviews, reviews that received new subjects (reported by the
       // backend), and reviews that got updates (inferred from the rows
       // because the backend update path doesn't carry a reviewId).
-      const touched = new Set<string>();
+      // Merge with the cumulative tally from immediate-add clicks.
+      const touched = new Set<string>(cumulativeApplied.touchedReviewIds);
       for (const r of res.reviewsCreated) touched.add(r.id);
       for (const s of res.subjectsCreated) touched.add(s.reviewId);
       for (const row of rows) {
@@ -412,10 +521,10 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
       }
 
       onDone({
-        importedSubjects: res.subjectsCreated.length,
-        updatedSubjects: res.subjectsUpdated.length,
-        createdReviews: res.reviewsCreated.length,
-        createdSections: res.sectionsCreated.length,
+        importedSubjects: cumulativeApplied.importedSubjects + res.subjectsCreated.length,
+        updatedSubjects: cumulativeApplied.updatedSubjects + res.subjectsUpdated.length,
+        createdReviews: cumulativeApplied.createdReviews + res.reviewsCreated.length,
+        createdSections: cumulativeApplied.createdSections + res.sectionsCreated.length,
         touchedReviewIds: Array.from(touched),
       });
     } catch (err: unknown) {
@@ -567,6 +676,14 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
         {phase === 'routing' && (
           <>
+            {/* Transient error banner — shown when handleImmediateAdd
+                fails without switching the modal into 'error' phase.
+                Auto-clears after 4 s. */}
+            {error && (
+              <div className={styles.logBanner} style={{ background: 'var(--error-bg, rgba(239, 68, 68, 0.1))', color: 'var(--error, #dc2626)' }}>
+                <span>⚠ {error}</span>
+              </div>
+            )}
             {replayedFromLogId != null && (
               <div className={styles.logBanner}>
                 <span>🔁 Rejeu de l'import #{replayedFromLogId} — aucun appel IA, décisions restituées depuis les logs.</span>
@@ -610,22 +727,16 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                     + ` › ${sectionIsExisting ? 'Section trouvée' : 'Nouvelle section'} : "${sectionLabel}"`;
                   // Validation mirrors the detailed-row rule so "Ajouter"
                   // in the sommaire behaves identically to "Ajouter" inside
-                  // the row — we never mark a row as confirmed if it's
-                  // missing required fields, otherwise the final import
-                  // would silently push incomplete data.
-                  const missing: string[] = [];
-                  if (r.sectionMode === 'existing') {
-                    if (!r.reviewId) missing.push('review');
-                    else if (!r.sectionId && !r.newSectionName.trim()) missing.push('section');
-                  } else {
-                    if (!r.reviewId && !r.newReviewTitle.trim()) missing.push('titre de la nouvelle review');
-                    if (!r.newSectionName.trim()) missing.push('nom de la nouvelle section');
-                  }
+                  // the row — we never commit a row if it's missing required
+                  // fields, otherwise the backend would silently persist
+                  // incomplete data.
+                  const missing = getMissingFields(r);
                   const canConfirmRow = missing.length === 0;
+                  const isAddingThisRow = addingRowKey === r.key;
                   return (
                     <div
                       key={r.key}
-                      className={`${styles.summaryItem} ${r.confirmed ? styles.summaryItemConfirmed : ''}`}
+                      className={styles.summaryItem}
                     >
                       {/* Col 1 : title (clickable link to the detailed row) */}
                       <a
@@ -664,39 +775,32 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                           ↻ statut
                         </span>
                       ) : <span aria-hidden="true" />}
-                      {/* Col 7 : confirm button — same semantics as the
-                          "Ajouter" button inside the detailed row. Marks
-                          the proposal as accepted-as-is ; the detailed
-                          row disappears below so the user focuses on what
-                          still needs attention. Second click un-confirms.
-                          Disabled (with a tooltip listing missing fields)
-                          when the row is incomplete — forces the user to
-                          open the row to fix it rather than silently
-                          pushing bad data through. */}
+                      {/* Col 7 : immediate-add button — commits this ONE
+                          subject to the database right now (applyRouting
+                          with a single-item payload), then removes the row
+                          from the list. Incomplete rows scroll the user
+                          to the detailed row so they can fix the missing
+                          field instead of silently pushing bad data. */}
                       <button
                         type="button"
-                        className={`${styles.summaryItemValidate} ${r.confirmed ? styles.summaryItemValidateActive : ''}`}
+                        className={styles.summaryItemValidate}
+                        disabled={isAddingThisRow || !!addingRowKey}
                         onClick={() => {
-                          if (!canConfirmRow && !r.confirmed) {
-                            // Not enough data to confirm — navigate to the
-                            // row so the user can see the validation errors.
+                          if (!canConfirmRow) {
                             const el = document.getElementById(`subj-${r.key}`);
                             el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             return;
                           }
-                          updateRow(r.key, { confirmed: !r.confirmed, skipped: false });
+                          handleImmediateAdd(r.key);
                         }}
                         title={
-                          r.confirmed
-                            ? 'Cliquer pour revenir dessus (la ligne détaillée réapparaîtra)'
-                            : canConfirmRow
-                              ? 'Valider la proposition IA — la ligne détaillée disparaîtra en bas'
-                              : `Incomplet — manque : ${missing.join(', ')}. Clique pour ouvrir la ligne détaillée.`
+                          canConfirmRow
+                            ? 'Ajouter immédiatement ce sujet à la base de données'
+                            : `Incomplet — manque : ${missing.join(', ')}. Clique pour ouvrir la ligne détaillée.`
                         }
-                        aria-pressed={r.confirmed}
-                        data-incomplete={!r.confirmed && !canConfirmRow ? 'true' : undefined}
+                        data-incomplete={!canConfirmRow ? 'true' : undefined}
                       >
-                        {r.confirmed ? '✓ Ajouté' : canConfirmRow ? 'Ajouter' : '⚠ Incomplet'}
+                        {isAddingThisRow ? '⏳ Ajout…' : canConfirmRow ? 'Ajouter' : '⚠ Incomplet'}
                       </button>
                     </div>
                   );
@@ -705,12 +809,14 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
             )}
             <div className={styles.subjectsList}>
               {displayRows.length === 0 ? (
-                <p className={styles.emptyHint}>L'IA n'a identifié aucun sujet digne d'un suivi dans ce contenu.</p>
-              ) : displayRows.filter(({ r }) => !r.confirmed).length === 0 ? (
-                <p className={styles.emptyHint}>
-                  ✓ Tous les sujets ont été validés dans le sommaire. Clique sur « Importer la sélection » pour finaliser.
-                </p>
-              ) : displayRows.filter(({ r }) => !r.confirmed).map(({ r, origIdx }, i, filteredArr) => {
+                cumulativeApplied.importedSubjects + cumulativeApplied.updatedSubjects > 0 ? (
+                  <p className={styles.emptyHint}>
+                    ✓ Tous les sujets ont été ajoutés ({cumulativeApplied.importedSubjects} créé{cumulativeApplied.importedSubjects > 1 ? 's' : ''}, {cumulativeApplied.updatedSubjects} mis à jour). Clique sur « Terminer » pour fermer.
+                  </p>
+                ) : (
+                  <p className={styles.emptyHint}>L'IA n'a identifié aucun sujet digne d'un suivi dans ce contenu.</p>
+                )
+              ) : displayRows.map(({ r, origIdx }, i, filteredArr) => {
                 // A row is part of a multi-placement group when the same
                 // subject.title appears on ≥2 rows (AI emitted multiple
                 // targets OR the user clicked "+ ajouter à une autre review").
@@ -740,6 +846,9 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                     onRenameNewSection={(name) => renameNewSectionCluster(r.key, name)}
                     onDuplicate={() => duplicateRowForOtherReview(r.key)}
                     onRemove={isCopyRow ? () => removeRow(r.key) : undefined}
+                    onImmediateAdd={() => handleImmediateAdd(r.key)}
+                    isAdding={addingRowKey === r.key}
+                    addDisabled={!!addingRowKey && addingRowKey !== r.key}
                     isMultiPlacement={sameTitleCount >= 2}
                     sameNewSectionCount={sameSectionCount}
                     nextRowKey={filteredArr[i + 1]?.r.key ?? null}
@@ -748,14 +857,28 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
               })}
             </div>
             <div className={styles.actions}>
-              <Button variant="secondary" onClick={onClose}>Annuler</Button>
-              <Button
-                variant="primary"
-                onClick={handleApply}
-                disabled={rows.length === 0 || rows.every(r => r.skipped)}
-              >
-                Importer ({rows.filter(r => !r.skipped).length} sujet{rows.filter(r => !r.skipped).length > 1 ? 's' : ''})
+              <Button variant="secondary" onClick={onClose}>
+                {cumulativeApplied.importedSubjects + cumulativeApplied.updatedSubjects > 0 ? 'Fermer' : 'Annuler'}
               </Button>
+              {rows.filter(r => !r.skipped).length > 0 ? (
+                // User still has rows to process in bulk — commits every
+                // non-skipped row at once. Useful when the user trusts the
+                // AI proposals and just wants to import everything.
+                <Button
+                  variant="primary"
+                  onClick={handleApply}
+                  disabled={rows.length === 0 || rows.every(r => r.skipped) || !!addingRowKey}
+                >
+                  Importer le reste ({rows.filter(r => !r.skipped).length} sujet{rows.filter(r => !r.skipped).length > 1 ? 's' : ''})
+                </Button>
+              ) : cumulativeApplied.importedSubjects + cumulativeApplied.updatedSubjects > 0 ? (
+                // Everything was committed one-by-one via "Ajouter". Firing
+                // handleApply with zero subjects triggers the `onDone` path
+                // that flushes the cumulative tally to the parent.
+                <Button variant="primary" onClick={handleApply}>
+                  Terminer ({cumulativeApplied.importedSubjects + cumulativeApplied.updatedSubjects} sujet{cumulativeApplied.importedSubjects + cumulativeApplied.updatedSubjects > 1 ? 's' : ''})
+                </Button>
+              ) : null}
             </div>
           </>
         )}
@@ -794,7 +917,8 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 
 function SubjectRow({
   row, consolidation, reviews, onUpdate, onRenameNewSection, id, nextRowKey,
-  onDuplicate, onRemove, isMultiPlacement, sameNewSectionCount,
+  onDuplicate, onRemove, onImmediateAdd, isAdding, addDisabled,
+  isMultiPlacement, sameNewSectionCount,
 }: {
   row: Row;
   consolidation: api.ConsolidationMeta | null;
@@ -814,6 +938,15 @@ function SubjectRow({
    *  The original AI-emitted row is never removable — use `skipped`
    *  to exclude it from the import. */
   onRemove?: () => void;
+  /** Immediately commit this single row to the database. The parent
+   *  removes the row from the list on success — no more batching. */
+  onImmediateAdd: () => void;
+  /** True when this row is currently being committed. Drives the
+   *  "⏳ Ajout…" spinner on the button. */
+  isAdding: boolean;
+  /** True when another row is being committed — lock this one to prevent
+   *  concurrent applyRouting calls racing against each other. */
+  addDisabled: boolean;
   /** True when the same source subject appears on ≥2 rows. Drives the
    *  compact "part of a multi-review dispatch" badge. */
   isMultiPlacement: boolean;
@@ -1203,24 +1336,27 @@ function SubjectRow({
         </button>
         <button
           type="button"
-          className={`${styles.rowActionBtn} ${(!skipped && confirmed && canConfirm) ? styles.rowActionBtnActive : ''}`}
+          className={styles.rowActionBtn}
+          disabled={isAdding || addDisabled || skipped}
           onClick={() => {
             if (!canConfirm) {
               setShowValidation(true);
               return;
             }
             setShowValidation(false);
-            onUpdate({ skipped: false, confirmed: true });
-            // Scroll to the next subject card for a smooth linear workflow.
+            // Scroll to the next subject card BEFORE the commit — the
+            // current row will disappear from the list once the parent
+            // receives the applyRouting response.
             if (nextRowKey) {
               setTimeout(() => {
                 const nextEl = document.getElementById(`subj-${nextRowKey}`);
                 nextEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }, 120);
             }
+            onImmediateAdd();
           }}
         >
-          {confirmed && !skipped && canConfirm ? '✓ Ajouté' : 'Ajouter'}
+          {isAdding ? '⏳ Ajout…' : 'Ajouter'}
         </button>
       </div>
     </div>

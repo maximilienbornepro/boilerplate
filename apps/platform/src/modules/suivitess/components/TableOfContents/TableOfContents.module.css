@@ -59,10 +59,19 @@
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-bold);
   color: var(--text-primary);
+  /* Sticky drops the section header against the top of the scroll container
+     as the user scrolls through a long ToC. Combined with the z-index, it
+     ensures the title stays readable during long lists. */
   position: sticky;
   top: 0;
   background: var(--bg-secondary);
   z-index: var(--z-base);
+  /* HTML5 DnD breaks when the browser starts a text-selection drag instead
+     of an element drag. Disabling text selection on the draggable container
+     forces the browser to honor `draggable={true}` and fire dragstart for
+     the section element (our handler), not for the text node. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .itemList {
@@ -90,6 +99,10 @@
   transition: all var(--transition-fast);
   font-family: inherit;
   position: relative;
+  /* Same rationale as .sectionTitle — prevents text-selection drag from
+     stealing the drag event away from our section/subject reorder handler. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .item:hover {
@@ -170,30 +183,36 @@
 /* Drag & Drop */
 .dragHandle {
   flex-shrink: 0;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-base);
   color: var(--text-muted);
-  opacity: 0;
+  /* Visible at all times so the user knows sections and subjects can be
+     reordered. Previously hidden behind a :hover rule, which meant users
+     couldn't discover the feature without hovering. */
+  opacity: 0.4;
   cursor: grab;
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--transition-fast), color var(--transition-fast);
   user-select: none;
+  -webkit-user-select: none;
   line-height: 1;
+  /* Give the handle a reliable click area — single-char glyphs can be
+     tricky to grab without explicit width. */
+  width: 14px;
+  text-align: center;
 }
 
 .sectionTitle:hover .dragHandle,
 .item:hover .dragHandle {
-  opacity: 0.5;
-}
-
-.sectionTitle:hover .dragHandle:hover,
-.item:hover .dragHandle:hover {
   opacity: 1;
+  color: var(--accent-primary);
 }
 
-.sectionTitle[draggable="true"] {
+.sectionTitle[draggable="true"],
+.item[draggable="true"] {
   cursor: grab;
 }
 
-.sectionTitle[draggable="true"]:active {
+.sectionTitle[draggable="true"]:active,
+.item[draggable="true"]:active {
   cursor: grabbing;
 }
 
@@ -202,11 +221,17 @@
 }
 
 .dropIndicator {
-  height: 2px;
+  /* Taller drop zone so the user clearly sees the insertion point and
+     the cursor doesn't accidentally hover between zones. The shadow makes
+     it readable against varied backgrounds in both themes. */
+  height: 3px;
   background: var(--accent-primary);
-  margin: 0 var(--spacing-sm);
-  border-radius: 1px;
-  box-shadow: 0 0 4px var(--accent-primary);
+  margin: 2px var(--spacing-sm);
+  border-radius: 2px;
+  box-shadow: 0 0 6px var(--accent-primary);
+  /* Don't steal the drop event from the targeted section/subject — the
+     indicator is decoration only. */
+  pointer-events: none;
 }
 
 /* Responsive - hide on small screens */
