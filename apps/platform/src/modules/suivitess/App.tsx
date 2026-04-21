@@ -7,7 +7,7 @@ import { DocumentSelector } from './components/DocumentSelector/DocumentSelector
 import { HistoryPanel } from './components/HistoryPanel/HistoryPanel';
 import { RecorderBar } from './components/RecorderBar/RecorderBar';
 import { SuggestionsPanel } from './components/SuggestionsPanel/SuggestionsPanel';
-import { TranscriptionWizard } from './components/TranscriptionWizard/TranscriptionWizard';
+import { BulkTranscriptionImportModal } from './components/BulkTranscriptionImportModal/BulkTranscriptionImportModal';
 import { EmailPreviewModal } from './components/EmailPreviewModal/EmailPreviewModal';
 import { SubjectAnalysisModal } from './components/SubjectAnalysisModal/SubjectAnalysisModal';
 
@@ -316,11 +316,18 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
         />
       )}
       {showTranscriptionWizard && docId && (
-        <TranscriptionWizard
-          documentId={docId}
-          initialProvider={importInitialProvider}
+        // Per-document import : reuses the global bulk-import modal
+        // but scoped to this document. Skips the place-in-reviews
+        // skill (useless when the destination doc is pre-known) and
+        // locks the review pill on this doc.
+        <BulkTranscriptionImportModal
+          scopedDocumentId={docId}
           onClose={() => { setShowTranscriptionWizard(false); setImportInitialProvider(undefined); }}
-          onDone={() => setRefreshKey(k => k + 1)}
+          onDone={() => {
+            setRefreshKey(k => k + 1);
+            setShowTranscriptionWizard(false);
+            setImportInitialProvider(undefined);
+          }}
         />
       )}
       {showAnalysis && docId && (

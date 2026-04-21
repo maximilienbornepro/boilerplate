@@ -36,6 +36,129 @@ function serializeFields(fields: Record<string, JiraFieldMeta>): Array<{
     }));
 }
 
+/** Subset of the frontend's AnalyzedSubject shape — mirrors
+ *  FinalReviewProposal but scoped to the document-bulk flow so we
+ *  don't have to import that type into this file. */
+interface FinalReviewProposalAdapted {
+  title: string;
+  situation: string;
+  status: string;
+  responsibility: string | null;
+  action: 'existing-review';
+  reviewId: string;
+  suggestedNewReviewTitle: null;
+  sectionAction: 'new-section' | 'existing-section';
+  sectionId: string | null;
+  suggestedNewSectionName: string | null;
+  subjectAction: 'new-subject' | 'update-existing-subject';
+  targetSubjectId: string | null;
+  updatedSituation: string | null;
+  updatedStatus: string | null;
+  updatedResponsibility: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+  sourceRawQuotes: string[];
+  sourceEntities: string[];
+  sourceParticipants: string[];
+  aiProposedReviewId: string;
+  aiProposedReviewTitle: null;
+}
+
+/** Adapt a FinalDocumentProposal (from the place-in-document pipeline)
+ *  to one or more FinalReviewProposal-shaped entries so the bulk-
+ *  import modal can render them with no special-case. Review is
+ *  pinned to the scoping document so the frontend's review dropdown
+ *  stays locked on it. `create_section` fans out one entry per
+ *  subject (the backend groups them under a single new section). */
+function adaptDocProposalToReviewShape(
+  p: {
+    action: 'enrich' | 'create_subject' | 'create_section';
+    subjectId?: string;
+    subjectTitle?: string;
+    sectionId?: string;
+    sectionName?: string;
+    title?: string;
+    situation?: string;
+    appendText?: string;
+    responsibility?: string | null;
+    status?: string;
+    subjects?: Array<{ title: string; situation: string; responsibility: string | null; status: string }>;
+    reason: string;
+  },
+  docId: string,
+): FinalReviewProposalAdapted[] {
+  const baseReview = {
+    action: 'existing-review' as const,
+    reviewId: docId,
+    suggestedNewReviewTitle: null as null,
+    aiProposedReviewId: docId,
+    aiProposedReviewTitle: null as null,
+    confidence: 'high' as const,
+    reasoning: p.reason,
+    // The pipeline attaches rawQuotes per tier log, not per proposal.
+    // Leave empty here — the import payload builder falls back to
+    // p.subject.situation for the apply-routing payload.
+    sourceRawQuotes: [] as string[],
+    sourceEntities: [] as string[],
+    sourceParticipants: [] as string[],
+  };
+
+  if (p.action === 'enrich') {
+    return [{
+      ...baseReview,
+      title: p.subjectTitle ?? '',
+      situation: '', // unused for updates
+      status: 'en-cours',
+      responsibility: null,
+      sectionAction: 'existing-section',
+      sectionId: null, // enrich doesn't carry sectionId; frontend resolves via targetSubjectId
+      suggestedNewSectionName: null,
+      subjectAction: 'update-existing-subject',
+      targetSubjectId: p.subjectId ?? null,
+      updatedSituation: p.appendText ?? null,
+      updatedStatus: null,
+      updatedResponsibility: null,
+    }];
+  }
+
+  if (p.action === 'create_subject') {
+    return [{
+      ...baseReview,
+      title: p.title ?? '',
+      situation: p.situation ?? '',
+      status: p.status ?? 'en-cours',
+      responsibility: p.responsibility ?? null,
+      sectionAction: 'existing-section',
+      sectionId: p.sectionId ?? null,
+      suggestedNewSectionName: null,
+      subjectAction: 'new-subject',
+      targetSubjectId: null,
+      updatedSituation: null,
+      updatedStatus: null,
+      updatedResponsibility: null,
+    }];
+  }
+
+  // create_section — fan out one entry per subject in the new section.
+  const subjects = p.subjects ?? [];
+  if (subjects.length === 0) return [];
+  return subjects.map(sub => ({
+    ...baseReview,
+    title: sub.title,
+    situation: sub.situation,
+    status: sub.status,
+    responsibility: sub.responsibility,
+    sectionAction: 'new-section' as const,
+    sectionId: null,
+    suggestedNewSectionName: p.sectionName ?? 'Nouvelle section',
+    subjectAction: 'new-subject' as const,
+    targetSubjectId: null,
+    updatedSituation: null,
+    updatedStatus: null,
+    updatedResponsibility: null,
+  }));
+}
+
 /**
  * Group Slack messages by (channel + day) into digest items.
  * Each digest aggregates all messages from one channel on one calendar day
@@ -3257,6 +3380,168 @@ ${filteredContent.slice(0, 30000)}`,
     } catch (err) {
       res.status(500).json({ error: (err as Error).message || 'Échec génération' });
     }
+  }));
+
+  // Document-scoped bulk import : same UX as the global bulk-import
+  // modal but constrained to a single suivitess document. Skips the
+  // place-in-reviews skill (useless when the destination doc is
+  // already known) and uses analyzeSourceForDocument internally to
+  // pick section + subject within THIS document only. Proposals are
+  // adapted to the FinalReviewProposal shape expected by the modal,
+  // with reviewId = docId and action = 'existing-review' pre-set so
+  // the frontend can reuse 100% of its tile UX.
+  router.post('/documents/:docId/bulk-analyze', asyncHandler(async (req, res) => {
+    const { docId } = req.params;
+    const { sources } = (req.body || {}) as {
+      sources?: Array<{ source: string; id: string; title: string; date?: string | null }>;
+    };
+    if (!Array.isArray(sources) || sources.length === 0) {
+      res.status(400).json({ error: 'sources[] requis' });
+      return;
+    }
+
+    const doc = await db.getDocumentWithSections(docId);
+    if (!doc) {
+      res.status(404).json({ error: 'Document non trouvé' });
+      return;
+    }
+
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try {
+      await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'transcript_analysis');
+    } catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available });
+        return;
+      }
+      throw e;
+    }
+
+    const { analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+
+    const documentCtx = {
+      id: String(doc.id),
+      title: doc.title,
+      sections: doc.sections.map(s => ({
+        id: String(s.id),
+        name: s.name,
+        subjects: s.subjects.map(sub => ({
+          id: String(sub.id),
+          title: sub.title,
+          situationExcerpt: (sub.situation || '').slice(0, 2000),
+          status: sub.status,
+          responsibility: sub.responsibility ?? null,
+        })),
+      })),
+    };
+
+    // Fetch raw content per source (same multiplex as the streaming
+    // bulk endpoint further down in this file). Uses the collector
+    // services that back the bulk-sources list.
+    const userId = req.user!.id;
+    async function fetchSourceText(src: { source: string; id: string; title: string }): Promise<string | null> {
+      try {
+        if (src.source === 'fathom') {
+          const { getFathomTranscript } = await import('./fathomService.js');
+          const entries = await getFathomTranscript(userId, src.id);
+          return entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+        }
+        if (src.source === 'otter') {
+          const { getOtterTranscript } = await import('./otterService.js');
+          const entries = await getOtterTranscript(userId, src.id);
+          return entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+        }
+        if (src.source === 'outlook') {
+          if (src.id.startsWith('outlook:')) {
+            const dateFilter = src.id.replace('outlook:', '');
+            const { getOutlookMessages } = await import('./outlookCollectorService.js');
+            const msgs = await getOutlookMessages(userId, { days: 30 });
+            const filtered = dateFilter && dateFilter !== 'unknown'
+              ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
+              : msgs;
+            return filtered.map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`).join('\n');
+          }
+          const { getOutlookEmailBody } = await import('./emailService.js');
+          return await getOutlookEmailBody(userId, src.id);
+        }
+        if (src.source === 'gmail') {
+          const { getGmailEmailBody } = await import('./emailService.js');
+          return await getGmailEmailBody(userId, src.id);
+        }
+        if (src.source === 'slack') {
+          const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+          const slackConfig = await getSlackConfig(userId);
+          if (!slackConfig) return null;
+          const parts = src.id.split(':');
+          const channelId = parts[1] || parts[0];
+          const dateFilter = parts[2];
+          const messages = await getSlackMessages(slackConfig.id, { days: slackConfig.daysToFetch, channelId });
+          const filtered = dateFilter
+            ? messages.filter(m => new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10) === dateFilter)
+            : messages;
+          return filtered
+            .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+            .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`).join('\n');
+        }
+        return null;
+      } catch (err) {
+        console.warn(`[doc-bulk-analyze] failed to fetch ${src.source}/${src.id}:`, err);
+        return null;
+      }
+    }
+
+    // Run the pipeline per source + accumulate proposals. Each source
+    // keeps its own rawQuotes on the proposal so the frontend can
+    // forward them to /apply-routing (and to the append regen skill).
+    const allProposals: FinalReviewProposalAdapted[] = [];
+    let lastLogId: number | null = null;
+    for (const src of sources) {
+      const text = await fetchSourceText(src);
+      if (!text) continue;
+      const sourceKind: 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail' =
+        src.source === 'slack' ? 'slack'
+        : src.source === 'outlook' ? 'outlook'
+        : src.source === 'gmail' ? 'gmail'
+        : src.source === 'fathom' ? 'transcript'
+        : src.source === 'otter' ? 'transcript'
+        : 'transcript';
+      try {
+        const { proposals, rootLogId } = await analyzeSourceForDocument({
+          sourceKind,
+          sourceRaw: text,
+          sourceTitle: src.title,
+          document: documentCtx,
+          userId: req.user!.id,
+          userEmail: req.user!.email || '',
+        });
+        if (rootLogId != null) lastLogId = rootLogId;
+        for (const p of proposals) {
+          const fannedOut = adaptDocProposalToReviewShape(p, doc.id);
+          for (const adapted of fannedOut) allProposals.push(adapted);
+        }
+      } catch (err) {
+        console.error(`[doc-bulk-analyze] analyzeSourceForDocument failed for ${src.source}/${src.id}:`, err);
+      }
+    }
+
+    const availableReview = {
+      id: doc.id,
+      title: doc.title,
+      sections: doc.sections.map(s => ({
+        id: s.id,
+        name: s.name,
+        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
+      })),
+    };
+
+    res.json({
+      summary: allProposals.length > 0
+        ? `${allProposals.length} sujet(s) extrait(s) et routé(s) dans ${doc.title}.`
+        : 'Aucun sujet exploitable.',
+      subjects: allProposals,
+      availableReviews: [availableReview],
+      logId: lastLogId,
+    });
   }));
 
   // Suggest a name for a new review / section / subject via the

@@ -834,6 +834,28 @@ export async function generateComposeText(params: {
   return res.json();
 }
 
+/** Document-scoped bulk analyze — same output shape as the global
+ *  bulk analyze (AnalyzedSubject[] + availableReviews) but constrained
+ *  to a single suivitess document. Skips the place-in-reviews skill
+ *  entirely and runs place-in-document instead, so the proposals are
+ *  guaranteed to land in the scoped document. */
+export async function analyzeDocumentBulk(
+  docId: string,
+  sources: Array<{ source: string; id: string; title: string; date?: string | null }>,
+): Promise<AnalysisResponse> {
+  const res = await fetch(`${API_BASE}/documents/${docId}/bulk-analyze`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sources }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 /** Ask the AI to suggest a name for a new review / section / subject.
  *  Runs the suivitess-suggest-name skill server-side. Passing an
  *  `existingSuggestion` triggers a re-generation (the skill returns a

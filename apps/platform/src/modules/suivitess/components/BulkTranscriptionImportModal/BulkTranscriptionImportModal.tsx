@@ -17,6 +17,17 @@ interface Props {
      *  to show a "freshly updated" indicator on the matching cards. */
     touchedReviewIds: string[];
   }) => void;
+  /** When set, the modal runs in single-document mode : the review
+   *  picker is locked on this document, all proposals are scoped to
+   *  its sections/subjects, and the backend uses place-in-document
+   *  instead of place-in-reviews. Passed from the per-document Actions
+   *  menu in the suivitess App. */
+  scopedDocumentId?: string;
+  /** Human-readable title of the scoped document — shown in the
+   *  header + in the decision sentence where the review pill would
+   *  otherwise be editable. Purely presentational; the modal still
+   *  relies on scopedDocumentId as the source of truth. */
+  scopedDocumentTitle?: string;
 }
 
 type Phase = 'picking' | 'analyzing' | 'routing' | 'applying' | 'done' | 'error';
@@ -58,7 +69,7 @@ interface Row {
   overrideSituation?: string | null;
 }
 
-export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
+export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId, scopedDocumentTitle }: Props) {
   const [phase, setPhase] = useState<Phase>('picking');
   const [error, setError] = useState('');
 
@@ -282,7 +293,22 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
       touchedReviewIds: new Set(),
     });
     try {
-      if (selectedItems.length === 1) {
+      if (scopedDocumentId) {
+        // Document-scoped flow : skip place-in-reviews entirely and
+        // use the doc-bulk endpoint that runs place-in-document on
+        // each source, with the destination doc pre-locked.
+        const res = await api.analyzeDocumentBulk(
+          scopedDocumentId,
+          selectedItems.map(s => ({ source: s.provider, id: s.id, title: s.title, date: s.date })),
+        );
+        if (res.logId != null) setLastLogId(res.logId);
+        setSummary(res.summary);
+        setAvailableReviews(res.availableReviews);
+        const initialRows = buildRowsFromSubjects(res.subjects);
+        setRows(initialRows);
+        setConsolidationByRow(res.subjects.map(() => null));
+        setTotalAtStart(initialRows.length);
+      } else if (selectedItems.length === 1) {
         // Single-source — keep the original fast path.
         const only = selectedItems[0];
         const res = await api.analyzeAndRouteWithPolling(
@@ -641,7 +667,9 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
   const sourceTitle = primaryItem?.title;
   const modalTitle = (
     <>
-      Analyser & ranger une transcription
+      {scopedDocumentId
+        ? `Import dans « ${scopedDocumentTitle ?? 'ce suivitess'} »`
+        : 'Analyser & ranger une transcription'}
       {phase === 'routing' && sourceTitle && (
         <span className={styles.modalTitleSource}>{sourceTitle}</span>
       )}
@@ -968,6 +996,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                         onRemove={isCopyRow ? () => removeRow(r.key) : undefined}
                         onImmediateAdd={() => handleImmediateAdd(r.key)}
                         onSkip={() => handleSkipRow(r.key)}
+                        reviewLocked={!!scopedDocumentId}
                         isAdding={addingRowKey === r.key}
                         addDisabled={!!addingRowKey && addingRowKey !== r.key}
                         isMultiPlacement={sameTitleCount >= 2}
@@ -1031,7 +1060,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
 function SubjectRow({
   row, consolidation, reviews, onUpdate, onRenameNewSection, id, nextRowKey,
   onDuplicate, onRemove, onImmediateAdd, onSkip, isAdding, addDisabled,
-  isMultiPlacement, sameNewSectionCount,
+  isMultiPlacement, sameNewSectionCount, reviewLocked,
 }: {
   row: Row;
   consolidation: api.ConsolidationMeta | null;
@@ -1071,6 +1100,10 @@ function SubjectRow({
    *  section (same review + same newSectionName). ≥2 → surfaces a
    *  "N sujets regroupés ici" hint so the user sees the dedup upfront. */
   sameNewSectionCount: number;
+  /** When true (document-scoped flow), the review pill becomes a
+   *  static label instead of an editable dropdown — the destination
+   *  review/document is fixed by the parent page context. */
+  reviewLocked?: boolean;
 }) {
   const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped, mode, sectionMode } = row;
   // Only show inline "required field" error after the user attempted to confirm.
@@ -1362,7 +1395,12 @@ function SubjectRow({
                 wizard. Pills keep the "existant vs nouveau" color. */}
             <p className={styles.aiDecisionStatement}>
               Dans la {currentReviewIsExisting ? 'review existante' : <strong>nouvelle review</strong>}{' '}
-              {editingCreateName === 'review' ? (
+              {reviewLocked ? (
+                // Destination review is fixed by the parent page (we're
+                // in the per-suivitess import modal) — render a static
+                // pill instead of an editable dropdown.
+                <span className={styles.aiDecisionPillExisting}>« {currentReviewLabel} »</span>
+              ) : editingCreateName === 'review' ? (
                 <InlineNameEditor
                   kind="review"
                   initial={newReviewTitle || subject.suggestedNewReviewTitle || ''}
@@ -1638,7 +1676,11 @@ function SubjectRow({
         // when the AI proposed a fresh one, and it also surfaces the
         // "aucun sujet existant" case explicitly so the user always
         // sees what will happen.
-        const steps: Array<'review' | 'section' | 'subject'> = ['review', 'section', 'subject'];
+        // Review step is dropped when the destination is fixed by the
+        // parent (per-suivitess import). User only chooses section + subject.
+        const steps: Array<'review' | 'section' | 'subject'> = reviewLocked
+          ? ['section', 'subject']
+          : ['review', 'section', 'subject'];
         const stepIdx = steps.indexOf(editStep);
         const stepNumber = stepIdx + 1;
         const stepLabel = editStep === 'review' ? 'Review' : editStep === 'section' ? 'Section' : 'Sujet';
@@ -2019,8 +2061,8 @@ function SubjectRow({
               type="button"
               className={`${styles.rowActionBtn} ${styles.rowActionBtnDisagree}`}
               disabled={generatingAppend}
-              onClick={() => setEditStep('review')}
-              title="Ajuster la review / la section / le sujet avant d'importer"
+              onClick={() => setEditStep(reviewLocked ? 'section' : 'review')}
+              title="Ajuster la section / le sujet avant d'importer"
             >
               ⚠ Je ne suis pas d'accord
             </button>
@@ -2041,8 +2083,10 @@ function SubjectRow({
                   const sectionBroken =
                     (sectionMode === 'new' && !newSectionName.trim())
                     || (sectionMode === 'existing' && (!sectionId || (mode === 'existing' && !currentSection)));
+                  // When reviewLocked, skip review entirely — either
+                  // section or subject is broken.
                   const firstBrokenStep: 'review' | 'section' | 'subject' =
-                    reviewBroken ? 'review'
+                    (!reviewLocked && reviewBroken) ? 'review'
                     : sectionBroken ? 'section'
                     : 'subject';
                   setEditStep(firstBrokenStep);
@@ -2088,7 +2132,10 @@ function SubjectRow({
               : subjectStepValid;
             const goPrev = () => {
               setShowValidation(false);
-              if (editStep === 'section') setEditStep('review');
+              // When the review step is disabled (doc-scoped flow),
+              // "Précédent" on the section step closes the wizard
+              // instead of going to a non-existent review step.
+              if (editStep === 'section') setEditStep(reviewLocked ? null : 'review');
               else if (editStep === 'subject') setEditStep('section');
               else { setEditStep(null); }
             };
