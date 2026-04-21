@@ -54,10 +54,11 @@ export function Layout({
   // Each one gets a distinct color dot, consistent with the main apps menu.
   const extraDrawerLinks = user?.isAdmin
     ? [
-        { label: 'Logs IA',        path: '/ai-logs',       color: '#14b8a6' }, // teal
-        { label: 'Évaluations IA', path: '/ai-evals',      color: '#f43f5e' }, // rose
-        { label: 'Playground IA',  path: '/ai-playground', color: '#a855f7' }, // purple
-        { label: 'Logs Prompts',   path: '/prompt-logs',   color: '#eab308' }, // amber
+        { label: 'Logs IA',          path: '/ai-logs',         color: '#14b8a6' }, // teal
+        { label: 'Évaluations IA',   path: '/ai-evals',        color: '#f43f5e' }, // rose
+        { label: 'Playground IA',    path: '/ai-playground',   color: '#a855f7' }, // purple
+        { label: 'Logs Prompts',     path: '/prompt-logs',     color: '#eab308' }, // amber
+        { label: 'Fonctionnalités',  path: '/admin-features',  color: '#f97316' }, // orange
       ]
     : undefined;
 

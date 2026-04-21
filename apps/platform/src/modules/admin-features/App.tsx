@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Layout, LoadingSpinner, ModuleHeader, useGatewayUser } from '@boilerplate/shared/components';
+import { Layout, LoadingSpinner, ModuleHeader, Button, useGatewayUser } from '@boilerplate/shared/components';
 import './App.css';
 
 /** Row shape returned by GET /platform/settings (admin). */
@@ -89,20 +89,31 @@ function AdminFeaturesApp({ onNavigate }: { onNavigate?: (path: string) => void 
     return order.filter(o => map.has(o)).map(o => [o, map.get(o)!] as const);
   }, [settings]);
 
+  // Same auth-gate pattern as /ai-logs : show a spinner while the
+  // gateway user is loading, a friendly 403 card if the user is not
+  // an admin, the real page otherwise. No redirect — the burger menu
+  // still shows so they can leave.
   if (!user) {
-    return <Layout appId="admin-features" onNavigate={onNavigate}><LoadingSpinner /></Layout>;
+    return (
+      <Layout appId="admin-features" variant="full-width" onNavigate={onNavigate}>
+        <div style={{ padding: '2rem' }}><LoadingSpinner message="Chargement..." /></div>
+      </Layout>
+    );
   }
   if (!user.isAdmin) {
     return (
-      <Layout appId="admin-features" onNavigate={onNavigate}>
-        <ModuleHeader title="Fonctionnalités" onBack={() => onNavigate?.('/')} />
-        <div className="admin-features-empty">403 — page réservée aux administrateurs.</div>
+      <Layout appId="admin-features" variant="full-width" onNavigate={onNavigate}>
+        <div style={{ padding: '2rem', textAlign: 'center' }}>
+          <h1>403</h1>
+          <p>Cette page est réservée aux administrateurs.</p>
+          <Button variant="secondary" onClick={() => onNavigate?.('/')}>Retour</Button>
+        </div>
       </Layout>
     );
   }
 
   return (
-    <Layout appId="admin-features" onNavigate={onNavigate}>
+    <Layout appId="admin-features" variant="full-width" onNavigate={onNavigate}>
       <ModuleHeader title="Fonctionnalités" onBack={() => onNavigate?.('/')} />
       <div className="admin-features-page">
         <p className="admin-features-intro">
