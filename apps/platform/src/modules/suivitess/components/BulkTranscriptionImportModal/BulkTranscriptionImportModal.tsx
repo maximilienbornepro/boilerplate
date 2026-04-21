@@ -636,12 +636,31 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                 </div>
                 <div className={styles.actions}>
                   <Button variant="secondary" onClick={onClose}>Annuler</Button>
-                  <span className={styles.selectionCounter}>
-                    {selectedIds.size === 0
-                      ? 'Aucune source sélectionnée'
-                      : `${selectedIds.size} source${selectedIds.size > 1 ? 's' : ''} sélectionnée${selectedIds.size > 1 ? 's' : ''}`}
-                    {selectedIds.size >= 2 && <span className={styles.reconcileHint}> · réconciliation activée 🔀</span>}
-                  </span>
+                  {(() => {
+                    // Compute the "N déjà importées" breakdown across the
+                    // whole selection so the counter surfaces it even in a
+                    // group selection — previously the already-imported flag
+                    // was only shown per-card + in the single-item button
+                    // label, so users selecting 5 sources couldn't tell at a
+                    // glance that 3 of them were re-imports.
+                    const alreadyImportedCount = selectedItems.filter(it => it.alreadyImported).length;
+                    return (
+                      <span className={styles.selectionCounter}>
+                        {selectedIds.size === 0
+                          ? 'Aucune source sélectionnée'
+                          : `${selectedIds.size} source${selectedIds.size > 1 ? 's' : ''} sélectionnée${selectedIds.size > 1 ? 's' : ''}`}
+                        {alreadyImportedCount > 0 && (
+                          <span className={styles.reconcileHint} title="Ces sources ont déjà été analysées — l'IA va les rejouer">
+                            {' · '}
+                            {alreadyImportedCount === selectedIds.size
+                              ? (selectedIds.size === 1 ? 'déjà importée ↻' : 'toutes déjà importées ↻')
+                              : `${alreadyImportedCount} déjà importée${alreadyImportedCount > 1 ? 's' : ''} ↻`}
+                          </span>
+                        )}
+                        {selectedIds.size >= 2 && <span className={styles.reconcileHint}> · réconciliation activée 🔀</span>}
+                      </span>
+                    );
+                  })()}
                   <SkillButton
                     pipeline={selectedIds.size >= 2 ? [
                       { tier: 'T1', label: 'Extract (par source, en parallèle)', slugs: ['suivitess-extract-transcript', 'suivitess-extract-slack', 'suivitess-extract-outlook'] },
@@ -656,9 +675,19 @@ export function BulkTranscriptionImportModal({ onClose, onDone }: Props) {
                     disabled={selectedIds.size === 0}
                   >
                     <Button variant="primary" onClick={handleAnalyze} disabled={selectedIds.size === 0}>
-                      {selectedIds.size > 1
-                        ? `Analyser les ${selectedIds.size} sources`
-                        : selectedItems[0]?.alreadyImported ? 'Ré-importer' : 'Analyser'}
+                      {(() => {
+                        // When a group selection contains any already-imported
+                        // source, relabel the CTA so the user sees they're
+                        // about to re-analyze (not discover fresh content) —
+                        // matches the single-source "Ré-importer" behavior.
+                        const anyAlreadyImported = selectedItems.some(it => it.alreadyImported);
+                        if (selectedIds.size > 1) {
+                          return anyAlreadyImported
+                            ? `Ré-analyser les ${selectedIds.size} sources`
+                            : `Analyser les ${selectedIds.size} sources`;
+                        }
+                        return selectedItems[0]?.alreadyImported ? 'Ré-importer' : 'Analyser';
+                      })()}
                     </Button>
                   </SkillButton>
                 </div>
