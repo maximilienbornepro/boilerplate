@@ -3396,8 +3396,15 @@ ${filteredContent.slice(0, 30000)}`,
             const updateFragments: string[] = [];
             const updateValues: (string | number | null)[] = [];
             let idx = 1;
-            if (s.updatedSituation !== undefined && s.updatedSituation !== null) {
-              // Append with the same 📝 label as the intra-document import
+            // Skip the situation update entirely if the payload's
+            // append is empty/blank — writing "📝 Ajouté depuis
+            // transcription :" with nothing under it was confusing
+            // for the user and meant nothing actually got appended.
+            if (
+              s.updatedSituation !== undefined
+              && s.updatedSituation !== null
+              && String(s.updatedSituation).trim().length > 0
+            ) {
               const currentSituation = existing.situation || '';
               const newSituation = currentSituation
                 ? `${currentSituation}\n\n---\n📝 Ajouté depuis transcription :\n${s.updatedSituation}`

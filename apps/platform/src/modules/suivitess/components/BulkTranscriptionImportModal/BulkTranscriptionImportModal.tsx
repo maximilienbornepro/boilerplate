@@ -1145,7 +1145,12 @@ function SubjectRow({
       rawQuotes: subject.sourceRawQuotes ?? [],
     })
       .then(res => {
-        onUpdate({ overrideSituation: res.situation ?? '' });
+        // Only commit a non-empty composed situation — an empty string
+        // would be sent as-is to apply-routing and persisted as a
+        // header with nothing under it ("📝 Ajouté depuis … / ").
+        if (res.situation && res.situation.trim()) {
+          onUpdate({ overrideSituation: res.situation });
+        }
       })
       .catch(err => {
         console.warn('[generateComposeText] failed:', err);
@@ -1187,7 +1192,15 @@ function SubjectRow({
       subjectTitle: target.title,
     })
       .then(res => {
-        onUpdate({ overrideUpdatedSituation: res.appendText ?? '' });
+        // Only commit a non-empty appendText — an empty string sent to
+        // apply-routing would be persisted as a bare "📝 Ajouté depuis
+        // transcription :" header with nothing under it. When the IA
+        // decides there's nothing to add we simply leave the row's
+        // overrideUpdatedSituation untouched (falls back to the
+        // pipeline's original value, or null → skip situation update).
+        if (res.appendText && res.appendText.trim()) {
+          onUpdate({ overrideUpdatedSituation: res.appendText });
+        }
       })
       .catch(err => {
         console.warn('[generateAppendText] failed:', err);
