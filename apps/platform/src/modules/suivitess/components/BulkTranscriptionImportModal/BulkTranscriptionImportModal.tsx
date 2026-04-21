@@ -67,6 +67,10 @@ interface Row {
    *  subject.situation is empty for updates). Null means "use the
    *  IA's original subject.situation". */
   overrideSituation?: string | null;
+  /** User-edited title for a NEW subject (via the inline ✎ editor
+   *  on the subject pill). Null/undefined means "use subject.title
+   *  as-is" (the AI's extracted title). */
+  overrideSubjectTitle?: string | null;
 }
 
 export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId, scopedDocumentTitle }: Props) {
@@ -470,7 +474,10 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
   const buildSubjectPayload = (r: Row): api.ApplyRoutingSubject => {
     const isUpdate = r.subjectAction === 'update' && !!r.targetSubjectId;
     return {
-      title: r.subject.title,
+      // Prefer the user-edited title (via inline ✎ editor) over the
+      // IA's extracted one. Only affects new-subject paths; for
+      // updates the backend uses targetSubjectId instead.
+      title: r.overrideSubjectTitle?.trim() || r.subject.title,
       // For user-overridden update → create paths the IA's original
       // `situation` is empty — use the on-demand composed text
       // stored on the row instead.
@@ -1132,7 +1139,7 @@ function SubjectRow({
   /** Which inline name-editor is currently open. Opened when the user
    *  picks "+ Créer nouvelle X" in one of the inline pill dropdowns.
    *  Null = no editor, pills rendered normally. */
-  const [editingCreateName, setEditingCreateName] = useState<null | 'review' | 'section'>(null);
+  const [editingCreateName, setEditingCreateName] = useState<null | 'review' | 'section' | 'subject'>(null);
   /** Remembers the target for which we already generated an append —
    *  prevents re-firing the skill when the user re-opens the wizard or
    *  triggers a re-render that doesn't change the target. */
@@ -1548,40 +1555,84 @@ function SubjectRow({
                 {currentIsUpdate ? 'MISE À JOUR' : 'CRÉATION'}
               </strong>{' '}
               {currentIsUpdate ? 'du sujet existant' : "d'un nouveau sujet"}{' '}
-              <CustomDropdown
-                value={currentIsUpdate ? (targetSubjectId ?? '') : '__new__'}
-                displayLabel={
-                  currentIsUpdate
-                    ? (currentTargetSubjectTitle
-                        ? <span className={styles.aiDecisionTargetSubject}>« {currentTargetSubjectTitle} »</span>
-                        : <em>(cible non résolue — à choisir ci-dessous)</em>)
-                    : <span className={styles.aiDecisionTargetSubject}>« {subject.title} »</span>
-                }
-                disabled={skipped}
-                className={styles.aiDecisionInlineDropdown}
-                compact
-                options={[
-                  {
-                    value: '__new__',
-                    label: (
-                      <span className={styles.dropdownNewOption}>
-                        + Créer un nouveau sujet <em className={styles.dropdownNewHint}>« {subject.title} »</em>
-                      </span>
-                    ),
-                  },
-                  ...(currentSection && currentSection.subjects.length > 0
-                    ? [{ value: '__sep__', label: 'Ou ajouter comme état de situation à un sujet existant' }]
-                    : []),
-                  ...(currentSection?.subjects.map(s => ({ value: s.id, label: s.title })) ?? []),
-                ]}
-                onChange={(val) => {
-                  if (val === '__new__') {
-                    onUpdate({ subjectAction: 'create', targetSubjectId: null });
-                  } else {
-                    onUpdate({ subjectAction: 'update', targetSubjectId: val });
+              {editingCreateName === 'subject' ? (
+                <InlineNameEditor
+                  kind="subject"
+                  initial={row.overrideSubjectTitle || subject.title || ''}
+                  onValidate={(name) => {
+                    onUpdate({
+                      subjectAction: 'create',
+                      targetSubjectId: null,
+                      overrideSubjectTitle: name.trim() || subject.title,
+                    });
+                    setEditingCreateName(null);
+                  }}
+                  onCancel={() => setEditingCreateName(null)}
+                  suggestParams={{
+                    kind: 'subject',
+                    sourceTitle: subject.title,
+                    rawQuotes: subject.sourceRawQuotes ?? [],
+                    entities: subject.sourceEntities ?? [],
+                    parentReviewTitle: currentReview?.title ?? newReviewTitle ?? undefined,
+                    parentSectionName: currentSection?.name ?? newSectionName ?? undefined,
+                  }}
+                />
+              ) : (
+                <CustomDropdown
+                  value={currentIsUpdate ? (targetSubjectId ?? '') : '__new__'}
+                  displayLabel={
+                    currentIsUpdate
+                      ? (currentTargetSubjectTitle
+                          ? <span className={styles.aiDecisionTargetSubject}>« {currentTargetSubjectTitle} »</span>
+                          : <em>(cible non résolue — à choisir ci-dessous)</em>)
+                      : (
+                        <span className={styles.aiDecisionTargetSubject}>
+                          « {row.overrideSubjectTitle?.trim() || subject.title} »
+                          <span
+                            className={styles.aiDecisionPillEditIcon}
+                            role="button"
+                            tabIndex={0}
+                            title="Modifier le titre du nouveau sujet"
+                            onClick={(e) => { e.stopPropagation(); setEditingCreateName('subject'); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); setEditingCreateName('subject'); } }}
+                          >
+                            ✎
+                          </span>
+                        </span>
+                      )
                   }
-                }}
-              />
+                  disabled={skipped}
+                  className={styles.aiDecisionInlineDropdown}
+                  compact
+                  options={[
+                    {
+                      value: '__new__',
+                      label: (
+                        <span className={styles.dropdownNewOption}>
+                          + Créer un nouveau sujet <em className={styles.dropdownNewHint}>« {row.overrideSubjectTitle?.trim() || subject.title} »</em>
+                        </span>
+                      ),
+                    },
+                    ...(currentSection && currentSection.subjects.length > 0
+                      ? [{ value: '__sep__', label: 'Ou ajouter comme état de situation à un sujet existant' }]
+                      : []),
+                    ...(currentSection?.subjects.map(s => ({ value: s.id, label: s.title })) ?? []),
+                  ]}
+                  onChange={(val) => {
+                    if (val === '__new__') {
+                      // Already in new mode → open editor to rename.
+                      // Otherwise switch to create mode.
+                      if (subjectAction === 'create') {
+                        setEditingCreateName('subject');
+                      } else {
+                        onUpdate({ subjectAction: 'create', targetSubjectId: null });
+                      }
+                    } else {
+                      onUpdate({ subjectAction: 'update', targetSubjectId: val });
+                    }
+                  }}
+                />
+              )}
               .
             </p>
             {subject.reasoning && (
