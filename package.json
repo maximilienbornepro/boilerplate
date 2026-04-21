@@ -27,6 +27,7 @@
     "test:client": "vitest run --project 'client-*'",
     "test:client:gateway": "vitest run --project client-gateway",
     "test:client:conges": "vitest run --project client-conges",
+    "test:client:admin-features": "vitest run --project client-admin-features",
     "test:server:roadmap": "vitest run --project server-roadmap",
     "test:client:roadmap": "vitest run --project client-roadmap",
     "test:server:suivitess": "vitest run --project server-suivitess",

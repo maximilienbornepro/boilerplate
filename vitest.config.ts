@@ -58,6 +58,15 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      // Client: admin-features (platform-wide feature toggles page)
+      {
+        test: {
+          name: 'client-admin-features',
+          root: '.',
+          include: ['apps/platform/src/modules/admin-features/__tests__/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
       // Server: roadmap
       {
         test: {

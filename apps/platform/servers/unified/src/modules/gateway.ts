@@ -59,6 +59,37 @@ export async function initGateway() {
       description = EXCLUDED.description
   `);
 
+  // Seed global feature toggles for connectors + modules. Admins can
+  // flip these on/off from /admin-features — the values are read by
+  // the frontend (to hide UI) and can be checked server-side by any
+  // route that wants to no-op when disabled.
+  const defaultToggles: Array<[string, string, string]> = [
+    // Connectors
+    ['connector_gmail_enabled', 'true', 'Connecteur Gmail (import emails)'],
+    ['connector_outlook_enabled', 'true', 'Connecteur Outlook (import emails)'],
+    ['connector_slack_enabled', 'true', 'Connecteur Slack (import messages)'],
+    ['connector_jira_enabled', 'true', 'Connecteur Jira (import tickets, OAuth/token)'],
+    ['connector_fathom_enabled', 'true', 'Connecteur Fathom (import transcriptions)'],
+    ['connector_otter_enabled', 'true', 'Connecteur Otter.ai (import transcriptions)'],
+    ['connector_notion_enabled', 'true', 'Connecteur Notion (création de pages)'],
+    ['connector_teams_recorder_enabled', 'true', 'Recorder Teams (enregistrement automatique)'],
+    // Modules
+    ['module_suivitess_enabled', 'true', 'Module SuiviTess (suivi de sujets)'],
+    ['module_delivery_enabled', 'true', 'Module Delivery (board de livraison)'],
+    ['module_roadmap_enabled', 'true', 'Module Roadmap (planification tâches)'],
+    ['module_mon_cv_enabled', 'true', 'Module Mon CV (gestion CV)'],
+    ['module_conges_enabled', 'true', 'Module Congés (gestion absences)'],
+    ['module_ai_logs_enabled', 'true', 'Pages admin IA (Logs / Évaluations / Playground)'],
+  ];
+  for (const [key, value, description] of defaultToggles) {
+    await pool.query(
+      `INSERT INTO platform_settings (key, value, description)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (key) DO UPDATE SET description = EXCLUDED.description`,
+      [key, value, description],
+    );
+  }
+
   // Email OAuth tokens table
   await pool.query(`
     CREATE TABLE IF NOT EXISTS email_oauth_tokens (
