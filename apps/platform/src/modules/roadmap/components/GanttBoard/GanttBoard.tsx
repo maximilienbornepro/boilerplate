@@ -8,7 +8,7 @@ import { TodayMarker } from './TodayMarker';
 import { DependencyLines } from './DependencyLines';
 import { MarkerLine } from './MarkerLine';
 import { useDependencyDraw } from '../../hooks/useDependencyDraw';
-import { Card, Button } from '@boilerplate/shared/components';
+import { Card, Button } from '@delivery-process/shared/components';
 import styles from './GanttBoard.module.css';
 
 interface GanttBoardProps {
@@ -601,6 +601,8 @@ export const GanttBoard = forwardRef<GanttBoardHandle, GanttBoardProps>(function
               rowHeight={ROW_HEIGHT}
               rowOffsets={rowOffsets}
               maxHeight={calendarHeight}
+              columns={effectiveColumns}
+              effectiveColumnWidth={effectiveColumnWidth}
             />
           ))}
         </div>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { ViewMode, Marker, Task } from '../../types';
+import type { ViewMode, Marker, Task, TimeColumn } from '../../types';
 import { calculateTaskPosition, getColumnWidth, parseDate } from '../../utils/dateUtils';
 import { TASK_COLORS } from '../../utils/taskUtils';
 import { useDragMarker } from '../../hooks/useDragMarker';
@@ -28,6 +28,10 @@ interface MarkerLineProps {
   rowOffsets?: number[];
   /** Max height in px — if provided, the vertical line stops at this height */
   maxHeight?: number;
+  /** Effective columns used by the Gantt (with dynamic widths stamped for year view) */
+  columns?: TimeColumn[];
+  /** Effective column width (dynamic in year view) */
+  effectiveColumnWidth?: number;
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -36,30 +40,34 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function MarkerLine({
-  marker, chartStartDate, chartEndDate, viewMode, onUpdate, onDelete, readOnly, topLevelTaskRows, rowHeight = 64, rowOffsets, maxHeight,
+  marker, chartStartDate, chartEndDate, viewMode, onUpdate, onDelete, readOnly, topLevelTaskRows, rowHeight = 64, rowOffsets, maxHeight, columns, effectiveColumnWidth,
 }: MarkerLineProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(marker.name);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const columnWidth = getColumnWidth(viewMode);
+  const columnWidth = effectiveColumnWidth ?? getColumnWidth(viewMode);
 
   const { markerRef, handleMouseDown } = useDragMarker({
     markerId: marker.id,
     markerDate: marker.markerDate,
     chartStartDate,
+    chartEndDate,
     viewMode,
     onMove: (id, newDate, taskId) => {
       onUpdate?.(id, { markerDate: newDate, taskId });
     },
     topLevelTaskRows,
     rowHeight,
+    currentTaskId: marker.taskId,
+    columns,
+    effectiveColumnWidth: columnWidth,
   });
 
   const markerDate = parseDate(marker.markerDate);
   if (markerDate < chartStartDate || markerDate > chartEndDate) return null;
 
-  const { left } = calculateTaskPosition(markerDate, markerDate, chartStartDate, columnWidth, viewMode);
+  const { left } = calculateTaskPosition(markerDate, markerDate, chartStartDate, columnWidth, viewMode, columns);
   const finalPosition = 250 + left;
 
   const handleDoubleClick = (e: React.MouseEvent) => {
