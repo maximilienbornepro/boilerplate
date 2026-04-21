@@ -176,7 +176,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
               <div className="suivitess-exports-group-title">Importer</div>
               {importProviders.transcription && (
                 <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); openImport(); }}>
-                  Transcription
+                  Import
                 </button>
               )}
               {importProviders.gmail && (
