@@ -70,6 +70,20 @@ interface FinalReviewProposalAdapted {
  *  pinned to the scoping document so the frontend's review dropdown
  *  stays locked on it. `create_section` fans out one entry per
  *  subject (the backend groups them under a single new section). */
+/** Lookup the sectionId that contains a given subjectId in a doc's
+ *  sections snapshot. Used by the enrich adapter since the pipeline
+ *  only carries sectionName for enrich proposals. */
+function resolveSectionIdForSubject(
+  sections: Array<{ id: string; subjects: Array<{ id: string }> }>,
+  subjectId: string | undefined,
+): string | null {
+  if (!subjectId) return null;
+  for (const s of sections) {
+    if (s.subjects.some(sub => sub.id === subjectId)) return s.id;
+  }
+  return null;
+}
+
 function adaptDocProposalToReviewShape(
   p: {
     action: 'enrich' | 'create_subject' | 'create_section';
@@ -84,8 +98,12 @@ function adaptDocProposalToReviewShape(
     status?: string;
     subjects?: Array<{ title: string; situation: string; responsibility: string | null; status: string }>;
     reason: string;
+    sourceRawQuotes?: string[];
+    sourceEntities?: string[];
+    sourceParticipants?: string[];
   },
   docId: string,
+  docSections: Array<{ id: string; subjects: Array<{ id: string }> }>,
 ): FinalReviewProposalAdapted[] {
   const baseReview = {
     action: 'existing-review' as const,
@@ -95,12 +113,13 @@ function adaptDocProposalToReviewShape(
     aiProposedReviewTitle: null as null,
     confidence: 'high' as const,
     reasoning: p.reason,
-    // The pipeline attaches rawQuotes per tier log, not per proposal.
-    // Leave empty here — the import payload builder falls back to
-    // p.subject.situation for the apply-routing payload.
-    sourceRawQuotes: [] as string[],
-    sourceEntities: [] as string[],
-    sourceParticipants: [] as string[],
+    // Plumbed from the extraction so the frontend can feed them back
+    // to /apply-routing (routing memory) + to the regeneration skills
+    // (suggest-name, generate-append-text, generate-compose-text)
+    // when the user overrides the IA's target.
+    sourceRawQuotes: p.sourceRawQuotes ?? [],
+    sourceEntities: p.sourceEntities ?? [],
+    sourceParticipants: p.sourceParticipants ?? [],
   };
 
   if (p.action === 'enrich') {
@@ -111,7 +130,11 @@ function adaptDocProposalToReviewShape(
       status: 'en-cours',
       responsibility: null,
       sectionAction: 'existing-section',
-      sectionId: null, // enrich doesn't carry sectionId; frontend resolves via targetSubjectId
+      // Resolve sectionId from the doc by matching the target subject.
+      // The FinalDocumentProposal for enrich only carries sectionName,
+      // but the frontend needs sectionId to render the inline preview
+      // + compute `currentSection`. Fallback to null if not found.
+      sectionId: resolveSectionIdForSubject(docSections, p.subjectId) ?? null,
       suggestedNewSectionName: null,
       subjectAction: 'update-existing-subject',
       targetSubjectId: p.subjectId ?? null,
@@ -3523,7 +3546,7 @@ ${filteredContent.slice(0, 30000)}`,
             }, onProgress);
             if (rootLogId != null) lastLogId = rootLogId;
             for (const p of proposals) {
-              const fannedOut = adaptDocProposalToReviewShape(p, doc.id);
+              const fannedOut = adaptDocProposalToReviewShape(p, doc.id, doc.sections);
               for (const adapted of fannedOut) allProposals.push(adapted);
             }
           } catch (err) {

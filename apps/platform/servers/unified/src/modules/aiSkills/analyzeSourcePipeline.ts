@@ -137,6 +137,14 @@ export interface FinalDocumentProposal {
     status: string;
   }>;
   reason: string;
+  /** Source-level context plumbed from T1 extraction through to the
+   *  final proposal — lets downstream consumers (e.g. the doc-scoped
+   *  bulk-import adapter) hand them back to /apply-routing, and to
+   *  regen skills (suggest-name, generate-append-text) when the user
+   *  overrides the IA's target. */
+  sourceRawQuotes?: string[];
+  sourceEntities?: string[];
+  sourceParticipants?: string[];
 }
 
 /** Matches the legacy `AnalyzedSubject` shape from transcriptionRoutingService
@@ -610,6 +618,9 @@ export async function analyzeSourceForDocument(
         sectionName: p.sectionName,
         appendText: w.appendText,
         reason: p.reason,
+        sourceRawQuotes: subj.rawQuotes,
+        sourceEntities: subj.entities,
+        sourceParticipants: subj.participants,
       };
     }
 
@@ -629,6 +640,9 @@ export async function analyzeSourceForDocument(
         responsibility: subj.responsibilityHint ?? null,
         status: defaultStatus(subj.statusHint),
         reason: p.reason,
+        sourceRawQuotes: subj.rawQuotes,
+        sourceEntities: subj.entities,
+        sourceParticipants: subj.participants,
       };
     }
 
@@ -649,6 +663,9 @@ export async function analyzeSourceForDocument(
           status: defaultStatus(subj.statusHint),
         }],
         reason: p.reason,
+        sourceRawQuotes: subj.rawQuotes,
+        sourceEntities: subj.entities,
+        sourceParticipants: subj.participants,
       };
     }
 

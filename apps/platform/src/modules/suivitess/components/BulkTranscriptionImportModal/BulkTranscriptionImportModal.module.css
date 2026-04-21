@@ -2000,6 +2000,30 @@
   background: color-mix(in srgb, #eab308 12%, transparent);
 }
 
+/* Inline ✎ edit shortcut embedded in the "new" pill label. Clicking
+   it bypasses the dropdown and opens the InlineNameEditor directly,
+   so the user can rename the new review/section in 1 click instead
+   of 2 (click pill → dropdown → "+ Créer"). */
+.aiDecisionPillEditIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+}
+
+.aiDecisionPillEditIcon:hover {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+
 /* Highlights the "+ Créer nouvelle X" option at the top of dropdowns.
    Uses the warning accent (amber) so it stands out from plain
    existing-entity options below. Consistent signal across review /

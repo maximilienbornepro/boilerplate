@@ -1430,7 +1430,23 @@ function SubjectRow({
               ) : (
                 <CustomDropdown
                   value={mode === 'create' ? '__new__' : (reviewId ?? '')}
-                  displayLabel={<span className={currentReviewIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentReviewLabel} »</span>}
+                  displayLabel={
+                    <span className={currentReviewIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>
+                      « {currentReviewLabel} »
+                      {mode === 'create' && (
+                        <span
+                          className={styles.aiDecisionPillEditIcon}
+                          role="button"
+                          tabIndex={0}
+                          title="Modifier le nom de la nouvelle review"
+                          onClick={(e) => { e.stopPropagation(); setEditingCreateName('review'); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); setEditingCreateName('review'); } }}
+                        >
+                          ✎
+                        </span>
+                      )}
+                    </span>
+                  }
                   disabled={skipped}
                   className={styles.aiDecisionInlineDropdown}
                   compact
@@ -1448,9 +1464,6 @@ function SubjectRow({
                   ]}
                   onChange={(val) => {
                     if (val === '__new__') {
-                      // Open the inline editor so the user can customize
-                      // the name (or regenerate via IA). Don't commit the
-                      // create-mode yet — that happens on validate.
                       setEditingCreateName('review');
                     } else {
                       if (mode === 'existing' && reviewId === val) return;
@@ -1486,7 +1499,23 @@ function SubjectRow({
               ) : (
                 <CustomDropdown
                   value={sectionMode === 'new' ? '__new__' : (sectionId ?? '')}
-                  displayLabel={<span className={currentSectionIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>« {currentSectionLabel} »</span>}
+                  displayLabel={
+                    <span className={currentSectionIsExisting ? styles.aiDecisionPillExisting : styles.aiDecisionPillNew}>
+                      « {currentSectionLabel} »
+                      {sectionMode === 'new' && (
+                        <span
+                          className={styles.aiDecisionPillEditIcon}
+                          role="button"
+                          tabIndex={0}
+                          title="Modifier le nom de la nouvelle section"
+                          onClick={(e) => { e.stopPropagation(); setEditingCreateName('section'); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); setEditingCreateName('section'); } }}
+                        >
+                          ✎
+                        </span>
+                      )}
+                    </span>
+                  }
                   disabled={skipped}
                   className={styles.aiDecisionInlineDropdown}
                   compact
