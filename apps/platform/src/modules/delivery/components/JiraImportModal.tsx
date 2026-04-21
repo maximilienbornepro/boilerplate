@@ -3,9 +3,10 @@ import {
   fetchJiraProjects,
   fetchJiraSprints,
   fetchJiraIssues,
+  fetchJiraIssueByUrl,
   createTask,
 } from '../services/api';
-import type { JiraProject, JiraSprint, JiraIssue } from '../services/api';
+import type { JiraProject, JiraSprint, JiraIssue, JiraIssueFromUrl } from '../services/api';
 import { recordJiraProjectUsage, sortJiraProjectsByUsage } from '../services/jiraProjectUsage';
 import { mapIssueType, formatJiraTitle } from '../utils/jiraUtils';
 import styles from './JiraImportModal.module.css';
@@ -17,9 +18,18 @@ interface JiraImportModalProps {
 }
 
 type Step = 'sprints' | 'issues';
+/** Top-level mode : the user either scrolls sprints OR pastes a URL. */
+type Mode = 'sprints' | 'url';
 
 export function JiraImportModal({ incrementId, onImported, onClose }: JiraImportModalProps) {
+  const [mode, setMode] = useState<Mode>('sprints');
   const [step, setStep] = useState<Step>('sprints');
+
+  // URL mode state (independent from sprints flow).
+  const [urlInput, setUrlInput] = useState('');
+  const [urlPreview, setUrlPreview] = useState<JiraIssueFromUrl | null>(null);
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [urlCreating, setUrlCreating] = useState(false);
 
   // Step 1 state
   const [projects, setProjects] = useState<JiraProject[]>([]);
@@ -126,9 +136,55 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
     }
   };
 
-  const title = step === 'sprints'
-    ? 'Importer depuis Jira — Etape 1 : Sprints'
-    : `Importer depuis Jira — Etape 2 : Tickets (${issues.length})`;
+  const handleUrlPreview = async () => {
+    const raw = urlInput.trim();
+    if (!raw) return;
+    setError(null);
+    setUrlPreview(null);
+    setUrlLoading(true);
+    try {
+      const res = await fetchJiraIssueByUrl(raw);
+      setUrlPreview(res);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setUrlLoading(false);
+    }
+  };
+
+  const handleUrlImport = async () => {
+    if (!urlPreview) return;
+    setError(null);
+    setUrlCreating(true);
+    try {
+      // Use the legacy `createTask` path (not `createTaskFromJiraUrl`
+      // which requires a boardId this modal doesn't carry). The preview
+      // response already has all the fields we need — denormalized, no
+      // extra Jira call needed here.
+      await createTask({
+        title: formatJiraTitle(urlPreview.key, urlPreview.summary),
+        type: mapIssueType(urlPreview.issueType),
+        status: urlPreview.status,
+        storyPoints: urlPreview.storyPoints ?? undefined,
+        estimatedDays: urlPreview.estimatedDays ?? undefined,
+        assignee: urlPreview.assignee ?? undefined,
+        sprintName: urlPreview.sprintName ?? undefined,
+        incrementId,
+        source: 'jira',
+      });
+      onImported();
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+      setUrlCreating(false);
+    }
+  };
+
+  const title = mode === 'url'
+    ? 'Importer depuis Jira — par URL'
+    : step === 'sprints'
+      ? 'Importer depuis Jira — Etape 1 : Sprints'
+      : `Importer depuis Jira — Etape 2 : Tickets (${issues.length})`;
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -138,9 +194,97 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
           <button className={styles.closeBtn} onClick={onClose} type="button">&times;</button>
         </div>
 
+        {/* Mode switcher — segmented control (Sprints | URL) */}
+        <div className={styles.modeSwitcher}>
+          <button
+            type="button"
+            className={`${styles.modeBtn} ${mode === 'sprints' ? styles.modeBtnActive : ''}`}
+            onClick={() => { setMode('sprints'); setError(null); }}
+          >
+            Par sprint
+          </button>
+          <button
+            type="button"
+            className={`${styles.modeBtn} ${mode === 'url' ? styles.modeBtnActive : ''}`}
+            onClick={() => { setMode('url'); setError(null); }}
+          >
+            🔗 Par URL
+          </button>
+        </div>
+
         {error && <div className={styles.error}>{error}</div>}
 
-        {step === 'sprints' && (
+        {mode === 'url' && (
+          <div className={styles.body}>
+            <div className={styles.field}>
+              <label className={styles.label}>URL ou clé Jira</label>
+              <p className={styles.hint}>
+                Colle l'URL d'un ticket Jira, ou juste sa clé (ex : <code>TVSMART-2181</code>).
+                On utilise ta connexion Jira (OAuth ou token) pour récupérer les détails.
+              </p>
+              <div className={styles.urlRow}>
+                <input
+                  type="text"
+                  className={styles.urlInput}
+                  placeholder="https://…/browse/TVSMART-2181  ou  TVSMART-2181"
+                  value={urlInput}
+                  onChange={e => setUrlInput(e.target.value)}
+                  disabled={urlLoading || urlCreating}
+                  onKeyDown={e => { if (e.key === 'Enter' && urlInput.trim() && !urlPreview) handleUrlPreview(); }}
+                  autoFocus
+                />
+                {!urlPreview && (
+                  <button
+                    type="button"
+                    className={styles.primaryBtn}
+                    disabled={urlLoading || !urlInput.trim()}
+                    onClick={handleUrlPreview}
+                  >
+                    {urlLoading ? 'Chargement…' : 'Prévisualiser'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {urlPreview && (
+              <div className={styles.urlPreview}>
+                <div className={styles.urlPreviewHead}>
+                  <span className={styles.urlPreviewKey}>{urlPreview.key}</span>
+                  <span className={styles.urlPreviewType}>{urlPreview.issueType}</span>
+                  <span className={styles.urlPreviewStatus}>{urlPreview.status}</span>
+                  <span className={styles.urlPreviewAuth} title={urlPreview.authMode === 'oauth' ? 'Récupéré via OAuth 2.0' : 'Récupéré via token Basic Auth'}>
+                    {urlPreview.authMode === 'oauth' ? '🔐 OAuth' : '🔑 Token'}
+                  </span>
+                </div>
+                <h4 className={styles.urlPreviewSummary}>{urlPreview.summary}</h4>
+                <div className={styles.urlPreviewMeta}>
+                  {urlPreview.assignee && <span>👤 {urlPreview.assignee}</span>}
+                  {urlPreview.storyPoints != null && <span>⚡ {urlPreview.storyPoints} SP</span>}
+                  {urlPreview.estimatedDays != null && <span>📆 {urlPreview.estimatedDays} j</span>}
+                  {urlPreview.fixVersion && <span>🎯 {urlPreview.fixVersion}</span>}
+                  {urlPreview.sprintName && <span>🏃 {urlPreview.sprintName}</span>}
+                  {urlPreview.priority && <span>⚑ {urlPreview.priority}</span>}
+                </div>
+              </div>
+            )}
+
+            <div className={styles.footer}>
+              <button type="button" className={styles.secondaryBtn} onClick={onClose} disabled={urlCreating}>
+                Annuler
+              </button>
+              <button
+                type="button"
+                className={styles.primaryBtn}
+                disabled={!urlPreview || urlCreating}
+                onClick={handleUrlImport}
+              >
+                {urlCreating ? 'Import…' : 'Importer ce ticket'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {mode === 'sprints' && step === 'sprints' && (
           <div className={styles.body}>
             {/* Project selector */}
             <div className={styles.field}>
@@ -191,7 +335,7 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
           </div>
         )}
 
-        {step === 'issues' && (
+        {mode === 'sprints' && step === 'issues' && (
           <div className={styles.body}>
             <div className={styles.issueActions}>
               <button className={styles.linkBtn} onClick={selectAllIssues}>Tout sélectionner</button>
