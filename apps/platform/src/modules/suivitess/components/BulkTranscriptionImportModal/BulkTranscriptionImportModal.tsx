@@ -2036,26 +2036,45 @@ function CustomDropdown({
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    // Close the dropdown on any scroll event originating OUTSIDE the
-    // dropdown menu itself. Prevents the menu from remaining visible
-    // at a stale position (or completely off-screen) when the user
-    // tries to scroll the modal while the dropdown is open. The
-    // internal dropdown scroll is preserved because we only listen on
-    // the document, with the handler guarded by a "is this scroll on
-    // the dropdown menu?" check.
+    // Close the dropdown on scroll — BUT ignore scrolls that happen
+    // inside our own menu (so the internal option list remains
+    // scrollable). We use `Node.contains(target)` which returns true
+    // when the node is the target itself, so scrolling the menu's
+    // own overflow container is correctly treated as "inside".
     const scrollHandler = (e: Event) => {
       const target = e.target as Node | null;
       const menu = ref.current?.querySelector('[role="menu"]');
-      if (menu && target && menu.contains(target)) return;
+      if (menu && target && (menu === target || menu.contains(target))) return;
+      // Also ignore events fired on Document itself during menu
+      // scroll (some browsers bubble a document-level scroll while
+      // the actual scrolling happens on the menu container).
+      if (target === document || target instanceof Document) return;
       setOpen(false);
     };
+    // Prevent wheel-over-menu from bubbling up to the modal container
+    // and making the whole modal scroll (which would then trigger our
+    // close handler). The menu already has `overflowY: auto` +
+    // `overscrollBehavior: contain` so its own scroll is preserved.
+    const wheelHandler = (e: WheelEvent) => {
+      const menu = ref.current?.querySelector('[role="menu"]') as HTMLElement | null;
+      if (!menu) return;
+      const target = e.target as Node | null;
+      if (!target || !(menu === target || menu.contains(target))) return;
+      // We're inside the menu — stop the wheel event from reaching
+      // ancestor scroll containers. The menu will scroll itself.
+      const atTop = menu.scrollTop === 0 && e.deltaY < 0;
+      const atBottom = menu.scrollTop + menu.clientHeight >= menu.scrollHeight && e.deltaY > 0;
+      if (!atTop && !atBottom) {
+        e.stopPropagation();
+      }
+    };
     document.addEventListener('mousedown', handler);
-    // `true` → capture phase so we catch scrolls on any scrollable
-    // ancestor, not just the root document.
     document.addEventListener('scroll', scrollHandler, true);
+    document.addEventListener('wheel', wheelHandler, true);
     return () => {
       document.removeEventListener('mousedown', handler);
       document.removeEventListener('scroll', scrollHandler, true);
+      document.removeEventListener('wheel', wheelHandler, true);
     };
   }, [open]);
 
