@@ -1430,21 +1430,41 @@ function SubjectRow({
               <strong className={styles.aiDecisionStatementLead}>
                 {currentIsUpdate ? 'MISE À JOUR' : 'CRÉATION'}
               </strong>{' '}
-              {currentIsUpdate ? (
-                currentTargetSubjectTitle ? (
-                  <>
-                    du sujet existant{' '}
-                    <strong className={styles.aiDecisionTargetSubject}>« {currentTargetSubjectTitle} »</strong>
-                  </>
-                ) : (
-                  <>d'un sujet existant <em>(cible non résolue — à choisir ci-dessous)</em></>
-                )
-              ) : (
-                <>
-                  d'un nouveau sujet{' '}
-                  <strong className={styles.aiDecisionTargetSubject}>« {subject.title} »</strong>
-                </>
-              )}
+              {currentIsUpdate ? 'du sujet existant' : "d'un nouveau sujet"}{' '}
+              <CustomDropdown
+                value={currentIsUpdate ? (targetSubjectId ?? '') : '__new__'}
+                displayLabel={
+                  currentIsUpdate
+                    ? (currentTargetSubjectTitle
+                        ? <span className={styles.aiDecisionTargetSubject}>« {currentTargetSubjectTitle} »</span>
+                        : <em>(cible non résolue — à choisir ci-dessous)</em>)
+                    : <span className={styles.aiDecisionTargetSubject}>« {subject.title} »</span>
+                }
+                disabled={skipped}
+                className={styles.aiDecisionInlineDropdown}
+                compact
+                options={[
+                  {
+                    value: '__new__',
+                    label: (
+                      <span className={styles.dropdownNewOption}>
+                        + Créer un nouveau sujet <em className={styles.dropdownNewHint}>« {subject.title} »</em>
+                      </span>
+                    ),
+                  },
+                  ...(currentSection && currentSection.subjects.length > 0
+                    ? [{ value: '__sep__', label: 'Ou ajouter comme état de situation à un sujet existant' }]
+                    : []),
+                  ...(currentSection?.subjects.map(s => ({ value: s.id, label: s.title })) ?? []),
+                ]}
+                onChange={(val) => {
+                  if (val === '__new__') {
+                    onUpdate({ subjectAction: 'create', targetSubjectId: null });
+                  } else {
+                    onUpdate({ subjectAction: 'update', targetSubjectId: val });
+                  }
+                }}
+              />
               .
               {userChangedRoute && (
                 <span className={styles.aiDecisionModifiedBadge} title="Tu as modifié la proposition de l'IA">✎ modifié</span>
