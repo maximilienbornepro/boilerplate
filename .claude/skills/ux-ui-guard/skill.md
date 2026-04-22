@@ -28,6 +28,12 @@ triggers:
   - mise a jour
   - correction
   - creation
+  - html
+  - jsx
+  - render
+  - affichage
+  - balise
+  - react
 ---
 
 # UX/UI Guard
@@ -101,6 +107,15 @@ Regles dures, non negociables :
   les statuts de `STATUS_OPTIONS` (SuiviTess types).
 - **OBLIGATOIRE** : chaque nouveau composant partage doit exposer son
   `tsx` + `.module.css` + typage exporte.
+- **OBLIGATOIRE — validation d'alignement** : pour CHAQUE composant que tu
+  edites, confirmer qu'il correspond a celui declare dans le DS :
+  1. Son nom apparait-il dans `design-system.data.json > shared.used` ?
+     → Alors c'est un composant partage, utiliser tel quel.
+  2. Son nom apparait-il dans `localByModule` pour un autre module ?
+     → Considerer la promotion vers shared (cf. `duplicates`).
+  3. Si tu ajoutes un tag `<Button>`, `<Modal>`, `<Card>`...
+     sans import depuis `@boilerplate/shared/components`, c'est un drift
+     → remplacer par l'import shared (le hook le detecte et bloque).
 
 ### 3. APRES le code
 
@@ -218,3 +233,80 @@ quelque chose qui touche a l'UX/UI, Claude peut l'invoquer en disant :
 > « Comme ta demande touche a l'UX, j'applique le skill `ux-ui-guard`. »
 
 Puis derouler le workflow ci-dessus.
+
+---
+
+## HOOK BLOQUANT — `ux-ui-enforcer.sh`
+
+Un hook `PreToolUse` intercepte CHAQUE `Write`/`Edit` sur les fichiers
+`.tsx` / `.jsx` / `.css` / `.html` situes dans l'un des 5 modules en
+scope (landing, conges, roadmap, delivery, suivitess) ou dans
+`packages/shared/src/components/`.
+
+### Flow impose
+
+1. Premier essai d'ecrire un fichier UI → **hook bloque** (exit 2).
+2. Stderr affiche la checklist que Claude doit presenter a l'utilisateur.
+3. Claude ecrit son message :
+
+   ```
+   ┌──────────────────────────────────────────┐
+   │ UX-UI GUARD — Checklist avant ecriture   │
+   └──────────────────────────────────────────┘
+   • Fichier        : <chemin>
+   • Intent         : <1-2 phrases expliquant le changement>
+   • Composants     : <liste des composants @boilerplate/shared utilises>
+   • Composants locaux existants reutilises : <liste>
+   • Design tokens  : <liste des var(--...) referencees>
+   • Nouveau pattern ? : oui / non (si oui, justifier)
+
+   Tu confirmes ? (reponds « oui » pour debloquer)
+   ```
+
+4. L'utilisateur confirme (« oui », « ok », « go »).
+5. Claude debloque en executant :
+
+   ```bash
+   touch .claude/.ux-ui-ack
+   ```
+
+6. Claude relance son Write/Edit → cette fois le hook accepte.
+7. L'ack reste valide 5 min (couvre une rafale d'edits coherents), puis
+   la discipline reapplique.
+
+### Quand la checklist est-elle necessaire ?
+
+- **Toujours** pour une premiere edition UI dans une session.
+- **Toujours** apres une pause > 5 min (ack expire).
+- **Toujours** au changement de fichier/page/module.
+- **Toujours** quand on touche `packages/shared/` (zone critique).
+
+### Comment presenter la checklist au user ?
+
+Format strict attendu (le user doit voir les composants/tokens AVANT
+de confirmer) :
+
+```markdown
+**Je vais toucher** : `apps/platform/src/modules/suivitess/App.tsx`
+
+**Objectif** : ajouter une modale de confirmation pour la suppression
+d'un document.
+
+**Composants @boilerplate/shared utilises** :
+- `ConfirmModal` (deja utilise par delivery + roadmap, 12 usages)
+
+**Composants locaux existants reutilises** :
+- `DocumentSelector.handleDelete` (logique deja en place)
+
+**Design tokens references** :
+- `var(--error)` (bouton danger)
+- `var(--spacing-md)` (padding)
+
+**Nouveau pattern ?** non — j'utilise uniquement l'existant.
+
+**Tu confirmes ? (reponds « oui » pour debloquer)**
+```
+
+Cette presentation est **obligatoire** avant chaque premiere ecriture —
+elle force Claude a reflechir a la reutilisation, et elle donne au user
+le dernier mot avant modification.

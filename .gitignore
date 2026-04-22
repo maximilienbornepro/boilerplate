@@ -70,3 +70,4 @@ sync-boilerplate.sh
 .claude/worktrees/
 .claire/
 .claude/scheduled_tasks.lock
+.claude/.ux-ui-ack
