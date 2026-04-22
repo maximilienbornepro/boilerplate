@@ -989,7 +989,7 @@ export function createGatewayRouter(): Router {
 
   // Update sharing config (visibility + shares)
   router.put('/sharing/:resourceType/:resourceId', authMiddleware, asyncHandler(async (req, res) => {
-    const { setVisibility, shareWithEmail, unshare, getResourceSharing, ensureOwnership } = await import('./shared/resourceSharing.js');
+    const { setVisibility, shareWithEmail, unshare, getResourceSharing } = await import('./shared/resourceSharing.js');
     const resourceType = req.params.resourceType as 'roadmap' | 'delivery' | 'suivitess';
     const resourceId = req.params.resourceId;
     const { visibility, sharedEmails, addEmail } = req.body as {
@@ -998,8 +998,22 @@ export function createGatewayRouter(): Router {
       addEmail?: string;
     };
 
-    // Ensure ownership entry exists
-    await ensureOwnership(resourceType, resourceId, req.user!.id);
+    // Security : only the existing owner (or an admin) may change the
+    // sharing config. Previously this handler called `ensureOwnership`
+    // which INSERT … ON CONFLICT DO NOTHING, silently minting the
+    // caller as owner for any resource that didn't yet have an entry.
+    // That let any authenticated user "claim" a legacy resource by
+    // PUT-ing a single sharing config. Now we require the sharing
+    // entry to exist AND to be owned by the caller (unless admin).
+    const sharing = await getResourceSharing(resourceType, resourceId);
+    if (!sharing) {
+      res.status(404).json({ error: 'Ressource introuvable ou non initialisée pour le partage' });
+      return;
+    }
+    if (!req.user!.isAdmin && sharing.ownerId !== req.user!.id) {
+      res.status(403).json({ error: 'Seul le propriétaire peut modifier le partage' });
+      return;
+    }
 
     if (visibility) {
       await setVisibility(resourceType, resourceId, visibility);

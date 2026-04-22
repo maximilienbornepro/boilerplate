@@ -31,24 +31,52 @@ export function createRoadmapRoutes(): Router {
   const router = Router();
 
   // ==================== PUBLIC EMBED ROUTES ====================
+  //
+  // These routes are intentionally unauthenticated so a planning can
+  // be shared via a URL like `/roadmap?embed=<id>`. But the embed link
+  // must only work if the owner has explicitly toggled the planning
+  // to `visibility='public'` via the sharing UI. Previously any
+  // authenticated/unauthenticated client could guess an id (UUIDv4)
+  // and read a private planning — the check below closes that IDOR.
+
+  async function assertPlanningIsPublic(id: string): Promise<boolean> {
+    try {
+      const { getResourceSharing } = await import('../shared/resourceSharing.js');
+      const sharing = await getResourceSharing('roadmap', id);
+      // No sharing entry → created before the sharing system landed :
+      // keep the legacy behavior (public embed allowed). New resources
+      // always get a sharing entry (see POST /plannings below).
+      if (!sharing) return true;
+      return sharing.visibility === 'public';
+    } catch {
+      return false;
+    }
+  }
 
   router.get('/embed/:id', asyncHandler(async (req, res) => {
+    if (!(await assertPlanningIsPublic(req.params.id))) {
+      res.status(404).json({ error: 'Planning non trouve' });
+      return;
+    }
     const planning = await db.getPlanningById(req.params.id);
     if (!planning) { res.status(404).json({ error: 'Planning non trouve' }); return; }
     res.json(planning);
   }));
 
   router.get('/embed/:id/tasks', asyncHandler(async (req, res) => {
+    if (!(await assertPlanningIsPublic(req.params.id))) { res.status(404).json({ error: 'Planning non trouve' }); return; }
     const tasks = await db.getTasksByPlanning(req.params.id);
     res.json(tasks);
   }));
 
   router.get('/embed/:id/dependencies', asyncHandler(async (req, res) => {
+    if (!(await assertPlanningIsPublic(req.params.id))) { res.status(404).json({ error: 'Planning non trouve' }); return; }
     const deps = await db.getDependenciesByPlanning(req.params.id);
     res.json(deps);
   }));
 
   router.get('/embed/:id/markers', asyncHandler(async (req, res) => {
+    if (!(await assertPlanningIsPublic(req.params.id))) { res.status(404).json({ error: 'Planning non trouve' }); return; }
     const markers = await db.getMarkersByPlanning(req.params.id);
     res.json(markers);
   }));

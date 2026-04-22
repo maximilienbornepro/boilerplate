@@ -19,8 +19,28 @@ import { initPromptLogs, createPromptLogsRouter } from './modules/promptLogs/ind
 const app = express();
 
 // Middleware
+// CORS : whitelist only — reflecting any Origin with credentials
+// enabled (the previous `origin: true`) let any malicious site read
+// authenticated responses. Allowed origins are :
+//   - ALLOWED_ORIGINS env (comma-separated)
+//   - Local dev ports (5170-5179) + the 3010 backend itself
+//   - Anything from the deployed Vitess domain (studio.vitess.tech,
+//     boilerplate.vitess.tech, francetv.vitess.tech) and their subs.
+const DEV_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1):(517[0-9]|3010)$/;
+const VITESS_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?vitess\.tech$/;
+const EXTRA_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean);
 app.use(cors({
-  origin: true,
+  origin: (origin, cb) => {
+    // Same-origin (curl / server-to-server) → allow.
+    if (!origin) { cb(null, true); return; }
+    if (DEV_ORIGIN_RE.test(origin)) { cb(null, true); return; }
+    if (VITESS_ORIGIN_RE.test(origin)) { cb(null, true); return; }
+    if (EXTRA_ORIGINS.includes(origin)) { cb(null, true); return; }
+    // Chrome extension origins (chrome-extension://…) — used by the
+    // suivitess-importer extension.
+    if (origin.startsWith('chrome-extension://')) { cb(null, true); return; }
+    cb(new Error(`CORS: origin not allowed (${origin})`));
+  },
   credentials: true,
 }));
 app.use(express.json());
