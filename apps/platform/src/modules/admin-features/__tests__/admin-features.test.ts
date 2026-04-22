@@ -33,7 +33,9 @@ describe('admin-features helpers', () => {
   });
 
   it('groups integration keys under Intégrations', () => {
-    expect(groupOf('integration_roadmap_suivitess')).toBe('Intégrations');
+    // Matches any `integration_*` prefix ; kept forward-compatible for
+    // future cross-module flags.
+    expect(groupOf('integration_future_flag')).toBe('Intégrations');
   });
 
   it('falls back to Autres for unknown prefixes', () => {
@@ -45,6 +47,6 @@ describe('admin-features helpers', () => {
     expect(prettyLabel('connector_gmail_enabled')).toBe('Gmail');
     expect(prettyLabel('module_suivitess_enabled')).toBe('Suivitess');
     expect(prettyLabel('connector_teams_recorder_enabled')).toBe('Teams recorder');
-    expect(prettyLabel('integration_roadmap_suivitess')).toBe('Roadmap suivitess');
+    expect(prettyLabel('integration_future_flag')).toBe('Future flag');
   });
 });

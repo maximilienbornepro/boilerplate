@@ -48,12 +48,6 @@ export async function initGateway() {
   `);
   await pool.query(`
     INSERT INTO platform_settings (key, value, description)
-    VALUES ('integration_roadmap_suivitess', 'true', 'Liaison Tâches Roadmap ↔ Sujets SuiviTess')
-    ON CONFLICT (key) DO UPDATE SET
-      description = EXCLUDED.description
-  `);
-  await pool.query(`
-    INSERT INTO platform_settings (key, value, description)
     VALUES ('credits_enabled', 'false', 'Système de crédits pour limiter l''usage des services')
     ON CONFLICT (key) DO UPDATE SET
       description = EXCLUDED.description

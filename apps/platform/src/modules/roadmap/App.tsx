@@ -11,7 +11,6 @@ import { GanttBoard, type GanttBoardHandle } from './components/GanttBoard/Gantt
 import { TaskForm } from './components/TaskForm/TaskForm';
 import { ViewSelector } from './components/ViewSelector/ViewSelector';
 import { SubjectsPanel } from './components/SubjectsPanel/SubjectsPanel';
-import { usePlatformSettings } from '../../hooks/usePlatformSettings';
 import './index.css';
 
 function getUrlPlanningId(): string | null {
@@ -245,8 +244,6 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
   const [showSubjectsPanel, setShowSubjectsPanel] = useState(false);
   const [copiedPreview, setCopiedPreview] = useState(false);
   const ganttScrollRef = useRef<GanttBoardHandle | null>(null);
-  const platformSettings = usePlatformSettings();
-  const integrationEnabled = platformSettings['integration_roadmap_suivitess'] ?? false;
 
   useEffect(() => {
     if (!planningId) return;

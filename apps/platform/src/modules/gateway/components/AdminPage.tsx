@@ -22,12 +22,10 @@ interface PlatformSetting {
 }
 
 const INTEGRATION_LABELS: Record<string, string> = {
-  integration_roadmap_suivitess: 'Roadmap ↔ SuiviTess',
   credits_enabled: 'Systeme de credits',
 };
 
 const INTEGRATION_DESCRIPTIONS: Record<string, string> = {
-  integration_roadmap_suivitess: 'Lier des tâches Roadmap à des sujets SuiviTess et les éditer depuis Roadmap',
   credits_enabled: 'Limiter l\'usage des services IA et la création de ressources via un système de crédits par utilisateur',
 };
 

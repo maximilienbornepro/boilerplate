@@ -23,7 +23,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const [showHistory, setShowHistory] = useState(false);
   const [showRecorder, setShowRecorder] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [showTranscriptionWizard, setShowTranscriptionWizard] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -110,7 +110,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
 
   const openImport = (provider?: string) => {
     setImportInitialProvider(provider);
-    setShowTranscriptionWizard(true);
+    setShowBulkImport(true);
     setShowImports(false);
   };
 
@@ -315,17 +315,17 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           onClose={() => setShowEmailModal(false)}
         />
       )}
-      {showTranscriptionWizard && docId && (
+      {showBulkImport && docId && (
         // Per-document import : reuses the global bulk-import modal
         // but scoped to this document. Skips the place-in-reviews
         // skill (useless when the destination doc is pre-known) and
         // locks the review pill on this doc.
         <BulkTranscriptionImportModal
           scopedDocumentId={docId}
-          onClose={() => { setShowTranscriptionWizard(false); setImportInitialProvider(undefined); }}
+          onClose={() => { setShowBulkImport(false); setImportInitialProvider(undefined); }}
           onDone={() => {
             setRefreshKey(k => k + 1);
-            setShowTranscriptionWizard(false);
+            setShowBulkImport(false);
             setImportInitialProvider(undefined);
           }}
         />

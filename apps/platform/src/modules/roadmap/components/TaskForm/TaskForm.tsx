@@ -11,7 +11,6 @@ interface TaskFormProps {
   task?: Task | null;
   parentTasks?: Task[];
   planningId?: string;
-  integrationEnabled?: boolean;
   onSubmit: (data: { name: string; color: string; parentId?: string | null }) => void;
   onCancel: () => void;
   onDelete?: () => void;
@@ -26,7 +25,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
-export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, integrationEnabled, onSubmit, onCancel, onDelete }: TaskFormProps) {
+export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, onSubmit, onCancel, onDelete }: TaskFormProps) {
   const [formData, setFormData] = useState({
     name: '',
     color: TASK_COLORS[0],
@@ -49,7 +48,7 @@ export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, int
       const data = await api.fetchLinkedSubjects(task.id);
       setSubjects(data);
     } catch { /* silently */ }
-  }, [task?.id, integrationEnabled]);
+  }, [task?.id]);
 
   useEffect(() => { loadSubjects(); }, [loadSubjects]);
 
@@ -68,7 +67,7 @@ export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, int
       })
       .catch(() => setSubjectResults([]))
       .finally(() => setSubjectSearchLoading(false));
-  }, [debouncedSubjectSearch, subjects, integrationEnabled]);
+  }, [debouncedSubjectSearch, subjects]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {

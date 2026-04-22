@@ -8,11 +8,6 @@ CREATE TABLE IF NOT EXISTS platform_settings (
   updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- Seed: Roadmap <-> SuiviTess integration enabled by default
-INSERT INTO platform_settings (key, value, description)
-VALUES ('integration_roadmap_suivitess', 'true', 'Liaison Tâches Roadmap ↔ Sujets SuiviTess')
-ON CONFLICT (key) DO NOTHING;
-
 -- Link table: roadmap tasks <-> suivitess subjects
 CREATE TABLE IF NOT EXISTS roadmap_task_subjects (
   task_id    UUID NOT NULL,

@@ -207,43 +207,9 @@ describe('Roadmap Backend Module', () => {
 // ==================== Integration: Roadmap ↔ SuiviTess ====================
 
 describe('Roadmap ↔ SuiviTess Integration', () => {
-  describe('Platform feature flag logic', () => {
-    interface PlatformSetting {
-      key: string;
-      value: string;
-    }
-
-    function isIntegrationEnabled(settings: PlatformSetting[]): boolean {
-      const setting = settings.find(s => s.key === 'integration_roadmap_suivitess');
-      return setting?.value === 'true';
-    }
-
-    it('should be disabled by default', () => {
-      const settings: PlatformSetting[] = [
-        { key: 'integration_roadmap_suivitess', value: 'false' },
-      ];
-      expect(isIntegrationEnabled(settings)).toBe(false);
-    });
-
-    it('should be enabled when value is "true"', () => {
-      const settings: PlatformSetting[] = [
-        { key: 'integration_roadmap_suivitess', value: 'true' },
-      ];
-      expect(isIntegrationEnabled(settings)).toBe(true);
-    });
-
-    it('should return false when setting is absent', () => {
-      const settings: PlatformSetting[] = [];
-      expect(isIntegrationEnabled(settings)).toBe(false);
-    });
-
-    it('should only accept exact "true" string', () => {
-      const settings: PlatformSetting[] = [
-        { key: 'integration_roadmap_suivitess', value: '1' },
-      ];
-      expect(isIntegrationEnabled(settings)).toBe(false);
-    });
-  });
+  // Removed: Platform feature flag logic tests — the
+  // integration_roadmap_suivitess flag has been deleted (the linking
+  // feature is now always-on, no longer gated by a platform setting).
 
   describe('Task-Subject link data structure', () => {
     interface LinkedSubject {
