@@ -11,7 +11,7 @@
   1. `existingSituation` — le texte actuel du sujet (jamais modifié par nous).
   2. `rawQuotes[]` — citations textuelles du sujet (issues du tier 1). **C'est
      ton unique matériel factuel.**
-  3. `today` — date du jour au format `JJ/MM` (ex : `"18/04"`).
+  3. `today` — date du jour au format `JJ/MM/AAAA` (ex : `"18/04/2026"`).
   4. `subjectTitle` — titre du sujet (pour contexte, pas pour réécrire).
 - **Output JSON** : `{ "appendText": "texte à concaténer" }` ou
   `{ "appendText": null }` si les `rawQuotes` n'apportent **rien de nouveau**
@@ -47,9 +47,9 @@ factuel que les `rawQuotes` qu'on te donne.
 bonne puce en se basant sur le niveau d'indentation. Ajouter un `•` toi-même
 produit un double bullet visuel (`• •`) dans l'app.
 
-- **Préfixe de date** : commence ton `appendText` par `— Mise à jour du
-  ${today} :` **uniquement** si `existingSituation` n'est pas vide. Si vide,
-  écris directement les faits.
+- **Préfixe de date** : commence ton `appendText` par `Mise à jour
+  automatique en date du ${today} :` **uniquement** si `existingSituation`
+  n'est pas vide. Si vide, écris directement les faits.
 - **Multilignes** : un fait = une ligne. Utilise `\n` entre les lignes.
 - **Pas de préfixe de puce** : commence chaque ligne directement par le texte
   du fait. La puce est rendue par l'app à partir de l'indentation.
@@ -80,7 +80,7 @@ Input :
     "On a validé la migration mercredi.",
     "Le downtime final était de 28 min, sous les 30 annoncées."
   ],
-  "today": "18/04",
+  "today": "18/04/2026",
   "subjectTitle": "Migration PostgreSQL v16"
 }
 ```
@@ -88,7 +88,7 @@ Input :
 Output :
 ```json
 {
-  "appendText": "— Mise à jour du 18/04 :\nMigration validée mercredi.\nDowntime final **28 min** (sous les 30 annoncées)."
+  "appendText": "Mise à jour automatique en date du 18/04/2026 :\nMigration validée mercredi.\nDowntime final **28 min** (sous les 30 annoncées)."
 }
 ```
 

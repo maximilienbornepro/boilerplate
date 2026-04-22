@@ -1260,8 +1260,12 @@ Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En fran
           const sub = s.subjects.find(sub => sub.id === p.subjectId);
           if (sub) { currentSituation = sub.situation || ''; break; }
         }
+        // The append-situation skill already emits its own
+        // "Mise à jour automatique en date du DD/MM/YYYY :" prefix —
+        // we just concatenate with a blank line to separate
+        // the historical content from the new block.
         const newSituation = currentSituation
-          ? `${currentSituation}\n\n---\n📝 Ajouté depuis transcription :\n${p.appendText}`
+          ? `${currentSituation}\n\n${p.appendText}`
           : p.appendText;
         await db.updateSubjectFields(p.subjectId, ['situation = $1'], [newSituation]);
         enriched++;
@@ -2913,7 +2917,10 @@ ${filteredContent.slice(0, 30000)}`,
       return;
     }
     const { runSkill } = await import('../aiSkills/runSkill.js');
-    const todayFrFr = () => new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+    // Same DD/MM/YYYY format as the pipeline's todayFrFr — consistent
+    // "Mise à jour automatique en date du …" prefix across all append
+    // paths (bulk flow + per-doc flow + override regeneration).
+    const todayFrFr = () => new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const ctx = { existingSituation, rawQuotes, today: todayFrFr(), subjectTitle };
     try {
       const run = await runSkill({
@@ -3288,9 +3295,10 @@ ${filteredContent.slice(0, 30000)}`,
             const updateValues: (string | number | null)[] = [];
             let idx = 1;
             // Skip the situation update entirely if the payload's
-            // append is empty/blank — writing "📝 Ajouté depuis
-            // transcription :" with nothing under it was confusing
-            // for the user and meant nothing actually got appended.
+            // append is empty/blank. The append-situation skill
+            // already emits its own "Mise à jour automatique en date
+            // du DD/MM/YYYY :" prefix, so we concatenate cleanly
+            // with just a blank line separator.
             if (
               s.updatedSituation !== undefined
               && s.updatedSituation !== null
@@ -3298,7 +3306,7 @@ ${filteredContent.slice(0, 30000)}`,
             ) {
               const currentSituation = existing.situation || '';
               const newSituation = currentSituation
-                ? `${currentSituation}\n\n---\n📝 Ajouté depuis transcription :\n${s.updatedSituation}`
+                ? `${currentSituation}\n\n${s.updatedSituation}`
                 : s.updatedSituation;
               updateFragments.push(`situation = $${idx++}`);
               updateValues.push(newSituation);

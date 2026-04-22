@@ -1192,7 +1192,8 @@ function SubjectRow({
       .then(res => {
         // Only commit a non-empty composed situation — an empty string
         // would be sent as-is to apply-routing and persisted as a
-        // header with nothing under it ("📝 Ajouté depuis … / ").
+        // bare "Mise à jour automatique en date du …" header with
+        // nothing under it.
         if (res.situation && res.situation.trim()) {
           onUpdate({ overrideSituation: res.situation });
         }
@@ -1238,11 +1239,12 @@ function SubjectRow({
     })
       .then(res => {
         // Only commit a non-empty appendText — an empty string sent to
-        // apply-routing would be persisted as a bare "📝 Ajouté depuis
-        // transcription :" header with nothing under it. When the IA
-        // decides there's nothing to add we simply leave the row's
-        // overrideUpdatedSituation untouched (falls back to the
-        // pipeline's original value, or null → skip situation update).
+        // apply-routing would be persisted as a bare "Mise à jour
+        // automatique en date du …" header with nothing under it.
+        // When the IA decides there's nothing new to add, we leave
+        // the row's overrideUpdatedSituation untouched (falls back to
+        // the pipeline's original value, or null → skip situation
+        // update).
         if (res.appendText && res.appendText.trim()) {
           onUpdate({ overrideUpdatedSituation: res.appendText });
         }
