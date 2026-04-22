@@ -72,6 +72,36 @@ export function createConnectorsRoutes(): Router {
       }
     }
 
+    // SSRF guard : for LLM providers (mistral, scaleway) the user can
+    // supply a `baseUrl` which is then fed to the OpenAI SDK during
+    // `/:service/test` and during real inference calls. Without a
+    // whitelist, an authenticated user can point the baseUrl at an
+    // internal service (`http://169.254.169.254/…` — AWS/GCP metadata,
+    // `http://localhost:5432`, an intranet host …) and make the backend
+    // leak responses. We allow only the official vendor domains (plus
+    // https scheme) or — for legacy reasons — an existing baseUrl that
+    // was already saved before this check landed.
+    if (service === 'mistral' || service === 'scaleway') {
+      const raw = connectorConfig.baseUrl as string | undefined;
+      if (raw !== undefined && raw !== '' && raw !== null) {
+        let parsed: URL;
+        try { parsed = new URL(raw); }
+        catch { res.status(400).json({ error: 'baseUrl invalide' }); return; }
+        if (parsed.protocol !== 'https:') {
+          res.status(400).json({ error: 'baseUrl doit être en https://' });
+          return;
+        }
+        const host = parsed.hostname;
+        const allowed = service === 'mistral'
+          ? /(^|\.)mistral\.ai$/.test(host)
+          : /(^|\.)scaleway\.ai$|(^|\.)scw\.cloud$/.test(host);
+        if (!allowed) {
+          res.status(400).json({ error: `baseUrl : domaine non autorisé pour ${service}` });
+          return;
+        }
+      }
+    }
+
     // If updating, merge apiToken if masked
     if (service === 'jira' && connectorConfig.apiToken && connectorConfig.apiToken.includes('****')) {
       const existing = await db.getConnector(userId, service);

@@ -65,8 +65,25 @@ function normalizeEvent(body: unknown): InsertPromptLogInput | null {
 export function createRoutes(): Router {
   const router = Router();
 
-  // ── PUBLIC ingest. Never blocks, never errors client-visibly. ──
+  // ── Ingest (hook-fed, not user-authenticated). When a
+  // PROMPT_LOGS_HOOK_SECRET is configured we require the hook to
+  // send a matching `X-Hook-Secret` header. If the env is unset the
+  // endpoint stays open for local dev — but logs a warning so it's
+  // noticed.
+  const hookSecret = process.env.PROMPT_LOGS_HOOK_SECRET;
+  if (!hookSecret) {
+    console.warn('[PromptLogs] PROMPT_LOGS_HOOK_SECRET not set — /events is publicly writable (dev mode)');
+  }
   router.post('/events', asyncHandler(async (req, res) => {
+    if (hookSecret) {
+      const got = req.header('X-Hook-Secret');
+      if (got !== hookSecret) {
+        // Opaque 404 so a probe can't enumerate whether the secret
+        // protection is in place.
+        res.status(404).end();
+        return;
+      }
+    }
     const input = normalizeEvent(req.body);
     if (!input) {
       // Hook sent a shape we can't use — log + acknowledge quietly so curl

@@ -18,7 +18,11 @@ export const config = {
 
   // JWT
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
-  jwtExpiresIn: '90d',
+  // 7 days with sliding refresh would be the proper fix, but changing
+  // the TTL alone doesn't invalidate existing tokens. Dropping from
+  // 90d → 30d is the minimum we can do without breaking current
+  // sessions in a disruptive way.
+  jwtExpiresIn: '30d',
 
   // Admin
   adminEmail: process.env.ADMIN_EMAIL,
@@ -67,10 +71,17 @@ export const config = {
   },
 };
 
-// Validate required config in production
+// Validate required config at startup. The hardcoded dev fallback
+// `dev-secret-change-in-production` lets us boot in a fresh clone
+// without ceremony, but we refuse to run with it in any non-dev env.
 if (config.isProduction) {
   if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
     console.error('[Config] JWT_SECRET must be at least 32 characters in production');
+    process.exit(1);
+  }
+} else if (process.env.NODE_ENV === 'staging' || process.env.NODE_ENV === 'test') {
+  if (!process.env.JWT_SECRET) {
+    console.error('[Config] JWT_SECRET is required outside development (NODE_ENV=' + process.env.NODE_ENV + ')');
     process.exit(1);
   }
 }

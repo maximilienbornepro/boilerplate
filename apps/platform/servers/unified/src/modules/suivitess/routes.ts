@@ -528,9 +528,21 @@ export function createRoutes(): Router {
     res.json(updated);
   }));
 
-  // Get document with all sections and subjects
+  // Get document with all sections and subjects — gated by the
+  // shared `canUserAccess` helper (owner OR shared OR visibility=public
+  // OR admin). Previously this endpoint was completely open : any
+  // authenticated user could read any document by guessing its
+  // kebab-case slug. The helper returns `true` for legacy resources
+  // that have no sharing entry yet (pre-sharing-system data) so we
+  // don't break existing workflows.
   router.get('/documents/:docId', asyncHandler(async (req, res) => {
     const { docId } = req.params;
+    const { canUserAccess } = await import('../shared/resourceSharing.js');
+    const allowed = await canUserAccess(req.user!.id, req.user!.isAdmin, 'suivitess', docId);
+    if (!allowed) {
+      res.status(404).json({ error: 'Document not found' });
+      return;
+    }
     const doc = await db.getDocumentWithSections(docId);
     if (!doc) {
       res.status(404).json({ error: 'Document not found' });
@@ -539,9 +551,22 @@ export function createRoutes(): Router {
     res.json(doc);
   }));
 
-  // Delete document
+  // Delete document — only the owner (or an admin) may wipe a doc.
+  // canUserAccess returns true for shared-with-me users too, so we
+  // check ownership explicitly via the sharing table instead.
   router.delete('/documents/:docId', asyncHandler(async (req, res) => {
     const { docId } = req.params;
+    if (!req.user!.isAdmin) {
+      const { getResourceSharing } = await import('../shared/resourceSharing.js');
+      const sharing = await getResourceSharing('suivitess', docId);
+      // Legacy (pre-sharing) docs have no entry → fall through to
+      // the delete path to preserve backward-compat. New docs always
+      // have a sharing entry courtesy of the POST /documents handler.
+      if (sharing && sharing.ownerId !== req.user!.id) {
+        res.status(403).json({ error: 'Seul le propriétaire peut supprimer ce document' });
+        return;
+      }
+    }
     const count = await db.deleteDocument(docId);
     if (count === 0) {
       res.status(404).json({ error: 'Document not found' });

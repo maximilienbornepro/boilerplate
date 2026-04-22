@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { config } from './config.js';
 import { errorMiddleware } from '@boilerplate/shared/server';
@@ -17,6 +18,19 @@ import { initAiSkills, createAiSkillsRouter } from './modules/aiSkills/index.js'
 import { initPromptLogs, createPromptLogsRouter } from './modules/promptLogs/index.js';
 
 const app = express();
+
+// Security headers : CSP is relaxed because the SPA + Chrome extension
+// already enforce their own CSP, and because several features (Jira
+// OAuth redirect, email connectors, embed iframes) need to connect
+// to third-party domains at runtime — tightening it would require a
+// per-route policy. HSTS + noSniff + frameguard ('sameorigin', to
+// allow our own embed views) are the concrete protections we add.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  frameguard: { action: 'sameorigin' },
+}));
 
 // Middleware
 // CORS : whitelist only — reflecting any Origin with credentials

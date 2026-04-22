@@ -152,9 +152,22 @@ export function SubjectReview({
     return { level: Math.min(level, BULLETS.length - 1), text, strikethrough };
   };
 
-  // Convert **text** to <strong>text</strong> for display
+  // Convert **text** to <strong>text</strong> for display. The input
+  // comes from the DB (user-typed OR AI-generated from emails/Slack)
+  // and is fed into dangerouslySetInnerHTML downstream — so we
+  // HTML-escape the source first, THEN rebuild the <strong> tags on
+  // the escaped content. Without escaping, a subject situation
+  // containing `<script>alert(1)</script>` or `<img onerror>` would
+  // execute on every viewer. After escaping, the only HTML tag that
+  // can be produced is `<strong>…</strong>` via the regex — safe.
+  const escapeHtml = (raw: string): string => raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
   const textToHtml = (text: string): string => {
-    return text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    return escapeHtml(text).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   };
 
   // Convert <strong>text</strong> back to **text** for storage

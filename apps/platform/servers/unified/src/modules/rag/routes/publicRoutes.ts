@@ -1,7 +1,28 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from '../services/dbService.js';
 import { streamRagResponse, generateSuggestedQuestions } from '../services/ragService.js';
+
+// Public RAG chat is a zero-auth endpoint that streams LLM tokens —
+// a leaked bot UUID could be used to burn through the admin's API
+// credits indefinitely. We cap it at 30 chats / 15 min per IP. The
+// GET /suggestions endpoint is cheaper but still triggers an LLM
+// call, so it gets its own smaller budget too.
+const publicChatLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de requêtes — réessaie dans quelques minutes.' },
+});
+const publicSuggestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de requêtes — réessaie dans quelques minutes.' },
+});
 
 export function createPublicRouter(): Router {
   const router = Router();
@@ -14,7 +35,7 @@ export function createPublicRouter(): Router {
   }));
 
   // GET /public/:uuid/suggestions — questions suggérées (sans auth)
-  router.get('/:uuid/suggestions', asyncHandler(async (req, res) => {
+  router.get('/:uuid/suggestions', publicSuggestLimiter, asyncHandler(async (req, res) => {
     const bot = await db.getRagBotByUuid(req.params.uuid);
     if (!bot) { res.status(404).json({ error: 'RAG non trouvé' }); return; }
     const questions = await generateSuggestedQuestions(bot.id);
@@ -22,7 +43,7 @@ export function createPublicRouter(): Router {
   }));
 
   // POST /public/:uuid/chat — chat public SSE (sans auth, sans historique persistant)
-  router.post('/:uuid/chat', async (req, res) => {
+  router.post('/:uuid/chat', publicChatLimiter, async (req, res) => {
     const bot = await db.getRagBotByUuid(req.params.uuid);
     if (!bot) { res.status(404).json({ error: 'RAG non trouvé' }); return; }
 
