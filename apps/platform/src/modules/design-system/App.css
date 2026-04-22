@@ -637,3 +637,118 @@
   align-self: flex-start;
   word-break: break-all;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Audit stats banner — per-module summary at the top of the page
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ds-audit-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+.ds-audit-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+.ds-audit-stat-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ds-audit-stat-label {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+.ds-audit-stat-value {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Shared component sections — header with usage badge
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ds-component-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-xs);
+}
+.ds-component-name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-left: var(--spacing-sm);
+  font-weight: var(--font-weight-normal);
+}
+.ds-usage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+.ds-usage-badge--unused {
+  padding: 2px 8px;
+  border: 1px dashed var(--warning);
+  border-radius: var(--radius-sm);
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 6%, transparent);
+}
+.ds-usage-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid;
+  border-radius: var(--radius-xs);
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+}
+.ds-section--unused {
+  opacity: 0.55;
+}
+.ds-section--unused:hover {
+  opacity: 1;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Duplicates warning block
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ds-duplicates {
+  border-left: 3px solid var(--warning);
+  background: color-mix(in srgb, var(--warning) 5%, transparent);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-sm);
+}
+.ds-duplicates-list {
+  margin: 0;
+  padding-left: var(--spacing-lg);
+  line-height: 1.6;
+}
+.ds-duplicates-list ul {
+  margin: 4px 0 var(--spacing-sm);
+  padding-left: var(--spacing-md);
+}
+.ds-duplicates-list code {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+}

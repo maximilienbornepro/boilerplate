@@ -1,0 +1,544 @@
+{
+  "generatedAt": "2026-04-22T14:52:48.529Z",
+  "scope": [
+    {
+      "id": "landing",
+      "label": "Landing (accueil)",
+      "color": "#00bcd4"
+    },
+    {
+      "id": "conges",
+      "label": "Congés",
+      "color": "#ec4899"
+    },
+    {
+      "id": "roadmap",
+      "label": "Roadmap",
+      "color": "#8b5cf6"
+    },
+    {
+      "id": "delivery",
+      "label": "Delivery",
+      "color": "#ff9800"
+    },
+    {
+      "id": "suivitess",
+      "label": "SuiviTess",
+      "color": "#10b981"
+    }
+  ],
+  "shared": {
+    "exported": [
+      "Badge",
+      "Button",
+      "Card",
+      "ConfirmModal",
+      "ExpandableSection",
+      "Footer",
+      "FormField",
+      "Hero",
+      "ImageUploader",
+      "Layout",
+      "ListEditor",
+      "LoadingSpinner",
+      "Modal",
+      "ModuleHeader",
+      "ProjectEditor",
+      "SectionTitle",
+      "SharedNav",
+      "SharingModal",
+      "StatCounter",
+      "Tabs",
+      "TagEditor",
+      "Toast",
+      "ToastContainer",
+      "VisibilityPicker"
+    ],
+    "used": [
+      {
+        "name": "Button",
+        "modules": [
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "roadmap": 4,
+          "delivery": 10,
+          "suivitess": 27
+        },
+        "total": 41
+      },
+      {
+        "name": "FormField",
+        "modules": [
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "roadmap": 6,
+          "delivery": 9,
+          "suivitess": 15
+        },
+        "total": 30
+      },
+      {
+        "name": "Modal",
+        "modules": [
+          "conges",
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "conges": 2,
+          "roadmap": 1,
+          "delivery": 4,
+          "suivitess": 7
+        },
+        "total": 14
+      },
+      {
+        "name": "LoadingSpinner",
+        "modules": [
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "roadmap": 3,
+          "delivery": 6,
+          "suivitess": 4
+        },
+        "total": 13
+      },
+      {
+        "name": "Card",
+        "modules": [
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "roadmap": 3,
+          "delivery": 3,
+          "suivitess": 4
+        },
+        "total": 10
+      },
+      {
+        "name": "ModuleHeader",
+        "modules": [
+          "conges",
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "conges": 1,
+          "roadmap": 2,
+          "delivery": 2,
+          "suivitess": 4
+        },
+        "total": 9
+      },
+      {
+        "name": "Layout",
+        "modules": [
+          "conges",
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "conges": 1,
+          "roadmap": 2,
+          "delivery": 3,
+          "suivitess": 2
+        },
+        "total": 8
+      },
+      {
+        "name": "ToastContainer",
+        "modules": [
+          "conges",
+          "delivery",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "conges": 1,
+          "delivery": 1,
+          "suivitess": 3
+        },
+        "total": 5
+      },
+      {
+        "name": "ConfirmModal",
+        "modules": [
+          "conges",
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "conges": 1,
+          "roadmap": 2,
+          "delivery": 1,
+          "suivitess": 1
+        },
+        "total": 5
+      },
+      {
+        "name": "VisibilityPicker",
+        "modules": [
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "roadmap": 1,
+          "delivery": 1,
+          "suivitess": 1
+        },
+        "total": 3
+      },
+      {
+        "name": "SharingModal",
+        "modules": [
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "roadmap": 1,
+          "delivery": 1,
+          "suivitess": 1
+        },
+        "total": 3
+      },
+      {
+        "name": "ExpandableSection",
+        "modules": [
+          "delivery"
+        ],
+        "usagesByModule": {
+          "delivery": 1
+        },
+        "total": 1
+      },
+      {
+        "name": "Tabs",
+        "modules": [
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "suivitess": 1
+        },
+        "total": 1
+      }
+    ],
+    "unused": [
+      "Badge",
+      "Footer",
+      "Hero",
+      "ImageUploader",
+      "ListEditor",
+      "ProjectEditor",
+      "SectionTitle",
+      "SharedNav",
+      "StatCounter",
+      "TagEditor",
+      "Toast"
+    ]
+  },
+  "localByModule": {
+    "landing": [],
+    "conges": [
+      {
+        "name": "ViewControls",
+        "moduleId": "conges",
+        "file": "apps/platform/src/modules/conges/components/ViewControls/ViewControls.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "Legend",
+        "moduleId": "conges",
+        "file": "apps/platform/src/modules/conges/components/Legend/Legend.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "LeaveForm",
+        "moduleId": "conges",
+        "file": "apps/platform/src/modules/conges/components/LeaveForm/LeaveForm.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "LeaveCalendar",
+        "moduleId": "conges",
+        "file": "apps/platform/src/modules/conges/components/LeaveCalendar/LeaveCalendar.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      }
+    ],
+    "roadmap": [
+      {
+        "name": "ViewSelector",
+        "moduleId": "roadmap",
+        "file": "apps/platform/src/modules/roadmap/components/ViewSelector/ViewSelector.tsx",
+        "usages": 2,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "GanttBoard",
+        "moduleId": "roadmap",
+        "file": "apps/platform/src/modules/roadmap/components/GanttBoard/GanttBoard.tsx",
+        "usages": 2,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "TaskForm",
+        "moduleId": "roadmap",
+        "file": "apps/platform/src/modules/roadmap/components/TaskForm/TaskForm.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "SubjectsPanel",
+        "moduleId": "roadmap",
+        "file": "apps/platform/src/modules/roadmap/components/SubjectsPanel/SubjectsPanel.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "PlanningList",
+        "moduleId": "roadmap",
+        "file": "apps/platform/src/modules/roadmap/components/PlanningList/PlanningList.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      }
+    ],
+    "delivery": [
+      {
+        "name": "BoardDelivery",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/BoardDelivery.tsx",
+        "usages": 2,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "BoardRow",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/BoardRow.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "ImportModal",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/ImportModal.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "JiraImportModal",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/JiraImportModal.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "ReleaseMarker",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/ReleaseMarker.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "RestoreModal",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/RestoreModal.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "SnapshotModal",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/SnapshotModal.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "SprintColumn",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/SprintColumn.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "TaskBlock",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/TaskBlock.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "TodayMarker",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/TodayMarker.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "SanityCheckModal",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/SanityCheckModal/SanityCheckModal.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "LayoutRulesModal",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/LayoutRulesModal/LayoutRulesModal.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "BoardList",
+        "moduleId": "delivery",
+        "file": "apps/platform/src/modules/delivery/components/BoardList/BoardList.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      }
+    ],
+    "suivitess": [
+      {
+        "name": "EmailPreviewModal",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/EmailPreviewModal/EmailPreviewModal.tsx",
+        "usages": 2,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "BulkTranscriptionImportModal",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/BulkTranscriptionImportModal/BulkTranscriptionImportModal.tsx",
+        "usages": 2,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "TicketCreateModal",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/TicketCreateModal/TicketCreateModal.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "TableOfContents",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/TableOfContents/TableOfContents.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "SuggestionsPanel",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/SuggestionsPanel/SuggestionsPanel.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "SubjectReview",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/SubjectReview/SubjectReview.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "SubjectAnalysisModal",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/SubjectAnalysisModal/SubjectAnalysisModal.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "SkillButton",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/SkillButton/SkillButton.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "ReviewWizard",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/ReviewWizard/ReviewWizard.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "RecorderBar",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/RecorderBar/RecorderBar.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "Preview",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/Preview/Preview.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "HistoryPanel",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/HistoryPanel/HistoryPanel.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      },
+      {
+        "name": "DocumentSelector",
+        "moduleId": "suivitess",
+        "file": "apps/platform/src/modules/suivitess/components/DocumentSelector/DocumentSelector.tsx",
+        "usages": 1,
+        "possibleDuplicateOf": null
+      }
+    ]
+  },
+  "duplicates": [],
+  "stats": [
+    {
+      "moduleId": "landing",
+      "fileCount": 1,
+      "sharedImportsCount": 0,
+      "localComponentsCount": 0
+    },
+    {
+      "moduleId": "conges",
+      "fileCount": 10,
+      "sharedImportsCount": 5,
+      "localComponentsCount": 4
+    },
+    {
+      "moduleId": "roadmap",
+      "fileCount": 21,
+      "sharedImportsCount": 10,
+      "localComponentsCount": 5
+    },
+    {
+      "moduleId": "delivery",
+      "fileCount": 21,
+      "sharedImportsCount": 12,
+      "localComponentsCount": 13
+    },
+    {
+      "moduleId": "suivitess",
+      "fileCount": 17,
+      "sharedImportsCount": 12,
+      "localComponentsCount": 13
+    }
+  ]
+}
