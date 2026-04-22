@@ -25,7 +25,22 @@
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: var(--spacing-2xs);
+}
+
+.ds-group-sub {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin: 0 0 var(--spacing-sm) 0;
+  line-height: 1.5;
+  font-style: italic;
+}
+.ds-group-sub code {
+  font-style: normal;
+  background: var(--bg-secondary);
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  font-size: var(--font-size-xs);
 }
 
 /* ── Color swatches ── */
@@ -310,4 +325,315 @@
   border: 1px solid var(--border-color);
   overflow: auto;
   max-height: 400px;
+}
+
+/* In the ModuleHeader demo, the secondary Button's border on hover should
+   pick up the current module's accent color — mirrors the behaviour used
+   inside every real module (same convention applied in SuiviTess modals). */
+.ds-module-header-demo .shared-btn--secondary:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Module primary-color theming — interactive preview
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ds-module-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
+.ds-module-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+}
+.ds-module-switcher-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--module-color);
+}
+.ds-module-switcher-btn.is-active {
+  color: var(--text-primary);
+  border-color: var(--module-color);
+  background: color-mix(in srgb, var(--module-color) 10%, transparent);
+}
+.ds-module-switcher-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--module-color), var(--module-gradient-end));
+}
+
+.ds-theme-preview {
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+.ds-theme-preview-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  padding-bottom: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+.ds-theme-preview-hex {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+}
+.ds-theme-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--spacing-md);
+}
+.ds-theme-preview-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ds-theme-preview-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.ds-theme-preview-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.ds-theme-preview-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 25%, transparent);
+}
+.ds-theme-preview-code {
+  margin: var(--spacing-md) 0 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: pre;
+  font-family: var(--font-mono);
+}
+.ds-theme-preview-code code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Top-level Part headers (1. Design System / 2. Composants)
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ds-part-header {
+  margin: var(--spacing-2xl) 0 var(--spacing-lg);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 2px solid var(--accent-primary);
+}
+.ds-part-header:first-of-type {
+  margin-top: var(--spacing-lg);
+}
+.ds-part-header--sub {
+  border-bottom-width: 1px;
+  border-bottom-color: var(--border-color);
+  margin-top: var(--spacing-xl);
+}
+.ds-part-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin: 0 0 var(--spacing-xs);
+}
+.ds-part-subtitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--spacing-xs);
+}
+.ds-part-sub {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 780px;
+}
+.ds-part-sub code,
+.ds-section-sub code {
+  background: var(--bg-secondary);
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  font-size: var(--font-size-xs);
+}
+.ds-section-sub {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 var(--spacing-md);
+  max-width: 780px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   §2.1 Promotion candidates — card grid
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ds-candidates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--spacing-md);
+}
+.ds-candidate {
+  padding: var(--spacing-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+.ds-candidate-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+.ds-candidate-name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+.ds-candidate-impact {
+  font-size: var(--font-size-xs);
+  color: var(--accent-primary);
+  letter-spacing: 0.05em;
+}
+.ds-candidate-pattern {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+.ds-candidate-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  margin: 0;
+  font-size: var(--font-size-xs);
+}
+.ds-candidate-label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+  min-width: 44px;
+}
+.ds-candidate-meta code {
+  background: var(--bg-secondary);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   §2.2 Module-local components — grouped grid
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ds-module-block {
+  margin-bottom: var(--spacing-xl);
+}
+.ds-module-block:last-child {
+  margin-bottom: 0;
+}
+.ds-module-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin: 0 0 var(--spacing-md);
+  padding-left: var(--spacing-md);
+  border-left: 3px solid var(--accent-primary);
+}
+.ds-module-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.ds-module-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-weight: var(--font-weight-normal);
+  letter-spacing: 0.02em;
+}
+.ds-module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--spacing-sm);
+}
+.ds-module-item {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color var(--transition-fast);
+}
+.ds-module-item:hover {
+  border-color: var(--accent-primary);
+}
+.ds-module-item-name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+.ds-module-item-desc {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.ds-module-item-file {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  align-self: flex-start;
+  word-break: break-all;
 }
