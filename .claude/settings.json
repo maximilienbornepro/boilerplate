@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schemas.anthropic.com/claude-code/settings.json",
+  "description": "Team-wide Claude Code settings (versioned). Personal overrides go in settings.local.json.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/ux-ui-enforcer.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

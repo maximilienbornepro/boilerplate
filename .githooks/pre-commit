@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook — Design System integrity gate.
+#
+# Goal : the hand-written page `design-system/App.tsx` reads from the
+# auto-generated `design-system.data.json`. If the audit data drifts from
+# the actual code (components added/removed, duplicates emerging, etc.)
+# the commit should not succeed silently — we regenerate the JSON and
+# either include it in the commit or abort so the dev can review.
+#
+# Installed by `git config core.hooksPath .githooks` (done by the
+# `prepare` npm script or manually via scripts/install-hooks.sh).
+
+set -e
+
+# Only run when files impacting the audit have been staged. Staying narrow
+# keeps the hook fast and unobtrusive during unrelated commits.
+CHANGED=$(git diff --cached --name-only --diff-filter=ACMR)
+NEEDS_AUDIT=false
+while IFS= read -r file; do
+  case "$file" in
+    apps/platform/src/modules/gateway/components/LandingPage.tsx|\
+    apps/platform/src/modules/roadmap/*|\
+    apps/platform/src/modules/conges/*|\
+    apps/platform/src/modules/delivery/*|\
+    apps/platform/src/modules/suivitess/*|\
+    packages/shared/src/components/*|\
+    packages/shared/src/components/index.ts|\
+    scripts/audit-components.ts|\
+    design-system.data.json)
+      NEEDS_AUDIT=true
+      break
+      ;;
+  esac
+done <<< "$CHANGED"
+
+if [ "$NEEDS_AUDIT" = false ]; then
+  exit 0
+fi
+
+echo "▶ pre-commit: UI/component files staged → regenerating design-system.data.json"
+
+# Capture current state to compare later.
+BEFORE_HASH=""
+if [ -f design-system.data.json ]; then
+  BEFORE_HASH=$(shasum -a 1 design-system.data.json | awk '{print $1}')
+fi
+
+# Run the audit. We intentionally pipe only stderr in case of failure.
+if ! npm run --silent audit:components > /dev/null; then
+  echo "✗ pre-commit: audit:components failed — commit aborted."
+  exit 1
+fi
+
+AFTER_HASH=""
+if [ -f design-system.data.json ]; then
+  AFTER_HASH=$(shasum -a 1 design-system.data.json | awk '{print $1}')
+fi
+
+if [ "$BEFORE_HASH" != "$AFTER_HASH" ]; then
+  # The data changed — check whether the JSON was already staged.
+  if git diff --cached --name-only | grep -q "^design-system.data.json$"; then
+    # Already staged but now has fresher content — re-stage to include the
+    # most recent audit output.
+    git add design-system.data.json
+    echo "  ↳ design-system.data.json updated and re-staged."
+  else
+    # Not staged — auto-stage the regenerated file so the commit stays
+    # consistent with the code being committed.
+    git add design-system.data.json
+    echo "  ↳ design-system.data.json regenerated and staged with this commit."
+  fi
+fi
+
+echo "✓ pre-commit: design system data is in sync."
+exit 0
