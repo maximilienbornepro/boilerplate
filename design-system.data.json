@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-22T14:52:48.529Z",
+  "generatedAt": "2026-04-23T09:51:28.109Z",
   "scope": [
     {
       "id": "landing",
@@ -58,16 +58,18 @@
       {
         "name": "Button",
         "modules": [
+          "conges",
           "delivery",
           "roadmap",
           "suivitess"
         ],
         "usagesByModule": {
+          "conges": 1,
           "roadmap": 4,
           "delivery": 10,
           "suivitess": 27
         },
-        "total": 41
+        "total": 42
       },
       {
         "name": "FormField",
@@ -519,7 +521,7 @@
     {
       "moduleId": "conges",
       "fileCount": 10,
-      "sharedImportsCount": 5,
+      "sharedImportsCount": 6,
       "localComponentsCount": 4
     },
     {
