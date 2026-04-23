@@ -19,6 +19,7 @@ const AiPlaygroundApp = lazy(() => import('./modules/ai-playground/App'));
 const PromptLogsApp = lazy(() => import('./modules/prompt-logs/App'));
 const AdminFeaturesApp = lazy(() => import('./modules/admin-features/App'));
 const DesignSystemApp = lazy(() => import('./modules/design-system/App'));
+const UxPreviewSandbox = lazy(() => import('./ux-preview/Preview'));
 const DemoApp = lazy(() => import('./modules/demo/App'));
 const LandingDemoModule = lazy(() => import('./modules/demo/LandingDemo').then(m => ({ default: () => <m.LandingDemo /> })));
 
@@ -265,6 +266,14 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <DesignSystemApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/ux-preview"
+        element={
+          <SuspenseWrapper>
+            <UxPreviewSandbox onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />

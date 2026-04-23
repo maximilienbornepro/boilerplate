@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Layout, ToastContainer, ConfirmModal, ModuleHeader, useGatewayUser } from '@boilerplate/shared/components';
+import { Layout, ToastContainer, ConfirmModal, ModuleHeader, Button, useGatewayUser } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import { LeaveCalendar } from './components/LeaveCalendar/LeaveCalendar';
 import { LeaveForm } from './components/LeaveForm/LeaveForm';
@@ -169,6 +169,9 @@ function AppContent({ onNavigate: _onNavigate }: { onNavigate?: (path: string) =
           onYearChange={handleYearChange}
           onToday={handleToday}
         />
+        <Button variant="secondary" onClick={() => addToast({ type: 'info', message: 'Export CSV en cours…' })}>
+          Exporter CSV
+        </Button>
         <button className="module-header-btn module-header-btn-primary" onClick={handleAddLeave}>
           + Nouvelle demande
         </button>

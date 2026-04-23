@@ -752,3 +752,47 @@
   padding: 1px 6px;
   border-radius: var(--radius-xs);
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   UX rules list — systemic conventions documented inline
+   ────────────────────────────────────────────────────────────────────────── */
+.ds-rules-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+.ds-rules-list li {
+  padding: var(--spacing-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+.ds-rules-list strong {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+.ds-rules-list code {
+  font-size: 11px;
+  background: var(--bg-secondary);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+}
+.ds-rules-list em {
+  font-style: normal;
+}
+.ds-rules-inline-chip {
+  font-weight: var(--font-weight-semibold);
+}
+.ds-rules-rationale {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

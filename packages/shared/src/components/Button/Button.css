@@ -40,7 +40,7 @@
 
 .shared-btn--secondary:hover:not(:disabled) {
   background: var(--bg-secondary);
-  border-color: var(--text-muted);
+  border-color: var(--accent-primary);
 }
 
 /* Danger */

@@ -702,6 +702,53 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
           </div>
         </section>
 
+        {/* ── Règles UX du DS ── */}
+        <section className="ds-section">
+          <h3 className="ds-section-title">Règles UX du design system</h3>
+          <p className="ds-section-sub">
+            Conventions systémiques qui s'appliquent à <strong>tous les modules</strong>.
+            Ces règles sont enforcées par le composant <code>Layout</code> + les CSS
+            partagés, il n'y a rien à faire au niveau du module pour en bénéficier.
+          </p>
+          <ul className="ds-rules-list">
+            <li>
+              <strong>Couleur dominante par module.</strong> Chaque module possède une
+              couleur de marque définie dans <code>APPS</code>. Le composant
+              <code> Layout</code> injecte <code>--accent-primary</code> en inline-style
+              → tous les composants partagés à l'intérieur héritent.
+            </li>
+            <li>
+              <strong>Hover du <code>Button</code> secondary.</strong> La bordure passe à{' '}
+              <code>var(--accent-primary)</code> — donc au hover d'un CTA secondaire dans
+              Congés : <span className="ds-rules-inline-chip" style={{ color: '#ec4899' }}>rose</span>,
+              dans SuiviTess : <span className="ds-rules-inline-chip" style={{ color: '#10b981' }}>vert</span>,
+              dans Roadmap : <span className="ds-rules-inline-chip" style={{ color: '#8b5cf6' }}>violet</span>,
+              dans Delivery : <span className="ds-rules-inline-chip" style={{ color: '#ff9800' }}>orange</span>.
+              <br />
+              <em className="ds-rules-rationale">
+                Règle définie dans <code>packages/shared/src/components/Button/Button.css</code>.
+              </em>
+            </li>
+            <li>
+              <strong>Focus ring.</strong> Tous les inputs focusables utilisent{' '}
+              <code>var(--shadow-focus)</code> qui dérive aussi de l'accent du module —
+              cohérence visuelle entre formulaires et boutons.
+            </li>
+            <li>
+              <strong>Tokens avant hex.</strong> Aucun hex codé en dur dans le code applicatif.
+              Les statuts SuiviTess passent par <code>STATUS_OPTIONS</code>, les couleurs
+              de module par <code>APPS</code>, les ModeTag (new/update) par les
+              variables inline de la modale de routing.
+            </li>
+            <li>
+              <strong>Shared avant local.</strong> Un composant partagé (<code>Button</code>,{' '}
+              <code>Modal</code>, <code>FormField</code>…) a toujours priorité sur une
+              réimplémentation locale. Enforcé par le skill <code>ux-ui-guard</code> et
+              le hook <code>.claude/hooks/ux-ui-enforcer.sh</code>.
+            </li>
+          </ul>
+        </section>
+
         {/* ── Typography ── */}
         <section className="ds-section">
           <h3 className="ds-section-title">Typographie</h3>

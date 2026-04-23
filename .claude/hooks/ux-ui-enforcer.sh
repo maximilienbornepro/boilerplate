@@ -25,7 +25,11 @@ set -e
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ACK_FILE="$REPO_ROOT/.claude/.ux-ui-ack"
+PREVIEW_FILE="$REPO_ROOT/apps/platform/src/ux-preview/currentPreview.tsx"
 ACK_TTL_SECONDS=300 # 5 minutes
+# Preview must be no older than the ack — if the user approved an ack at
+# T0, the preview they saw cannot be older than 10 min before T0.
+PREVIEW_MAX_AGE_BEFORE_ACK=600
 
 # ── Read tool payload from stdin ─────────────────────────────────────────────
 PAYLOAD="$(cat)"
@@ -72,40 +76,144 @@ if [ "$IN_SCOPE" = false ]; then
 fi
 
 # ── Harmonisation check ─────────────────────────────────────────────────────
-# Inspect the incoming content (new_string / content) for JSX tags that
-# LOOK LIKE they could reuse a shared component but don't. We warn the
-# agent so it can validate alignment with `design-system.data.json`
-# before proceeding.
-CONTENT="$(echo "$PAYLOAD" | grep -oE '"(content|new_string)"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -1 | sed 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//;s/"$//')"
+# Two layers of drift detection against the incoming content :
+#   (1) JSX tag match   — `<Modal>` used without shared import → re-rolled
+#   (2) Structural match — classNames, ARIA roles or CSS patterns that hint
+#                          at a shared primitive reimplemented by hand
+# Both layers feed the same HARMONISATION_WARNING displayed when the hook
+# blocks (i.e. when ack / preview are missing). Warnings are informational
+# but let the user arbitrate drift vs reuse BEFORE they grant the ack.
 
-# Components we actively share — if the content contains a JSX tag with
-# one of these names but NOT imported, the agent likely re-rolled a
-# local equivalent. Heuristic only — exhaustive enough to catch the
-# common drifts.
-SHARED_HINTS="Button Modal ConfirmModal FormField Card LoadingSpinner Tabs Toast ToastContainer ModuleHeader VisibilityPicker SharingModal ExpandableSection Badge"
+# Robust JSON-aware extraction of the edit content. We prefer python3 when
+# available (proper unescape of \" and \\n) and fall back to a grep+sed
+# approximation otherwise. The decoded form lets the regexes below match
+# unescaped JSX / CSS naturally.
+if command -v python3 >/dev/null 2>&1; then
+  CONTENT="$(printf '%s' "$PAYLOAD" | python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    ti = d.get("tool_input", {}) or {}
+    # Edit gives new_string ; Write gives content.
+    print(ti.get("content") or ti.get("new_string") or "", end="")
+except Exception:
+    pass
+')"
+else
+  CONTENT="$(echo "$PAYLOAD" | grep -oE '"(content|new_string)"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -1 | sed 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//;s/"$//;s/\\"/"/g;s/\\n/ /g;s/\\\\/\\/g')"
+fi
 
 HARMONISATION_WARNING=""
+
+# Shortcut — nothing to analyse.
 if [ -n "$CONTENT" ]; then
+
+  # ─── Layer 1 : JSX tag drift ────────────────────────────────────────────
+  # If `<Button>` or `<Modal>` appears in the snippet without an
+  # accompanying `from '@boilerplate/shared/components'` import, the agent
+  # is likely renderning a LOCAL shadow of the shared primitive.
+  SHARED_HINTS="Button Modal ConfirmModal FormField Card LoadingSpinner Tabs Toast ToastContainer ModuleHeader VisibilityPicker SharingModal ExpandableSection Badge"
+  HAS_SHARED_IMPORT=false
+  if echo "$CONTENT" | grep -qE "from ['\"]@boilerplate/shared/components['\"]"; then
+    HAS_SHARED_IMPORT=true
+  fi
   for hint in $SHARED_HINTS; do
-    # Does the content RENDER something named <Xxx... that matches a
-    # shared name, without importing from shared ?
     if echo "$CONTENT" | grep -qE "<${hint}[[:space:]/>]"; then
-      if ! echo "$CONTENT" | grep -qE "from ['\"]@boilerplate/shared/components['\"]"; then
+      if [ "$HAS_SHARED_IMPORT" = false ]; then
         HARMONISATION_WARNING="${HARMONISATION_WARNING}  • <${hint}> detecte mais pas d'import depuis @boilerplate/shared/components.\n"
       fi
     fi
   done
+
+  # ─── Layer 2 : structural drift (CSS / ARIA) ────────────────────────────
+  # Catches custom reimplementations that don't use a shared JSX tag name,
+  # e.g. `<div className="modal">`, `<div role="dialog">`, dropdown-like
+  # <details>/<summary> clusters, fixed-position backdrops.
+
+  check_structural() {
+    local regex="$1"
+    local suggestion="$2"
+    if echo "$CONTENT" | grep -qiE "$regex"; then
+      HARMONISATION_WARNING="${HARMONISATION_WARNING}  • ${suggestion}\n"
+    fi
+  }
+
+  # className containing the word "modal" (with word boundaries around
+  # letters) → probable reimplementation of Modal/ConfirmModal
+  check_structural \
+    'className[^=]*=[^>]*[[:alnum:]_-]*modal[[:alnum:]_-]*' \
+    "className contient « modal » — utiliser <Modal> ou <ConfirmModal> (shared) au lieu d'une impl custom."
+
+  # backdrop / overlay → part du Modal shared, pas à implémenter à la main
+  check_structural \
+    'className[^=]*=[^>]*[[:alnum:]_-]*(backdrop|overlay)[[:alnum:]_-]*' \
+    "className contient « backdrop » ou « overlay » — <Modal> gère deja cette structure, pas besoin de la recoder."
+
+  # role="dialog" → Modal ou ConfirmModal
+  check_structural \
+    'role[[:space:]]*=[[:space:]]*["'\''`]dialog["'\''`]' \
+    "role=\"dialog\" détecté — <Modal>/<ConfirmModal> shared couvrent ce besoin."
+
+  # role="menu" → Dropdown (candidat à promotion shared)
+  check_structural \
+    'role[[:space:]]*=[[:space:]]*["'\''`]menu["'\''`]' \
+    "role=\"menu\" détecté — Dropdown est un candidat à promotion (voir design-system.data.json → duplicates)."
+
+  # className containing "dropdown" — Dropdown
+  check_structural \
+    'className[^=]*=[^>]*[[:alnum:]_-]*dropdown[[:alnum:]_-]*' \
+    "className contient « dropdown » — candidat à promotion vers shared (voir duplicates)."
+
+  # position: fixed + inset:0 + backdrop-looking color → modal overlay typique
+  if echo "$CONTENT" | grep -qE "position[[:space:]]*:[[:space:]]*['\"]?fixed"; then
+    if echo "$CONTENT" | grep -qE "inset[[:space:]]*:[[:space:]]*['\"]?0" ||
+       echo "$CONTENT" | grep -qE "(background|backgroundColor)[[:space:]]*:[^,;}]*rgba\\(0, *0, *0"; then
+      HARMONISATION_WARNING="${HARMONISATION_WARNING}  • position:fixed + overlay noir détecté — pattern typique d'un Modal custom, préférer <Modal>.\n"
+    fi
+  fi
+
+  # className containing "tooltip" — candidat promotion shared
+  check_structural \
+    'className[^=]*=[^>]*[[:alnum:]_-]*tooltip[[:alnum:]_-]*' \
+    "className contient « tooltip » — candidat à promotion vers shared (pattern dupliqué)."
+
 fi
 
-# ── Fresh ack ? ──────────────────────────────────────────────────────────────
+# ── Fresh ack ? + Preview rendered ? ────────────────────────────────────────
+# Two-gate check before allowing a UI write :
+#   1. Fresh ack file (user said « oui » within last 5 min)
+#   2. Preview sandbox written recently (Claude populated currentPreview.tsx
+#      BEFORE the ack — proves the user saw the visual before confirming)
+# Both must pass ; otherwise the hook blocks with the right instructive
+# message.
+
+PREVIEW_REASON=""
 if [ -f "$ACK_FILE" ]; then
   ACK_MTIME=$(stat -f '%m' "$ACK_FILE" 2>/dev/null || stat -c '%Y' "$ACK_FILE" 2>/dev/null || echo 0)
   NOW=$(date +%s)
   AGE=$((NOW - ACK_MTIME))
   if [ "$AGE" -le "$ACK_TTL_SECONDS" ]; then
-    # User-approved checklist is still valid → allow (the user has seen
-    # and validated the plan; harmonisation has been discussed).
-    exit 0
+    # Ack is fresh. Now require that the preview sandbox was populated
+    # at most PREVIEW_MAX_AGE_BEFORE_ACK seconds BEFORE the ack — which
+    # means Claude actually wrote a snippet for the user to visualise.
+    if [ ! -f "$PREVIEW_FILE" ]; then
+      PREVIEW_REASON="Le fichier preview n'existe pas — impossible de debloquer sans visualisation"
+    else
+      PREVIEW_MTIME=$(stat -f '%m' "$PREVIEW_FILE" 2>/dev/null || stat -c '%Y' "$PREVIEW_FILE" 2>/dev/null || echo 0)
+      # preview must be older than the ack (written BEFORE user approval)
+      # but not older than the ack by more than PREVIEW_MAX_AGE_BEFORE_ACK.
+      if [ "$PREVIEW_MTIME" -ge "$ACK_MTIME" ]; then
+        PREVIEW_REASON="Preview ecrite APRES l'ack — l'ordre est invalide (preview doit preceder la confirmation)"
+      else
+        PREVIEW_AGE_BEFORE_ACK=$((ACK_MTIME - PREVIEW_MTIME))
+        if [ "$PREVIEW_AGE_BEFORE_ACK" -gt "$PREVIEW_MAX_AGE_BEFORE_ACK" ]; then
+          PREVIEW_REASON="Preview trop ancienne (> 10 min avant l'ack) — l'utilisateur n'a probablement pas revu le rendu"
+        else
+          # Both conditions met → allow.
+          exit 0
+        fi
+      fi
+    fi
   fi
 fi
 
@@ -127,6 +235,10 @@ Fichier ciblé : $FILE_PATH
 Catégorie     : ${SCOPE_KIND}
 EOF
 
+if [ -n "$PREVIEW_REASON" ]; then
+  printf "\n⚠ PREVIEW — raison du blocage spécifique :\n  %s\n" "$PREVIEW_REASON" >&2
+fi
+
 if [ -n "$HARMONISATION_WARNING" ]; then
   printf "\n⚠ HARMONISATION — drift potentiel détecté dans le contenu :\n" >&2
   printf "%b" "$HARMONISATION_WARNING" >&2
@@ -135,20 +247,14 @@ fi
 
 cat >&2 <<EOF
 
-Avant de poursuivre cette écriture, tu DOIS :
+Avant de poursuivre cette écriture, tu DOIS enchaîner les 4 étapes suivantes
+DANS L'ORDRE :
 
-  1. Lire la source de vérité  :  \`cat design-system.data.json\`
-     (composants shared utilisés, locaux par module, duplicates)
+  ── Étape 1 — Lire la source de vérité ─────────────────────────────────────
 
-  2. VÉRIFIER L'ALIGNEMENT — pour chaque composant que tu comptes
-     utiliser ou modifier :
-     · S'il y a un équivalent dans \`shared.used\` du JSON → l'utiliser tel quel.
-     · S'il y a une implémentation locale dans \`localByModule\` d'un autre
-       module en scope → la réutiliser ou la promouvoir.
-     · Si c'est un nouveau pattern → justifier pourquoi aucun existant
-       ne convient.
+     cat design-system.data.json
 
-  3. Présenter à l'utilisateur la checklist suivante, en message clair :
+  ── Étape 2 — Présenter la checklist ──────────────────────────────────────
 
         ┌──────────────────────────────────────────────┐
         │ UX-UI GUARD — Checklist avant écriture       │
@@ -160,25 +266,43 @@ Avant de poursuivre cette écriture, tu DOIS :
         • Alignement avec le DS vérifié ?          : oui (lu + validé)
         • Design tokens (var(--…))                 : <liste>
         • Nouveau pattern ?                        : oui/non (si oui, justifier)
-        •
-        • Tu confirmes ? (réponds « oui » pour débloquer)
 
-  4. ATTENDRE la confirmation explicite de l'utilisateur (« oui », « ok », « go »).
+  ── Étape 3 — Preview sandbox OBLIGATOIRE ──────────────────────────────────
 
-  5. Une fois confirmé, débloquer en exécutant :
+     3a. Écrire le snippet à valider dans :
+           apps/platform/src/ux-preview/currentPreview.tsx
 
-        touch .claude/.ux-ui-ack
+         Contraintes :
+           · export default d'un composant React self-contained
+           · imports shared + types autorisés
+           · aucune dépendance runtime (pas de fetch, pas de hook
+             externe, mocks inline si besoin)
 
-     (ack valide 5 min → couvre une vague d'édits cohérente, puis repart
-     à zéro — la discipline reapplique au prochain fichier)
+     3b. Indiquer à l'utilisateur l'URL à visualiser :
 
-  6. Relancer ton Write / Edit — il passera cette fois-ci.
+           /ux-preview?appId=<module-cible>
 
---- Pourquoi ce blocage ? -----------------------------------------------------
-Le skill \`ux-ui-guard\` impose la réutilisation des composants existants
-(design-system.data.json) avant toute création, ET la vérification
-systématique que tu utilises bien les composants du DS existants plutôt
-que d'en recréer localement. Ce hook PreToolUse est le filet de sécurité.
+         (appId possible : conges, roadmap, delivery, suivitess,
+          design-system — contrôle la cascade de --accent-primary)
+
+     3c. ATTENDRE la confirmation visuelle explicite (« oui », « ok », « go »).
+
+  ── Étape 4 — Débloquer et écrire pour de vrai ─────────────────────────────
+
+     4a. Une fois le « oui » reçu :   touch .claude/.ux-ui-ack
+     4b. Relancer le Write/Edit sur le fichier cible — il passera.
+
+  ── Étape 5 — Remettre la sandbox à zéro ───────────────────────────────────
+
+     Après l'écriture réelle, restaurer le placeholder par défaut dans
+     currentPreview.tsx (voir l'en-tête du fichier pour le contenu).
+
+--- Règles du hook ------------------------------------------------------------
+Le hook vérifie 2 conditions cumulatives pour autoriser une écriture UI :
+  · un .claude/.ux-ui-ack fraichement crée (≤ 5 min)
+  · un currentPreview.tsx écrit AVANT l'ack (≤ 10 min avant)
+
+Ça garantit que l'utilisateur a vu le rendu visuel AVANT de confirmer.
 
 Voir \`.claude/skills/ux-ui-guard/skill.md\` pour le workflow complet.
 EOF
