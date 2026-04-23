@@ -76,29 +76,107 @@ if [ "$IN_SCOPE" = false ]; then
 fi
 
 # ── Harmonisation check ─────────────────────────────────────────────────────
-# Inspect the incoming content (new_string / content) for JSX tags that
-# LOOK LIKE they could reuse a shared component but don't. We warn the
-# agent so it can validate alignment with `design-system.data.json`
-# before proceeding.
-CONTENT="$(echo "$PAYLOAD" | grep -oE '"(content|new_string)"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -1 | sed 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//;s/"$//')"
+# Two layers of drift detection against the incoming content :
+#   (1) JSX tag match   — `<Modal>` used without shared import → re-rolled
+#   (2) Structural match — classNames, ARIA roles or CSS patterns that hint
+#                          at a shared primitive reimplemented by hand
+# Both layers feed the same HARMONISATION_WARNING displayed when the hook
+# blocks (i.e. when ack / preview are missing). Warnings are informational
+# but let the user arbitrate drift vs reuse BEFORE they grant the ack.
 
-# Components we actively share — if the content contains a JSX tag with
-# one of these names but NOT imported, the agent likely re-rolled a
-# local equivalent. Heuristic only — exhaustive enough to catch the
-# common drifts.
-SHARED_HINTS="Button Modal ConfirmModal FormField Card LoadingSpinner Tabs Toast ToastContainer ModuleHeader VisibilityPicker SharingModal ExpandableSection Badge"
+# Robust JSON-aware extraction of the edit content. We prefer python3 when
+# available (proper unescape of \" and \\n) and fall back to a grep+sed
+# approximation otherwise. The decoded form lets the regexes below match
+# unescaped JSX / CSS naturally.
+if command -v python3 >/dev/null 2>&1; then
+  CONTENT="$(printf '%s' "$PAYLOAD" | python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    ti = d.get("tool_input", {}) or {}
+    # Edit gives new_string ; Write gives content.
+    print(ti.get("content") or ti.get("new_string") or "", end="")
+except Exception:
+    pass
+')"
+else
+  CONTENT="$(echo "$PAYLOAD" | grep -oE '"(content|new_string)"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -1 | sed 's/^"[^"]*"[[:space:]]*:[[:space:]]*"//;s/"$//;s/\\"/"/g;s/\\n/ /g;s/\\\\/\\/g')"
+fi
 
 HARMONISATION_WARNING=""
+
+# Shortcut — nothing to analyse.
 if [ -n "$CONTENT" ]; then
+
+  # ─── Layer 1 : JSX tag drift ────────────────────────────────────────────
+  # If `<Button>` or `<Modal>` appears in the snippet without an
+  # accompanying `from '@boilerplate/shared/components'` import, the agent
+  # is likely renderning a LOCAL shadow of the shared primitive.
+  SHARED_HINTS="Button Modal ConfirmModal FormField Card LoadingSpinner Tabs Toast ToastContainer ModuleHeader VisibilityPicker SharingModal ExpandableSection Badge"
+  HAS_SHARED_IMPORT=false
+  if echo "$CONTENT" | grep -qE "from ['\"]@boilerplate/shared/components['\"]"; then
+    HAS_SHARED_IMPORT=true
+  fi
   for hint in $SHARED_HINTS; do
-    # Does the content RENDER something named <Xxx... that matches a
-    # shared name, without importing from shared ?
     if echo "$CONTENT" | grep -qE "<${hint}[[:space:]/>]"; then
-      if ! echo "$CONTENT" | grep -qE "from ['\"]@boilerplate/shared/components['\"]"; then
+      if [ "$HAS_SHARED_IMPORT" = false ]; then
         HARMONISATION_WARNING="${HARMONISATION_WARNING}  • <${hint}> detecte mais pas d'import depuis @boilerplate/shared/components.\n"
       fi
     fi
   done
+
+  # ─── Layer 2 : structural drift (CSS / ARIA) ────────────────────────────
+  # Catches custom reimplementations that don't use a shared JSX tag name,
+  # e.g. `<div className="modal">`, `<div role="dialog">`, dropdown-like
+  # <details>/<summary> clusters, fixed-position backdrops.
+
+  check_structural() {
+    local regex="$1"
+    local suggestion="$2"
+    if echo "$CONTENT" | grep -qiE "$regex"; then
+      HARMONISATION_WARNING="${HARMONISATION_WARNING}  • ${suggestion}\n"
+    fi
+  }
+
+  # className containing the word "modal" (with word boundaries around
+  # letters) → probable reimplementation of Modal/ConfirmModal
+  check_structural \
+    'className[^=]*=[^>]*[[:alnum:]_-]*modal[[:alnum:]_-]*' \
+    "className contient « modal » — utiliser <Modal> ou <ConfirmModal> (shared) au lieu d'une impl custom."
+
+  # backdrop / overlay → part du Modal shared, pas à implémenter à la main
+  check_structural \
+    'className[^=]*=[^>]*[[:alnum:]_-]*(backdrop|overlay)[[:alnum:]_-]*' \
+    "className contient « backdrop » ou « overlay » — <Modal> gère deja cette structure, pas besoin de la recoder."
+
+  # role="dialog" → Modal ou ConfirmModal
+  check_structural \
+    'role[[:space:]]*=[[:space:]]*["'\''`]dialog["'\''`]' \
+    "role=\"dialog\" détecté — <Modal>/<ConfirmModal> shared couvrent ce besoin."
+
+  # role="menu" → Dropdown (candidat à promotion shared)
+  check_structural \
+    'role[[:space:]]*=[[:space:]]*["'\''`]menu["'\''`]' \
+    "role=\"menu\" détecté — Dropdown est un candidat à promotion (voir design-system.data.json → duplicates)."
+
+  # className containing "dropdown" — Dropdown
+  check_structural \
+    'className[^=]*=[^>]*[[:alnum:]_-]*dropdown[[:alnum:]_-]*' \
+    "className contient « dropdown » — candidat à promotion vers shared (voir duplicates)."
+
+  # position: fixed + inset:0 + backdrop-looking color → modal overlay typique
+  if echo "$CONTENT" | grep -qE "position[[:space:]]*:[[:space:]]*['\"]?fixed"; then
+    if echo "$CONTENT" | grep -qE "inset[[:space:]]*:[[:space:]]*['\"]?0" ||
+       echo "$CONTENT" | grep -qE "(background|backgroundColor)[[:space:]]*:[^,;}]*rgba\\(0, *0, *0"; then
+      HARMONISATION_WARNING="${HARMONISATION_WARNING}  • position:fixed + overlay noir détecté — pattern typique d'un Modal custom, préférer <Modal>.\n"
+    fi
+  fi
+
+  # className containing "tooltip" — candidat promotion shared
+  check_structural \
+    'className[^=]*=[^>]*[[:alnum:]_-]*tooltip[[:alnum:]_-]*' \
+    "className contient « tooltip » — candidat à promotion vers shared (pattern dupliqué)."
+
 fi
 
 # ── Fresh ack ? + Preview rendered ? ────────────────────────────────────────
