@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Routes, Route, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Layout, ModuleHeader } from '@boilerplate/shared/components';
+import { Layout, ModuleHeader, ToastContainer } from '@boilerplate/shared/components';
+import type { ToastData } from '@boilerplate/shared/components';
 import './index.css';
 import { ReviewWizard } from './components/ReviewWizard/ReviewWizard';
 import { DocumentSelector } from './components/DocumentSelector/DocumentSelector';
@@ -38,6 +39,10 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const actionsRef = useRef<HTMLDivElement>(null);
   const [importInitialProvider, setImportInitialProvider] = useState<string | undefined>(undefined);
   const [importProviders, setImportProviders] = useState<{ outlook: boolean; gmail: boolean; transcription: boolean }>({ outlook: false, gmail: false, transcription: false });
+  const [toasts, setToasts] = useState<ToastData[]>([]);
+  const addToast = (toast: Omit<ToastData, 'id'>) => {
+    setToasts(prev => [...prev, { ...toast, id: Date.now().toString() }]);
+  };
 
   const AI_LABELS: Record<string, string> = {
     anthropic: 'Claude', openai: 'OpenAI', mistral: 'Mistral', scaleway: 'Scaleway',
@@ -109,6 +114,22 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   }, []);
 
   const openImport = (provider?: string) => {
+    // Gate : if the user clicks "Import" without any configured
+    // provider, surface a toast + redirect to /reglages instead of
+    // silently opening an empty modal. Provider-specific buttons
+    // (Gmail / Outlook) are already gated upstream on their own
+    // provider flag so we only cover the generic case.
+    const hasAny = importProviders.transcription || importProviders.gmail || importProviders.outlook;
+    if (!provider && !hasAny) {
+      addToast({
+        type: 'info',
+        message: "Aucun connecteur d'import configuré — active Fathom, Gmail ou Outlook dans les Réglages puis réessaie.",
+      });
+      setShowActions(false);
+      setShowImports(false);
+      setTimeout(() => navigate('/reglages'), 800);
+      return;
+    }
     setImportInitialProvider(provider);
     setShowBulkImport(true);
     setShowImports(false);
@@ -174,11 +195,15 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
             <div className="suivitess-exports-menu" role="menu">
               {/* ── Importer ── */}
               <div className="suivitess-exports-group-title">Importer</div>
-              {importProviders.transcription && (
-                <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); openImport(); }}>
-                  Import
-                </button>
-              )}
+              {/* "Import" always shows — the modal itself handles the
+                  empty-providers case. openImport() gates on
+                  importProviders : if none is configured, it shows a
+                  toast explaining what's missing and redirects to
+                  /reglages. Matches DocumentSelector's "Importer &
+                  ranger" behavior so the two pages feel consistent. */}
+              <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); openImport(); }}>
+                Import
+              </button>
               {importProviders.gmail && (
                 <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); openImport('gmail'); }}>
                   Gmail
@@ -187,11 +212,6 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
               {importProviders.outlook && (
                 <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); openImport('outlook'); }}>
                   Outlook
-                </button>
-              )}
-              {!importProviders.transcription && !importProviders.gmail && !importProviders.outlook && (
-                <button type="button" className="suivitess-exports-item" onClick={() => { setShowActions(false); navigate('/reglages'); }}>
-                  Configurer un import
                 </button>
               )}
 
@@ -337,6 +357,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           onDone={() => { setRefreshKey(k => k + 1); setShowAnalysis(false); }}
         />
       )}
+      <ToastContainer toasts={toasts} onClose={(id) => setToasts(t => t.filter(x => x.id !== id))} />
     </Layout>
   );
 }

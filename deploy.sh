@@ -104,7 +104,10 @@ cmd_deploy() {
   git pull origin main
 
   log "Build des images..."
-  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build
+  # --no-cache : sinon buildkit réutilise parfois des layers obsolètes
+  # pour platform-client et la prod sert l'ancien bundle JS alors que
+  # le deploy "a réussi" (hash de bundle inchangé dans index.html).
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache
 
   log "Redémarrage des services..."
   docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --force-recreate --remove-orphans
