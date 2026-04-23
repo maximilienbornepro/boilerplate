@@ -117,6 +117,29 @@ Regles dures, non negociables :
      sans import depuis `@boilerplate/shared/components`, c'est un drift
      → remplacer par l'import shared (le hook le detecte et bloque).
 
+### 2.5. PREVIEW SANDBOX — OBLIGATOIRE
+
+Toute modification UI DOIT etre visualisee dans la sandbox AVANT d'etre
+appliquee au fichier cible. Le flow devient :
+
+1. Ecrire le snippet dans `apps/platform/src/ux-preview/currentPreview.tsx`
+   en respectant la contrainte :
+   - export default d'un composant React
+   - imports shared + types autorises
+   - self-contained (pas de fetch, pas de router, mocks inline si besoin)
+
+2. Indiquer a l'utilisateur l'URL a ouvrir :
+   `/ux-preview?appId=<module-cible>`
+
+3. Attendre la confirmation visuelle explicite (« oui »).
+
+4. Une fois la preview validee, `touch .claude/.ux-ui-ack` puis ecrire
+   dans le fichier cible reel.
+
+5. APRES l'ecriture reelle, reinitialiser la sandbox :
+   reecrire `currentPreview.tsx` avec le placeholder par defaut
+   (voir l'en-tete du fichier source).
+
 ### 3. APRES le code
 
 ```bash

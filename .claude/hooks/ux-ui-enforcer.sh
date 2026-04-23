@@ -25,7 +25,11 @@ set -e
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ACK_FILE="$REPO_ROOT/.claude/.ux-ui-ack"
+PREVIEW_FILE="$REPO_ROOT/apps/platform/src/ux-preview/currentPreview.tsx"
 ACK_TTL_SECONDS=300 # 5 minutes
+# Preview must be no older than the ack — if the user approved an ack at
+# T0, the preview they saw cannot be older than 10 min before T0.
+PREVIEW_MAX_AGE_BEFORE_ACK=600
 
 # ── Read tool payload from stdin ─────────────────────────────────────────────
 PAYLOAD="$(cat)"
@@ -97,15 +101,41 @@ if [ -n "$CONTENT" ]; then
   done
 fi
 
-# ── Fresh ack ? ──────────────────────────────────────────────────────────────
+# ── Fresh ack ? + Preview rendered ? ────────────────────────────────────────
+# Two-gate check before allowing a UI write :
+#   1. Fresh ack file (user said « oui » within last 5 min)
+#   2. Preview sandbox written recently (Claude populated currentPreview.tsx
+#      BEFORE the ack — proves the user saw the visual before confirming)
+# Both must pass ; otherwise the hook blocks with the right instructive
+# message.
+
+PREVIEW_REASON=""
 if [ -f "$ACK_FILE" ]; then
   ACK_MTIME=$(stat -f '%m' "$ACK_FILE" 2>/dev/null || stat -c '%Y' "$ACK_FILE" 2>/dev/null || echo 0)
   NOW=$(date +%s)
   AGE=$((NOW - ACK_MTIME))
   if [ "$AGE" -le "$ACK_TTL_SECONDS" ]; then
-    # User-approved checklist is still valid → allow (the user has seen
-    # and validated the plan; harmonisation has been discussed).
-    exit 0
+    # Ack is fresh. Now require that the preview sandbox was populated
+    # at most PREVIEW_MAX_AGE_BEFORE_ACK seconds BEFORE the ack — which
+    # means Claude actually wrote a snippet for the user to visualise.
+    if [ ! -f "$PREVIEW_FILE" ]; then
+      PREVIEW_REASON="Le fichier preview n'existe pas — impossible de debloquer sans visualisation"
+    else
+      PREVIEW_MTIME=$(stat -f '%m' "$PREVIEW_FILE" 2>/dev/null || stat -c '%Y' "$PREVIEW_FILE" 2>/dev/null || echo 0)
+      # preview must be older than the ack (written BEFORE user approval)
+      # but not older than the ack by more than PREVIEW_MAX_AGE_BEFORE_ACK.
+      if [ "$PREVIEW_MTIME" -ge "$ACK_MTIME" ]; then
+        PREVIEW_REASON="Preview ecrite APRES l'ack — l'ordre est invalide (preview doit preceder la confirmation)"
+      else
+        PREVIEW_AGE_BEFORE_ACK=$((ACK_MTIME - PREVIEW_MTIME))
+        if [ "$PREVIEW_AGE_BEFORE_ACK" -gt "$PREVIEW_MAX_AGE_BEFORE_ACK" ]; then
+          PREVIEW_REASON="Preview trop ancienne (> 10 min avant l'ack) — l'utilisateur n'a probablement pas revu le rendu"
+        else
+          # Both conditions met → allow.
+          exit 0
+        fi
+      fi
+    fi
   fi
 fi
 
@@ -127,6 +157,10 @@ Fichier ciblé : $FILE_PATH
 Catégorie     : ${SCOPE_KIND}
 EOF
 
+if [ -n "$PREVIEW_REASON" ]; then
+  printf "\n⚠ PREVIEW — raison du blocage spécifique :\n  %s\n" "$PREVIEW_REASON" >&2
+fi
+
 if [ -n "$HARMONISATION_WARNING" ]; then
   printf "\n⚠ HARMONISATION — drift potentiel détecté dans le contenu :\n" >&2
   printf "%b" "$HARMONISATION_WARNING" >&2
@@ -135,20 +169,14 @@ fi
 
 cat >&2 <<EOF
 
-Avant de poursuivre cette écriture, tu DOIS :
+Avant de poursuivre cette écriture, tu DOIS enchaîner les 4 étapes suivantes
+DANS L'ORDRE :
 
-  1. Lire la source de vérité  :  \`cat design-system.data.json\`
-     (composants shared utilisés, locaux par module, duplicates)
+  ── Étape 1 — Lire la source de vérité ─────────────────────────────────────
 
-  2. VÉRIFIER L'ALIGNEMENT — pour chaque composant que tu comptes
-     utiliser ou modifier :
-     · S'il y a un équivalent dans \`shared.used\` du JSON → l'utiliser tel quel.
-     · S'il y a une implémentation locale dans \`localByModule\` d'un autre
-       module en scope → la réutiliser ou la promouvoir.
-     · Si c'est un nouveau pattern → justifier pourquoi aucun existant
-       ne convient.
+     cat design-system.data.json
 
-  3. Présenter à l'utilisateur la checklist suivante, en message clair :
+  ── Étape 2 — Présenter la checklist ──────────────────────────────────────
 
         ┌──────────────────────────────────────────────┐
         │ UX-UI GUARD — Checklist avant écriture       │
@@ -160,25 +188,43 @@ Avant de poursuivre cette écriture, tu DOIS :
         • Alignement avec le DS vérifié ?          : oui (lu + validé)
         • Design tokens (var(--…))                 : <liste>
         • Nouveau pattern ?                        : oui/non (si oui, justifier)
-        •
-        • Tu confirmes ? (réponds « oui » pour débloquer)
 
-  4. ATTENDRE la confirmation explicite de l'utilisateur (« oui », « ok », « go »).
+  ── Étape 3 — Preview sandbox OBLIGATOIRE ──────────────────────────────────
 
-  5. Une fois confirmé, débloquer en exécutant :
+     3a. Écrire le snippet à valider dans :
+           apps/platform/src/ux-preview/currentPreview.tsx
 
-        touch .claude/.ux-ui-ack
+         Contraintes :
+           · export default d'un composant React self-contained
+           · imports shared + types autorisés
+           · aucune dépendance runtime (pas de fetch, pas de hook
+             externe, mocks inline si besoin)
 
-     (ack valide 5 min → couvre une vague d'édits cohérente, puis repart
-     à zéro — la discipline reapplique au prochain fichier)
+     3b. Indiquer à l'utilisateur l'URL à visualiser :
 
-  6. Relancer ton Write / Edit — il passera cette fois-ci.
+           /ux-preview?appId=<module-cible>
 
---- Pourquoi ce blocage ? -----------------------------------------------------
-Le skill \`ux-ui-guard\` impose la réutilisation des composants existants
-(design-system.data.json) avant toute création, ET la vérification
-systématique que tu utilises bien les composants du DS existants plutôt
-que d'en recréer localement. Ce hook PreToolUse est le filet de sécurité.
+         (appId possible : conges, roadmap, delivery, suivitess,
+          design-system — contrôle la cascade de --accent-primary)
+
+     3c. ATTENDRE la confirmation visuelle explicite (« oui », « ok », « go »).
+
+  ── Étape 4 — Débloquer et écrire pour de vrai ─────────────────────────────
+
+     4a. Une fois le « oui » reçu :   touch .claude/.ux-ui-ack
+     4b. Relancer le Write/Edit sur le fichier cible — il passera.
+
+  ── Étape 5 — Remettre la sandbox à zéro ───────────────────────────────────
+
+     Après l'écriture réelle, restaurer le placeholder par défaut dans
+     currentPreview.tsx (voir l'en-tête du fichier pour le contenu).
+
+--- Règles du hook ------------------------------------------------------------
+Le hook vérifie 2 conditions cumulatives pour autoriser une écriture UI :
+  · un .claude/.ux-ui-ack fraichement crée (≤ 5 min)
+  · un currentPreview.tsx écrit AVANT l'ack (≤ 10 min avant)
+
+Ça garantit que l'utilisateur a vu le rendu visuel AVANT de confirmer.
 
 Voir \`.claude/skills/ux-ui-guard/skill.md\` pour le workflow complet.
 EOF
