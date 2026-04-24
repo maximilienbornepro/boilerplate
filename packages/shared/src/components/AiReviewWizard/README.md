@@ -141,17 +141,305 @@ one place.
 
 ## Plugging into the observability stack
 
-If you follow **3 conventions** when wiring your skill, the decisions
-appear automatically in the admin dashboards — no extra code:
+The wizard was designed to plug into the platform's AI admin tooling
+without extra work. Follow **3 conventions** when wiring your skill
+and the decisions appear automatically in every dashboard — no code
+touching `/ai-logs`, `/ai-routing`, or `/ai-evals`.
 
-| Convention | Admin page that lights up |
+```
+  ┌─ USER CLICKS ────┐      ┌─ GATEWAY / BACKEND ──────────────┐      ┌─ ADMIN DASHBOARDS ─────────┐
+  │                  │      │                                   │      │                             │
+  │  [Valider] ─────►│─────►│ /<module>/apply                    │─────►│ /ai-logs      (log appears)│
+  │                  │      │   - updates module state           │      │                             │
+  │                  │      │   - inserts row in <module>_      │─────►│ /ai-routing   (3-col view) │
+  │                  │      │     decisions (log_id, idx, ai vs │      │                             │
+  │                  │      │     user, overrode?)              │      │                             │
+  │                  │      │                                   │      │                             │
+  │  [Pas d'accord] ─┼─────►│ /ai-skills/api/logs/:id/scores    │─────►│ /ai-logs      (orange row)│
+  │                  │      │   - POST human.thumbs = -1        │      │   + "⚠ N désaccords"      │
+  │                  │      │   - stored in ai_analysis_scores  │      │   + filter "⚠ Flaggés"    │
+  │                  │      │                                   │      │                             │
+  │  (skill run) ────┼─────►│ runSkill() → logAnalysis()        │─────►│ /ai-logs      (row added)  │
+  │                  │      │   - writes ai_analysis_logs       │      │ /ai-evals     (dataset candidate)│
+  └──────────────────┘      └───────────────────────────────────┘      └─────────────────────────────┘
+```
+
+### Convention 1 — log your AI calls
+
+Every AI call the wizard depends on must go through `runSkill()` or
+call `logAnalysis()` manually. This ensures the `ai_analysis_logs`
+row exists, with `proposals_json` set via `attachProposalsToLog`.
+Without this, the wizard has no `logId` to link back to — the
+/ai-routing page can't show anything and the disagree flag is
+fire-into-the-void.
+
+**Pattern** (backend, your `/analyze` endpoint):
+```ts
+import { runSkill, attachProposalsToLog } from '.../aiSkills/...';
+
+const run = await runSkill({
+  slug: 'my-module-proposer',
+  userId: req.user!.id,
+  userEmail: req.user!.email,
+  buildContext: () => makePromptContext(),
+  inputContent: req.body.input,
+  sourceKind: 'my-module',
+  sourceTitle: req.body.title,
+  documentId: req.body.documentId,
+  maxTokens: 6000,
+});
+const proposals = extractJson(run.outputText);
+if (run.logId && Array.isArray(proposals)) {
+  await attachProposalsToLog(run.logId, proposals);
+}
+res.json({ logId: run.logId, proposals });
+```
+
+The log now appears in `/ai-logs` with filter `skill=my-module-proposer`.
+
+### Convention 2 — persist the user's final decision
+
+On each commit, the consumer writes a per-module "decisions" row that
+mirrors `suivitess_routing_memory` — the shape `/ai-routing` expects:
+
+```sql
+CREATE TABLE my_module_decisions (
+  id SERIAL PRIMARY KEY,
+  log_id INTEGER REFERENCES ai_analysis_logs(id) ON DELETE SET NULL,
+  proposal_index INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  -- Whatever fields describe "what the user committed":
+  final_text TEXT,
+  target_id VARCHAR(100),
+  -- What the AI proposed before the user edited (for the comparison page):
+  ai_proposed_text TEXT,
+  ai_proposed_target_id VARCHAR(100),
+  -- Did the user change anything?
+  user_overrode_ai BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX ON my_module_decisions (log_id, proposal_index);
+```
+
+**Pattern** (backend, your `/apply` endpoint):
+```ts
+router.post('/apply-proposal', asyncHandler(async (req, res) => {
+  const { logId, proposalIndex, finalText, aiProposedText, targetId, aiTargetId } = req.body;
+  const overrode = finalText !== aiProposedText || targetId !== aiTargetId;
+  await db.pool.query(
+    `INSERT INTO my_module_decisions
+       (log_id, proposal_index, user_id, final_text, target_id,
+        ai_proposed_text, ai_proposed_target_id, user_overrode_ai)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [logId, proposalIndex, req.user!.id, finalText, targetId,
+     aiProposedText, aiTargetId, overrode],
+  );
+  // ... actually apply the change to your module's state ...
+  res.json({ ok: true });
+}));
+```
+
+The last piece is a small extension in
+`apps/platform/servers/unified/src/modules/aiSkills/routingComparisonService.ts`
+that routes `listComparableLogs` / `fetchUserDecisions` to the right
+table based on `ai_analysis_logs.skill_slug`. See the existing
+`suivitess_routing_memory` branch for the pattern — it's ~20 lines
+of dispatch code per new module.
+
+### Convention 3 — call the shared disagree helper
+
+Use `flagDisagreement()` (or `createDisagreeHandler()`) exported from
+this package. One line, fire-and-forget, records a `human.thumbs = -1`
+score on `ai_analysis_logs/:logId/scores`:
+
+```ts
+import { createDisagreeHandler } from '@boilerplate/shared/components';
+
+<AiReviewWizard
+  decisions={decisions}
+  onDisagree={createDisagreeHandler({
+    buildRationale: d => `Désaccord sur « ${d.title} » — contexte ${d.payload.kind}`,
+  })}
+  ...
+/>
+```
+
+### What the admin sees automatically
+
+| Page | What lights up |
 |---|---|
-| Skill backend calls `logAnalysis()` after each AI call | `/ai-logs` (list + filters + replay) |
-| `onDisagree` POSTs `human.thumbs = -1` on `/ai-skills/api/logs/:id/scores` | `/ai-logs` row turns orange, `⚠ N désaccords` shows in sidebar, filter "⚠ Flaggés" works |
-| `onCommit` persists `(log_id, proposal_index, user_choice, ai_proposed_*)` in a per-module table | `/ai-routing` renders the 3-column AI-vs-user comparison |
+| `/ai-logs` | The run appears with its skill filter. Disagreements tint the row orange + badge `⚠ N désaccords`. Filter pills `⚠ Flaggés` / `× Erreurs` work out of the box. |
+| `/ai-routing` | Once your module's `_decisions` table is queryable, the 3-column comparison renders: AI proposal \| user decision \| similar past RAG hits. |
+| `/ai-evals` | Any log is promotable to a dataset item from `/ai-logs` → add to dataset. Runs experiments against new skill versions. |
+| Routing memory (pgvector) | The per-module decisions feed the RAG few-shot examples on next imports of the SAME skill — `suivitess_routing_memory` pattern extends to any module once you write to the pgvector-enabled table. |
 
-All three pages are reachable from the admin drawer — you don't touch
-their code.
+---
+
+## End-to-end example — adapting the `mon-cv` module
+
+Imagine you want: upload a CV, paste a job offer, get N proposals to
+adapt specific sections. User validates each adaptation one-by-one.
+
+### 1. Prompt (`apps/platform/servers/unified/src/prompts/mon-cv/adapt-against-offer.md`)
+
+A `.md` file describing the skill. Takes `{cv, offer}`, returns
+`[{sectionId, originalText, proposedText, reasoning, confidence}]`.
+~150 lines of prompt engineering, zero code.
+
+### 2. Backend — analyze endpoint (~25 lines)
+
+```ts
+// apps/platform/servers/unified/src/modules/mon-cv/routes.ts
+router.post('/adapt-against-offer', asyncHandler(async (req, res) => {
+  const { cvId, offerText } = req.body;
+  const cv = await db.getCV(cvId, req.user!.id);
+  const run = await runSkill({
+    slug: 'mon-cv-adapt-against-offer',
+    userId: req.user!.id,
+    userEmail: req.user!.email,
+    buildContext: () => `## CV\n\`\`\`json\n${JSON.stringify(cv)}\n\`\`\`\n\n## Offre\n${offerText}`,
+    inputContent: offerText,
+    sourceKind: 'cv-adapt',
+    sourceTitle: cv.name,
+    documentId: String(cvId),
+    maxTokens: 8000,
+  });
+  const proposals = extractJson(run.outputText);
+  if (run.logId && Array.isArray(proposals)) {
+    await attachProposalsToLog(run.logId, proposals);
+  }
+  res.json({ logId: run.logId, proposals });
+}));
+```
+
+### 3. Backend — apply endpoint (~25 lines)
+
+```ts
+router.post('/apply-adapted-section', asyncHandler(async (req, res) => {
+  const { cvId, sectionId, finalText, aiProposedText, logId, proposalIndex } = req.body;
+  await db.updateCVSection(cvId, sectionId, finalText);
+  await db.pool.query(
+    `INSERT INTO mon_cv_adapt_decisions
+       (log_id, proposal_index, user_id, cv_id, section_id,
+        final_text, ai_proposed_text, user_overrode_ai)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [logId, proposalIndex, req.user!.id, cvId, sectionId,
+     finalText, aiProposedText, finalText !== aiProposedText],
+  );
+  res.json({ ok: true });
+}));
+```
+
+### 4. SQL migration (`mon_cv_adapt_decisions` table) — 15 lines (see Convention 2)
+
+### 5. Frontend — the modal (~70 lines)
+
+```tsx
+import { Modal, AiReviewWizard, createDisagreeHandler, type ReviewableDecision } from '@boilerplate/shared/components';
+
+type CvAdaptPayload = { sectionId: string; finalText: string; aiProposedText: string };
+
+export function AdaptWithOfferModal({ cvId, offerText, onClose }) {
+  const [logId, setLogId] = useState<number | null>(null);
+  const [proposals, setProposals] = useState<Array<any>>([]);
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    fetch('/mon-cv-api/adapt-against-offer', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cvId, offerText }),
+    }).then(r => r.json()).then(({ logId, proposals }) => {
+      setLogId(logId);
+      setProposals(proposals);
+    });
+  }, [cvId, offerText]);
+
+  const decisions: ReviewableDecision<CvAdaptPayload>[] = proposals.map((p, i) => ({
+    id: p.sectionId,
+    title: sectionLabels[p.sectionId],
+    modeTag: { label: 'Adaptation', variant: 'update' },
+    status: { label: p.confidence, color: p.confidence === 'high' ? '#10b981' : '#f59e0b' },
+    statementLines: [
+      { text: `Section «${sectionLabels[p.sectionId]}»` },
+      {
+        text: 'Nouveau texte :',
+        slot: {
+          currentValue: `« ${(overrides[p.sectionId] ?? p.proposedText).slice(0, 60)}… »`,
+          variant: 'new',
+          options: [
+            { id: 'ai',       label: `IA : ${p.proposedText.slice(0, 80)}` },
+            { id: 'original', label: `Garder l'original : ${p.originalText.slice(0, 80)}` },
+          ],
+          onChange: id => setOverrides(prev => ({
+            ...prev,
+            [p.sectionId]: id === 'ai' ? p.proposedText : p.originalText,
+          })),
+        },
+      },
+    ],
+    reasoning: p.reasoning,
+    payload: {
+      sectionId: p.sectionId,
+      finalText: overrides[p.sectionId] ?? p.proposedText,
+      aiProposedText: p.proposedText,
+    },
+    logId,
+    proposalIndex: i,
+  }));
+
+  return (
+    <Modal title="Adapter le CV à l'offre" size="xl" onClose={onClose}>
+      <AiReviewWizard<CvAdaptPayload>
+        decisions={decisions}
+        onSkip={() => {}}
+        onDisagree={createDisagreeHandler({
+          buildRationale: d => `Désaccord sur « ${d.title} » (mon-cv adapt)`,
+        })}
+        onCommit={async d => {
+          await fetch('/mon-cv-api/apply-adapted-section', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              cvId,
+              sectionId: d.payload.sectionId,
+              finalText: d.payload.finalText,
+              aiProposedText: d.payload.aiProposedText,
+              logId: d.logId,
+              proposalIndex: d.proposalIndex,
+            }),
+          });
+        }}
+        onDone={onClose}
+      />
+    </Modal>
+  );
+}
+```
+
+### 6. Extension `/ai-routing` (~20 lines)
+
+Open
+`apps/platform/servers/unified/src/modules/aiSkills/routingComparisonService.ts`
+and dispatch `fetchUserDecisions` on `skill_slug`:
+
+```ts
+if (skillSlug.startsWith('mon-cv-adapt-')) {
+  // Query mon_cv_adapt_decisions instead of suivitess_routing_memory
+  return fetchCvDecisions(logId);
+}
+```
+
+### Total effort
+
+~6 files, ~295 lines of new code. The shared wizard saved ~700 lines
+of tile navigation / dot progress / inline dropdown / CSS boilerplate.
+
+Every admin dashboard lights up automatically:
+- `/ai-logs` shows CV adapt runs (filterable by `mon-cv-adapt-against-offer`)
+- Disagreements show as orange rows with rationale
+- `/ai-routing` renders the before/after comparison per section
+- `/ai-evals` lets you build a dataset of "bad adaptations" to tune the skill
 
 ## Customisation
 

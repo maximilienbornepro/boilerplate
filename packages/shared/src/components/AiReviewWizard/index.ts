@@ -9,3 +9,5 @@ export type {
   WizardConfig,
   WizardLabels,
 } from './types';
+export { flagDisagreement, createDisagreeHandler } from './observability';
+export type { FlagOptions } from './observability';
