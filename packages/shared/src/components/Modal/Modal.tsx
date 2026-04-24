@@ -11,6 +11,23 @@ export interface ModalProps {
   size?: ModalSize;
 }
 
+/**
+ * Standard body wrapper for a modal — provides consistent padding and
+ * vertical stacking for fields/text. Always put the modal's main content
+ * inside a <ModalBody>.
+ */
+export function ModalBody({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={`${styles.body} ${className ?? ''}`.trim()}>{children}</div>;
+}
+
+/**
+ * Standard footer for modal actions — right-aligned, with top spacing.
+ * Put Annuler / confirm / CTA buttons inside.
+ */
+export function ModalActions({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={`${styles.actions} ${className ?? ''}`.trim()}>{children}</div>;
+}
+
 const SIZE_MAX_WIDTH: Record<ModalSize, string> = {
   sm: '420px',
   md: '600px',

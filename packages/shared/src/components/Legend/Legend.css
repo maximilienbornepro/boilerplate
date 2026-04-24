@@ -1,0 +1,36 @@
+/* Legend — promoted from conges/Legend. */
+
+.shared-legend {
+  display: flex;
+  gap: var(--spacing-sm);
+  font-family: var(--font-family-mono);
+}
+
+.shared-legend--column {
+  flex-direction: column;
+  padding: var(--spacing-md) 0 var(--spacing-md) 16px;
+}
+
+.shared-legend--row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.shared-legend__item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.shared-legend__swatch {
+  width: 16px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.shared-legend__label {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}

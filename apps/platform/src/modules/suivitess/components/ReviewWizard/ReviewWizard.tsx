@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ToastContainer, Card, Button } from '@boilerplate/shared/components';
+import { ToastContainer, Card, Button, StatusTag } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import type { Section, Change, WizardStep, Subject, DocumentWithSections, SnapshotInfo } from '../../types';
 import { getStatusOption } from '../../types';
@@ -981,8 +981,7 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
                           </button>
                           <span className={styles.subjectCollapsedTitle}>{subject.title || 'Sans titre'}</span>
                           <span className={styles.subjectCollapsedStatus}>
-                            <span className={styles.subjectCollapsedDot} style={{ backgroundColor: getStatusOption(subject.status).color }} />
-                            {getStatusOption(subject.status).label}
+                            <StatusTag label={getStatusOption(subject.status).label} color={getStatusOption(subject.status).color} />
                           </span>
                         </div>
                       ) : (
@@ -1163,9 +1162,9 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
               {changes.length} modification{changes.length > 1 ? 's' : ''} appliquée{changes.length > 1 ? 's' : ''}
             </p>
           )}
-          <button className={styles.primaryBtn} onClick={handleReset}>
+          <Button variant="primary" onClick={handleReset}>
             Nouvelle révision
-          </button>
+          </Button>
         </div>
       )}
 

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Modal, ModalBody, ModalActions, Button } from '@boilerplate/shared/components';
 import type { ActiveConnector } from '../services/api';
 import { JiraImportModal } from './JiraImportModal';
 import styles from './ImportModal.module.css';
@@ -17,8 +18,11 @@ interface ImportModalProps {
 }
 
 export function ImportModal({ incrementId, activeConnectors, onImported, onClose }: ImportModalProps) {
+  // Keep only connectors we actually know how to import from.
+  const importableConnectors = activeConnectors.filter(c => CONNECTOR_META[c.service]);
+
   const [selectedService, setSelectedService] = useState<string | null>(
-    activeConnectors.length === 1 ? activeConnectors[0].service : null
+    importableConnectors.length === 1 ? importableConnectors[0].service : null
   );
 
   const handleImported = () => { onImported(); onClose(); };
@@ -27,41 +31,53 @@ export function ImportModal({ incrementId, activeConnectors, onImported, onClose
     return <JiraImportModal incrementId={incrementId} onImported={handleImported} onClose={activeConnectors.length > 1 ? () => setSelectedService(null) : onClose} />;
   }
 
+  const title = !selectedService
+    ? 'Importer des taches'
+    : CONNECTOR_META[selectedService]?.name ?? selectedService;
+
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        {!selectedService && (
-          <>
-            <div className={styles.header}>
-              <h3 className={styles.title}>Importer des taches</h3>
-              <button className={styles.closeBtn} onClick={onClose} type="button">&times;</button>
-            </div>
-            <div className={styles.connectorList}>
-              {activeConnectors.map(c => {
-                const meta = CONNECTOR_META[c.service];
-                if (!meta) return null;
-                return (
-                  <button key={c.service} className={styles.connectorItem} onClick={() => setSelectedService(c.service)}>
-                    <div className={styles.connectorIcon} style={{ background: meta.color }}>{meta.icon}</div>
-                    <span className={styles.connectorName}>{meta.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-        {selectedService && selectedService !== 'jira' && (
-          <>
-            <div className={styles.header}>
-              <h3 className={styles.title}>{CONNECTOR_META[selectedService]?.name ?? selectedService}</h3>
-              <button className={styles.closeBtn} onClick={onClose} type="button">&times;</button>
-            </div>
-            <div style={{ padding: 'var(--spacing-lg)', color: 'var(--text-muted)', fontFamily: 'var(--font-family-mono)', fontSize: 'var(--font-size-sm)' }}>
-              Import non disponible pour ce connecteur.
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+    <Modal title={title} onClose={onClose} size="md">
+      {!selectedService && importableConnectors.length === 0 && (
+        <>
+          <ModalBody>
+            <p className={styles.bodyText}>
+              Pour importer des tâches, connectez l'un de vos outils : Jira, Notion ou ClickUp.
+            </p>
+          </ModalBody>
+          <ModalActions>
+            <Button variant="secondary" onClick={onClose}>Annuler</Button>
+            <Button variant="primary" onClick={() => { window.location.href = '/settings/connectors'; }}>
+              Configurer un connecteur
+            </Button>
+          </ModalActions>
+        </>
+      )}
+      {!selectedService && importableConnectors.length > 0 && (
+        <ModalBody>
+          <div className={styles.connectorList}>
+            {importableConnectors.map(c => {
+              const meta = CONNECTOR_META[c.service];
+              if (!meta) return null;
+              return (
+                <button key={c.service} className={styles.connectorItem} onClick={() => setSelectedService(c.service)}>
+                  <div className={styles.connectorIcon} style={{ background: meta.color }}>{meta.icon}</div>
+                  <span className={styles.connectorName}>{meta.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </ModalBody>
+      )}
+      {selectedService && selectedService !== 'jira' && (
+        <>
+          <ModalBody>
+            <p className={styles.bodyText}>Import non disponible pour ce connecteur.</p>
+          </ModalBody>
+          <ModalActions>
+            <Button variant="secondary" onClick={onClose}>Fermer</Button>
+          </ModalActions>
+        </>
+      )}
+    </Modal>
   );
 }

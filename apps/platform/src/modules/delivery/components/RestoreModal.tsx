@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Modal, ModalBody, ModalActions, Button } from '@boilerplate/shared/components';
 import styles from './RestoreModal.module.css';
 
 interface HiddenTask {
@@ -40,13 +41,8 @@ export function RestoreModal({ hiddenTasks, onRestore, onClose }: RestoreModalPr
   };
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.header}>
-          <h3>Restaurer des tâches masquées</h3>
-          <button className={styles.closeBtn} onClick={onClose}>x</button>
-        </div>
-
+    <Modal title="Restaurer des tâches masquées" onClose={onClose} size="md">
+      <ModalBody>
         <div className={styles.actions}>
           <button className={styles.selectBtn} onClick={selectAll}>Tout sélectionner</button>
           <button className={styles.selectBtn} onClick={deselectAll}>Tout désélectionner</button>
@@ -65,20 +61,13 @@ export function RestoreModal({ hiddenTasks, onRestore, onClose }: RestoreModalPr
             </label>
           ))}
         </div>
-
-        <div className={styles.footer}>
-          <button className={styles.cancelBtn} onClick={onClose}>
-            Annuler
-          </button>
-          <button
-            className={styles.restoreBtn}
-            onClick={handleRestore}
-            disabled={selectedIds.size === 0}
-          >
-            Restaurer ({selectedIds.size})
-          </button>
-        </div>
-      </div>
-    </div>
+      </ModalBody>
+      <ModalActions>
+        <Button variant="secondary" onClick={onClose}>Annuler</Button>
+        <Button variant="primary" onClick={handleRestore} disabled={selectedIds.size === 0}>
+          Restaurer ({selectedIds.size})
+        </Button>
+      </ModalActions>
+    </Modal>
   );
 }

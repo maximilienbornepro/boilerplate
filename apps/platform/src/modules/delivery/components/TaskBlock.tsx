@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { ConfirmModal } from '@boilerplate/shared/components';
 import type { Task } from '../types';
 import { stripJiraKey, mapSimpleStatus, extractJiraKey, buildJiraUrl } from '../utils/jiraUtils';
 import type { SimpleStatus } from '../utils/jiraUtils';
@@ -485,16 +486,14 @@ export function TaskBlock({
 
       {/* Hide confirmation */}
       {showConfirmDialog && (
-        <div className={styles.confirmOverlay} onClick={(e) => e.stopPropagation()}>
-          <div className={styles.confirmDialog}>
-            <p className={styles.confirmText}>Masquer cette tâche ?</p>
-            <p className={styles.confirmSubtext}>Elle pourra être restaurée depuis le menu</p>
-            <div className={styles.confirmButtons}>
-              <button className={styles.confirmCancel} onClick={handleCancelHide} onMouseDown={(e) => e.stopPropagation()}>Annuler</button>
-              <button className={styles.confirmOk} onClick={handleConfirmHide} onMouseDown={(e) => e.stopPropagation()}>Masquer</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Masquer cette tâche ?"
+          message="Elle pourra être restaurée depuis le menu"
+          confirmLabel="Masquer"
+          cancelLabel="Annuler"
+          onConfirm={handleConfirmHide}
+          onCancel={handleCancelHide}
+        />
       )}
 
       {/* Edit modal — containers & regular tasks */}

@@ -10,7 +10,7 @@ export { Layout } from './Layout/Layout.js';
 export type { LayoutProps, LayoutVariant } from './Layout/Layout.js';
 
 // Modal
-export { Modal } from './Modal/Modal.js';
+export { Modal, ModalBody, ModalActions } from './Modal/Modal.js';
 export type { ModalProps } from './Modal/Modal.js';
 
 // ConfirmModal
@@ -78,6 +78,22 @@ export type { SectionTitleProps } from './SectionTitle/SectionTitle.js';
 // Tabs
 export { Tabs } from './Tabs/Tabs.js';
 export type { TabsProps, TabItem } from './Tabs/Tabs.js';
+
+// ViewSelector
+export { ViewSelector } from './ViewSelector/ViewSelector.js';
+export type { ViewSelectorProps, ViewModeOption } from './ViewSelector/ViewSelector.js';
+
+// Legend
+export { Legend } from './Legend/Legend.js';
+export type { LegendProps, LegendItem } from './Legend/Legend.js';
+
+// EmptyState
+export { EmptyState } from './EmptyState/EmptyState.js';
+export type { EmptyStateProps } from './EmptyState/EmptyState.js';
+
+// StatusTag
+export { StatusTag } from './StatusTag/StatusTag.js';
+export type { StatusTagProps } from './StatusTag/StatusTag.js';
 
 // Sharing
 export { SharingModal } from './SharingModal/SharingModal.js';

@@ -761,11 +761,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                     className="delivery-actions-item"
                     onClick={() => {
                       setShowActionsMenu(false);
-                      if (activeConnectors.length > 0) {
-                        setShowImportModal(true);
-                      } else if (onNavigate) {
-                        onNavigate('/reglages');
-                      }
+                      setShowImportModal(true);
                     }}
                   >
                     Importer des tâches

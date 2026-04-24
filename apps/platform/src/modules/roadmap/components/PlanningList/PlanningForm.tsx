@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Modal, FormField, Button, VisibilityPicker } from '@boilerplate/shared/components';
+import { Modal, ModalBody, ModalActions, FormField, Button, VisibilityPicker } from '@boilerplate/shared/components';
 import type { Visibility } from '@boilerplate/shared/components';
 import type { Planning, PlanningFormData, LinkedDeliveryBoard } from '../../types';
 import * as api from '../../services/api';
@@ -99,7 +99,7 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
 
   return (
     <Modal title={isEdit ? 'Modifier la roadmap' : 'Nouvelle roadmap'} onClose={onClose}>
-      <div className={styles.modalBody}>
+      <ModalBody>
         <FormField label="Nom de la roadmap" required>
           <input
             type="text"
@@ -164,15 +164,15 @@ export function PlanningForm({ planning, onSubmit, onClose }: PlanningFormProps)
           </FormField>
         )}
 
-        <div className={styles.modalActions}>
-          <Button variant="secondary" onClick={onClose} disabled={submitting}>
-            Annuler
-          </Button>
-          <Button variant="primary" onClick={handleSubmit} disabled={!name.trim() || !startDate || !endDate || submitting}>
-            {submitting ? 'Enregistrement…' : isEdit ? 'Modifier' : 'Créer'}
-          </Button>
-        </div>
-      </div>
+      </ModalBody>
+      <ModalActions>
+        <Button variant="secondary" onClick={onClose} disabled={submitting}>
+          Annuler
+        </Button>
+        <Button variant="primary" onClick={handleSubmit} disabled={!name.trim() || !startDate || !endDate || submitting}>
+          {submitting ? 'Enregistrement…' : isEdit ? 'Modifier' : 'Créer'}
+        </Button>
+      </ModalActions>
     </Modal>
   );
 }

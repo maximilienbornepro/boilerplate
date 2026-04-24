@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { StatusTag } from '@boilerplate/shared/components';
 import type { Subject } from '../../types';
 import { STATUS_OPTIONS, getStatusOption } from '../../types';
 import { updateSubject } from '../../services/api';
@@ -591,8 +592,7 @@ export function SubjectReview({
               className={`${styles.statusButton} ${status !== subject.status ? styles.changed : ''}`}
               onClick={() => setShowStatusPicker(!showStatusPicker)}
             >
-              <span className={styles.statusDot} style={{ backgroundColor: getStatusOption(status).color }} />
-              <span className={styles.statusLabel}>{getStatusOption(status).label}</span>
+              <StatusTag label={getStatusOption(status).label} color={getStatusOption(status).color} />
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
@@ -609,8 +609,7 @@ export function SubjectReview({
                       setShowStatusPicker(false);
                     }}
                   >
-                    <span className={styles.statusDot} style={{ backgroundColor: opt.color }} />
-                    <span>{opt.label}</span>
+                    <StatusTag label={opt.label} color={opt.color} />
                   </button>
                 ))}
               </div>
