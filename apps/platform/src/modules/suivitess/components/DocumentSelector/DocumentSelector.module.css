@@ -1,15 +1,13 @@
-/* DocumentSelector */
+/* DocumentSelector — now a flex child of <main>, so AppSidebar on the
+ * left is respected. Inner scroll kept for long lists. */
 .container {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--spacing-xl);
   padding: var(--spacing-2xl) var(--spacing-lg);
-  position: fixed;
-  top: 110px; /* SharedNav 50px + ModuleHeader 60px */
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   box-sizing: border-box;

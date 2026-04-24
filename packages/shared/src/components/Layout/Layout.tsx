@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { SharedNav } from '../SharedNav/SharedNav.js';
+import { AppSidebar, type ModuleLoader } from '../AppSidebar/AppSidebar.js';
+import { useSidebarLoaders } from '../AppSidebar/SidebarLoadersContext.js';
 import { APPS } from '../SharedNav/constants.js';
 import { useGatewayAuth } from '../../hooks/useGatewayAuth.js';
 import styles from './Layout.module.css';
@@ -17,6 +19,15 @@ export interface LayoutProps {
    * If omitted, falls back to the current user's permissions from useGatewayAuth.
    * Pass an empty array to hide all apps. */
   allowedAppIds?: string[];
+  /**
+   * When defined, renders the <AppSidebar> on the left with these
+   * module-specific loaders for lazy-listing elements (plannings,
+   * boards, documents…). Set to `false` to explicitly opt out (e.g.
+   * landing page, embed, login). Defaults to undefined → no sidebar.
+   */
+  sidebarLoaders?: Record<string, ModuleLoader> | false;
+  /** Current pathname to highlight the active module / item in the sidebar. */
+  currentPath?: string;
 }
 
 export function Layout({
@@ -27,6 +38,8 @@ export function Layout({
   onNavigate,
   navSlot,
   allowedAppIds,
+  sidebarLoaders,
+  currentPath,
 }: LayoutProps) {
   // Auto-fetch user permissions from AuthContext when not explicitly passed.
   // This ensures the burger menu inside a module only shows modules the
@@ -63,8 +76,17 @@ export function Layout({
       ]
     : undefined;
 
+  // Loaders can come from an explicit prop OR from <SidebarLoadersProvider>
+  // at the app root. Explicit `false` opts out entirely.
+  const contextLoaders = useSidebarLoaders();
+  const effectiveLoaders = sidebarLoaders === false
+    ? null
+    : (sidebarLoaders ?? contextLoaders);
+  const showSidebar = !!effectiveLoaders;
+  const effectivePath = currentPath ?? (typeof window !== 'undefined' ? window.location.pathname : '');
+
   return (
-    <div className={styles.app} style={moduleStyle}>
+    <div className={`${styles.app} ${showSidebar ? styles.appWithSidebar : ''}`} style={moduleStyle}>
       <SharedNav
         currentApp={appId}
         onNavigate={onNavigate}
@@ -73,6 +95,14 @@ export function Layout({
       >
         {navSlot}
       </SharedNav>
+      {showSidebar && effectiveLoaders && (
+        <AppSidebar
+          allowedAppIds={effectiveAllowedAppIds}
+          moduleLoaders={effectiveLoaders}
+          currentPath={effectivePath}
+          onNavigate={(path) => onNavigate ? onNavigate(path) : (window.location.href = path)}
+        />
+      )}
       <main className={`${styles.main} ${variantClass}`}>{children}</main>
     </div>
   );

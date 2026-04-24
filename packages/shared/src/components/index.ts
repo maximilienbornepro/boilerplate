@@ -5,6 +5,12 @@ export { useSharedTheme } from './SharedNav/useSharedTheme.js';
 export { APPS, CATEGORIES, NAV_HEIGHT, THEME_STORAGE_KEY, getAppUrl, getAppsByCategory, getCategoryForApp } from './SharedNav/constants.js';
 export type { AppInfo, AppCategory, CategoryInfo } from './SharedNav/constants.js';
 
+// AppSidebar
+export { AppSidebar } from './AppSidebar/AppSidebar.js';
+export type { AppSidebarProps, SidebarItem, ModuleLoader } from './AppSidebar/AppSidebar.js';
+export { SidebarLoadersProvider, useSidebarLoaders } from './AppSidebar/SidebarLoadersContext.js';
+export type { SidebarLoadersProviderProps } from './AppSidebar/SidebarLoadersContext.js';
+
 // Layout
 export { Layout } from './Layout/Layout.js';
 export type { LayoutProps, LayoutVariant } from './Layout/Layout.js';
