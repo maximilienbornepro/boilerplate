@@ -16,6 +16,11 @@ RUN sed -i '/@boilerplate\/shared/d' apps/platform/package.json && \
 # Copy platform source
 COPY apps/platform/ ./apps/platform/
 
+# Copy the design-system audit JSON from repo root — imported by
+# `modules/design-system/App.tsx` via a relative path that reaches the
+# repo root (../../../../../design-system.data.json).
+COPY design-system.data.json ./design-system.data.json
+
 # Build (vite only, tsc type-check runs in CI/local not in Docker)
 RUN cd apps/platform && npx vite build
 
