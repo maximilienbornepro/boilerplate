@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import { LoadingSpinner, SharedNav } from '@boilerplate/shared/components';
+import { Layout, LoadingSpinner, SharedNav } from '@boilerplate/shared/components';
 import { LandingPage } from './modules/gateway/components/LandingPage';
 import { AdminPage } from './modules/gateway/components/AdminPage';
 import { ConnectorsPage } from './modules/gateway/components/ConnectorsPage';
@@ -64,12 +64,9 @@ function adminDrawerLinks(user?: User | null) {
 
 function HomePage({ onNavigate, user }: { onNavigate?: (path: string) => void; user?: User | null }) {
   return (
-    <>
-      <SharedNav allowedAppIds={user?.permissions} onNavigate={onNavigate} extraDrawerLinks={adminDrawerLinks(user)} />
-      <main>
-        <LandingPage onNavigate={onNavigate} />
-      </main>
-    </>
+    <Layout variant="full-width" onNavigate={onNavigate} allowedAppIds={user?.permissions}>
+      <LandingPage onNavigate={onNavigate} />
+    </Layout>
   );
 }
 
@@ -124,23 +121,17 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
       <Route
         path="/reglages"
         element={
-          <>
-            <SharedNav allowedAppIds={user?.permissions} onNavigate={onNavigate} extraDrawerLinks={adminDrawerLinks(user)} />
-            <main style={{ paddingTop: 0 }}>
-              <SettingsPage onBack={() => onNavigate ? onNavigate('/') : (window.location.href = '/')} user={user} />
-            </main>
-          </>
+          <Layout variant="full-width" onNavigate={onNavigate} allowedAppIds={user?.permissions}>
+            <SettingsPage onBack={() => onNavigate ? onNavigate('/') : (window.location.href = '/')} user={user} />
+          </Layout>
         }
       />
       <Route
         path="/settings/connectors"
         element={
-          <>
-            <SharedNav allowedAppIds={user?.permissions} onNavigate={onNavigate} extraDrawerLinks={adminDrawerLinks(user)} />
-            <main style={{ paddingTop: 0 }}>
-              <ConnectorsPage onBack={() => onNavigate ? onNavigate('/') : (window.location.href = '/')} />
-            </main>
-          </>
+          <Layout variant="full-width" onNavigate={onNavigate} allowedAppIds={user?.permissions}>
+            <ConnectorsPage onBack={() => onNavigate ? onNavigate('/') : (window.location.href = '/')} />
+          </Layout>
         }
       />
       <Route

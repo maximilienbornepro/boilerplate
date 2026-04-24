@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-24T14:35:07.879Z",
+  "generatedAt": "2026-04-24T15:42:37.812Z",
   "scope": [
     {
       "id": "landing",
@@ -29,6 +29,7 @@
   ],
   "shared": {
     "exported": [
+      "AppSidebar",
       "Badge",
       "Button",
       "Card",
@@ -327,6 +328,7 @@
       }
     ],
     "unused": [
+      "AppSidebar",
       "Badge",
       "Footer",
       "Hero",

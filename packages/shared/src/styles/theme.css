@@ -102,6 +102,11 @@
 
   /* ---- Accent: cyan ---- */
   --accent-primary: #00bcd4;
+  /* Global app accent that must NOT be overridden by module-level
+   * --accent-primary injection (Layout does that for conges/roadmap/…).
+   * Useful for chrome (sidebar toggle, global nav) that should stay
+   * branded regardless of the current module. */
+  --app-accent: #00bcd4;
   --accent-primary-hover: #00acc1;
   --accent-secondary: #26c6da;
   --accent-light: rgba(0, 188, 212, 0.12);
@@ -168,6 +173,7 @@
   --border-light: rgba(0, 0, 0, 0.06);
 
   --accent-primary: #00838f;
+  --app-accent: #00838f;
   --accent-primary-hover: #006064;
   --accent-secondary: #0097a7;
   --accent-light: rgba(0, 131, 143, 0.1);
