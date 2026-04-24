@@ -1,4 +1,5 @@
-import rateLimit, { ipKeyGenerator, type RateLimitRequestHandler } from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import type { RequestHandler } from 'express';
 
 export type RateLimitTier = 'public' | 'auth' | 'heavy' | 'default';
 
@@ -13,7 +14,19 @@ const TIER_CONFIG: Record<RateLimitTier, { windowMs: number; max: number }> = {
   default: { windowMs: 60_000, max: 300 },
 };
 
-function buildLimiter(tier: RateLimitTier): RateLimitRequestHandler {
+// Rate limiting is OPT-IN via `GATEWAY_RATE_LIMIT=on` for now. The
+// 300/min default was clipping legitimate SPA usage (a dashboard can
+// burst ~20 calls on mount × multiple tabs). Re-enable once we size
+// the buckets against real production traffic, or introduce
+// per-endpoint overrides. Disabling is inert — the middleware becomes
+// a pass-through, so every `route({ tier })` call keeps the same
+// middleware chain length (no cascading changes).
+const RATE_LIMIT_ENABLED = process.env.GATEWAY_RATE_LIMIT === 'on';
+
+const passthrough: RequestHandler = (_req, _res, next) => next();
+
+function buildLimiter(tier: RateLimitTier): RequestHandler {
+  if (!RATE_LIMIT_ENABLED) return passthrough;
   const { windowMs, max } = TIER_CONFIG[tier];
   return rateLimit({
     windowMs,
@@ -34,17 +47,21 @@ function buildLimiter(tier: RateLimitTier): RateLimitRequestHandler {
   });
 }
 
-const limiters: Record<RateLimitTier, RateLimitRequestHandler> = {
+const limiters: Record<RateLimitTier, RequestHandler> = {
   public:  buildLimiter('public'),
   auth:    buildLimiter('auth'),
   heavy:   buildLimiter('heavy'),
   default: buildLimiter('default'),
 };
 
-export function getRateLimiter(tier: RateLimitTier): RateLimitRequestHandler {
+export function getRateLimiter(tier: RateLimitTier): RequestHandler {
   return limiters[tier];
 }
 
 export function getRateLimitConfig(tier: RateLimitTier): { windowMs: number; max: number } {
   return TIER_CONFIG[tier];
+}
+
+export function isRateLimitEnabled(): boolean {
+  return RATE_LIMIT_ENABLED;
 }
