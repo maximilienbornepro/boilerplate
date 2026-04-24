@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { authMiddleware } from '../../../middleware/index.js';
+import { route } from '../../../gateway/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from '../services/dbService.js';
 import { initPgvector } from '../services/dbService.js';
@@ -36,7 +36,10 @@ const upload = multer({
 
 export function createIndexRouter(): Router {
   const router = Router();
-  router.use(authMiddleware);
+  // Indexing accepts 50 MB file uploads via multer — same reasoning as
+  // the bot router: disable the gateway body-limit so multer sees the
+  // file stream and enforces its own 50 MB cap.
+  router.use(...route({ tier: 'authenticated', bodyLimit: false }));
 
   // GET /index/status — auto-retries pgvector init if it failed at startup
   router.get('/status', asyncHandler(async (_req, res) => {

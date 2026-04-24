@@ -14,12 +14,21 @@ export default defineConfig({
           environment: 'node',
         },
       },
-      // Server: gateway
+      // Server: gateway (auth module — login/me/permissions)
       {
         test: {
           name: 'server-gateway',
           root: '.',
           include: ['apps/platform/servers/unified/src/modules/__tests__/gateway/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
+      // Server: gateway-layer (application-side API gateway middlewares)
+      {
+        test: {
+          name: 'server-gateway-layer',
+          root: '.',
+          include: ['apps/platform/servers/unified/src/gateway/__tests__/**/*.test.ts'],
           environment: 'node',
         },
       },

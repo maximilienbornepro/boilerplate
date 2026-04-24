@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authMiddleware } from '../../middleware/index.js';
+import { route } from '../../gateway/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
 import { searchSubjects as searchSuivitessSubjects } from '../suivitess/dbService.js';
@@ -53,7 +53,15 @@ export function createRoadmapRoutes(): Router {
     }
   }
 
-  router.get('/embed/:id', asyncHandler(async (req, res) => {
+  // Embed routes use `public`-tier rate limits because they pre-date the
+  // gateway's dedicated `embed` tier and rely on the legacy "missing
+  // sharing entry = public" fallback (the backfill above ensures every
+  // planning gets an entry, but we keep the loose check as a safety
+  // net for older data). When that legacy path is retired, switch to:
+  //   ...route({ tier: 'embed', resourceType: 'roadmap' })
+  const embedGuard = route({ tier: 'public' });
+
+  router.get('/embed/:id', ...embedGuard, asyncHandler(async (req, res) => {
     if (!(await assertPlanningIsPublic(req.params.id))) {
       res.status(404).json({ error: 'Planning non trouve' });
       return;
@@ -63,19 +71,19 @@ export function createRoadmapRoutes(): Router {
     res.json(planning);
   }));
 
-  router.get('/embed/:id/tasks', asyncHandler(async (req, res) => {
+  router.get('/embed/:id/tasks', ...embedGuard, asyncHandler(async (req, res) => {
     if (!(await assertPlanningIsPublic(req.params.id))) { res.status(404).json({ error: 'Planning non trouve' }); return; }
     const tasks = await db.getTasksByPlanning(req.params.id);
     res.json(tasks);
   }));
 
-  router.get('/embed/:id/dependencies', asyncHandler(async (req, res) => {
+  router.get('/embed/:id/dependencies', ...embedGuard, asyncHandler(async (req, res) => {
     if (!(await assertPlanningIsPublic(req.params.id))) { res.status(404).json({ error: 'Planning non trouve' }); return; }
     const deps = await db.getDependenciesByPlanning(req.params.id);
     res.json(deps);
   }));
 
-  router.get('/embed/:id/markers', asyncHandler(async (req, res) => {
+  router.get('/embed/:id/markers', ...embedGuard, asyncHandler(async (req, res) => {
     if (!(await assertPlanningIsPublic(req.params.id))) { res.status(404).json({ error: 'Planning non trouve' }); return; }
     const markers = await db.getMarkersByPlanning(req.params.id);
     res.json(markers);
@@ -83,7 +91,7 @@ export function createRoadmapRoutes(): Router {
 
   // ==================== PROTECTED ROUTES ====================
 
-  router.use(authMiddleware);
+  router.use(...route({ tier: 'authenticated' }));
 
   // --- Plannings ---
 

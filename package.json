@@ -24,6 +24,7 @@
     "test:coverage": "vitest run --coverage",
     "test:server": "vitest run --project 'server-*'",
     "test:server:gateway": "vitest run --project server-gateway",
+    "test:server:gateway-layer": "vitest run --project server-gateway-layer",
     "test:server:conges": "vitest run --project server-conges",
     "test:server:middleware": "vitest run --project server-middleware",
     "test:client": "vitest run --project 'client-*'",

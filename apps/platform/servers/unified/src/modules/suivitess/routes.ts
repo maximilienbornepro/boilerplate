@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authMiddleware } from '../../middleware/index.js';
+import { route } from '../../gateway/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
 import type { DocumentWithSections } from './dbService.js';
@@ -261,7 +261,10 @@ function groupSlackMessagesByDay(
 export function createRoutes(): Router {
   const router = Router();
 
-  router.use(authMiddleware);
+  // All suivitess endpoints are authenticated — no public/embed surface.
+  // Ownership checks for delete remain inline (see `/documents/:docId`
+  // DELETE handler below).
+  router.use(...route({ tier: 'authenticated' }));
 
   // ==================== REPLAY — rejouer un import depuis les logs ====================
   //

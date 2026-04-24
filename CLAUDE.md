@@ -140,21 +140,93 @@ suffit pour du code applicatif.
 
 ---
 
+## API Gateway applicatif
+
+Couche Express qui centralise les préoccupations transverses. Située
+sous `apps/platform/servers/unified/src/gateway/`, appliquée au boot
+par `applyGatewayBase(app, { cors })`. Donne à toutes les routes :
+request-id (`req.requestId` + header `X-Request-ID`), logs structurés
+(`logger` / `reqLogger(req)`), métriques (`/gateway/metrics`), health
+deep (`/gateway/health`), shutdown gracieux, CSRF via Origin/Referer,
+rate-limit par tier, audit log.
+
+### Déclarer l'accès d'une route : `route({ tier })`
+
+```ts
+import { route } from '../../gateway/index.js';
+
+router.get('/pub/chat',      ...route({ tier: 'public', rateLimit: 'heavy' }), handler);
+router.get('/embed/:id',     ...route({ tier: 'embed', resourceType: 'document' }), handler);
+router.get('/documents/:id', ...route({ tier: 'authenticated' }), handler);
+router.post('/admin/reset',  ...route({ tier: 'admin' }), handler);
+router.get('/planning/:id',  ...route({ tier: 'role', permission: 'roadmap' }), handler);
+```
+
+5 tiers :
+
+| Tier | Auth | Vérifs | Rate limit |
+|---|---|---|---|
+| `public` | — | — | public (30/min) |
+| `embed` | — | `resource_sharing.visibility='public'` sinon 404, injecte `req.resource` | public |
+| `authenticated` | JWT cookie | — | default (300/min) |
+| `admin` | JWT | `req.user.isAdmin` sinon 403 | default |
+| `role` | JWT | permission dans `user_permissions` (admin bypass) sinon 403 | default |
+
+Le `route()` pose en chaîne : bodyLimit → rateLimit → CSRF (sur tiers
+cookie) → authMiddleware → guard spécifique. Les tests de chaque tier
+sont dans `gateway/__tests__/accessControl.test.ts`.
+
+### Opt-in audit log
+
+```ts
+import { withAudit, audit } from '../../gateway/index.js';
+
+router.delete('/:id',
+  ...route({ tier: 'authenticated' }),
+  withAudit(req => ({ action: 'delete.document', resourceType: 'document', resourceId: req.params.id })),
+  handler,
+);
+
+// Ou programmatique :
+audit(req, { action: 'share.planning', resourceId }, { sharedWith: userId });
+```
+
+Écrit dans `gateway_audit_log` (migration `26_gateway_audit_log_schema.sql`)
++ toujours une ligne de log structuré.
+
+### Feature flag gate
+
+```ts
+import { requireFeature } from '../../gateway/index.js';
+router.use('/roadmap', requireFeature('module_roadmap_enabled'), roadmapRouter);
+```
+
+Lit `platform_settings` avec cache 30s. Fail-open : clé absente = activé.
+
+### Endpoints gateway
+
+- `GET /health` — liveness shallow (pas de dep DB)
+- `GET /gateway/health` — readiness deep (DB ping + uptime + version)
+- `GET /gateway/metrics` — Prometheus text-format, compteurs par route
+
 ## Sécurité
 
-- **Auth** : `authMiddleware` par défaut sur toute route privée.
-- **Admin** : `adminMiddleware` en plus pour les routes admin.
-- **CORS** : whitelist gérée dans `apps/platform/servers/unified/src/index.ts`
+- **Auth** : `authMiddleware` par défaut sur toute route privée (ou tier
+  `authenticated`+ via `route()`).
+- **Admin** : `adminMiddleware` (ou tier `admin` via `route()`).
+- **CORS** : whitelist dans `apps/platform/servers/unified/src/index.ts`
   (localhost dev, `*.vitess.tech`, `chrome-extension://`, env `ALLOWED_ORIGINS`).
 - **Ownership** : utiliser `canUserAccess(userId, isAdmin, resourceType, resourceId)`
   depuis `shared/resourceSharing.ts` sur toute route qui retourne des
   ressources par id. `ensureOwnership` ne doit PAS être appelé sur des
   endpoints publics (sinon takeover).
-- **Embed** : routes `/embed/:id` = read-only + vérifier `visibility='public'`
-  dans `resource_sharing` avant de retourner les données.
-- **Rate limit** : `express-rate-limit` sur toute route publique (sans auth)
-  qui déclenche un coût (LLM, scraping). Voir `rag/routes/publicRoutes.ts`
-  pour le pattern.
+- **Embed** : préférer `route({ tier: 'embed', resourceType: ... })` qui
+  fait la vérification `visibility='public'` + 404 + injection de
+  `req.resource`. Legacy : routes `/embed/:id` = read-only + vérif manuelle.
+- **Rate limit** : via `route({ rateLimit })`. Legacy : `express-rate-limit`
+  direct.
+- **CSRF** : automatique via `route()` sur tiers cookie. Bearer-auth
+  (extension, CLI) exempté.
 - **XSS** : si `dangerouslySetInnerHTML`, escape l'input en amont avant de
   rebuilder les tags autorisés (voir `SubjectReview.tsx`).
 - **Secrets** : jamais de secret dans le code ou les logs. `JWT_SECRET` doit

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { authMiddleware } from '../../middleware/index.js';
+import { route } from '../../gateway/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
 import { createEmptyCV } from './types.js';
@@ -45,8 +45,14 @@ const upload = multer({
 export function createMonCvRoutes(): Router {
   const router = Router();
 
-  // Public embed routes (NO AUTH REQUIRED)
-  router.get('/embed/:id', asyncHandler(async (req, res) => {
+  // Public embed routes (NO AUTH REQUIRED). Mon-CV embeds pre-date
+  // `resource_sharing` and don't enforce a visibility check — any CV
+  // with a known numeric id is publicly viewable. Match that behaviour
+  // with `tier: 'public'` (rate limit only) rather than `'embed'`
+  // (which would query sharing and 404 everything).
+  const cvEmbedGuard = route({ tier: 'public' });
+
+  router.get('/embed/:id', ...cvEmbedGuard, asyncHandler(async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'ID invalide' });
@@ -63,7 +69,7 @@ export function createMonCvRoutes(): Router {
   }));
 
   // Public HTML preview for embed (NO AUTH REQUIRED)
-  router.get('/embed/:id/preview', asyncHandler(async (req, res) => {
+  router.get('/embed/:id/preview', ...cvEmbedGuard, asyncHandler(async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'ID invalide' });
@@ -81,8 +87,13 @@ export function createMonCvRoutes(): Router {
     res.send(html);
   }));
 
-  // All other routes require authentication
-  router.use(authMiddleware);
+  // All other routes require authentication. Body limit is explicitly
+  // disabled at the router level because four endpoints rely on multer
+  // file uploads (up to 10 MB PDF/DOCX/image) — multer enforces its
+  // own 10 MB cap and the global express.json 25 MB ceiling still
+  // applies as a safety net. Individual JSON endpoints keep implicit
+  // protection via that global cap.
+  router.use(...route({ tier: 'authenticated', bodyLimit: false }));
 
   // ============ CV Management ============
 

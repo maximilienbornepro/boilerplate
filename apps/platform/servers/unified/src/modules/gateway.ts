@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
-import { authMiddleware, adminMiddleware } from '../middleware/index.js';
+import { route } from '../gateway/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import { initJiraAuth } from './jiraAuth.js';
 
@@ -198,7 +198,7 @@ export function createGatewayRouter(): Router {
   const router = Router();
 
   // Register
-  router.post('/auth/register', asyncHandler(async (req, res) => {
+  router.post('/auth/register', ...route({ tier: 'public', rateLimit: 'auth' }), asyncHandler(async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -228,8 +228,9 @@ export function createGatewayRouter(): Router {
     res.json({ message: 'Compte créé. Contactez un administrateur pour activation.' });
   }));
 
-  // Login
-  router.post('/auth/login', asyncHandler(async (req, res) => {
+  // Login — rate-limited at the `auth` tier (10/min/IP) to blunt brute
+  // force. Still `public` tier for body limit + no JWT required.
+  router.post('/auth/login', ...route({ tier: 'public', rateLimit: 'auth' }), asyncHandler(async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -287,14 +288,17 @@ export function createGatewayRouter(): Router {
     });
   }));
 
-  // Logout
-  router.post('/auth/logout', (_req, res) => {
+  // Logout — tier `public` because the server just clears a cookie;
+  // it tolerates unauthenticated calls.
+  router.post('/auth/logout', ...route({ tier: 'public' }), (_req, res) => {
     res.clearCookie('auth_token', authCookieOptions());
     res.json({ message: 'Déconnecté' });
   });
 
-  // Get current user
-  router.get('/auth/me', asyncHandler(async (req, res) => {
+  // Get current user — "soft auth": returns `{ user: null }` when no
+  // token, doesn't 401. Kept on `public` tier so the SPA's session
+  // probe doesn't require a valid JWT just to reply "not logged in".
+  router.get('/auth/me', ...route({ tier: 'public' }), asyncHandler(async (req, res) => {
     const token = req.cookies.auth_token;
 
     if (!token) {
@@ -521,7 +525,7 @@ export function createGatewayRouter(): Router {
   });
 
   // GET /auth/jira/status — Check if current user has Jira connected via OAuth
-  router.get('/auth/jira/status', authMiddleware, asyncHandler(async (req, res) => {
+  router.get('/auth/jira/status', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     const result = await pool.query(
       'SELECT cloud_id, site_url, expires_at, updated_at FROM jira_tokens WHERE user_id = $1',
       [req.user!.id]
@@ -546,7 +550,7 @@ export function createGatewayRouter(): Router {
   }));
 
   // DELETE /auth/jira — Disconnect Jira OAuth for current user
-  router.delete('/auth/jira', authMiddleware, asyncHandler(async (req, res) => {
+  router.delete('/auth/jira', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     const uid = req.user!.id;
     await pool.query('DELETE FROM jira_tokens WHERE user_id = $1', [uid]);
     await pool.query(
@@ -623,7 +627,7 @@ export function createGatewayRouter(): Router {
     }
   });
 
-  router.get('/auth/fathom/status', authMiddleware, asyncHandler(async (req, res) => {
+  router.get('/auth/fathom/status', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     const { rows } = await pool.query(
       'SELECT expires_at, updated_at FROM email_oauth_tokens WHERE user_id = $1 AND provider = $2',
       [req.user!.id, 'fathom']
@@ -633,7 +637,7 @@ export function createGatewayRouter(): Router {
     res.json({ connected: true, expiresAt: t.expires_at, isExpired: new Date(t.expires_at) < new Date(), connectedAt: t.updated_at });
   }));
 
-  router.delete('/auth/fathom', authMiddleware, asyncHandler(async (req, res) => {
+  router.delete('/auth/fathom', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     await pool.query('DELETE FROM email_oauth_tokens WHERE user_id = $1 AND provider = $2', [req.user!.id, 'fathom']);
     res.json({ success: true });
   }));
@@ -709,7 +713,7 @@ export function createGatewayRouter(): Router {
     }
   });
 
-  router.get('/auth/outlook/status', authMiddleware, asyncHandler(async (req, res) => {
+  router.get('/auth/outlook/status', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     const { rows } = await pool.query(
       'SELECT email_address, expires_at, updated_at FROM email_oauth_tokens WHERE user_id = $1 AND provider = $2',
       [req.user!.id, 'outlook']
@@ -719,7 +723,7 @@ export function createGatewayRouter(): Router {
     res.json({ connected: true, emailAddress: t.email_address, expiresAt: t.expires_at, isExpired: new Date(t.expires_at) < new Date(), connectedAt: t.updated_at });
   }));
 
-  router.delete('/auth/outlook', authMiddleware, asyncHandler(async (req, res) => {
+  router.delete('/auth/outlook', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     await pool.query('DELETE FROM email_oauth_tokens WHERE user_id = $1 AND provider = $2', [req.user!.id, 'outlook']);
     res.json({ success: true });
   }));
@@ -794,7 +798,7 @@ export function createGatewayRouter(): Router {
     }
   });
 
-  router.get('/auth/gmail/status', authMiddleware, asyncHandler(async (req, res) => {
+  router.get('/auth/gmail/status', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     const { rows } = await pool.query(
       'SELECT email_address, expires_at, updated_at FROM email_oauth_tokens WHERE user_id = $1 AND provider = $2',
       [req.user!.id, 'gmail']
@@ -804,13 +808,13 @@ export function createGatewayRouter(): Router {
     res.json({ connected: true, emailAddress: t.email_address, expiresAt: t.expires_at, isExpired: new Date(t.expires_at) < new Date(), connectedAt: t.updated_at });
   }));
 
-  router.delete('/auth/gmail', authMiddleware, asyncHandler(async (req, res) => {
+  router.delete('/auth/gmail', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     await pool.query('DELETE FROM email_oauth_tokens WHERE user_id = $1 AND provider = $2', [req.user!.id, 'gmail']);
     res.json({ success: true });
   }));
 
   // Admin: List users
-  router.get('/admin/users', authMiddleware, adminMiddleware, asyncHandler(async (_req, res) => {
+  router.get('/admin/users', ...route({ tier: 'admin' }), asyncHandler(async (_req, res) => {
     const { rows: users } = await pool.query(
       'SELECT id, email, is_active, is_admin, created_at FROM users ORDER BY created_at DESC'
     );
@@ -834,7 +838,7 @@ export function createGatewayRouter(): Router {
   }));
 
   // Admin: Update user
-  router.put('/admin/users/:id', authMiddleware, adminMiddleware, asyncHandler(async (req, res) => {
+  router.put('/admin/users/:id', ...route({ tier: 'admin' }), asyncHandler(async (req, res) => {
     const userId = parseInt(req.params.id, 10);
     const { isActive, isAdmin, permissions } = req.body;
 
@@ -884,7 +888,7 @@ export function createGatewayRouter(): Router {
   }));
 
   // Admin: Delete user
-  router.delete('/admin/users/:id', authMiddleware, adminMiddleware, asyncHandler(async (req, res) => {
+  router.delete('/admin/users/:id', ...route({ tier: 'admin' }), asyncHandler(async (req, res) => {
     const userId = parseInt(req.params.id, 10);
 
     // Prevent deleting self
@@ -900,7 +904,7 @@ export function createGatewayRouter(): Router {
   // ==================== PLATFORM SETTINGS ====================
 
   // GET /platform/settings/public — authenticated users read all flags as { key: boolean }
-  router.get('/platform/settings/public', authMiddleware, asyncHandler(async (_req, res) => {
+  router.get('/platform/settings/public', ...route({ tier: 'authenticated' }), asyncHandler(async (_req, res) => {
     const { rows } = await pool.query(
       'SELECT key, value FROM platform_settings ORDER BY key'
     );
@@ -912,7 +916,7 @@ export function createGatewayRouter(): Router {
   }));
 
   // GET /platform/settings — admin reads full settings list
-  router.get('/platform/settings', authMiddleware, adminMiddleware, asyncHandler(async (_req, res) => {
+  router.get('/platform/settings', ...route({ tier: 'admin' }), asyncHandler(async (_req, res) => {
     const { rows } = await pool.query(
       'SELECT key, value, description, updated_at FROM platform_settings ORDER BY key'
     );
@@ -920,7 +924,7 @@ export function createGatewayRouter(): Router {
   }));
 
   // PUT /platform/settings/:key — admin updates a flag
-  router.put('/platform/settings/:key', authMiddleware, adminMiddleware, asyncHandler(async (req, res) => {
+  router.put('/platform/settings/:key', ...route({ tier: 'admin' }), asyncHandler(async (req, res) => {
     const { key } = req.params;
     const { value } = req.body;
     if (value !== 'true' && value !== 'false') {
@@ -941,14 +945,14 @@ export function createGatewayRouter(): Router {
   // ==================== CREDITS ADMIN ====================
 
   // GET /admin/credits — all users' balances
-  router.get('/admin/credits', authMiddleware, adminMiddleware, asyncHandler(async (_req, res) => {
+  router.get('/admin/credits', ...route({ tier: 'admin' }), asyncHandler(async (_req, res) => {
     const { getAllBalances } = await import('./connectors/creditService.js');
     const balances = await getAllBalances();
     res.json(balances);
   }));
 
   // PUT /admin/credits/:userId — add credits or set allocation
-  router.put('/admin/credits/:userId', authMiddleware, adminMiddleware, asyncHandler(async (req, res) => {
+  router.put('/admin/credits/:userId', ...route({ tier: 'admin' }), asyncHandler(async (req, res) => {
     const { addCredits, setMonthlyAllocation, getBalance } = await import('./connectors/creditService.js');
     const userId = parseInt(req.params.userId);
     const { addAmount, monthlyAllocation } = req.body as { addAmount?: number; monthlyAllocation?: number };
@@ -965,7 +969,7 @@ export function createGatewayRouter(): Router {
   }));
 
   // POST /admin/credits/reset-monthly — reset all users
-  router.post('/admin/credits/reset-monthly', authMiddleware, adminMiddleware, asyncHandler(async (_req, res) => {
+  router.post('/admin/credits/reset-monthly', ...route({ tier: 'admin' }), asyncHandler(async (_req, res) => {
     const { resetMonthlyCredits } = await import('./connectors/creditService.js');
     const count = await resetMonthlyCredits();
     res.json({ success: true, usersReset: count });
@@ -974,7 +978,7 @@ export function createGatewayRouter(): Router {
   // ==================== Resource Sharing ====================
 
   // Get sharing config for a resource
-  router.get('/sharing/:resourceType/:resourceId', authMiddleware, asyncHandler(async (req, res) => {
+  router.get('/sharing/:resourceType/:resourceId', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     const { getResourceSharing } = await import('./shared/resourceSharing.js');
     const sharing = await getResourceSharing(
       req.params.resourceType as 'roadmap' | 'delivery' | 'suivitess',
@@ -988,7 +992,7 @@ export function createGatewayRouter(): Router {
   }));
 
   // Update sharing config (visibility + shares)
-  router.put('/sharing/:resourceType/:resourceId', authMiddleware, asyncHandler(async (req, res) => {
+  router.put('/sharing/:resourceType/:resourceId', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     const { setVisibility, shareWithEmail, unshare, getResourceSharing } = await import('./shared/resourceSharing.js');
     const resourceType = req.params.resourceType as 'roadmap' | 'delivery' | 'suivitess';
     const resourceId = req.params.resourceId;
@@ -1060,7 +1064,7 @@ export function createGatewayRouter(): Router {
   }));
 
   // Remove a single share
-  router.delete('/sharing/:resourceType/:resourceId/:userId', authMiddleware, asyncHandler(async (req, res) => {
+  router.delete('/sharing/:resourceType/:resourceId/:userId', ...route({ tier: 'authenticated' }), asyncHandler(async (req, res) => {
     const { unshare } = await import('./shared/resourceSharing.js');
     await unshare(
       req.params.resourceType as 'roadmap' | 'delivery' | 'suivitess',
@@ -1071,7 +1075,7 @@ export function createGatewayRouter(): Router {
   }));
 
   // List all users (for sharing autocomplete)
-  router.get('/users/list', authMiddleware, asyncHandler(async (_req, res) => {
+  router.get('/users/list', ...route({ tier: 'authenticated' }), asyncHandler(async (_req, res) => {
     const result = await pool.query('SELECT id, email FROM users WHERE is_active = true ORDER BY email');
     res.json(result.rows.map((r: { id: number; email: string }) => ({ id: r.id, email: r.email })));
   }));

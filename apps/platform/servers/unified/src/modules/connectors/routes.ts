@@ -1,37 +1,42 @@
 import { Router } from 'express';
 import { config } from '../../config.js';
-import { authMiddleware } from '../../middleware/index.js';
+import { route } from '../../gateway/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
 
 export function createConnectorsRoutes(): Router {
   const router = Router();
 
+  // The four `oauth-available` probes are unauthenticated — the login
+  // page uses them to decide whether to show the "Sign in with …"
+  // buttons. Only leaks a boolean, no sensitive data.
+  const oauthAvailableGuard = route({ tier: 'public' });
+
   // GET /jira/oauth-available — Public check if OAuth is configured
-  router.get('/jira/oauth-available', (_req, res) => {
+  router.get('/jira/oauth-available', ...oauthAvailableGuard, (_req, res) => {
     const available = !!(config.jira.oauth.clientId && config.jira.oauth.clientSecret);
     res.json({ available });
   });
 
   // GET /fathom/oauth-available
-  router.get('/fathom/oauth-available', (_req, res) => {
+  router.get('/fathom/oauth-available', ...oauthAvailableGuard, (_req, res) => {
     const available = !!(config.fathom.oauth.clientId && config.fathom.oauth.clientSecret);
     res.json({ available });
   });
 
   // GET /outlook/oauth-available
-  router.get('/outlook/oauth-available', (_req, res) => {
+  router.get('/outlook/oauth-available', ...oauthAvailableGuard, (_req, res) => {
     const available = !!(config.outlook.oauth.clientId && config.outlook.oauth.clientSecret);
     res.json({ available });
   });
 
   // GET /gmail/oauth-available
-  router.get('/gmail/oauth-available', (_req, res) => {
+  router.get('/gmail/oauth-available', ...oauthAvailableGuard, (_req, res) => {
     const available = !!(config.gmail.oauth.clientId && config.gmail.oauth.clientSecret);
     res.json({ available });
   });
 
-  router.use(authMiddleware);
+  router.use(...route({ tier: 'authenticated' }));
 
   // GET / — List all connectors for current user
   router.get('/', asyncHandler(async (req, res) => {

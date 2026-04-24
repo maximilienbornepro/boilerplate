@@ -1,5 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { authMiddleware } from '../../middleware/index.js';
+import { route } from '../../gateway/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
 import { getJiraContext, getUserJiraToken } from '../jiraAuth.js';
@@ -28,13 +28,19 @@ export function createDeliveryRoutes(): Router {
     next();
   };
 
-  router.get('/figma/boards', figmaCors, asyncHandler(async (_req, res) => {
+  // Figma plugin runs in origin=null sandbox; wrap with `public` tier so
+  // these unauthenticated endpoints inherit the public rate limit
+  // (30/min/IP) without adding CSRF/auth. GET-only — body limits are
+  // irrelevant on read paths.
+  const figmaGuard = route({ tier: 'public' });
+
+  router.get('/figma/boards', figmaCors, ...figmaGuard, asyncHandler(async (_req, res) => {
     // List ALL boards (no user filter — plugin doesn't authenticate)
     const result = await db.getAllBoardsPublic();
     res.json(result);
   }));
 
-  router.get('/figma/boards/:boardId/export', figmaCors, asyncHandler(async (req, res) => {
+  router.get('/figma/boards/:boardId/export', figmaCors, ...figmaGuard, asyncHandler(async (req, res) => {
     const boardId = req.params.boardId as string;
     const board = await db.getBoardById(boardId);
     if (!board) {
@@ -108,7 +114,7 @@ export function createDeliveryRoutes(): Router {
   router.options('/figma/boards/:boardId/export', figmaCors, (_req, res) => res.sendStatus(204));
 
   // ============ Authenticated routes below ============
-  router.use(authMiddleware);
+  router.use(...route({ tier: 'authenticated' }));
 
   // ============ Layout engine rules doc (human-readable) ============
   // Returns the hand-maintained markdown catalog that describes every
@@ -845,7 +851,11 @@ export function createDeliveryRoutes(): Router {
     const estDays = f.timetracking?.originalEstimateSeconds
       ? Math.round((f.timetracking.originalEstimateSeconds / (8 * 60 * 60)) * 10) / 10
       : undefined;
-    const description = typeof f.description === 'string' ? f.description : null;
+    // `description` stores the first Jira fixVersion — the TaskBlock uses it
+    // as the green "version" badge on the card. Mirror the sprint-import
+    // path (line ~263) instead of dumping the raw Jira description, which
+    // would render as garbage in the version slot.
+    const description = f.fixVersions?.[0]?.name ?? null;
 
     const task = await db.createTask({
       title: `[${data.key}] ${f.summary || data.key}`,

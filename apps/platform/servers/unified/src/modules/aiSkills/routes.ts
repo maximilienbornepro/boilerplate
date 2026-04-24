@@ -2,7 +2,7 @@
 
 import { Router } from 'express';
 import { asyncHandler } from '@boilerplate/shared/server';
-import { authMiddleware, adminMiddleware } from '../../middleware/index.js';
+import { route } from '../../gateway/index.js';
 import { SKILLS, getSkill } from './registry.js';
 import * as db from './dbService.js';
 import { readDefaultFile } from './skillLoader.js';
@@ -46,8 +46,10 @@ const RESERVED_SLUG_NAMES = new Set([
 
 export function createRoutes(): Router {
   const router = Router();
-  router.use(authMiddleware);
-  router.use(adminMiddleware);
+  // The entire AI Skills editor is admin-only — every endpoint needs
+  // a logged-in admin. One `router.use` applies the full gateway chain
+  // (rate-limit → CSRF → auth → admin guard).
+  router.use(...route({ tier: 'admin' }));
 
   // GET /ai-skills/api — list all skills (metadata + content)
   router.get('/', asyncHandler(async (_req, res) => {

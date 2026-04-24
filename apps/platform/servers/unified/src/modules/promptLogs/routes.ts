@@ -14,7 +14,7 @@
 
 import { Router } from 'express';
 import { asyncHandler } from '@boilerplate/shared/server';
-import { authMiddleware, adminMiddleware } from '../../middleware/index.js';
+import { route } from '../../gateway/index.js';
 import {
   insertPromptLog,
   listProjects,
@@ -74,7 +74,11 @@ export function createRoutes(): Router {
   if (!hookSecret) {
     console.warn('[PromptLogs] PROMPT_LOGS_HOOK_SECRET not set — /events is publicly writable (dev mode)');
   }
-  router.post('/events', asyncHandler(async (req, res) => {
+  // Webhook surface: no JWT, secret-header only. `public` tier gives us
+  // rate limiting (30/min/IP) to cap replay attacks while keeping auth
+  // out of the way. The ingest payload can be a few KB of JSON — well
+  // under the 10 KB public body-limit default.
+  router.post('/events', ...route({ tier: 'public' }), asyncHandler(async (req, res) => {
     if (hookSecret) {
       const got = req.header('X-Hook-Secret');
       if (got !== hookSecret) {
@@ -99,7 +103,7 @@ export function createRoutes(): Router {
 
   // ── Admin-only reads ──
   const admin = Router();
-  admin.use(authMiddleware, adminMiddleware);
+  admin.use(...route({ tier: 'admin' }));
 
   admin.get('/projects', asyncHandler(async (_req, res) => {
     res.json(await listProjects());

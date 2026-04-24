@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authMiddleware } from '../../middleware/index.js';
+import { route } from '../../gateway/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
 
@@ -10,7 +10,10 @@ export async function initDb() {
 export function createCongesRoutes(): Router {
   const router = Router();
 
-  router.use(authMiddleware);
+  // All Conges routes are authenticated-user-only (no admin endpoints,
+  // no public/embed surface). Single `router.use` applies the full
+  // gateway chain: rate-limit → CSRF → auth.
+  router.use(...route({ tier: 'authenticated' }));
 
   // GET /members
   router.get('/members', asyncHandler(async (_req, res) => {

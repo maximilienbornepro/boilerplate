@@ -1,9 +1,16 @@
 import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
+import pg from 'pg';
+import type { CorsOptions } from 'cors';
 import { config } from './config.js';
 import { errorMiddleware } from '@boilerplate/shared/server';
+import {
+  applyGatewayBase,
+  initGatewayWithPool,
+  mountGatewayEndpoints,
+  installShutdownHandlers,
+  onShutdown,
+  logger,
+} from './gateway/index.js';
 
 // Import modules
 import { initGateway, createGatewayRouter } from './modules/gateway.js';
@@ -19,31 +26,12 @@ import { initPromptLogs, createPromptLogsRouter } from './modules/promptLogs/ind
 
 const app = express();
 
-// Security headers : CSP is relaxed because the SPA + Chrome extension
-// already enforce their own CSP, and because several features (Jira
-// OAuth redirect, email connectors, embed iframes) need to connect
-// to third-party domains at runtime — tightening it would require a
-// per-route policy. HSTS + noSniff + frameguard ('sameorigin', to
-// allow our own embed views) are the concrete protections we add.
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-  frameguard: { action: 'sameorigin' },
-}));
-
-// Middleware
-// CORS : whitelist only — reflecting any Origin with credentials
-// enabled (the previous `origin: true`) let any malicious site read
-// authenticated responses. Allowed origins are :
-//   - ALLOWED_ORIGINS env (comma-separated)
-//   - Local dev ports (5170-5179) + the 3010 backend itself
-//   - Anything from the deployed Vitess domain (studio.vitess.tech,
-//     boilerplate.vitess.tech, francetv.vitess.tech) and their subs.
+// === CORS allowlist — same rules as before, now consumed by the
+//     application-side gateway base (`applyGatewayBase`). ===
 const DEV_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1):(517[0-9]|3010)$/;
 const VITESS_ORIGIN_RE = /^https:\/\/([a-z0-9-]+\.)?vitess\.tech$/;
 const EXTRA_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '').split(',').map(s => s.trim()).filter(Boolean);
-app.use(cors({
+const corsOptions: CorsOptions = {
   origin: (origin, cb) => {
     // Same-origin (curl / server-to-server) → allow.
     if (!origin) { cb(null, true); return; }
@@ -56,18 +44,33 @@ app.use(cors({
     cb(new Error(`CORS: origin not allowed (${origin})`));
   },
   credentials: true,
-}));
-app.use(express.json());
-app.use(cookieParser());
+};
 
-// Health check
+// Gateway base: helmet + CORS + request-id + body parser + cookies +
+// access log + metrics collector. Must run before any route is
+// registered — everything downstream gets `req.requestId`, structured
+// HTTP logs, and contributes to /gateway/metrics.
+applyGatewayBase(app, { cors: corsOptions });
+
+// Shallow liveness probe (used by Docker healthcheck). The deeper
+// readiness check (`/gateway/health`) is mounted by `mountGatewayEndpoints`.
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Shared PG pool for the gateway's DB-backed guards (embed visibility,
+// feature flags, audit log, user permissions, readiness check).
+const gatewayPool = new pg.Pool({ connectionString: config.appDatabaseUrl });
+onShutdown(() => gatewayPool.end());
+
 // Initialize modules
 async function init() {
-  console.log('[Server] Initializing modules...');
+  logger.info('server.init.start');
+
+  // Wire the gateway's DB-dependent subsystems BEFORE mounting app
+  // routes, so guards have the pool ready on the first request.
+  initGatewayWithPool(gatewayPool);
+  mountGatewayEndpoints(app);
 
   // Resource sharing (ownership + visibility)
   const { initSharingPool } = await import('./modules/shared/resourceSharing.js');
@@ -120,14 +123,17 @@ async function init() {
   // Error handling
   app.use(errorMiddleware);
 
-  // Start server
-  app.listen(config.port, () => {
-    console.log(`[Server] Running on port ${config.port}`);
-    console.log(`[Server] Environment: ${config.nodeEnv}`);
+  // Start server + wire graceful shutdown so SIGTERM drains in-flight
+  // requests and closes the gateway PG pool cleanly (see onShutdown()
+  // above). Never call process.exit directly once this is installed —
+  // that bypasses the cleanup chain.
+  const server = app.listen(config.port, () => {
+    logger.info('server.ready', { port: config.port, env: config.nodeEnv });
   });
+  installShutdownHandlers(server);
 }
 
 init().catch((err) => {
-  console.error('[Server] Failed to start:', err);
+  logger.error('server.init.failed', { error: (err as Error).message });
   process.exit(1);
 });

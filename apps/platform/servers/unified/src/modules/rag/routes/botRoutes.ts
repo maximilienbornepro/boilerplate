@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { authMiddleware } from '../../../middleware/index.js';
+import { route } from '../../../gateway/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from '../services/dbService.js';
 import { initPgvector } from '../services/dbService.js';
@@ -34,7 +34,11 @@ const upload = multer({
 
 export function createBotRouter(): Router {
   const router = Router();
-  router.use(authMiddleware);
+  // Bot indexing accepts 50 MB file uploads via multer. Multer enforces
+  // its own 50 MB cap, and the global express.json 25 MB cap only
+  // applies to JSON bodies (multer bypasses it). Disable the gateway
+  // body-limit check so multer sees the file stream.
+  router.use(...route({ tier: 'authenticated', bodyLimit: false }));
 
   // GET /bots — liste des RAG de l'utilisateur
   router.get('/', asyncHandler(async (req, res) => {

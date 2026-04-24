@@ -34,6 +34,15 @@ import { extractJiraKey } from './utils/jiraUtils';
 
 // Containers always occupy 2 rows on the grid (fixed height)
 const CONTAINER_ROW_SPAN = 2;
+
+// Per-project colors for Jira release markers. Shared between the active
+// BoardView and SiblingBoardPanel (consolidated view) so both render the
+// same color per project key.
+const SIBLING_PROJECT_MARKER_COLORS: Record<string, string> = {
+  TVSMART: '#3b82f6', TVFREE: '#1f2937', TVORA: '#f97316',
+  TVSFR: '#dc2626', TVFIRE: '#eab308', PLAYERW: '#8b5cf6',
+  ROADMAP_SFR: '#ec4899', TVAPI: '#06b6d4', TVAPPS: '#14b8a6',
+};
 import { buildRowTracker } from './utils/taskLoading';
 import './App.css';
 import './index.css';
@@ -581,13 +590,6 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
     return Array.from(projects).sort();
   }, [tasks]);
 
-  // Per-project colors for release markers
-  const PROJECT_MARKER_COLORS: Record<string, string> = {
-    TVSMART: '#3b82f6', TVFREE: '#1f2937', TVORA: '#f97316',
-    TVSFR: '#dc2626', TVFIRE: '#eab308', PLAYERW: '#8b5cf6',
-    ROADMAP_SFR: '#ec4899', TVAPI: '#06b6d4', TVAPPS: '#14b8a6',
-  };
-
   // Fetch Jira releases when projects are detected and board has dates
   useEffect(() => {
     if (jiraProjects.length === 0 || !boardConfig.startDate || !boardConfig.endDate) {
@@ -601,7 +603,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
           date: v.date,
           version: v.version,
           projectKey: v.projectKey,
-          color: PROJECT_MARKER_COLORS[v.projectKey] || '#6b7280',
+          color: SIBLING_PROJECT_MARKER_COLORS[v.projectKey] || '#6b7280',
         })));
       })
       .catch(() => setReleases([]));
@@ -1060,11 +1062,17 @@ function SiblingBoardPanel({
     }
     fetchJiraVersions(jiraProjects, boardConfig.startDate, boardConfig.endDate)
       .then(versions => {
+        // Mirror the main BoardView mapping — ReleaseMarker reads
+        // `release.version`, `release.projectKey` and `release.date`;
+        // the previous mapping used `v.name` / `v.releaseDate` which
+        // don't exist on the API payload, silently hiding every marker
+        // on sibling panels.
         setReleases(versions.map(v => ({
           id: v.id,
-          name: v.name,
-          date: v.releaseDate ?? '',
-          color: '#3b82f6',
+          date: v.date,
+          version: v.version,
+          projectKey: v.projectKey,
+          color: SIBLING_PROJECT_MARKER_COLORS[v.projectKey] || '#6b7280',
         })));
       })
       .catch(() => setReleases([]));

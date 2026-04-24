@@ -1,12 +1,14 @@
 import { Router } from 'express';
-import { authMiddleware } from '../../../middleware/index.js';
+import { route } from '../../../gateway/index.js';
 import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from '../services/dbService.js';
 import { streamRagResponse } from '../services/ragService.js';
 
 export function createChatRouter(): Router {
   const router = Router();
-  router.use(authMiddleware);
+  // RAG chat messages can be long (user pasted context), so raise
+  // the tier body cap to 5 MB. Multer isn't used here — no file upload.
+  router.use(...route({ tier: 'authenticated', bodyLimit: 5 * 1024 * 1024 }));
 
   // GET /conversations
   router.get('/conversations', asyncHandler(async (req, res) => {
