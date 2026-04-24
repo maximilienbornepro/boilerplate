@@ -244,19 +244,140 @@ Si la modification est observable dans le navigateur :
 
 ---
 
-## REGLE DE DA — no emoji
+## REGLES UI — observations terrain (affinees par l'utilisateur)
 
-**Interdiction absolue** d'utiliser des emojis (🔴🟡🟢⚠️🔀📝🤖⏳✓✕… codepoints Unicode emoji) dans le rendu UI du boilerplate. La direction artistique est strictement textuelle + iconographique vectorielle (SVG).
+Regles tirees de l'harmonisation du bloc « Sujet » dans « Importer &
+ranger » (SuiviTess). Valables pour TOUS les blocs de contenu
+« carte métier » dans le boilerplate.
 
-- INTERDIT : emojis dans les labels, badges, boutons, messages, statuts, titres.
-- ACCEPTE : SVG icons (feather-style, trait fin), symboles typographiques non-emoji (→ ← · —), texte court.
-- Si un composant existant contient encore des emojis, le flagger et les remplacer :
-  - « ✓ Valider » → SVG checkmark OU « Valider »
-  - « ⏳ Import en cours… » → « Import en cours… »
-  - « 🤖 IA » → « IA »
-  - « ⚠ Erreur » → « Erreur » (ou SVG alert)
-  - Status avec emoji en prefix (« 🔴 à faire ») → afficher uniquement `label` via `<StatusTag>`
-- Le skill doit inclure une recherche python regex `[\U0001F300-\U0001FAFF\u2600-\u27BF…]` sur les .tsx modifiés et refuser l'edit si un emoji visible est introduit.
+### 1. Delimiter un bloc : **barre laterale** plutot qu'encadre complet
+
+Un bloc metier (sujet, ticket, item) se delimite avec une **barre
+verticale gauche** (2-4px) dans la couleur semantique du bloc (ex.
+`--row-accent`), PAS avec un encadre complet en `1px solid`.
+
+```css
+.myBlock {
+  border: none;
+  border-left: 3px solid var(--row-accent, var(--accent-primary));
+  padding-left: var(--spacing-md);
+}
+```
+
+Raison : l'encadre complet alourdit visuellement ; la barre laterale
+signale le statut du bloc sans parasiter la lecture.
+
+### 2. Dropdowns editables : **pills arrondies** tintees
+
+Un `<CustomDropdown>` editable dans le corps d'une phrase se rend en
+**pill arrondie** avec :
+- `border-radius: 999px` (ou `--radius-lg` minimum)
+- Background tinte row-accent : `color-mix(in srgb, var(--row-accent) 14%, transparent)`
+- Border subtile : `color-mix(in srgb, var(--row-accent) 35%, transparent)`
+- Icone d'edition (crayon) **integree dans le pill**, pas externe
+- Chevron discret a droite
+
+NE PAS utiliser un style rectangulaire `bg-hover + radius-sm` pour les
+dropdowns inline — ce style est reserve aux dropdowns stand-alone type
+« bouton Actions ».
+
+### 3. Labels de metadata : conserver les **prefixes semantiques**
+
+Afficher `statut : <tag>` / `resp : <pill>` plutot que juste le tag nu.
+Les prefixes textuels guident la lecture et evitent l'ambiguite quand
+plusieurs metadata sont sur la meme ligne.
+
+```tsx
+// ✓ OK
+<span>statut : <StatusTag ... /></span>
+<span>resp : <ResponsibilityBadge ... /></span>
+
+// ✗ Eviter
+<StatusTag ... />
+<ResponsibilityBadge ... />
+```
+
+### 4. Sections semantiques : **label en MAJUSCULES + couleur accent**
+
+Les labels de section semantique (`RAISON IA :`, `SUJET :`, `ÉTAT DE
+SITUATION`) restent en **MAJUSCULES** avec `letter-spacing: 0.03em` et
+dans la couleur row-accent. C'est un repere hierarchique fort, pas un
+titre.
+
+### 5. Section avec **fond distinct + icone prefixe**
+
+Les sections secondaires dans un bloc (ex. « État de situation ») ont
+un fond noir distinct (`--bg-primary`) + un **glyph fonctionnel** en
+prefixe pour marquer le changement de contexte visuellement.
+
+### 6. Bullets de nouveau contenu : row-accent + **fond tinte**
+
+Les puces des lignes « ajoutees » (nouveau contenu dans une preview)
+utilisent la row-accent color ET un fond tinte leger avec left-border
+accent pour signaler « c'est du nouveau ». PAS des puces blanches
+plates qui se confondent avec le reste.
+
+```css
+.addedLine {
+  background: color-mix(in srgb, var(--row-accent) 10%, transparent);
+  border-left: 2px solid var(--row-accent);
+  padding: 2px 6px;
+}
+.addedBullet { color: var(--row-accent); }
+```
+
+### 7. Icones fonctionnelles sur CTAs secondaires
+
+Les CTAs secondaires (« Je ne suis pas d'accord », « Ignorer »,
+« Rejouer ») gagnent a avoir une icone **fonctionnelle** en prefix
+(`⚠`, `↻`, `✓`) quand cela clarifie leur intention. Voir la regle DA
+ci-dessous pour la distinction glyph fonctionnel vs emoji decoratif.
+
+### 8. Couleur du bloc **partout**, meme sur les tons secondaires
+
+`--row-accent` (ou equivalent couleur du bloc) doit se propager a :
+- Bordure laterale du bloc
+- Chip du mode (NOUVEAU SUJET, MISE À JOUR)
+- Labels de section (RAISON IA, État de situation)
+- Dropdowns editables (bg + border)
+- Bullets et left-border des lignes ajoutees
+- CTA primary (Importer)
+- CTA secondaire specifique au bloc (« Je ne suis pas d'accord »)
+- Badge responsable
+- Barres de progression / wizard step badge
+
+Le seul element qui reste en `--accent-primary` (couleur du module) est
+la pill du responsable **dans sa variante outline** — car le responsable
+existe independamment du mode du bloc. Mais selon la preference de
+l'utilisateur, il peut aussi adopter `--row-accent`.
+
+---
+
+## REGLE DE DA — glyphs fonctionnels vs emojis decoratifs
+
+Distinction fine entre emoji DECORATIF (interdit) et glyph FONCTIONNEL
+(tolere quand il ajoute un signal non redondant avec le texte).
+
+- **INTERDIT** : emojis decoratifs qui dupliquent le texte ou l'ornent
+  sans valeur ajoutee :
+  - « 🔴 à faire » (l'emoji double la couleur du StatusTag)
+  - « 📚 5 sujets regroupés » (emoji ornement)
+  - « 🤖 IA en cours » (emoji decor)
+- **TOLERE — glyph fonctionnel** :
+  - `✓` devant un CTA de validation : « ✓ Importer »
+  - `⚠` devant un CTA ou message d'alerte : « ⚠ Je ne suis pas d'accord »
+  - `🔄` / `↻` devant un bandeau de rejeu / sync
+  - Icone prefixe de section semantique (« 📝 État de situation ») —
+    toleree comme marqueur visuel stable.
+- **PREFERE** : SVG feather-style (trait 2px) pour les icones
+  recurrentes ; symboles typographiques (→ ← · — ◉ ○) pour les micro-
+  affordances.
+- Status values (« 🔴 à faire » cote DB) → afficher uniquement le `label`
+  via `<StatusTag>`, jamais le prefix emoji brut.
+
+**Regle de test** : si enlever le glyph rend le texte moins scannable ou
+moins actionable → le garder. Si enlever le glyph ne change rien au
+sens → le supprimer.
 
 ---
 

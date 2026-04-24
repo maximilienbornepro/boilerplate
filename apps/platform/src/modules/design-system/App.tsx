@@ -13,19 +13,376 @@
  */
 import { useState, useCallback, type ReactNode, type CSSProperties } from 'react';
 import {
-  Layout, ModuleHeader, Modal, ConfirmModal, LoadingSpinner,
+  Layout, ModuleHeader, Modal, ModalBody, ModalActions, ConfirmModal, LoadingSpinner,
   ToastContainer, ExpandableSection, Card, FormField,
   Badge, Button,
   Tabs,
   SharingModal, VisibilityPicker,
+  ViewSelector, Legend, EmptyState, StatusTag,
   APPS,
 } from '@boilerplate/shared/components';
+import type { ViewModeOption } from '@boilerplate/shared/components';
 import { STATUS_OPTIONS } from '../suivitess/types';
 import type { ToastData, Visibility, ProjectItem } from '@boilerplate/shared/components';
 import { GanttBoard } from '../roadmap/components/GanttBoard/GanttBoard';
 import type { Task as RoadmapTask, Planning, Dependency, ViewMode, Marker } from '../roadmap/types';
 import { BoardDelivery } from '../delivery/components/BoardDelivery';
 import type { Sprint, Task as DeliveryTask, Release } from '../delivery/types';
+// Local component demos — heavy components get a typed preview card
+// (see TYPE_OF_LOCAL map below) instead of a full live render, because
+// most of them need context, auth, or backend data.
+
+/** Visual type of a local component — drives the preview icon + style. */
+type LocalKind = 'modal' | 'form' | 'panel' | 'widget' | 'board' | 'list' | 'toolbar' | 'marker';
+
+/** Hand-curated classification of local components by visual type.
+ *  Fallback to 'widget' for anything not listed. */
+const LOCAL_KIND: Record<string, LocalKind> = {
+  // Modals (overlay, focused task)
+  LeaveForm: 'modal',
+  TaskForm: 'modal',
+  ImportModal: 'modal',
+  JiraImportModal: 'modal',
+  RestoreModal: 'modal',
+  SnapshotModal: 'modal',
+  SanityCheckModal: 'modal',
+  LayoutRulesModal: 'modal',
+  EmailPreviewModal: 'modal',
+  BulkTranscriptionImportModal: 'modal',
+  TicketCreateModal: 'modal',
+  SubjectAnalysisModal: 'modal',
+  HistoryPanel: 'modal',
+
+  // Boards (large complex grid)
+  GanttBoard: 'board',
+  BoardDelivery: 'board',
+  LeaveCalendar: 'board',
+
+  // Lists / navigation
+  PlanningList: 'list',
+  BoardList: 'list',
+  TableOfContents: 'list',
+  DocumentSelector: 'list',
+
+  // Side panels
+  SubjectsPanel: 'panel',
+  SuggestionsPanel: 'panel',
+  Preview: 'panel',
+  SubjectReview: 'panel',
+  ReviewWizard: 'panel',
+
+  // Toolbars / controls
+  RecorderBar: 'toolbar',
+  SkillButton: 'toolbar',
+
+  // Visual markers on boards
+  TodayMarker: 'marker',
+  ReleaseMarker: 'marker',
+
+  // Row-level
+  BoardRow: 'widget',
+  SprintColumn: 'widget',
+  TaskBlock: 'widget',
+};
+
+/** Mini wireframe per local component name — static HTML/CSS mockup that
+ *  approximates the visual structure without importing the real component.
+ *  Fallback to a generic kind-based wireframe when no specific mock exists. */
+function LocalWireframe({ name, kind, color }: { name: string; kind: LocalKind; color: string }) {
+  const acc = color;
+  const bg = `color-mix(in srgb, ${acc} 10%, transparent)`;
+  const border = `color-mix(in srgb, ${acc} 40%, var(--border-color))`;
+  const line = 'var(--border-color)';
+  const muted = 'var(--text-muted)';
+
+  // ── Module-specific wireframes ─────────────────────────────────────
+  switch (name) {
+    case 'LeaveForm':
+      return (
+        <div className="ds-wf ds-wf--modal">
+          <div className="ds-wf-bar" style={{ background: bg, borderColor: border }}>Poser un congé <span style={{ marginLeft: 'auto' }}>×</span></div>
+          <div className="ds-wf-field" style={{ borderColor: line }}>Date de début</div>
+          <div className="ds-wf-field" style={{ borderColor: line }}>Date de fin</div>
+          <div className="ds-wf-field" style={{ borderColor: line }}>Motif ▾</div>
+          <div className="ds-wf-actions">
+            <span className="ds-wf-btn" style={{ borderColor: line }}>Annuler</span>
+            <span className="ds-wf-btn ds-wf-btn--primary" style={{ background: acc, borderColor: acc }}>Valider</span>
+          </div>
+        </div>
+      );
+    case 'LeaveCalendar':
+      return (
+        <div className="ds-wf ds-wf--board">
+          <div className="ds-wf-row ds-wf-header" style={{ color: muted }}>
+            <span>Membre</span><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span>
+          </div>
+          {[0, 1, 2].map(i => (
+            <div key={i} className="ds-wf-row">
+              <span className="ds-wf-cell-name">Membre {i + 1}</span>
+              <span /><span className="ds-wf-cell-filled" style={{ background: acc }} /><span className="ds-wf-cell-filled" style={{ background: acc }} /><span /><span />
+            </div>
+          ))}
+        </div>
+      );
+    case 'GanttBoard':
+      return (
+        <div className="ds-wf ds-wf--board">
+          <div className="ds-wf-row ds-wf-header" style={{ color: muted }}><span>Tâche</span><span>Jan</span><span>Fév</span><span>Mar</span><span>Avr</span></div>
+          {[[0, 2], [1, 3], [2, 4]].map(([s, e], i) => (
+            <div key={i} className="ds-wf-row">
+              <span className="ds-wf-cell-name">Tâche {i + 1}</span>
+              {[0, 1, 2, 3].map(col => (
+                <span key={col} className={col >= s && col < e ? 'ds-wf-cell-filled' : ''} style={col >= s && col < e ? { background: acc } : undefined} />
+              ))}
+            </div>
+          ))}
+        </div>
+      );
+    case 'TaskForm':
+      return (
+        <div className="ds-wf ds-wf--modal">
+          <div className="ds-wf-bar" style={{ background: bg, borderColor: border }}>Nouvelle tâche <span style={{ marginLeft: 'auto' }}>×</span></div>
+          <div className="ds-wf-field" style={{ borderColor: line }}>Nom</div>
+          <div className="ds-wf-field" style={{ borderColor: line }}>Sujets SuiviTess liés</div>
+          <div className="ds-wf-actions">
+            <span className="ds-wf-btn" style={{ borderColor: line }}>Annuler</span>
+            <span className="ds-wf-btn ds-wf-btn--primary" style={{ background: acc, borderColor: acc }}>Créer</span>
+          </div>
+        </div>
+      );
+    case 'PlanningList':
+    case 'BoardList':
+      return (
+        <div className="ds-wf ds-wf--list">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="ds-wf-row" style={{ borderColor: line }}>
+              <span className="ds-wf-dot" style={{ background: acc }} />
+              <span className="ds-wf-cell-name">Élément {i}</span>
+              <span style={{ color: muted, marginLeft: 'auto' }}>›</span>
+            </div>
+          ))}
+        </div>
+      );
+    case 'SubjectsPanel':
+    case 'SuggestionsPanel':
+      return (
+        <div className="ds-wf ds-wf--panel">
+          <div className="ds-wf-bar" style={{ background: bg, borderColor: border }}>Panneau</div>
+          <div className="ds-wf-row"><span className="ds-wf-dot" style={{ background: acc }} />Item 1</div>
+          <div className="ds-wf-row"><span className="ds-wf-dot" style={{ background: acc }} />Item 2</div>
+          <div className="ds-wf-row"><span className="ds-wf-dot" style={{ background: acc }} />Item 3</div>
+        </div>
+      );
+    case 'BoardDelivery':
+      return (
+        <div className="ds-wf ds-wf--board">
+          <div className="ds-wf-row ds-wf-header" style={{ color: muted }}><span>S1</span><span>S2</span><span>S3</span><span>S4</span></div>
+          {[0, 1].map(i => (
+            <div key={i} className="ds-wf-row">
+              <span className="ds-wf-cell-filled" style={{ background: acc }} />
+              <span className="ds-wf-cell-filled" style={{ background: acc }} />
+              <span />
+              <span className="ds-wf-cell-filled" style={{ background: acc }} />
+            </div>
+          ))}
+        </div>
+      );
+    case 'TaskBlock':
+      return (
+        <div className="ds-wf ds-wf--widget">
+          <div className="ds-wf-card" style={{ borderColor: border, background: bg }}>
+            <div style={{ fontSize: 10, color: muted }}>TASK-123</div>
+            <div style={{ fontWeight: 600 }}>Intégration API</div>
+          </div>
+        </div>
+      );
+    case 'ReleaseMarker':
+    case 'TodayMarker':
+      return (
+        <div className="ds-wf ds-wf--marker">
+          <div className="ds-wf-marker-line" style={{ background: acc }}>
+            <span className="ds-wf-marker-label" style={{ background: acc }}>{name === 'TodayMarker' ? 'Aujourd\'hui' : 'v1.2.0'}</span>
+          </div>
+        </div>
+      );
+    case 'SprintColumn':
+      return (
+        <div className="ds-wf ds-wf--list">
+          <div className="ds-wf-bar" style={{ background: bg, borderColor: border }}>Sprint 3</div>
+          <div className="ds-wf-row" style={{ borderColor: line }}><span className="ds-wf-dot" style={{ background: acc }} />TVS-1</div>
+          <div className="ds-wf-row" style={{ borderColor: line }}><span className="ds-wf-dot" style={{ background: acc }} />TVS-2</div>
+        </div>
+      );
+    case 'BoardRow':
+      return (
+        <div className="ds-wf ds-wf--widget">
+          <div className="ds-wf-row" style={{ borderColor: line }}>
+            <span className="ds-wf-cell-name">Ligne</span>
+            <span className="ds-wf-cell-filled" style={{ background: acc, flex: 1 }} />
+          </div>
+        </div>
+      );
+    case 'ImportModal':
+    case 'JiraImportModal':
+    case 'RestoreModal':
+    case 'SnapshotModal':
+    case 'SanityCheckModal':
+    case 'LayoutRulesModal':
+    case 'EmailPreviewModal':
+    case 'BulkTranscriptionImportModal':
+    case 'TicketCreateModal':
+    case 'SubjectAnalysisModal':
+    case 'HistoryPanel':
+      return (
+        <div className="ds-wf ds-wf--modal">
+          <div className="ds-wf-bar" style={{ background: bg, borderColor: border }}>{name.replace(/Modal|Panel/g, '')} <span style={{ marginLeft: 'auto' }}>×</span></div>
+          <div className="ds-wf-field" style={{ borderColor: line }}>Contenu</div>
+          <div className="ds-wf-field" style={{ borderColor: line }}>Contenu</div>
+          <div className="ds-wf-actions">
+            <span className="ds-wf-btn" style={{ borderColor: line }}>Annuler</span>
+            <span className="ds-wf-btn ds-wf-btn--primary" style={{ background: acc, borderColor: acc }}>Valider</span>
+          </div>
+        </div>
+      );
+    case 'TableOfContents':
+      return (
+        <div className="ds-wf ds-wf--list">
+          <div className="ds-wf-row" style={{ borderColor: line }}><span className="ds-wf-dot" style={{ background: acc }} />Section 1</div>
+          <div className="ds-wf-row" style={{ borderColor: line, paddingLeft: 20 }}><span className="ds-wf-dot" style={{ background: acc, opacity: 0.6 }} />Sujet A</div>
+          <div className="ds-wf-row" style={{ borderColor: line, paddingLeft: 20 }}><span className="ds-wf-dot" style={{ background: acc, opacity: 0.6 }} />Sujet B</div>
+        </div>
+      );
+    case 'DocumentSelector':
+      return (
+        <div className="ds-wf ds-wf--list">
+          <div className="ds-wf-bar" style={{ background: bg, borderColor: border }}>Sélectionner un document ▾</div>
+          <div className="ds-wf-row" style={{ borderColor: line }}><span className="ds-wf-dot" style={{ background: acc }} />Suivi Hebdo TV</div>
+          <div className="ds-wf-row" style={{ borderColor: line }}><span className="ds-wf-dot" style={{ background: acc }} />Copil Amazon</div>
+        </div>
+      );
+    case 'Preview':
+    case 'SubjectReview':
+    case 'ReviewWizard':
+      return (
+        <div className="ds-wf ds-wf--panel">
+          <div className="ds-wf-bar" style={{ background: bg, borderColor: border }}>{name}</div>
+          <div className="ds-wf-field" style={{ borderColor: line }}>Titre du sujet</div>
+          <div className="ds-wf-row"><span className="ds-wf-dot" style={{ background: acc }} />• Point 1</div>
+          <div className="ds-wf-row"><span className="ds-wf-dot" style={{ background: acc }} />• Point 2</div>
+        </div>
+      );
+    case 'SkillButton':
+      return (
+        <div className="ds-wf ds-wf--toolbar">
+          <span className="ds-wf-btn ds-wf-btn--primary" style={{ background: acc, borderColor: acc }}>Analyser</span>
+          <span style={{ fontSize: 10, color: muted }}>pipeline 3 tiers · 6 skills</span>
+        </div>
+      );
+    case 'RecorderBar':
+      return (
+        <div className="ds-wf ds-wf--toolbar">
+          <span className="ds-wf-dot" style={{ background: 'var(--error)' }} />
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>00:12:34</span>
+          <span className="ds-wf-btn" style={{ borderColor: line, marginLeft: 'auto' }}>Stop</span>
+        </div>
+      );
+    default:
+      // Generic wireframe based on kind
+      if (kind === 'modal') {
+        return (
+          <div className="ds-wf ds-wf--modal">
+            <div className="ds-wf-bar" style={{ background: bg, borderColor: border }}>{name} <span style={{ marginLeft: 'auto' }}>×</span></div>
+            <div className="ds-wf-field" style={{ borderColor: line }}>Contenu</div>
+          </div>
+        );
+      }
+      return (
+        <div className="ds-wf ds-wf--widget">
+          <div className="ds-wf-card" style={{ borderColor: border, background: bg, color: muted }}>{name}</div>
+        </div>
+      );
+  }
+}
+
+const KIND_META: Record<LocalKind, { label: string; icon: ReactNode }> = {
+  modal: {
+    label: 'Modale',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <line x1="3" y1="9" x2="21" y2="9" />
+      </svg>
+    ),
+  },
+  form: {
+    label: 'Formulaire',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="4" width="16" height="4" rx="1" />
+        <rect x="4" y="12" width="16" height="4" rx="1" />
+        <line x1="4" y1="20" x2="12" y2="20" />
+      </svg>
+    ),
+  },
+  panel: {
+    label: 'Panneau',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <line x1="9" y1="3" x2="9" y2="21" />
+      </svg>
+    ),
+  },
+  widget: {
+    label: 'Widget',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+      </svg>
+    ),
+  },
+  board: {
+    label: 'Plateau',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <line x1="9" y1="3" x2="9" y2="21" />
+        <line x1="15" y1="3" x2="15" y2="21" />
+      </svg>
+    ),
+  },
+  list: {
+    label: 'Liste',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6" />
+        <line x1="8" y1="12" x2="21" y2="12" />
+        <line x1="8" y1="18" x2="21" y2="18" />
+        <line x1="3" y1="6" x2="3.01" y2="6" />
+        <line x1="3" y1="12" x2="3.01" y2="12" />
+        <line x1="3" y1="18" x2="3.01" y2="18" />
+      </svg>
+    ),
+  },
+  toolbar: {
+    label: 'Barre d\'outils',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="8" width="18" height="8" rx="1" />
+        <line x1="8" y1="12" x2="8.01" y2="12" />
+        <line x1="13" y1="12" x2="17" y2="12" />
+      </svg>
+    ),
+  },
+  marker: {
+    label: 'Marqueur',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2L2 22h20L12 2z" />
+      </svg>
+    ),
+  },
+};
 import auditData from '../../../../../design-system.data.json';
 import './App.css';
 
@@ -152,6 +509,8 @@ const SHADOWS = [
 // exports with a warning). The rendering is wrapped by `SharedComponentCard`.
 //
 // Keys match the component name exported from `@boilerplate/shared/components`.
+type DemoViewMode = 'month' | 'quarter' | 'year';
+
 type DemoContext = {
   addToast: (t: Omit<ToastData, 'id'>) => void;
   openModal: () => void;
@@ -165,6 +524,10 @@ type DemoContext = {
   setFormName: (v: string) => void;
   formError: string;
   setFormError: (v: string) => void;
+  viewMode: DemoViewMode;
+  setViewMode: (v: DemoViewMode) => void;
+  viewYear: number;
+  setViewYear: (n: number) => void;
 };
 
 function buildInlineDemos(ctx: DemoContext): Record<string, ReactNode> {
@@ -212,7 +575,7 @@ function buildInlineDemos(ctx: DemoContext): Record<string, ReactNode> {
                 ctx.setFormName(e.target.value);
                 ctx.setFormError(e.target.value.length < 3 && e.target.value.length > 0 ? '3 caractères minimum' : '');
               }}
-              placeholder="Entrez un nom…"
+              placeholder="Entrer un nom…"
             />
           </FormField>
           <FormField label="Email">
@@ -227,7 +590,7 @@ function buildInlineDemos(ctx: DemoContext): Record<string, ReactNode> {
         <div className="ds-color-group">
           <h3 className="ds-group-label">Messages d'erreur — catalogue</h3>
           <FormField label="Champ requis" required error="Ce champ est obligatoire">
-            <input type="text" placeholder="Saisissez une valeur…" />
+            <input type="text" placeholder="Saisir une valeur…" />
           </FormField>
           <FormField label="Email" error="Format d'email invalide">
             <input type="email" defaultValue="pas-un-email" />
@@ -333,6 +696,141 @@ function buildInlineDemos(ctx: DemoContext): Record<string, ReactNode> {
         <Button variant="secondary" onClick={() => ctx.addToast({ type: 'warning', message: 'Attention requise' })}>Warning</Button>
       </div>
     ),
+
+    ViewSelector: (
+      <div className="ds-comp-constrained" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+        <div>
+          <h3 className="ds-group-label">Mode seul</h3>
+          <ViewSelector<DemoViewMode>
+            viewMode={ctx.viewMode}
+            onViewModeChange={ctx.setViewMode}
+            modes={[
+              { value: 'month', label: 'Mois' },
+              { value: 'quarter', label: 'Trimestre' },
+              { value: 'year', label: 'Année' },
+            ] as ReadonlyArray<ViewModeOption<DemoViewMode>>}
+          />
+        </div>
+        <div>
+          <h3 className="ds-group-label">Mode + navigation année</h3>
+          <ViewSelector<DemoViewMode>
+            viewMode={ctx.viewMode}
+            onViewModeChange={ctx.setViewMode}
+            modes={[
+              { value: 'month', label: 'Mois' },
+              { value: 'quarter', label: 'Trimestre' },
+              { value: 'year', label: 'Année' },
+            ] as ReadonlyArray<ViewModeOption<DemoViewMode>>}
+            year={ctx.viewYear}
+            onYearChange={(dir) => ctx.setViewYear(ctx.viewYear + dir)}
+            onToday={() => ctx.setViewYear(new Date().getFullYear())}
+          />
+        </div>
+      </div>
+    ),
+
+    Legend: (
+      <div className="ds-comp-constrained" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+        <div>
+          <h3 className="ds-group-label">Direction column (défaut)</h3>
+          <Legend
+            ariaLabel="Légende motifs de congé"
+            items={[
+              { id: 'cp', color: '#10b981', label: 'Congé payé' },
+              { id: 'rtt', color: '#3b82f6', label: 'RTT' },
+              { id: 'maladie', color: '#ef4444', label: 'Maladie' },
+              { id: 'sans_solde', color: '#a855f7', label: 'Sans solde' },
+            ]}
+          />
+        </div>
+        <div>
+          <h3 className="ds-group-label">Direction row</h3>
+          <Legend
+            direction="row"
+            items={[
+              { id: 'todo', color: '#ef4444', label: 'À faire' },
+              { id: 'doing', color: '#f59e0b', label: 'En cours' },
+              { id: 'done', color: '#10b981', label: 'Terminé' },
+            ]}
+          />
+        </div>
+      </div>
+    ),
+
+    EmptyState: (
+      <div className="ds-comp-constrained" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+          <EmptyState
+            title="Aucun élément"
+            hint="Créer votre premier élément pour commencer."
+          />
+        </div>
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+          <EmptyState
+            icon={
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+            }
+            title="Aucune roadmap"
+            hint="Créer votre première roadmap pour commencer"
+            action={<Button variant="primary" onClick={() => ctx.addToast({ type: 'info', message: 'Action EmptyState' })}>+ Nouvelle roadmap</Button>}
+          />
+        </div>
+      </div>
+    ),
+
+    StatusTag: (
+      <div className="ds-comp-constrained" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+        <div>
+          <h3 className="ds-group-label">Variante dot (défaut, canonique SuiviTess)</h3>
+          <div className="ds-comp-row">
+            {STATUS_OPTIONS.map(opt => (
+              <StatusTag key={opt.value} label={opt.label} color={opt.color} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <h3 className="ds-group-label">Variante tint</h3>
+          <div className="ds-comp-row">
+            {STATUS_OPTIONS.slice(0, 4).map(opt => (
+              <StatusTag key={opt.value} label={opt.label} color={opt.color} variant="tint" />
+            ))}
+          </div>
+        </div>
+        <div>
+          <h3 className="ds-group-label">Variante outline</h3>
+          <div className="ds-comp-row">
+            {STATUS_OPTIONS.slice(0, 4).map(opt => (
+              <StatusTag key={opt.value} label={opt.label} color={opt.color} variant="outline" />
+            ))}
+          </div>
+        </div>
+        <div>
+          <h3 className="ds-group-label">Variante solid</h3>
+          <div className="ds-comp-row">
+            {STATUS_OPTIONS.slice(0, 4).map(opt => (
+              <StatusTag key={opt.value} label={opt.label} color={opt.color} variant="solid" />
+            ))}
+          </div>
+        </div>
+      </div>
+    ),
+
+    ModalBody: (
+      <div className="ds-comp-constrained" style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
+        Primitive <code>&lt;ModalBody&gt;</code> — wrapper vertical standard pour le contenu d'une modale (padding + gap uniformes). S'utilise à l'intérieur d'un <code>&lt;Modal&gt;</code>. Cf. démo <strong>Modal</strong> ci-dessus pour un exemple complet.
+      </div>
+    ),
+
+    ModalActions: (
+      <div className="ds-comp-constrained" style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>
+        Primitive <code>&lt;ModalActions&gt;</code> — footer de modale aligné à droite avec margin-top standard. S'utilise après un <code>&lt;ModalBody&gt;</code>. Cf. démo <strong>Modal</strong> ci-dessus pour un exemple complet.
+      </div>
+    ),
   };
 }
 
@@ -344,6 +842,8 @@ const FRENCH_LABELS: Record<string, string> = {
   FormField: 'Champ de formulaire',
   LoadingSpinner: 'Indicateur de chargement',
   Modal: 'Modale',
+  ModalBody: 'Modale — corps',
+  ModalActions: 'Modale — actions',
   ConfirmModal: 'Modale de confirmation',
   Tabs: 'Onglets',
   ExpandableSection: 'Section pliable',
@@ -362,6 +862,10 @@ const FRENCH_LABELS: Record<string, string> = {
   Hero: "Bandeau d'en-tête",
   StatCounter: 'Compteur de statistiques',
   Footer: 'Pied de page',
+  ViewSelector: 'Sélecteur de vue',
+  Legend: 'Légende',
+  EmptyState: 'État vide',
+  StatusTag: 'Tag de statut',
 };
 
 // ── Mock data for module-level demos (GanttBoard + BoardDelivery) ───────────
@@ -490,6 +994,8 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
   const [tabValue, setTabValue] = useState('tab1');
   const [formName, setFormName] = useState('');
   const [formError, setFormError] = useState('');
+  const [viewMode, setViewMode] = useState<DemoViewMode>('month');
+  const [viewYear, setViewYear] = useState(new Date().getFullYear());
   // Kept for future CV editors section — unused today.
   const [, setProjects] = useState<ProjectItem[]>([
     { title: 'Projet Alpha', description: 'Refonte du design system' },
@@ -510,13 +1016,20 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
     tabValue, setTabValue,
     formName, setFormName,
     formError, setFormError,
+    viewMode, setViewMode,
+    viewYear, setViewYear,
   });
 
-  // Union of used + unused so every export is surfaced. Used ones first.
-  const sharedEntries = [
-    ...AUDIT.shared.used.map(u => ({ name: u.name, total: u.total, modules: u.modules, usagesByModule: u.usagesByModule, unused: false })),
-    ...AUDIT.shared.unused.map(n => ({ name: n, total: 0, modules: [] as string[], usagesByModule: {} as Record<string, number>, unused: true })),
-  ];
+  // Only surface shared components that are actually used in the 5
+  // scoped modules. Unused exports (listed in AUDIT.shared.unused) are
+  // hidden — they clutter the DS page without providing usage signal.
+  const sharedEntries = AUDIT.shared.used.map(u => ({
+    name: u.name,
+    total: u.total,
+    modules: u.modules,
+    usagesByModule: u.usagesByModule,
+    unused: false,
+  }));
 
   return (
     <Layout appId="design-system" variant="full-width" onNavigate={onNavigate}>
@@ -551,10 +1064,39 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
           </div>
         </section>
 
+        {/* ── Sommaire sticky ── */}
+        <nav className="ds-toc" aria-label="Sommaire du design system">
+          <span className="ds-toc-label">Sommaire</span>
+          <div className="ds-toc-group">
+            <span className="ds-toc-group-title">1. Design System</span>
+            <ul>
+              <li><a href="#ds-tokens">Vue d'ensemble</a></li>
+              <li><a href="#ds-colors">Couleurs</a></li>
+              <li><a href="#ds-typo">Typographie</a></li>
+              <li><a href="#ds-spacing">Espacements</a></li>
+              <li><a href="#ds-radius">Rayons</a></li>
+              <li><a href="#ds-shadow">Ombres</a></li>
+              <li><a href="#ds-components">Composants partagés</a></li>
+            </ul>
+          </div>
+          <div className="ds-toc-group">
+            <span className="ds-toc-group-title">2. Composants locaux</span>
+            <ul>
+              <li><a href="#ds-locals">Par module</a></li>
+            </ul>
+          </div>
+          <div className="ds-toc-group">
+            <span className="ds-toc-group-title">3. Vues métier</span>
+            <ul>
+              <li><a href="#ds-gantt">Démos complexes</a></li>
+            </ul>
+          </div>
+        </nav>
+
         {/* ══════════════════════════════════════════════════════════════════
             PARTIE 1 — DESIGN SYSTEM
             ══════════════════════════════════════════════════════════════════ */}
-        <div className="ds-part-header">
+        <div className="ds-part-header" id="ds-tokens">
           <h2 className="ds-part-title">1. Design System</h2>
           <p className="ds-part-sub">
             Tokens globaux et composants partagés exposés par{' '}
@@ -563,7 +1105,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
         </div>
 
         {/* ── Colors ── */}
-        <section className="ds-section">
+        <section className="ds-section" id="ds-colors">
           <h3 className="ds-section-title">Couleurs</h3>
           {COLORS.map(group => (
             <div key={group.label} className="ds-color-group">
@@ -750,7 +1292,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
         </section>
 
         {/* ── Typography ── */}
-        <section className="ds-section">
+        <section className="ds-section" id="ds-typo">
           <h3 className="ds-section-title">Typographie</h3>
           <div className="ds-color-group">
             <h3 className="ds-group-label">Titres H1 – H6</h3>
@@ -777,7 +1319,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
         </section>
 
         {/* ── Spacing ── */}
-        <section className="ds-section">
+        <section className="ds-section" id="ds-spacing">
           <h3 className="ds-section-title">Espacements</h3>
           <div className="ds-spacing-rows">
             {SPACINGS.map(sp => (
@@ -791,7 +1333,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
         </section>
 
         {/* ── Border radius ── */}
-        <section className="ds-section">
+        <section className="ds-section" id="ds-radius">
           <h3 className="ds-section-title">Rayons de bordure</h3>
           <div className="ds-radii">
             {RADII.map(r => (
@@ -805,7 +1347,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
         </section>
 
         {/* ── Shadows ── */}
-        <section className="ds-section">
+        <section className="ds-section" id="ds-shadow">
           <h3 className="ds-section-title">Ombres</h3>
           <div className="ds-shadows">
             {SHADOWS.map(s => (
@@ -819,12 +1361,10 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
         </section>
 
         {/* ── Shared components (auto-generated from audit) ── */}
-        <div className="ds-part-header ds-part-header--sub">
+        <div className="ds-part-header ds-part-header--sub" id="ds-components">
           <h3 className="ds-part-subtitle">Composants partagés</h3>
           <p className="ds-part-sub">
-            {AUDIT.shared.used.length} composant{AUDIT.shared.used.length > 1 ? 's' : ''} partagé{AUDIT.shared.used.length > 1 ? 's' : ''} utilisé{AUDIT.shared.used.length > 1 ? 's' : ''} dans les modules
-            {' '}· {AUDIT.shared.unused.length} non utilisé{AUDIT.shared.unused.length > 1 ? 's' : ''}{' '}
-            (candidat{AUDIT.shared.unused.length > 1 ? 's' : ''} à archiver).
+            {AUDIT.shared.used.length} composant{AUDIT.shared.used.length > 1 ? 's' : ''} partagé{AUDIT.shared.used.length > 1 ? 's' : ''} utilisé{AUDIT.shared.used.length > 1 ? 's' : ''} dans les modules.
           </p>
         </div>
         {sharedEntries.map(entry => {
@@ -868,7 +1408,7 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
         {/* ══════════════════════════════════════════════════════════════════
             PARTIE 2 — COMPOSANTS LOCAUX PAR MODULE
             ══════════════════════════════════════════════════════════════════ */}
-        <div className="ds-part-header">
+        <div className="ds-part-header" id="ds-locals">
           <h2 className="ds-part-title">2. Composants locaux</h2>
           <p className="ds-part-sub">
             Composants spécifiques à un module — index auto-généré listant
@@ -921,27 +1461,35 @@ function DesignSystemPage({ onNavigate }: { onNavigate?: (path: string) => void 
                 <span className="ds-module-count">({locals.length} composant{locals.length > 1 ? 's' : ''})</span>
               </h3>
               <div className="ds-module-grid">
-                {locals.map(c => (
-                  <div key={c.name} className="ds-module-item">
-                    <div className="ds-module-item-name">{c.name}</div>
-                    {c.possibleDuplicateOf && (
-                      <div style={{ fontSize: 10, color: 'var(--warning)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        ⚠ pattern {c.possibleDuplicateOf}
+                {locals.map(c => {
+                  const kind: LocalKind = LOCAL_KIND[c.name] ?? 'widget';
+                  const meta = KIND_META[kind];
+                  return (
+                    <div key={c.name} className={`ds-module-item ds-module-item--${kind}`}>
+                      <div className="ds-module-item-preview" style={{ ['--local-accent' as string]: scope.color }}>
+                        <LocalWireframe name={c.name} kind={kind} color={scope.color} />
                       </div>
-                    )}
-                    <div className="ds-module-item-desc">
-                      {c.usages} usage{c.usages > 1 ? 's' : ''} dans ce module.
+                      <div className="ds-module-item-kind">{meta.label}</div>
+                      <div className="ds-module-item-name">{c.name}</div>
+                      {c.possibleDuplicateOf && (
+                        <div style={{ fontSize: 10, color: 'var(--warning)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          ⚠ pattern {c.possibleDuplicateOf}
+                        </div>
+                      )}
+                      <div className="ds-module-item-desc">
+                        {c.usages} usage{c.usages > 1 ? 's' : ''} dans ce module.
+                      </div>
+                      <code className="ds-module-item-file">{c.file}</code>
                     </div>
-                    <code className="ds-module-item-file">{c.file}</code>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           );
         })}
 
         {/* ── Module-level demos (complex components requiring mocks) ── */}
-        <div className="ds-part-header ds-part-header--sub">
+        <div className="ds-part-header ds-part-header--sub" id="ds-gantt">
           <h3 className="ds-part-subtitle">Démos de composants complexes</h3>
           <p className="ds-part-sub">
             Composants nécessitant des données structurées — montrés ici avec des
