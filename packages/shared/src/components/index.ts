@@ -106,7 +106,7 @@ export type { StatusTagProps } from './StatusTag/StatusTag.js';
 // brings a list of `ReviewableDecision` + three handlers; the wizard
 // owns pagination, progress dots, and the commit spinner.
 // See: packages/shared/src/components/AiReviewWizard/README.md
-export { AiReviewWizard, DecisionCard, InlineSlotDropdown } from './AiReviewWizard/index.js';
+export { AiReviewWizard, DecisionCard, InlineSlotDropdown, TileProgress, ReviewStatsLine } from './AiReviewWizard/index.js';
 export { flagDisagreement, createDisagreeHandler } from './AiReviewWizard/index.js';
 export type {
   ReviewableDecision,
@@ -116,6 +116,9 @@ export type {
   WizardLabels,
   DecisionCardProps,
   FlagOptions,
+  TileProgressProps,
+  TileProgressItem,
+  ReviewStatsLineProps,
 } from './AiReviewWizard/index.js';
 
 // Sharing

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode, type CSSProperties } from 'react';
-import { Modal, Button, LoadingSpinner, StatusTag } from '@boilerplate/shared/components';
+import { Modal, Button, LoadingSpinner, StatusTag, TileProgress, ReviewStatsLine } from '@boilerplate/shared/components';
 import { SkillButton } from '../SkillButton/SkillButton';
 import { getStatusOption } from '../../types';
 import * as api from '../../services/api';
@@ -954,66 +954,28 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
               )
             ) : (
               <>
-                {/* ── Progress header : position + cumulative counters + dot nav ── */}
-                <div className={styles.tileProgress}>
-                  <div className={styles.tileProgressHeader}>
-                    <strong className={styles.tileProgressPos}>Sujet {currentPosition} sur {displayTotal}</strong>
-                    <span className={styles.tileProgressStats}>
-                      {doneCount > 0 && (
-                        <span className={styles.tileProgressDone}>
-                          {doneCount} importé{doneCount > 1 ? 's' : ''}
-                        </span>
-                      )}
-                      {skippedCount > 0 && (
-                        <span className={styles.tileProgressSkipped}>
-                          — {skippedCount} ignoré{skippedCount > 1 ? 's' : ''}
-                        </span>
-                      )}
-                      <span className={styles.tileProgressLeft}>
-                        {displayRows.length} restant{displayRows.length > 1 ? 's' : ''}
-                      </span>
-                    </span>
-                  </div>
-                  {/* Prev/Next arrows + clickable dots all in one row.
-                      Replaces the old bottom bar — navigation is now
-                      attached to the progress indicator where the user
-                      already looks for "where am I in the flow". */}
-                  <div className={styles.tileDotsRow} role="tablist" aria-label="Navigation entre sujets">
-                    <button
-                      type="button"
-                      className={styles.tileNavArrow}
-                      onClick={() => prevKey && handleJumpTo(prevKey)}
-                      disabled={!prevKey || !!addingRowKey}
-                      title={prevKey ? 'Sujet précédent' : 'Aucun sujet précédent'}
-                      aria-label="Sujet précédent"
-                    >
-                      ←
-                    </button>
-                    <div className={styles.tileDots}>
-                      {displayRows.map(({ r }, idx) => (
-                        <button
-                          key={r.key}
-                          type="button"
-                          role="tab"
-                          aria-selected={r.key === currentKey}
-                          className={`${styles.tileDot} ${r.key === currentKey ? styles.tileDotCurrent : ''}`}
-                          onClick={() => handleJumpTo(r.key)}
-                          title={`${idx + 1}. ${r.subject.title}`}
-                        />
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      className={styles.tileNavArrow}
-                      onClick={() => nextKey && handleJumpTo(nextKey)}
-                      disabled={!nextKey || !!addingRowKey}
-                      title={nextKey ? 'Sujet suivant (sans l\'importer)' : 'Aucun sujet suivant'}
-                      aria-label="Sujet suivant"
-                    >
-                      →
-                    </button>
-                  </div>
-                </div>
+                {/* Progress header — migrated to the shared TileProgress
+                    primitive (packages/shared/src/components/AiReviewWizard).
+                    Keeps the SuiviTess state machine (currentKey-based,
+                    with displayTotal including already-handled rows) and
+                    just swaps the presentation. `addingRowKey` disables
+                    navigation while a commit is in-flight so the user
+                    can't jump to another tile mid-write. */}
+                <TileProgress
+                  items={displayRows.map(({ r }) => ({ id: r.key, title: r.subject.title }))}
+                  currentId={currentKey}
+                  onNavigate={handleJumpTo}
+                  position={currentPosition}
+                  total={displayTotal}
+                  disableNav={!!addingRowKey}
+                  extraStats={
+                    <ReviewStatsLine
+                      done={doneCount}
+                      skipped={skippedCount}
+                      left={displayRows.length}
+                    />
+                  }
+                />
 
                 {/* Breadcrumb "Mise à jour › ✓ Review › ✓ Section" above
                     the tile was removed — the same info is already in
