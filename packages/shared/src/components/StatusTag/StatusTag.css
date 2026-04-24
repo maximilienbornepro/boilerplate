@@ -1,0 +1,60 @@
+/* StatusTag — display a subject/task status. Canonical style is "dot"
+ * (colored dot + text), matching SuiviTess preview. Other variants
+ * available for specific contexts. No emoji — label only (DA rule). */
+
+.shared-status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.shared-status-tag__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--status-color);
+}
+
+.shared-status-tag__label {
+  line-height: 1;
+}
+
+/* Dot (default): colored dot + label in default text color. Canonical
+ * SuiviTess rendering — used for non-editable status displays. */
+.shared-status-tag--dot {
+  color: var(--text-primary);
+}
+
+/* Tint: soft background + colored border + colored text. */
+.shared-status-tag--tint {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--status-color) 55%, transparent);
+  background: color-mix(in srgb, var(--status-color) 14%, transparent);
+  color: var(--status-color);
+}
+
+/* Solid: full color background + white text. */
+.shared-status-tag--solid {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--status-color);
+  border: 1px solid var(--status-color);
+  color: #fff;
+}
+
+/* Outline: transparent background + colored border + colored text. */
+.shared-status-tag--outline {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid var(--status-color);
+  color: var(--status-color);
+}

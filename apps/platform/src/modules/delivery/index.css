@@ -1,5 +1,8 @@
 .scope-delivery {
-  button:where(:not(.shared-nav *)) {
+  /* Reset for ad-hoc <button> elements only — do NOT touch the shared
+   * <Button> component (.shared-btn) which brings its own styling
+   * (incl. border, hover accent, etc.). */
+  button:where(:not(.shared-nav *)):not(.shared-btn) {
     border-radius: var(--radius-sm);
     border: none;
     padding: 0.5em 1em;
@@ -10,8 +13,8 @@
     transition: var(--transition-normal);
   }
 
-  button:where(:not(.shared-nav *)):focus,
-  button:where(:not(.shared-nav *)):focus-visible {
+  button:where(:not(.shared-nav *)):not(.shared-btn):focus,
+  button:where(:not(.shared-nav *)):not(.shared-btn):focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
   }

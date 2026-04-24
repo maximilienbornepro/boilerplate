@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Routes, Route, useParams, useNavigate } from 'react-router-dom';
-import { Layout, LoadingSpinner, ModuleHeader, ConfirmModal } from '@boilerplate/shared/components';
+import { Layout, LoadingSpinner, ModuleHeader, ConfirmModal, ViewSelector } from '@boilerplate/shared/components';
+import type { ViewModeOption } from '@boilerplate/shared/components';
 import type { Planning, Task, Dependency, ViewMode, Marker, PlanningFormData, DeliveryOverlayTask } from './types';
 import * as api from './services/api';
 import { getNextColor } from './utils/taskUtils';
@@ -9,9 +10,14 @@ import { PlanningList } from './components/PlanningList/PlanningList';
 import { PlanningForm } from './components/PlanningList/PlanningForm';
 import { GanttBoard, type GanttBoardHandle } from './components/GanttBoard/GanttBoard';
 import { TaskForm } from './components/TaskForm/TaskForm';
-import { ViewSelector } from './components/ViewSelector/ViewSelector';
 import { SubjectsPanel } from './components/SubjectsPanel/SubjectsPanel';
 import './index.css';
+
+const ROADMAP_VIEW_MODES: ReadonlyArray<ViewModeOption<ViewMode>> = [
+  { value: 'month', label: 'Mois' },
+  { value: 'quarter', label: 'Trimestre' },
+  { value: 'year', label: 'Année' },
+];
 
 function getUrlPlanningId(): string | null {
   return new URLSearchParams(window.location.search).get('id');
@@ -92,7 +98,7 @@ function EmbedView({ planningId }: { planningId: string }) {
     <div className="roadmap-embed">
       <div className="roadmap-embed-header">
         <h1 className="roadmap-embed-title">{planning.name}</h1>
-        <ViewSelector viewMode={viewMode} onViewModeChange={setViewMode} />
+        <ViewSelector<ViewMode> viewMode={viewMode} onViewModeChange={setViewMode} modes={ROADMAP_VIEW_MODES} />
       </div>
       <div className="roadmap-gantt-container">
         <GanttBoard
@@ -508,12 +514,12 @@ function PlanningDetailView({ onNavigate }: { onNavigate?: (path: string) => voi
       )}
 
       <ModuleHeader title={selectedPlanning.name} onBack={() => navigate('/roadmap')}>
-        <ViewSelector
+        <ViewSelector<ViewMode>
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          yearOffset={yearOffset}
-          onYearOffsetChange={setYearOffset}
-          currentYear={new Date(selectedPlanning.startDate).getFullYear() + yearOffset}
+          modes={ROADMAP_VIEW_MODES}
+          year={new Date(selectedPlanning.startDate).getFullYear() + yearOffset}
+          onYearChange={(dir) => setYearOffset((o) => o + dir)}
           onToday={handleTodayClick}
           yearNavDisabled={new Date(selectedPlanning.startDate).getFullYear() === new Date(selectedPlanning.endDate).getFullYear()}
         />

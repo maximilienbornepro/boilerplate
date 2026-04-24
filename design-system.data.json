@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-23T09:51:28.109Z",
+  "generatedAt": "2026-04-24T10:38:24.989Z",
   "scope": [
     {
       "id": "landing",
@@ -33,25 +33,31 @@
       "Button",
       "Card",
       "ConfirmModal",
+      "EmptyState",
       "ExpandableSection",
       "Footer",
       "FormField",
       "Hero",
       "ImageUploader",
       "Layout",
+      "Legend",
       "ListEditor",
       "LoadingSpinner",
       "Modal",
+      "ModalActions",
+      "ModalBody",
       "ModuleHeader",
       "ProjectEditor",
       "SectionTitle",
       "SharedNav",
       "SharingModal",
       "StatCounter",
+      "StatusTag",
       "Tabs",
       "TagEditor",
       "Toast",
       "ToastContainer",
+      "ViewSelector",
       "VisibilityPicker"
     ],
     "used": [
@@ -64,26 +70,28 @@
           "suivitess"
         ],
         "usagesByModule": {
-          "conges": 1,
-          "roadmap": 4,
-          "delivery": 10,
-          "suivitess": 27
+          "conges": 6,
+          "roadmap": 8,
+          "delivery": 25,
+          "suivitess": 28
         },
-        "total": 42
+        "total": 67
       },
       {
         "name": "FormField",
         "modules": [
+          "conges",
           "delivery",
           "roadmap",
           "suivitess"
         ],
         "usagesByModule": {
+          "conges": 5,
           "roadmap": 6,
           "delivery": 9,
           "suivitess": 15
         },
-        "total": 30
+        "total": 35
       },
       {
         "name": "Modal",
@@ -95,9 +103,25 @@
         ],
         "usagesByModule": {
           "conges": 2,
-          "roadmap": 1,
-          "delivery": 4,
-          "suivitess": 7
+          "roadmap": 2,
+          "delivery": 8,
+          "suivitess": 8
+        },
+        "total": 20
+      },
+      {
+        "name": "ModalBody",
+        "modules": [
+          "conges",
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "conges": 2,
+          "roadmap": 2,
+          "delivery": 8,
+          "suivitess": 2
         },
         "total": 14
       },
@@ -116,18 +140,20 @@
         "total": 13
       },
       {
-        "name": "Card",
+        "name": "ModalActions",
         "modules": [
+          "conges",
           "delivery",
           "roadmap",
           "suivitess"
         ],
         "usagesByModule": {
-          "roadmap": 3,
-          "delivery": 3,
-          "suivitess": 4
+          "conges": 1,
+          "roadmap": 2,
+          "delivery": 6,
+          "suivitess": 2
         },
-        "total": 10
+        "total": 11
       },
       {
         "name": "ModuleHeader",
@@ -162,6 +188,20 @@
         "total": 8
       },
       {
+        "name": "Card",
+        "modules": [
+          "delivery",
+          "roadmap",
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "roadmap": 2,
+          "delivery": 2,
+          "suivitess": 4
+        },
+        "total": 8
+      },
+      {
         "name": "ToastContainer",
         "modules": [
           "conges",
@@ -171,9 +211,9 @@
         "usagesByModule": {
           "conges": 1,
           "delivery": 1,
-          "suivitess": 3
+          "suivitess": 4
         },
-        "total": 5
+        "total": 6
       },
       {
         "name": "ConfirmModal",
@@ -186,10 +226,34 @@
         "usagesByModule": {
           "conges": 1,
           "roadmap": 2,
-          "delivery": 1,
+          "delivery": 2,
           "suivitess": 1
         },
-        "total": 5
+        "total": 6
+      },
+      {
+        "name": "StatusTag",
+        "modules": [
+          "suivitess"
+        ],
+        "usagesByModule": {
+          "suivitess": 6
+        },
+        "total": 6
+      },
+      {
+        "name": "EmptyState",
+        "modules": [
+          "conges",
+          "delivery",
+          "roadmap"
+        ],
+        "usagesByModule": {
+          "conges": 1,
+          "roadmap": 1,
+          "delivery": 1
+        },
+        "total": 3
       },
       {
         "name": "VisibilityPicker",
@@ -220,6 +284,16 @@
         "total": 3
       },
       {
+        "name": "Legend",
+        "modules": [
+          "conges"
+        ],
+        "usagesByModule": {
+          "conges": 1
+        },
+        "total": 1
+      },
+      {
         "name": "ExpandableSection",
         "modules": [
           "delivery"
@@ -238,6 +312,18 @@
           "suivitess": 1
         },
         "total": 1
+      },
+      {
+        "name": "ViewSelector",
+        "modules": [
+          "conges",
+          "roadmap"
+        ],
+        "usagesByModule": {
+          "conges": 0,
+          "roadmap": 0
+        },
+        "total": 0
       }
     ],
     "unused": [
@@ -258,20 +344,6 @@
     "landing": [],
     "conges": [
       {
-        "name": "ViewControls",
-        "moduleId": "conges",
-        "file": "apps/platform/src/modules/conges/components/ViewControls/ViewControls.tsx",
-        "usages": 1,
-        "possibleDuplicateOf": null
-      },
-      {
-        "name": "Legend",
-        "moduleId": "conges",
-        "file": "apps/platform/src/modules/conges/components/Legend/Legend.tsx",
-        "usages": 1,
-        "possibleDuplicateOf": null
-      },
-      {
         "name": "LeaveForm",
         "moduleId": "conges",
         "file": "apps/platform/src/modules/conges/components/LeaveForm/LeaveForm.tsx",
@@ -287,13 +359,6 @@
       }
     ],
     "roadmap": [
-      {
-        "name": "ViewSelector",
-        "moduleId": "roadmap",
-        "file": "apps/platform/src/modules/roadmap/components/ViewSelector/ViewSelector.tsx",
-        "usages": 2,
-        "possibleDuplicateOf": null
-      },
       {
         "name": "GanttBoard",
         "moduleId": "roadmap",
@@ -520,26 +585,26 @@
     },
     {
       "moduleId": "conges",
-      "fileCount": 10,
-      "sharedImportsCount": 6,
-      "localComponentsCount": 4
+      "fileCount": 8,
+      "sharedImportsCount": 12,
+      "localComponentsCount": 2
     },
     {
       "moduleId": "roadmap",
-      "fileCount": 21,
-      "sharedImportsCount": 10,
-      "localComponentsCount": 5
+      "fileCount": 20,
+      "sharedImportsCount": 14,
+      "localComponentsCount": 4
     },
     {
       "moduleId": "delivery",
       "fileCount": 21,
-      "sharedImportsCount": 12,
+      "sharedImportsCount": 15,
       "localComponentsCount": 13
     },
     {
       "moduleId": "suivitess",
       "fileCount": 17,
-      "sharedImportsCount": 12,
+      "sharedImportsCount": 15,
       "localComponentsCount": 13
     }
   ]

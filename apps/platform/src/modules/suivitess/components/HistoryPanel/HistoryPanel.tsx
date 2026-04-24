@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Modal } from '@boilerplate/shared/components';
 import * as api from '../../services/api';
 import type { SnapshotInfo, DocumentWithSections, SnapshotDiff } from '../../types';
 import styles from './HistoryPanel.module.css';
@@ -137,18 +138,7 @@ export function HistoryPanel({ documentId, onClose, onRestore }: Props) {
   };
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.panel} onClick={e => e.stopPropagation()}>
-        <div className={styles.header}>
-          <h2>Historique et sauvegarde</h2>
-          <button className={styles.closeBtn} onClick={onClose} title="Fermer" aria-label="Fermer">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-
+    <Modal title="Historique et sauvegarde" onClose={onClose} size="md">
         <div className={styles.content}>
           {loading ? (
             <div className={styles.loading}>Chargement...</div>
@@ -237,7 +227,6 @@ export function HistoryPanel({ documentId, onClose, onRestore }: Props) {
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

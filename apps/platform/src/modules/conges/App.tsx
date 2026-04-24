@@ -1,13 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Layout, ToastContainer, ConfirmModal, ModuleHeader, Button, useGatewayUser } from '@boilerplate/shared/components';
-import type { ToastData } from '@boilerplate/shared/components';
+import { Layout, ToastContainer, ConfirmModal, ModuleHeader, ViewSelector, Legend, EmptyState, useGatewayUser } from '@boilerplate/shared/components';
+import type { ToastData, ViewModeOption } from '@boilerplate/shared/components';
 import { LeaveCalendar } from './components/LeaveCalendar/LeaveCalendar';
 import { LeaveForm } from './components/LeaveForm/LeaveForm';
-import { Legend } from './components/Legend/Legend';
-import { ViewControls } from './components/ViewControls/ViewControls';
+import { LEAVE_REASONS } from './types';
 import type { Member, Leave, LeaveFormData, ViewMode } from './types';
 import * as api from './services/api';
 import './index.css';
+
+const CONGES_VIEW_MODES: ReadonlyArray<ViewModeOption<ViewMode>> = [
+  { value: 'month', label: 'Mois' },
+  { value: 'quarter', label: 'Trimestre' },
+  { value: 'year', label: 'Année' },
+];
 
 export default function CongesApp({ onNavigate }: { onNavigate?: (path: string) => void }) {
   return (
@@ -162,16 +167,14 @@ function AppContent({ onNavigate: _onNavigate }: { onNavigate?: (path: string) =
   return (
     <>
       <ModuleHeader title="Congés">
-        <ViewControls
+        <ViewSelector<ViewMode>
           viewMode={viewMode}
           onViewModeChange={setViewMode}
+          modes={CONGES_VIEW_MODES}
           year={year}
           onYearChange={handleYearChange}
           onToday={handleToday}
         />
-        <Button variant="secondary" onClick={() => addToast({ type: 'info', message: 'Export CSV en cours…' })}>
-          Exporter CSV
-        </Button>
         <button className="module-header-btn module-header-btn-primary" onClick={handleAddLeave}>
           + Nouvelle demande
         </button>
@@ -182,12 +185,10 @@ function AppContent({ onNavigate: _onNavigate }: { onNavigate?: (path: string) =
           {loading && members.length === 0 ? (
             <div className="conges-loading">Chargement...</div>
           ) : members.length === 0 ? (
-            <div className="conges-empty">
-              <p>Aucun membre avec la permission &quot;congés&quot;</p>
-              <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                Les membres sont gérés via les permissions gateway.
-              </p>
-            </div>
+            <EmptyState
+              title={'Aucun membre avec la permission "congés"'}
+              hint="Les membres sont gérés via les permissions gateway."
+            />
           ) : (
             <>
               <LeaveCalendar
@@ -203,7 +204,7 @@ function AppContent({ onNavigate: _onNavigate }: { onNavigate?: (path: string) =
                 onLeaveResize={handleLeaveResize}
                 scrollToTodayTrigger={scrollToTodayTrigger}
               />
-              <Legend />
+              <Legend items={LEAVE_REASONS} ariaLabel="Légende des motifs de congé" />
             </>
           )}
         </div>

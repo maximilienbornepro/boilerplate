@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, type ReactNode, type CSSProperties } from 'react';
-import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
+import { Modal, Button, LoadingSpinner, StatusTag } from '@boilerplate/shared/components';
 import { SkillButton } from '../SkillButton/SkillButton';
 import { getStatusOption } from '../../types';
 import * as api from '../../services/api';
@@ -707,7 +707,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
             {replayableRuns && replayableRuns.length > 0 && (
               <details className={styles.replaySection}>
                 <summary className={styles.replaySummary}>
-                  🔁 Rejouer un import précédent <span className={styles.replayHint}>(instantané, sans nouvelle requête IA)</span>
+                  Rejouer un import précédent <span className={styles.replayHint}>(instantané, sans nouvelle requête IA)</span>
                 </summary>
                 <div className={styles.replayList}>
                   {replayableRuns.map(run => (
@@ -801,7 +801,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                               : `${alreadyImportedCount} déjà importée${alreadyImportedCount > 1 ? 's' : ''} ↻`}
                           </span>
                         )}
-                        {selectedIds.size >= 2 && <span className={styles.reconcileHint}> · réconciliation activée 🔀</span>}
+                        {selectedIds.size >= 2 && <span className={styles.reconcileHint}> · réconciliation activée</span>}
                       </span>
                     );
                   })()}
@@ -878,12 +878,12 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                 Auto-clears after 4 s. */}
             {error && (
               <div className={styles.logBanner} style={{ background: 'var(--error-bg, rgba(239, 68, 68, 0.1))', color: 'var(--error, #dc2626)' }}>
-                <span>⚠ {error}</span>
+                <span>{error}</span>
               </div>
             )}
             {replayedFromLogId != null && (
               <div className={styles.logBanner}>
-                <span>🔁 Rejeu de l'import #{replayedFromLogId} — aucun appel IA, décisions restituées depuis les logs.</span>
+                <span>Rejeu de l'import #{replayedFromLogId} — aucun appel IA, décisions restituées depuis les logs.</span>
               </div>
             )}
             {lastLogId != null && replayedFromLogId == null && (
@@ -898,7 +898,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
               // ── Done state : all subjects processed (or nothing to process) ──
               doneCount + skippedCount > 0 ? (
                 <div className={styles.tileDone}>
-                  <p className={styles.tileDoneTitle}>✓ Tous les sujets ont été traités</p>
+                  <p className={styles.tileDoneTitle}>Tous les sujets ont été traités</p>
                   <p className={styles.tileDoneStats}>
                     {doneCount > 0 && (
                       <>
@@ -921,7 +921,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                     <span className={styles.tileProgressStats}>
                       {doneCount > 0 && (
                         <span className={styles.tileProgressDone}>
-                          ✓ {doneCount} importé{doneCount > 1 ? 's' : ''}
+                          {doneCount} importé{doneCount > 1 ? 's' : ''}
                         </span>
                       )}
                       {skippedCount > 0 && (
@@ -1301,8 +1301,6 @@ function SubjectRow({
   const initialIsUpdate = subject.subjectAction === 'update-existing-subject';
   const modeColor = initialIsUpdate ? '#3b82f6' : '#eab308';
   const rowStyle: CSSProperties = {
-    borderColor: modeColor,
-    background: `color-mix(in srgb, ${modeColor} 4%, transparent)`,
     ['--row-accent' as string]: modeColor,
     ['--status-color' as string]: statusColor,
   };
@@ -1323,7 +1321,7 @@ function SubjectRow({
             className={`${styles.multiSourceBadge} ${hasContradiction ? styles.multiSourceContradict : ''}`}
             title={consolidation!.chronology ?? undefined}
           >
-            {hasContradiction ? '⚠️' : '🔀'} {consolidation!.evidence.length} sources
+            {hasContradiction ? 'Contradiction · ' : 'Multi-source · '}{consolidation!.evidence.length} sources
           </span>
         )}
         {isMultiPlacement && (
@@ -1331,10 +1329,10 @@ function SubjectRow({
             className={styles.multiPlacementBadge}
             title="Ce sujet est dispatché dans plusieurs reviews"
           >
-            📡 Multi-review
+            Multi-review
           </span>
         )}
-        <span className={styles.statusTag}>{capitalizeFirstLetter(subject.status)}</span>
+        <StatusTag label={getStatusOption(subject.status).label} color={statusColor} />
       </div>
 
       {consolidation && consolidation.reconciliationNote && (
@@ -1407,7 +1405,8 @@ function SubjectRow({
                 Section → Sujet). Each pill is ALSO a dropdown — click
                 it to change the target inline without opening the
                 wizard. Pills keep the "existant vs nouveau" color. */}
-            <p className={styles.aiDecisionStatement}>
+            <div className={styles.aiDecisionStatement}>
+              <div className={styles.aiDecisionStatementLine}>
               Dans la {currentReviewIsExisting ? 'review existante' : <strong>nouvelle review</strong>}{' '}
               {reviewLocked ? (
                 // Destination review is fixed by the parent page (we're
@@ -1451,7 +1450,9 @@ function SubjectRow({
                           onClick={(e) => { e.stopPropagation(); setEditingCreateName('review'); }}
                           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); setEditingCreateName('review'); } }}
                         >
-                          ✎
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                          </svg>
                         </span>
                       )}
                     </span>
@@ -1481,7 +1482,9 @@ function SubjectRow({
                   }}
                 />
               )}
-              , {currentSectionIsExisting ? 'section existante' : <strong>nouvelle section</strong>}{' '}
+              </div>
+              <div className={styles.aiDecisionStatementLine}>
+              {currentSectionIsExisting ? 'Section existante' : <strong>Nouvelle section</strong>}{' '}
               {editingCreateName === 'section' ? (
                 <InlineNameEditor
                   kind="section"
@@ -1520,7 +1523,9 @@ function SubjectRow({
                           onClick={(e) => { e.stopPropagation(); setEditingCreateName('section'); }}
                           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); setEditingCreateName('section'); } }}
                         >
-                          ✎
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                          </svg>
                         </span>
                       )}
                     </span>
@@ -1552,7 +1557,8 @@ function SubjectRow({
                   }}
                 />
               )}
-              ,{' '}
+              </div>
+              <div className={styles.aiDecisionStatementLine}>
               <strong className={styles.aiDecisionStatementLead}>
                 {currentIsUpdate ? 'MISE À JOUR' : 'CRÉATION'}
               </strong>{' '}
@@ -1598,7 +1604,9 @@ function SubjectRow({
                             onClick={(e) => { e.stopPropagation(); setEditingCreateName('subject'); }}
                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); setEditingCreateName('subject'); } }}
                           >
-                            ✎
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                            </svg>
                           </span>
                         </span>
                       )
@@ -1635,11 +1643,11 @@ function SubjectRow({
                   }}
                 />
               )}
-              .
-            </p>
+              </div>
+            </div>
             {subject.reasoning && (
               <p className={styles.aiDecisionReason}>
-                <strong className={styles.aiDecisionReasonLead}>RAISON IA :</strong> {subject.reasoning}
+                <strong className={styles.aiDecisionReasonLead}>Raison IA :</strong> {subject.reasoning}
               </p>
             )}
             {/* État de situation du sujet cible — affiché directement
@@ -1666,19 +1674,29 @@ function SubjectRow({
               return (
                 <div className={styles.aiDecisionTargetSituation}>
                   <div className={styles.aiDecisionTargetSituationLabel}>
-                    📝 État de situation du nouveau sujet
-                    {subject.status && <span className={styles.aiDecisionTargetSituationCount}> · statut : {subject.status}</span>}
-                    {subject.responsibility && <span className={styles.aiDecisionTargetSituationCount}> · resp : {subject.responsibility}</span>}
-                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · ⏳ IA en cours…</span>}
+                    État de situation du nouveau sujet
+                    {subject.status && (
+                      <span className={styles.aiDecisionTargetSituationCount}>
+                        {' · '}
+                        <StatusTag label={getStatusOption(subject.status).label} color={getStatusOption(subject.status).color} />
+                      </span>
+                    )}
+                    {subject.responsibility && (
+                      <span className={styles.aiDecisionTargetSituationCount}>
+                        {' · '}
+                        <span className={styles.responsibilityBadge}>{subject.responsibility}</span>
+                      </span>
+                    )}
+                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · IA en cours…</span>}
                   </div>
                   <div className={styles.aiDecisionTargetSituationBody}>
                     {generatingAppend && lines.length === 0 ? (
                       <div className={styles.aiDecisionTargetSituationPendingAppend}>
-                        ⏳ L'IA compose l'état de situation à partir des extraits sources…
+                        L'IA compose l'état de situation à partir des extraits sources…
                       </div>
                     ) : lines.map((l, i) => (
                       <div key={`new-subj-${i}`} className={styles.aiDecisionTargetSituationAddedLine}>
-                        <span className={styles.aiDecisionTargetSituationAddedBullet}>+</span>
+                        <span className={styles.aiDecisionTargetSituationAddedBullet}>•</span>
                         {renderLine(l)}
                       </div>
                     ))}
@@ -1711,9 +1729,9 @@ function SubjectRow({
               return (
                 <div className={styles.aiDecisionTargetSituation}>
                   <div className={styles.aiDecisionTargetSituationLabel}>
-                    📄 État de situation actuel du sujet cible
+                    État de situation actuel du sujet cible
                     {existing.length > 4 && <span className={styles.aiDecisionTargetSituationCount}> · {existing.length} lignes (4 dernières)</span>}
-                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · ⏳ IA en cours…</span>}
+                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · IA en cours…</span>}
                   </div>
                   <div className={styles.aiDecisionTargetSituationBody}>
                     {lastLines.length > 0 ? lastLines.map((l, i) => (
@@ -1727,7 +1745,7 @@ function SubjectRow({
                         vs the historical lines. */}
                     {generatingAppend ? (
                       <div className={styles.aiDecisionTargetSituationPendingAppend}>
-                        ⏳ L'IA rédige l'ajout adapté au sujet existant…
+                        L'IA rédige l'ajout adapté au sujet existant…
                       </div>
                     ) : newLines.length > 0 ? (
                       <>
@@ -1736,7 +1754,7 @@ function SubjectRow({
                         </div>
                         {newLines.map((l, i) => (
                           <div key={`new-${i}`} className={styles.aiDecisionTargetSituationAddedLine}>
-                            <span className={styles.aiDecisionTargetSituationAddedBullet}>+</span>
+                            <span className={styles.aiDecisionTargetSituationAddedBullet}>•</span>
                             {renderLine(l)}
                           </div>
                         ))}
@@ -1783,7 +1801,7 @@ function SubjectRow({
               onClick={() => { setEditStep(null); setShowValidation(false); }}
               title="Revenir à la proposition IA (abandonner les modifications en cours)"
             >
-              ✕ Annuler mes modifications
+              Annuler mes modifications
             </button>
           </div>
         );
@@ -1909,7 +1927,7 @@ function SubjectRow({
                     className={styles.clusterHint}
                     title={`${sameNewSectionCount} sujets seront regroupés dans la même nouvelle section "${newSectionName.trim()}" (dédupliqué au moment de l'import).`}
                   >
-                    📚 {sameNewSectionCount} sujets regroupés
+                    {sameNewSectionCount} sujets regroupés
                   </span>
                 )}
               </div>
@@ -2024,24 +2042,26 @@ function SubjectRow({
                 <div className={styles.situationPreview}>
                   <div className={styles.situationPreviewLabel}>
                     Aperçu du nouveau sujet qui sera créé
-                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · ⏳ IA en cours…</span>}
+                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · IA en cours…</span>}
                   </div>
                   <div className={styles.situationPreviewBody}>
                     <div className={styles.situationPreviewNewSubjectTitle}>
                       <strong>« {subject.title} »</strong>
                       <span className={styles.situationPreviewNewSubjectStatus}>
-                        · statut : {subject.status}
+                        {' · '}
+                        <StatusTag label={getStatusOption(subject.status).label} color={getStatusOption(subject.status).color} />
                       </span>
                       {subject.responsibility && (
                         <span className={styles.situationPreviewNewSubjectResp}>
-                          · resp : {subject.responsibility}
+                          {' · '}
+                          <span className={styles.responsibilityBadge}>{subject.responsibility}</span>
                         </span>
                       )}
                     </div>
                     <div className={styles.situationPreviewSep}>───── état de situation ─────</div>
                     {generatingAppend && lines.length === 0 ? (
                       <div className={styles.situationPreviewGeneratingBlock}>
-                        ⏳ L'IA compose l'état de situation à partir des extraits sources…
+                        L'IA compose l'état de situation à partir des extraits sources…
                       </div>
                     ) : lines.map((l, i) => (
                       <div key={`cs-${i}`} className={styles.situationPreviewNew}>{renderLine(l)}</div>
@@ -2081,7 +2101,7 @@ function SubjectRow({
                 <div className={styles.situationPreview}>
                   <div className={styles.situationPreviewLabel}>
                     Aperçu de la situation après import
-                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · ⏳ IA en cours…</span>}
+                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · IA en cours…</span>}
                   </div>
                   <div className={styles.situationPreviewBody}>
                     {existing.length > 4 && (
@@ -2097,7 +2117,7 @@ function SubjectRow({
                     <div className={styles.situationPreviewSep}>───── ajout ci-dessous ─────</div>
                     {generatingAppend ? (
                       <div className={styles.situationPreviewGeneratingBlock}>
-                        ⏳ L'IA analyse le sujet existant et adapte le texte d'ajout…
+                        L'IA analyse le sujet existant et adapte le texte d'ajout…
                       </div>
                     ) : newLines.map((l, i) => (
                       <div key={`new-${i}`} className={styles.situationPreviewNew}>{renderLine(l)}</div>
@@ -2151,7 +2171,7 @@ function SubjectRow({
               onClick={() => setEditStep(reviewLocked ? 'section' : 'review')}
               title="Ajuster la section / le sujet avant d'importer"
             >
-              ⚠ Je ne suis pas d'accord
+              Je ne suis pas d'accord
             </button>
             <button
               type="button"
@@ -2191,10 +2211,10 @@ function SubjectRow({
               }
             >
               {generatingAppend
-                ? '⏳ IA en train d\'adapter l\'ajout…'
+                ? 'IA en train d\'adapter l\'ajout…'
                 : isAdding
-                  ? '⏳ Import en cours…'
-                  : '✓ Importer et passer au suivant'}
+                  ? 'Import en cours…'
+                  : 'Importer et passer au suivant'}
             </button>
           </>
         ) : (
@@ -2263,11 +2283,11 @@ function SubjectRow({
                   }
                 >
                   {generatingAppend
-                    ? '⏳ IA en train d\'adapter l\'ajout…'
+                    ? 'IA en train d\'adapter l\'ajout…'
                     : isAdding
-                      ? '⏳ Import en cours…'
+                      ? 'Import en cours…'
                       : isLastStep
-                        ? '✓ Valider et importer'
+                        ? 'Valider et importer'
                         : `Valider et continuer →`}
                 </button>
               </>
@@ -2481,7 +2501,7 @@ function stanceLabel(stance: 'propose' | 'confirm' | 'complement' | 'contradict'
     case 'propose':    return 'Propose';
     case 'confirm':    return 'Confirme';
     case 'complement': return 'Complète';
-    case 'contradict': return '⚠️ Contredit';
+    case 'contradict': return 'Contredit';
   }
 }
 
@@ -2753,7 +2773,7 @@ function InlineNameEditor({
         disabled={loading}
         title="Proposer un nouveau nom avec l'IA"
       >
-        {loading ? '⏳' : '🤖'}
+        {loading ? '…' : 'IA'}
       </button>
       <button
         type="button"
@@ -2761,8 +2781,11 @@ function InlineNameEditor({
         onClick={() => onValidate(value)}
         disabled={loading || !value.trim()}
         title="Valider ce nom"
+        aria-label="Valider"
       >
-        ✓
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
       </button>
       <button
         type="button"
@@ -2770,8 +2793,12 @@ function InlineNameEditor({
         onClick={onCancel}
         disabled={loading}
         title="Annuler"
+        aria-label="Annuler"
       >
-        ✕
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
       </button>
     </span>
   );

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Modal, Button, Tabs, FormField } from '@boilerplate/shared/components';
+import { Modal, ModalBody, ModalActions, Button, Tabs, FormField } from '@boilerplate/shared/components';
 import { fetchJiraProjects, fetchJiraSprints } from '../../../delivery/services/api';
 import type { JiraProject, JiraSprint } from '../../../delivery/services/api';
 import { recordJiraProjectUsage, sortJiraProjectsByUsage } from '../../../delivery/services/jiraProjectUsage';
@@ -255,7 +255,8 @@ export function TicketCreateModal({
 
   return (
     <Modal title="Créer un élément lié" onClose={onClose} size="md">
-      <div className={styles.content}>
+      <ModalBody>
+        <div className={styles.content}>
         <Tabs tabs={tabs} value={tab} onChange={(v) => setTab(v as TargetService)} />
 
         {/* Jira tab */}
@@ -410,14 +411,14 @@ export function TicketCreateModal({
         </FormField>
 
         {error && <p className={styles.error}>{error}</p>}
-
-        <div className={styles.actions}>
-          <Button variant="secondary" onClick={onClose} disabled={creating}>Annuler</Button>
-          <Button variant="primary" onClick={handleCreate} disabled={!canCreate() || creating}>
-            {creating ? 'Création...' : 'Créer'}
-          </Button>
         </div>
-      </div>
+      </ModalBody>
+      <ModalActions>
+        <Button variant="secondary" onClick={onClose} disabled={creating}>Annuler</Button>
+        <Button variant="primary" onClick={handleCreate} disabled={!canCreate() || creating}>
+          {creating ? 'Création...' : 'Créer'}
+        </Button>
+      </ModalActions>
     </Modal>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Modal, ModalBody, Button } from '@boilerplate/shared/components';
 import {
   fetchJiraProjects,
   fetchJiraSprints,
@@ -187,13 +188,8 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
       : `Importer depuis Jira — Etape 2 : Tickets (${issues.length})`;
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.header}>
-          <h3 className={styles.title}>{title}</h3>
-          <button className={styles.closeBtn} onClick={onClose} type="button">&times;</button>
-        </div>
-
+    <Modal title={title} onClose={onClose} size="md">
+      <ModalBody>
         {/* Mode switcher — segmented control (Sprints | URL) */}
         <div className={styles.modeSwitcher}>
           <button
@@ -269,17 +265,12 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
             )}
 
             <div className={styles.footer}>
-              <button type="button" className={styles.secondaryBtn} onClick={onClose} disabled={urlCreating}>
+              <Button variant="secondary" type="button" onClick={onClose} disabled={urlCreating}>
                 Annuler
-              </button>
-              <button
-                type="button"
-                className={styles.primaryBtn}
-                disabled={!urlPreview || urlCreating}
-                onClick={handleUrlImport}
-              >
+              </Button>
+              <Button variant="primary" type="button" disabled={!urlPreview || urlCreating} onClick={handleUrlImport}>
                 {urlCreating ? 'Import…' : 'Importer ce ticket'}
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -377,32 +368,22 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
           <div className={styles.footer}>
             {step === 'sprints' ? (
               <>
-                <button className={styles.cancelBtn} onClick={onClose}>Annuler</button>
-                <button
-                  className={styles.primaryBtn}
-                  onClick={goToStep2}
-                  disabled={selectedSprintIds.size === 0 || loadingIssues}
-                >
+                <Button variant="secondary" onClick={onClose}>Annuler</Button>
+                <Button variant="primary" onClick={goToStep2} disabled={selectedSprintIds.size === 0 || loadingIssues}>
                   {loadingIssues ? 'Chargement...' : `Suivant (${selectedSprintIds.size} sprint(s))`}
-                </button>
+                </Button>
               </>
             ) : (
               <>
-                <button className={styles.cancelBtn} onClick={() => setStep('sprints')}>
-                  Retour
-                </button>
-                <button
-                  className={styles.primaryBtn}
-                  onClick={handleImport}
-                  disabled={selectedIssueIds.size === 0 || importing}
-                >
+                <Button variant="secondary" onClick={() => setStep('sprints')}>Retour</Button>
+                <Button variant="primary" onClick={handleImport} disabled={selectedIssueIds.size === 0 || importing}>
                   {importing ? 'Import en cours...' : `Importer (${selectedIssueIds.size})`}
-                </button>
+                </Button>
               </>
             )}
           </div>
         )}
-      </div>
-    </div>
+      </ModalBody>
+    </Modal>
   );
 }

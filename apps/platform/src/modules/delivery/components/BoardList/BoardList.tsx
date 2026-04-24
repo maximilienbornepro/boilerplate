@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ModuleHeader, Card, Modal, FormField, Button, ConfirmModal, ToastContainer, LoadingSpinner, ExpandableSection, SharingModal, VisibilityPicker } from '@boilerplate/shared/components';
+import { ModuleHeader, Card, Modal, ModalBody, ModalActions, FormField, Button, ConfirmModal, ToastContainer, LoadingSpinner, ExpandableSection, SharingModal, VisibilityPicker, EmptyState } from '@boilerplate/shared/components';
 import type { Visibility } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import { fetchBoards, createBoard, updateBoardApi, deleteBoardApi } from '../../services/api';
@@ -226,20 +226,22 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
         {loading ? (
           <LoadingSpinner message="Chargement..." />
         ) : boards.length === 0 ? (
-          <Card className="delivery-list-empty-card">
-            <div className="delivery-list-empty-content">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <EmptyState
+            icon={
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                 <line x1="3" y1="9" x2="21" y2="9" />
                 <line x1="9" y1="21" x2="9" y2="9" />
               </svg>
-              <p className="delivery-list-empty-title">Aucun board</p>
-              <p className="delivery-list-empty-hint">Créer votre premier board de livraison pour commencer</p>
+            }
+            title="Aucun board"
+            hint="Créer votre premier board de livraison pour commencer"
+            action={
               <Button variant="primary" onClick={() => setShowCreateForm(true)}>
                 + Nouveau board
               </Button>
-            </div>
-          </Card>
+            }
+          />
         ) : (
           <div className="delivery-list-items">
             {quarterGroups.map(([quarter, quarterBoards], index) => (
@@ -321,7 +323,7 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
 
       {showCreateForm && (
         <Modal title="Nouveau board" onClose={() => { setShowCreateForm(false); setNewName(''); setNewDescription(''); setNewVisibility('private'); setNewStartDateTouched(false); }}>
-          <div className="delivery-list-modal-body">
+          <ModalBody>
             <FormField label="Nom du board" required>
               <input
                 type="text"
@@ -383,21 +385,21 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
             <FormField label="Visibilité">
               <VisibilityPicker value={newVisibility} onChange={setNewVisibility} />
             </FormField>
-            <div className="delivery-list-modal-actions">
-              <Button variant="secondary" onClick={() => { setShowCreateForm(false); setNewName(''); setNewDescription(''); setNewVisibility('private'); setNewStartDateTouched(false); }}>
-                Annuler
-              </Button>
-              <Button variant="primary" onClick={handleCreate} disabled={!newName.trim() || creating}>
-                {creating ? 'Création...' : 'Créer'}
-              </Button>
-            </div>
-          </div>
+          </ModalBody>
+          <ModalActions>
+            <Button variant="secondary" onClick={() => { setShowCreateForm(false); setNewName(''); setNewDescription(''); setNewVisibility('private'); setNewStartDateTouched(false); }}>
+              Annuler
+            </Button>
+            <Button variant="primary" onClick={handleCreate} disabled={!newName.trim() || creating}>
+              {creating ? 'Création...' : 'Créer'}
+            </Button>
+          </ModalActions>
         </Modal>
       )}
 
       {editingBoard && (
         <Modal title="Modifier le board" onClose={() => setEditingBoard(null)}>
-          <div className="delivery-list-modal-body">
+          <ModalBody>
             <FormField label="Nom du board" required>
               <input
                 type="text"
@@ -415,15 +417,15 @@ export function BoardList({ onSelect, onNavigate: _onNavigate }: BoardListProps)
                 rows={2}
               />
             </FormField>
-            <div className="delivery-list-modal-actions">
-              <Button variant="secondary" onClick={() => setEditingBoard(null)}>
-                Annuler
-              </Button>
-              <Button variant="primary" onClick={handleEditSave} disabled={!editName.trim() || savingEdit}>
-                {savingEdit ? 'Modification...' : 'Modifier'}
-              </Button>
-            </div>
-          </div>
+          </ModalBody>
+          <ModalActions>
+            <Button variant="secondary" onClick={() => setEditingBoard(null)}>
+              Annuler
+            </Button>
+            <Button variant="primary" onClick={handleEditSave} disabled={!editName.trim() || savingEdit}>
+              {savingEdit ? 'Modification...' : 'Modifier'}
+            </Button>
+          </ModalActions>
         </Modal>
       )}
 

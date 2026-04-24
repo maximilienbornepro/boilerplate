@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Modal } from '@boilerplate/shared/components';
+import { Modal, ModalBody, ModalActions, FormField, Button } from '@boilerplate/shared/components';
 import type { Member, Leave, LeaveFormData, LeaveReason } from '../../types';
 import { LEAVE_REASONS } from '../../types';
 import { getDateRangeWarnings } from '../../utils/holidays';
@@ -56,11 +56,11 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
   const isEdit = !!leave;
 
   return (
-    <Modal title={isEdit ? 'Modifier le congé' : 'Poser un congé'} onClose={onClose} maxWidth={480}>
+    <Modal title={isEdit ? 'Modifier le congé' : 'Poser un congé'} onClose={onClose} size="md">
       <form onSubmit={handleSubmit} className={styles.form}>
+        <ModalBody>
         {isAdmin && (
-          <div className={styles.field}>
-            <label className={styles.label}>Membre</label>
+          <FormField label="Membre" required>
             <select
               className={styles.select}
               value={memberId}
@@ -71,12 +71,11 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
                 <option key={m.id} value={m.id}>{m.email}</option>
               ))}
             </select>
-          </div>
+          </FormField>
         )}
 
         <div className={styles.row}>
-          <div className={styles.field}>
-            <label className={styles.label}>Date de début</label>
+          <FormField label="Date de début" required>
             <input
               type="date"
               className={styles.input}
@@ -86,9 +85,8 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
               style={startDateTouched ? { color: 'var(--text-primary)' } : undefined}
               required
             />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label}>Date de fin</label>
+          </FormField>
+          <FormField label="Date de fin">
             <input
               type="date"
               className={styles.input}
@@ -99,11 +97,10 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
               min={startDate || undefined}
               style={endDateTouched ? { color: 'var(--text-primary)' } : undefined}
             />
-          </div>
+          </FormField>
         </div>
 
-        <div className={styles.field}>
-          <label className={styles.label}>Période</label>
+        <FormField label="Période">
           <select
             className={styles.select}
             value={period}
@@ -114,10 +111,9 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
             <option value="morning">Matin</option>
             <option value="afternoon">Après-midi</option>
           </select>
-        </div>
+        </FormField>
 
-        <div className={styles.field}>
-          <label className={styles.label}>Motif</label>
+        <FormField label="Motif">
           <select
             className={styles.select}
             value={reason}
@@ -128,7 +124,7 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
               <option key={opt.id} value={opt.id}>{opt.label}</option>
             ))}
           </select>
-        </div>
+        </FormField>
 
         {warnings.length > 0 && (
           <div className={styles.warnings}>
@@ -138,21 +134,20 @@ export function LeaveForm({ members, leave, currentUser, onSubmit, onDelete, onC
           </div>
         )}
 
-        <div className={styles.actions}>
+        </ModalBody>
+        <ModalActions>
           {isEdit && onDelete && (
-            <button type="button" className={styles.deleteBtn} onClick={onDelete}>
+            <Button variant="danger" type="button" onClick={onDelete}>
               Supprimer
-            </button>
+            </Button>
           )}
-          <div className={styles.rightActions}>
-            <button type="button" className={styles.cancelBtn} onClick={onClose}>
-              Annuler
-            </button>
-            <button type="submit" className={styles.submitBtn}>
-              {isEdit ? 'Modifier' : 'Ajouter'}
-            </button>
-          </div>
-        </div>
+          <Button variant="secondary" type="button" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button variant="primary" type="submit">
+            {isEdit ? 'Modifier' : 'Ajouter'}
+          </Button>
+        </ModalActions>
       </form>
     </Modal>
   );

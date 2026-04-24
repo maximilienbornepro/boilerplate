@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Modal, Button } from '@boilerplate/shared/components';
+import { Modal, ModalBody, ModalActions, Button } from '@boilerplate/shared/components';
 import styles from './EmailPreviewModal.module.css';
 
 const TEMPLATES = [
@@ -99,7 +99,7 @@ export function EmailPreviewModal({ documentId, subjectId, onClose }: Props) {
 
   return (
     <Modal title={subjectId ? 'Email — Sujet' : 'Email — Document complet'} onClose={onClose}>
-      <div className={styles.body}>
+      <ModalBody>
         {/* Controls row */}
         <div className={styles.controls}>
           <div className={styles.field}>
@@ -145,17 +145,16 @@ export function EmailPreviewModal({ documentId, subjectId, onClose }: Props) {
           )}
         </div>
 
-        {/* Actions */}
-        <div className={styles.footer}>
-          <Button variant="secondary" onClick={onClose}>Fermer</Button>
-          <Button variant="secondary" onClick={() => generateEmail(true)} disabled={loading || !selectedAI} title="Force la régénération via l'IA (consomme des credits)">
-            {loading ? 'Génération...' : '↻ Régénérer'}
-          </Button>
-          <Button variant="primary" onClick={handleCopy} disabled={!emailBody || loading}>
-            {copied ? 'Copié !' : 'Copier'}
-          </Button>
-        </div>
-      </div>
+      </ModalBody>
+      <ModalActions>
+        <Button variant="secondary" onClick={onClose}>Fermer</Button>
+        <Button variant="secondary" onClick={() => generateEmail(true)} disabled={loading || !selectedAI} title="Force la régénération via l'IA (consomme des credits)">
+          {loading ? 'Génération...' : '↻ Régénérer'}
+        </Button>
+        <Button variant="primary" onClick={handleCopy} disabled={!emailBody || loading}>
+          {copied ? 'Copié !' : 'Copier'}
+        </Button>
+      </ModalActions>
     </Modal>
   );
 }

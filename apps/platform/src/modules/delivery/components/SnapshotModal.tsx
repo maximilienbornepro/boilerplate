@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Modal, ModalBody, ModalActions, Button } from '@boilerplate/shared/components';
 import styles from './SnapshotModal.module.css';
 import {
   fetchSnapshots,
@@ -83,15 +84,8 @@ export function SnapshotModal({ incrementId, onRestore, onClose }: SnapshotModal
   };
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.header}>
-          <h3>Historique des versions</h3>
-          <button className={styles.closeBtn} onClick={onClose}>
-            x
-          </button>
-        </div>
-
+    <Modal title="Historique des versions" onClose={onClose} size="lg">
+      <ModalBody>
         <div className={styles.content}>
           {isLoading ? (
             <div className={styles.loading}>Chargement...</div>
@@ -149,29 +143,28 @@ export function SnapshotModal({ incrementId, onRestore, onClose }: SnapshotModal
             </div>
           )}
         </div>
-
-        <div className={styles.footer}>
-          <button className={styles.cancelBtn} onClick={onClose}>
-            Fermer
-          </button>
-          {selectedSnapshot && !showConfirm && (
-            <button className={styles.restoreBtn} onClick={() => setShowConfirm(true)} disabled={isRestoring}>
-              Restaurer cette version
-            </button>
-          )}
-          {showConfirm && (
-            <div className={styles.confirmGroup}>
-              <span className={styles.confirmText}>Confirmer la restauration?</span>
-              <button className={styles.cancelBtn} onClick={() => setShowConfirm(false)}>
-                Non
-              </button>
-              <button className={styles.confirmBtn} onClick={handleRestore} disabled={isRestoring}>
-                {isRestoring ? 'Restauration...' : 'Oui, restaurer'}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      </ModalBody>
+      <ModalActions>
+        {!showConfirm && (
+          <>
+            <Button variant="secondary" onClick={onClose}>Fermer</Button>
+            {selectedSnapshot && (
+              <Button variant="primary" onClick={() => setShowConfirm(true)} disabled={isRestoring}>
+                Restaurer cette version
+              </Button>
+            )}
+          </>
+        )}
+        {showConfirm && (
+          <div className={styles.confirmGroup}>
+            <span className={styles.confirmText}>Confirmer la restauration?</span>
+            <Button variant="secondary" onClick={() => setShowConfirm(false)}>Non</Button>
+            <Button variant="primary" onClick={handleRestore} disabled={isRestoring}>
+              {isRestoring ? 'Restauration...' : 'Oui, restaurer'}
+            </Button>
+          </div>
+        )}
+      </ModalActions>
+    </Modal>
   );
 }

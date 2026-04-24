@@ -40,9 +40,19 @@ triggers:
 
 Skill qui intercepte **toute demande impactant l'UX/UI** (creation, correction, mise a jour d'un module, d'une page, d'un composant, d'un style) et **contraint** Claude a :
 
-1. Consulter la carte d'usage reelle des composants avant de coder.
-2. Reutiliser un composant existant plutot que d'en reinventer un.
-3. Maintenir le design system synchronise avec la realite du code.
+1. **TOUJOURS penser d'abord au niveau `packages/shared/`** — premiere question sur TOUTE refacto UX : « est-ce que ca se resout au niveau shared ? ». Avant toute modif module-locale, verifier si le fix doit remonter dans le design system.
+2. Consulter la carte d'usage reelle des composants avant de coder.
+3. Reutiliser un composant existant plutot que d'en reinventer un.
+4. Maintenir le design system synchronise avec la realite du code.
+
+### Regle d'or — reflexe shared
+
+Face a toute demande UX/UI/refacto :
+
+- **Par defaut** : chercher une primitive dans `packages/shared/` (composant, hook, token, classe CSS). Si absente, la creer LA-BAS avant de toucher aux modules.
+- **Exception (a justifier)** : besoin strictement local a un module (ex. Gantt roadmap, Kanban delivery).
+- **Rejeter** le reflexe « je fais juste le fix dans ce module » : chaque patch local qui aurait pu etre shared cree du drift.
+- Si l'utilisateur signale « meme structure que les autres X » → JAMAIS copier des classes CSS module-locales ; creer la primitive shared (ex. `<ModalBody>`, `<ModalActions>`) et migrer tous les consumers.
 
 Perimetre de verite : `design-system.data.json` a la racine, genere par
 `npm run audit:components`. Scope audite : **Landing + Roadmap + Conges +
@@ -231,6 +241,46 @@ Si la modification est observable dans le navigateur :
 | Tokens CSS | `packages/shared/src/styles/theme.css` |
 | Couleurs de module | `APPS` dans `packages/shared/src/components/SharedNav/constants.ts` |
 | Couleurs de statut SuiviTess | `STATUS_OPTIONS` dans `apps/platform/src/modules/suivitess/types/index.ts` |
+
+---
+
+## REGLE DE DA — no emoji
+
+**Interdiction absolue** d'utiliser des emojis (🔴🟡🟢⚠️🔀📝🤖⏳✓✕… codepoints Unicode emoji) dans le rendu UI du boilerplate. La direction artistique est strictement textuelle + iconographique vectorielle (SVG).
+
+- INTERDIT : emojis dans les labels, badges, boutons, messages, statuts, titres.
+- ACCEPTE : SVG icons (feather-style, trait fin), symboles typographiques non-emoji (→ ← · —), texte court.
+- Si un composant existant contient encore des emojis, le flagger et les remplacer :
+  - « ✓ Valider » → SVG checkmark OU « Valider »
+  - « ⏳ Import en cours… » → « Import en cours… »
+  - « 🤖 IA » → « IA »
+  - « ⚠ Erreur » → « Erreur » (ou SVG alert)
+  - Status avec emoji en prefix (« 🔴 à faire ») → afficher uniquement `label` via `<StatusTag>`
+- Le skill doit inclure une recherche python regex `[\U0001F300-\U0001FAFF\u2600-\u27BF…]` sur les .tsx modifiés et refuser l'edit si un emoji visible est introduit.
+
+---
+
+## REGLE DE PROPAGATION — composants multi-modules
+
+Des qu'une modification est demandee sur un composant, verifier si ce
+composant est utilise dans plusieurs modules. Si oui, la modif doit
+s'appliquer au shared (ou promouvoir vers shared si local duplique), pas
+creer une variante isolee. **Aucun drift silencieux toleree**.
+
+Procedure :
+
+1. `grep -rln "<NomDuComposant" apps/platform/src/modules/` pour lister
+   tous les consumers.
+2. Si le composant vit dans `packages/shared/` : editer le shared une
+   seule fois, puis verifier visuellement CHAQUE consumer (landing,
+   conges, roadmap, delivery, suivitess).
+3. Si le composant est local mais repete dans >= 2 modules : proposer
+   la promotion avant toute modif ponctuelle.
+4. Si un module a un besoin qui casserait les autres avec la modif :
+   ajouter une prop au shared plutot que forker (ex. `variant`, `size`,
+   `mode`). Le shared doit rester la seule source.
+5. Dans la checklist du hook, mentionner explicitement les modules
+   impactes (« cette modif touche aussi X, Y, Z »).
 
 ---
 

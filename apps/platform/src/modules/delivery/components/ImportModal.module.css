@@ -9,4 +9,5 @@
 .connectorItem:hover { background: var(--bg-hover); border-color: var(--accent-primary); }
 .connectorIcon { width: 32px; height: 32px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; }
 .connectorIcon svg { width: 20px; height: 20px; }
+.bodyText { margin: 0 0 var(--spacing-lg); color: var(--text-muted); font-family: var(--font-family-mono); font-size: var(--font-size-sm); line-height: 1.5; }
 .connectorName { font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); color: var(--text-primary); font-family: var(--font-family-mono); }

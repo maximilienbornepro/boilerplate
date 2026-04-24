@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, Button, SharingModal } from '@boilerplate/shared/components';
+import { Card, Button, SharingModal, EmptyState } from '@boilerplate/shared/components';
 import type { Planning } from '../../types';
 import styles from './PlanningList.module.css';
 
@@ -24,21 +24,23 @@ export function PlanningList({
   return (
     <div className={styles.container}>
       {plannings.length === 0 ? (
-        <Card className={styles.emptyCard}>
-          <div className={styles.emptyContent}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <EmptyState
+          icon={
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
               <line x1="16" y1="2" x2="16" y2="6" />
               <line x1="8" y1="2" x2="8" y2="6" />
               <line x1="3" y1="10" x2="21" y2="10" />
             </svg>
-            <p className={styles.emptyTitle}>Aucune roadmap</p>
-            <p className={styles.emptyHint}>Créer votre première roadmap pour commencer</p>
+          }
+          title="Aucune roadmap"
+          hint="Créer votre première roadmap pour commencer"
+          action={
             <Button variant="primary" onClick={onAdd}>
               + Nouvelle roadmap
             </Button>
-          </div>
-        </Card>
+          }
+        />
       ) : (
         <div className={styles.list}>
           {plannings.map((p) => (

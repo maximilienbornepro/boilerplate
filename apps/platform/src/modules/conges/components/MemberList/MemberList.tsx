@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal } from '@boilerplate/shared/components';
+import { Modal, ModalBody, Button } from '@boilerplate/shared/components';
 import type { Member } from '../../types';
 import styles from './MemberList.module.css';
 
@@ -30,8 +30,9 @@ export function MemberList({ members, onUpdate, onClose }: MemberListProps) {
   };
 
   return (
-    <Modal title="Équipe" onClose={onClose} maxWidth={520}>
-      <div className={styles.content}>
+    <Modal title="Équipe" onClose={onClose} size="md">
+      <ModalBody>
+        <div className={styles.content}>
         <div className={styles.list}>
           {members.map((m) => (
             <div key={m.id} className={styles.item}>
@@ -53,8 +54,8 @@ export function MemberList({ members, onUpdate, onClose }: MemberListProps) {
                     ))}
                   </div>
                   <div className={styles.editActions}>
-                    <button className={styles.saveBtn} onClick={saveEdit}>Enregistrer</button>
-                    <button className={styles.cancelEditBtn} onClick={() => setEditingId(null)}>Annuler</button>
+                    <Button variant="primary" onClick={saveEdit}>Enregistrer</Button>
+                    <Button variant="secondary" onClick={() => setEditingId(null)}>Annuler</Button>
                   </div>
                 </div>
               ) : (
@@ -62,7 +63,7 @@ export function MemberList({ members, onUpdate, onClose }: MemberListProps) {
                   <span className={styles.dot} style={{ backgroundColor: m.color }} />
                   <span className={styles.name}>{m.email}</span>
                   <div className={styles.itemActions}>
-                    <button className={styles.editBtn} onClick={() => startEdit(m)}>Couleur</button>
+                    <Button variant="secondary" onClick={() => startEdit(m)}>Couleur</Button>
                   </div>
                 </div>
               )}
@@ -76,6 +77,7 @@ export function MemberList({ members, onUpdate, onClose }: MemberListProps) {
           Les membres sont gérés via les permissions dans l&apos;administration du gateway.
         </div>
       </div>
+      </ModalBody>
     </Modal>
   );
 }
