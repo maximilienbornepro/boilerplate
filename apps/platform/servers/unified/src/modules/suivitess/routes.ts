@@ -3214,8 +3214,13 @@ ${filteredContent.slice(0, 30000)}`,
 
   router.post('/transcription/apply-routing', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
-    const { sourceId, subjects } = (req.body || {}) as {
+    const { sourceId, logId, subjects } = (req.body || {}) as {
       sourceId?: string;
+      /** Back-reference to the `ai_analysis_logs.id` row that produced
+       *  the proposals the user is now committing. Stored on each
+       *  routing_memory entry so /ai-routing can render the per-import
+       *  AI-vs-user comparison. */
+      logId?: number | null;
       subjects?: Array<{
         title: string;
         situation?: string;
@@ -3237,6 +3242,10 @@ ${filteredContent.slice(0, 30000)}`,
         participants?: string[];
         aiProposedReviewId?: string | null;
         aiProposedReviewTitle?: string | null;
+        /** Index of this subject in the log's `proposals_json` array.
+         *  Lets /ai-routing join per-proposition decisions back to the
+         *  AI's original proposal at that index. */
+        proposalIndex?: number | null;
       }>;
     };
     if (!Array.isArray(subjects) || subjects.length === 0) {
@@ -3279,6 +3288,7 @@ ${filteredContent.slice(0, 30000)}`,
       targetSubjectAction: 'new-subject' | 'update-existing-subject';
       aiProposedDocumentId: string | null;
       aiProposedDocumentTitle: string | null;
+      proposalIndex: number | null;
     }> = [];
 
     for (const s of subjects) {
@@ -3345,6 +3355,7 @@ ${filteredContent.slice(0, 30000)}`,
                   targetSubjectAction: 'update-existing-subject',
                   aiProposedDocumentId: s.aiProposedReviewId ?? null,
                   aiProposedDocumentTitle: s.aiProposedReviewTitle ?? null,
+                  proposalIndex: s.proposalIndex ?? null,
                 });
               }
             } catch { /* memory is best-effort */ }
@@ -3459,6 +3470,7 @@ ${filteredContent.slice(0, 30000)}`,
         memoryEntries.push({
           subjectTitle: title,
           subjectSituationExcerpt: (s.situation ?? '').slice(0, 300),
+          proposalIndex: s.proposalIndex ?? null,
           rawQuotes: s.rawQuotes ?? [],
           entities: s.entities ?? [],
           participants: s.participants ?? [],
@@ -3510,6 +3522,8 @@ ${filteredContent.slice(0, 30000)}`,
               targetSubjectAction: entry.targetSubjectAction,
               aiProposedDocumentId: entry.aiProposedDocumentId,
               aiProposedDocumentTitle: entry.aiProposedDocumentTitle,
+              logId: logId ?? null,
+              proposalIndex: entry.proposalIndex,
             });
           }
           // eslint-disable-next-line no-console

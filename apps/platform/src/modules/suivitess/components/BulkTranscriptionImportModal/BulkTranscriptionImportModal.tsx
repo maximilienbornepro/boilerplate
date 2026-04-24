@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, type ReactNode, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode, type CSSProperties } from 'react';
 import { Modal, Button, LoadingSpinner, StatusTag } from '@boilerplate/shared/components';
 import { SkillButton } from '../SkillButton/SkillButton';
 import { getStatusOption } from '../../types';
@@ -71,6 +71,11 @@ interface Row {
    *  on the subject pill). Null/undefined means "use subject.title
    *  as-is" (the AI's extracted title). */
   overrideSubjectTitle?: string | null;
+  /** Position of the original AI proposal in `ai_analysis_logs.proposals_json[]`.
+   *  Stable across edits — the user can tweak every field above but
+   *  the index always points back at what the AI initially produced.
+   *  Used by /ai-routing to render the per-import comparison table. */
+  originalIndex?: number | null;
 }
 
 export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId, scopedDocumentTitle }: Props) {
@@ -261,6 +266,31 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
     setRows(prev => prev.filter(r => r.key !== rowKey));
   };
 
+  /** Record a thumbs-down on the underlying ai_analysis_logs row when
+   *  the user clicks "⚠ Je ne suis pas d'accord". One score is posted
+   *  PER disagreement so the /ai-logs count reflects the real volume
+   *  (a 10-proposal log the user disagrees with 3 times shows "3
+   *  désaccords"). Dedup by (logId, subjectTitle) so repeated clicks
+   *  on the same proposition don't inflate the counter. Fire-and-
+   *  forget — never blocks the UI, never throws on network errors. */
+  const disagreedKeysRef = useRef<Set<string>>(new Set());
+  const handleDisagreeRow = useCallback((subjectTitle: string) => {
+    if (lastLogId == null) return;
+    const key = `${lastLogId}:${subjectTitle}`;
+    if (disagreedKeysRef.current.has(key)) return;
+    disagreedKeysRef.current.add(key);
+    fetch(`/ai-skills/api/logs/${lastLogId}/scores`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'human.thumbs',
+        value: -1,
+        rationale: `Désaccord sur « ${subjectTitle} » (import Suivitess bulk)`,
+      }),
+    }).catch(err => console.warn('[BulkImport] flag disagree failed:', err));
+  }, [lastLogId]);
+
   /** Jump navigation used by the progress dots — picks an arbitrary
    *  pending row as the next focus without committing or skipping
    *  anything. */
@@ -384,6 +414,11 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
         // Section mode mirrors the AI's decision : existing if it found a
         // matching section, 'new' if it proposed a fresh section name.
         sectionMode: matchedExistingSection ? 'existing' : 'new',
+        // Keep the original position in the analysis log's proposals
+        // array — survives row reordering / filtering. The /ai-routing
+        // page joins decisions back to the AI's original proposal via
+        // (log_id, proposal_index).
+        originalIndex: i,
       };
     });
   }
@@ -511,6 +546,11 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
       participants: r.subject.sourceParticipants,
       aiProposedReviewId: r.subject.aiProposedReviewId ?? null,
       aiProposedReviewTitle: r.subject.aiProposedReviewTitle ?? null,
+      // Index of this subject in the analysis log's `proposals_json`.
+      // Set when the row was built from the pipeline output (see
+      // `rowFromAnalyzedSubject`) — null for ad-hoc rows created in
+      // the wizard. Feeds the /ai-routing comparison page.
+      proposalIndex: r.originalIndex ?? null,
     };
   };
 
@@ -586,7 +626,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
     try {
       const sourceId = primaryItem?.id
         ?? (replayedFromLogId != null ? `replay:${replayedFromLogId}` : 'manual');
-      const res = await api.applyRouting(sourceId, [buildSubjectPayload(row)]);
+      const res = await api.applyRouting(sourceId, [buildSubjectPayload(row)], lastLogId);
 
       // Accumulate the result. Touched reviews = freshly-created reviews
       // + reviews that received new subjects + (for updates) the row's
@@ -645,7 +685,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
       // runs without marking a real source as imported again.
       const sourceId = primaryItem?.id
         ?? (replayedFromLogId != null ? `replay:${replayedFromLogId}` : 'manual');
-      const res = await api.applyRouting(sourceId, subjectsToApply);
+      const res = await api.applyRouting(sourceId, subjectsToApply, lastLogId);
       setApplyResult(res);
       setPhase('done');
 
@@ -1008,6 +1048,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                         onRemove={isCopyRow ? () => removeRow(r.key) : undefined}
                         onImmediateAdd={() => handleImmediateAdd(r.key)}
                         onSkip={() => handleSkipRow(r.key)}
+                        onDisagree={title => handleDisagreeRow(title)}
                         reviewLocked={!!scopedDocumentId}
                         isAdding={addingRowKey === r.key}
                         addDisabled={!!addingRowKey && addingRowKey !== r.key}
@@ -1071,7 +1112,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
 
 function SubjectRow({
   row, consolidation, reviews, onUpdate, onRenameNewSection, id, nextRowKey,
-  onDuplicate, onRemove, onImmediateAdd, onSkip, isAdding, addDisabled,
+  onDuplicate, onRemove, onImmediateAdd, onSkip, onDisagree, isAdding, addDisabled,
   isMultiPlacement, sameNewSectionCount, reviewLocked,
 }: {
   row: Row;
@@ -1099,6 +1140,13 @@ function SubjectRow({
    *  `skippedCount` so the progress indicator reflects "ignored" vs
    *  "imported" accurately. */
   onSkip: () => void;
+  /** Fired when the user clicks "⚠ Je ne suis pas d'accord". The parent
+   *  persists a human.thumbs=-1 score on the underlying `ai_analysis_logs`
+   *  row so the log surfaces as flagged on the /ai-logs page. One score
+   *  is written PER proposition the user disagrees with (not once per
+   *  log) so the flag count reflects the real volume of disagreements.
+   *  The `subjectTitle` is embedded in the score's rationale for audit. */
+  onDisagree?: (subjectTitle: string) => void;
   /** True when this row is currently being committed. Drives the
    *  "⏳ Ajout…" spinner on the button. */
   isAdding: boolean;
@@ -2168,7 +2216,16 @@ function SubjectRow({
               type="button"
               className={`${styles.rowActionBtn} ${styles.rowActionBtnDisagree}`}
               disabled={generatingAppend}
-              onClick={() => setEditStep(reviewLocked ? 'section' : 'review')}
+              onClick={() => {
+                // Flag the underlying analysis log so it surfaces as
+                // orange on /ai-logs before opening the routing wizard.
+                // Fire-and-forget — never blocks the user's flow. Pass
+                // the proposition title so the backend score's rationale
+                // carries context (user can see on /ai-logs which
+                // propositions within a multi-proposal log got flagged).
+                onDisagree?.(subject.title);
+                setEditStep(reviewLocked ? 'section' : 'review');
+              }}
               title="Ajuster la section / le sujet avant d'importer"
             >
               Je ne suis pas d'accord

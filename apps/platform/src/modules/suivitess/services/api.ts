@@ -678,6 +678,10 @@ export interface ApplyRoutingSubject {
    *  track override rates in the memory for observability. */
   aiProposedReviewId?: string | null;
   aiProposedReviewTitle?: string | null;
+  /** Index of this subject in the analysis log's `proposals_json` array.
+   *  Lets the /ai-routing page join routing decisions to the AI's
+   *  original proposal at that index. */
+  proposalIndex?: number | null;
 }
 
 export interface ApplyRoutingResponse {
@@ -691,12 +695,13 @@ export interface ApplyRoutingResponse {
 export async function applyRouting(
   sourceId: string,
   subjects: ApplyRoutingSubject[],
+  logId?: number | null,
 ): Promise<ApplyRoutingResponse> {
   const response = await fetch(`${API_BASE}/transcription/apply-routing`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ sourceId, subjects }),
+    body: JSON.stringify({ sourceId, subjects, logId: logId ?? null }),
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));

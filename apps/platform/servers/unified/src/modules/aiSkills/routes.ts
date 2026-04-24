@@ -42,6 +42,7 @@ const RESERVED_SLUG_NAMES = new Set([
   'playground',
   'logs',
   'skills',
+  'routing-comparisons',
 ]);
 
 export function createRoutes(): Router {
@@ -151,12 +152,17 @@ export function createRoutes(): Router {
 
   // ========= Analysis logs (historique des appels IA) =========
 
-  // GET /ai-skills/api/logs — paginated list
+  // GET /ai-skills/api/logs — paginated list with optional filters.
+  //   ?skill=<slug>       — restrict to one skill
+  //   ?flagged=true        — only logs with a thumbs-down (human.thumbs < 0)
+  //   ?errored=true        — only logs whose run ended with an error
   router.get('/logs/list', asyncHandler(async (req, res) => {
     const limit = Math.min(parseInt(String(req.query.limit ?? '50')) || 50, 200);
     const offset = Math.max(parseInt(String(req.query.offset ?? '0')) || 0, 0);
     const skillSlug = req.query.skill ? String(req.query.skill) : undefined;
-    const rows = await listAnalysisLogs({ limit, offset, skillSlug });
+    const flagged = req.query.flagged === 'true';
+    const errored = req.query.errored === 'true';
+    const rows = await listAnalysisLogs({ limit, offset, skillSlug, flagged, errored });
     res.json(rows);
   }));
 
@@ -179,6 +185,45 @@ export function createRoutes(): Router {
     const row = await getAnalysisLog(id);
     if (!row) { res.status(404).json({ error: 'Log introuvable' }); return; }
     res.json(row);
+  }));
+
+  // GET /ai-skills/api/routing-comparisons — sidebar feed for the
+  // dedicated /ai-routing page. Returns the most recent imports that
+  // have AT LEAST ONE persisted user decision in
+  // `suivitess_routing_memory` (i.e. the user committed something on
+  // that log). Legacy imports with no log_id linkage are excluded.
+  router.get('/routing-comparisons', asyncHandler(async (_req, res) => {
+    const { listComparableLogs } = await import('./routingComparisonService.js');
+    const rows = await listComparableLogs();
+    res.json(rows);
+  }));
+
+  // GET /ai-skills/api/logs/:id/routing-comparison
+  //
+  // Builds the per-import three-column comparison shown on /ai-routing:
+  //   (1) what the AI proposed for each subject (from proposals_json),
+  //   (2) what the user actually committed (from suivitess_routing_memory
+  //       joined on log_id + proposal_index),
+  //   (3) the top-K similar past decisions the RAG would have injected
+  //       (via routingMemoryService.retrieveSimilar) — shows whether the
+  //       system is already learning from past corrections.
+  //
+  // Only returns rows that have EITHER an AI proposal OR a user decision
+  // — legacy logs with no persisted decisions will show AI-only rows.
+  router.get('/logs/:id/routing-comparison', asyncHandler(async (req, res) => {
+    const id = parseInt(String(req.params.id));
+    if (!Number.isFinite(id)) { res.status(400).json({ error: 'id invalide' }); return; }
+
+    const log = await getAnalysisLog(id);
+    if (!log) { res.status(404).json({ error: 'Log introuvable' }); return; }
+
+    const { buildRoutingComparison } = await import('./routingComparisonService.js');
+    const comparison = await buildRoutingComparison({
+      logId: id,
+      userId: req.user!.id,
+      log,
+    });
+    res.json(comparison);
   }));
 
   // POST /ai-skills/api/logs/:id/replay

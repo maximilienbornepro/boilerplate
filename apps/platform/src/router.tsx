@@ -14,6 +14,7 @@ const DeliveryApp = lazy(() => import('./modules/delivery/App'));
 const MonCvApp = lazy(() => import('./modules/mon-cv/App'));
 const RagApp = lazy(() => import('./modules/rag/App'));
 const AiLogsApp = lazy(() => import('./modules/ai-logs/App'));
+const AiRoutingApp = lazy(() => import('./modules/ai-routing/App'));
 const AiEvalsApp = lazy(() => import('./modules/ai-evals/App'));
 const AiPlaygroundApp = lazy(() => import('./modules/ai-playground/App'));
 const PromptLogsApp = lazy(() => import('./modules/prompt-logs/App'));
@@ -52,6 +53,7 @@ function adminDrawerLinks(user?: User | null) {
   return user?.isAdmin
     ? [
         { label: 'Logs IA',          path: '/ai-logs',         color: '#14b8a6' }, // teal
+        { label: 'Routing IA',       path: '/ai-routing',      color: '#0ea5e9' }, // sky
         { label: 'Évaluations IA',   path: '/ai-evals',        color: '#f43f5e' }, // rose
         { label: 'Playground IA',    path: '/ai-playground',   color: '#a855f7' }, // purple
         { label: 'Logs Prompts',     path: '/prompt-logs',     color: '#eab308' }, // amber
@@ -218,6 +220,22 @@ export function AppRouter({ onNavigate, user, onLogout, embedMode, embedId }: Ap
         element={
           <SuspenseWrapper>
             <AiLogsApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/ai-routing"
+        element={
+          <SuspenseWrapper>
+            <AiRoutingApp onNavigate={onNavigate} />
+          </SuspenseWrapper>
+        }
+      />
+      <Route
+        path="/ai-routing/:logId"
+        element={
+          <SuspenseWrapper>
+            <AiRoutingApp onNavigate={onNavigate} />
           </SuspenseWrapper>
         }
       />

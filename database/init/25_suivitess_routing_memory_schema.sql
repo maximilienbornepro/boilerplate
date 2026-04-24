@@ -36,8 +36,18 @@ CREATE TABLE IF NOT EXISTS suivitess_routing_memory (
   ai_proposed_document_title TEXT,
   user_overrode_ai BOOLEAN DEFAULT FALSE,
 
+  -- Back-reference to the analysis log that produced the original proposal.
+  -- Lets us render a per-import comparison table (AI proposal vs user
+  -- decision vs similar past RAG retrievals) on the /ai-routing page.
+  -- Nullable — populated only for decisions taken after the feature shipped.
+  log_id INTEGER,
+  proposal_index INTEGER,
+
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_routing_memory_log_id
+  ON suivitess_routing_memory (log_id, proposal_index);
 
 -- Hot-path index : retrieve user's recent decisions first.
 CREATE INDEX IF NOT EXISTS idx_routing_memory_user_created

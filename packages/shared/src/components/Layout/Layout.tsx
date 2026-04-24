@@ -55,6 +55,7 @@ export function Layout({
   const extraDrawerLinks = user?.isAdmin
     ? [
         { label: 'Logs IA',          path: '/ai-logs',         color: '#14b8a6' }, // teal
+        { label: 'Routing IA',       path: '/ai-routing',      color: '#0ea5e9' }, // sky
         { label: 'Évaluations IA',   path: '/ai-evals',        color: '#f43f5e' }, // rose
         { label: 'Playground IA',    path: '/ai-playground',   color: '#a855f7' }, // purple
         { label: 'Logs Prompts',     path: '/prompt-logs',     color: '#eab308' }, // amber

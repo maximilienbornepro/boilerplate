@@ -30,6 +30,16 @@ interface LogListItem {
   cost_usd: string | null;
   skill_version_hash: string | null;
   parent_log_id: number | null;
+  /** True when at least one user has recorded a thumbs-down score on
+   *  this log — typically fired from the Suivitess bulk-import "Je ne
+   *  suis pas d'accord" button. Drives the orange row tint + "Flaggés"
+   *  filter below. */
+  flagged: boolean;
+  /** How many propositions within this log the user has flagged. One
+   *  log can accumulate several thumbs-downs (one per disagreed-with
+   *  proposition in a multi-proposal analysis), so the UI shows
+   *  "⚠ 3 désaccords" instead of a generic "flaggé". */
+  disagree_count: number;
 }
 
 interface LogDetail extends LogListItem {
@@ -87,6 +97,8 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [filterSkill, setFilterSkill] = useState<string>('');
+  const [filterFlagged, setFilterFlagged] = useState(false);
+  const [filterErrored, setFilterErrored] = useState(false);
   // Registry of skill metadata (slug → human name) loaded once on mount.
   // Used to render the skill's readable name in the log list + detail.
   const [skillsMeta, setSkillsMeta] = useState<Record<string, { name: string; description: string }>>({});
@@ -123,10 +135,12 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
     params.set('limit', String(PAGE_SIZE));
     params.set('offset', String(offset));
     if (filterSkill) params.set('skill', filterSkill);
+    if (filterFlagged) params.set('flagged', 'true');
+    if (filterErrored) params.set('errored', 'true');
     const res = await fetch(`/ai-skills/api/logs/list?${params.toString()}`, { credentials: 'include' });
     if (!res.ok) throw new Error('Chargement impossible');
     return res.json();
-  }, [filterSkill]);
+  }, [filterSkill, filterFlagged, filterErrored]);
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
@@ -340,6 +354,29 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
             </div>
           )}
 
+          {/* Status filters — toggle flagged-only / errored-only narrow
+              views. Applied server-side via ?flagged=true / ?errored=true
+              so pagination stays consistent. */}
+          <div className={styles.filterRow}>
+            <button
+              className={`${styles.filterPill} ${filterFlagged ? styles.filterPillActive : ''}`}
+              onClick={() => setFilterFlagged(v => !v)}
+              title="N'afficher que les logs pour lesquels un utilisateur a cliqué 'Je ne suis pas d'accord' (pouce rouge)"
+              style={filterFlagged ? { borderColor: '#f59e0b', color: '#f59e0b' } : undefined}
+            >
+              ⚠ Flaggés
+            </button>
+            <button
+              className={`${styles.filterPill} ${filterErrored ? styles.filterPillActive : ''}`}
+              onClick={() => setFilterErrored(v => !v)}
+              title="N'afficher que les logs qui ont terminé en erreur"
+              style={filterErrored ? { borderColor: '#f44336', color: '#f44336' } : undefined}
+            >
+              × Erreurs
+            </button>
+          </div>
+
+
           {loadingList ? (
             <LoadingSpinner message="Chargement…" />
           ) : logs.length === 0 ? (
@@ -353,11 +390,22 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
                     <button
                       className={`${styles.listItem} ${active ? styles.listItemActive : ''}`}
                       onClick={() => go(`/ai-logs/${l.id}`)}
-                      style={l.error ? {
-                        borderLeft: '3px solid var(--error, #f44336)',
-                        background: 'rgba(244,67,54,0.08)',
-                      } : undefined}
-                      title={l.error ? `Erreur : ${l.error.slice(0, 200)}` : undefined}
+                      style={
+                        // Error wins over flagged — a failed run is a
+                        // higher-severity state than "user disagreed".
+                        l.error ? {
+                          borderLeft: '3px solid var(--error, #f44336)',
+                          background: 'rgba(244,67,54,0.08)',
+                        } : l.flagged ? {
+                          borderLeft: '3px solid #f59e0b',
+                          background: 'rgba(245,158,11,0.10)',
+                        } : undefined
+                      }
+                      title={
+                        l.error ? `Erreur : ${l.error.slice(0, 200)}`
+                        : l.disagree_count > 0 ? `${l.disagree_count} proposition${l.disagree_count > 1 ? 's' : ''} marquée${l.disagree_count > 1 ? 's' : ''} « Je ne suis pas d'accord »`
+                        : undefined
+                      }
                     >
                       <div className={styles.listItemTop}>
                         <span className={styles.listItemId}>#{l.id}</span>
@@ -387,6 +435,11 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
                         <span>{formatDate(l.created_at)}</span>
                         {l.error ? (
                           <span className={styles.listItemError}>× erreur</span>
+                        ) : l.disagree_count > 0 ? (
+                          <span style={{ color: '#f59e0b', fontWeight: 600 }}>
+                            ⚠ {l.disagree_count} désaccord{l.disagree_count > 1 ? 's' : ''}
+                            {' / '}{l.proposals_count} prop.
+                          </span>
                         ) : (
                           <span className={styles.listItemOk}>{l.proposals_count} prop.</span>
                         )}

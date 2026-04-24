@@ -36,6 +36,23 @@ export async function initRoutingMemory(): Promise<void> {
     embeddingDim = 1536; // safe fallback
   }
 
+  // Back-reference to the analysis log + proposal index. Added here (vs
+  // in the base schema migration) so existing deployments pick it up on
+  // next boot without a manual migration. Indexed for the comparison
+  // page join on /ai-logs/:id/routing-comparison.
+  try {
+    await pool.query(`
+      ALTER TABLE suivitess_routing_memory
+        ADD COLUMN IF NOT EXISTS log_id INTEGER,
+        ADD COLUMN IF NOT EXISTS proposal_index INTEGER;
+      CREATE INDEX IF NOT EXISTS idx_routing_memory_log_id
+        ON suivitess_routing_memory (log_id, proposal_index);
+    `);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[routingMemory] log_id migration failed:', err);
+  }
+
   // Add the embedding column dynamically — same pattern as rag/dbService.
   try {
     await pool.query('CREATE EXTENSION IF NOT EXISTS vector');
@@ -127,6 +144,13 @@ export async function storeDecision(params: {
   targetSubjectAction: 'new-subject' | 'update-existing-subject';
   aiProposedDocumentId?: string | null;
   aiProposedDocumentTitle?: string | null;
+  /** Back-reference to the `ai_analysis_logs.id` that produced the
+   *  original proposal. Populated by /apply-routing so the comparison
+   *  page can join routing decisions to their source import. */
+  logId?: number | null;
+  /** Index of this decision in the log's `proposals_json` array. Lets
+   *  us render per-proposition comparison rows in /ai-routing. */
+  proposalIndex?: number | null;
 }): Promise<string | null> {
   if (!pool) return null;
   if (!pgvectorReady) return null;
@@ -150,8 +174,9 @@ export async function storeDecision(params: {
          target_document_id, target_document_title,
          target_section_id, target_section_name, target_subject_action,
          ai_proposed_document_id, ai_proposed_document_title, user_overrode_ai,
+         log_id, proposal_index,
          embedding
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING id`,
       [
         params.userId,
@@ -168,6 +193,8 @@ export async function storeDecision(params: {
         params.aiProposedDocumentId ?? null,
         params.aiProposedDocumentTitle ?? null,
         userOverrodeAi,
+        params.logId ?? null,
+        params.proposalIndex ?? null,
         toPgVectorLiteral(embedding),
       ],
     );

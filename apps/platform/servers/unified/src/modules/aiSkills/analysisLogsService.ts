@@ -156,27 +156,78 @@ export async function logAnalysis(input: LogAnalysisInput): Promise<number | nul
   }
 }
 
+/** Shape returned by `listAnalysisLogs` — same as the stored row plus
+ *  a denormalised disagreement count computed from the scoring table.
+ *  A log accumulates ONE thumbs-down per proposition the user disagrees
+ *  with (Suivitess bulk-import "Je ne suis pas d'accord"), so a
+ *  10-proposal log with 3 flagged propositions surfaces as
+ *  `disagree_count = 3`. `flagged` is the derived convenience flag
+ *  (`disagree_count > 0`) so the frontend can check either. */
+export interface AnalysisLogListItem {
+  id: number;
+  user_id: number | null;
+  user_email: string | null;
+  skill_slug: string;
+  source_kind: string | null;
+  source_title: string | null;
+  document_id: string | null;
+  proposals_count: number;
+  duration_ms: number | null;
+  error: string | null;
+  created_at: string;
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_usd: string | null;
+  skill_version_hash: string | null;
+  parent_log_id: number | null;
+  flagged: boolean;
+  disagree_count: number;
+}
+
 export async function listAnalysisLogs(options: {
   limit?: number;
   offset?: number;
   skillSlug?: string;
   userId?: number;
-} = {}): Promise<Array<Pick<AnalysisLogRow, 'id' | 'user_id' | 'user_email' | 'skill_slug' | 'source_kind' | 'source_title' | 'document_id' | 'proposals_count' | 'duration_ms' | 'error' | 'created_at' | 'model' | 'input_tokens' | 'output_tokens' | 'cost_usd' | 'skill_version_hash' | 'parent_log_id'>>> {
+  /** Return only logs with at least one thumbs-down score. */
+  flagged?: boolean;
+  /** Return only logs that ended with an error. */
+  errored?: boolean;
+} = {}): Promise<AnalysisLogListItem[]> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
   const filters: string[] = [];
   const values: unknown[] = [];
-  if (options.skillSlug) { values.push(options.skillSlug); filters.push(`skill_slug = $${values.length}`); }
-  if (options.userId) { values.push(options.userId); filters.push(`user_id = $${values.length}`); }
+  if (options.skillSlug) { values.push(options.skillSlug); filters.push(`l.skill_slug = $${values.length}`); }
+  if (options.userId) { values.push(options.userId); filters.push(`l.user_id = $${values.length}`); }
+  if (options.errored) { filters.push(`l.error IS NOT NULL`); }
+  // `flagged` / `disagree_count` come from a correlated subquery on
+  // the scores table: each proposition the user disagrees with adds
+  // one thumbs-down row (score_name='human.thumbs', value<0). We
+  // surface the count (not just the boolean) so /ai-logs can show
+  // "⚠ 3 désaccords" on a log where the user flagged 3 propositions.
+  if (options.flagged) {
+    filters.push(`(SELECT COUNT(*) FROM ai_analysis_scores s
+      WHERE s.log_id = l.id AND s.score_name = 'human.thumbs' AND s.score_value < 0) > 0`);
+  }
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
   values.push(limit); values.push(offset);
-  const { rows } = await pool.query(
-    `SELECT id, user_id, user_email, skill_slug, source_kind, source_title,
-            document_id, proposals_count, duration_ms, error, created_at,
-            model, input_tokens, output_tokens, cost_usd, skill_version_hash, parent_log_id
-       FROM ai_analysis_logs
+  const { rows } = await pool.query<AnalysisLogListItem>(
+    `SELECT l.id, l.user_id, l.user_email, l.skill_slug, l.source_kind, l.source_title,
+            l.document_id, l.proposals_count, l.duration_ms, l.error, l.created_at,
+            l.model, l.input_tokens, l.output_tokens, l.cost_usd, l.skill_version_hash, l.parent_log_id,
+            COALESCE((
+              SELECT COUNT(*)::int FROM ai_analysis_scores s
+              WHERE s.log_id = l.id AND s.score_name = 'human.thumbs' AND s.score_value < 0
+            ), 0) AS disagree_count,
+            COALESCE((
+              SELECT COUNT(*) > 0 FROM ai_analysis_scores s
+              WHERE s.log_id = l.id AND s.score_name = 'human.thumbs' AND s.score_value < 0
+            ), false) AS flagged
+       FROM ai_analysis_logs l
        ${where}
-       ORDER BY created_at DESC
+       ORDER BY l.created_at DESC
        LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values,
   );
