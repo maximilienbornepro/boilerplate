@@ -101,6 +101,23 @@ export type { EmptyStateProps } from './EmptyState/EmptyState.js';
 export { StatusTag } from './StatusTag/StatusTag.js';
 export type { StatusTagProps } from './StatusTag/StatusTag.js';
 
+// AiReviewWizard — "AI proposes, user validates" single-tile wizard
+// with inline editable slots + commit/skip/disagree actions. Consumer
+// brings a list of `ReviewableDecision` + three handlers; the wizard
+// owns pagination, progress dots, and the commit spinner.
+// See: packages/shared/src/components/AiReviewWizard/README.md
+export { AiReviewWizard, DecisionCard, InlineSlotDropdown } from './AiReviewWizard/index.js';
+export { flagDisagreement, createDisagreeHandler } from './AiReviewWizard/index.js';
+export type {
+  ReviewableDecision,
+  EditableSlot,
+  StatementLine,
+  WizardConfig,
+  WizardLabels,
+  DecisionCardProps,
+  FlagOptions,
+} from './AiReviewWizard/index.js';
+
 // Sharing
 export { SharingModal } from './SharingModal/SharingModal.js';
 export type { SharingModalProps, SharingConfig } from './SharingModal/SharingModal.js';
