@@ -433,38 +433,34 @@ function JiraOAuthTab({ onChanged }: { onChanged: () => void }) {
       {error && <div className="connectors-error">{error}</div>}
 
       {status?.connected ? (
+        // Simplified connected state — the card header already says
+        // "Connecté" via its status pill, so the body just shows the
+        // site URL (if any) and the destructive action. Dropped the
+        // verbose "Compte connecté" header, "Connecté le {date}" line,
+        // and the labels — they were noise on a 2-col grid.
         <div className="connector-oauth-status">
-          <div className="connector-oauth-info">
-            <div className="connector-oauth-connected">
-              <span className="connector-status-dot active" />
-              Compte connecté
-            </div>
-            {status.siteUrl && (
-              <div className="connector-oauth-detail">
-                <strong>Site</strong>
-                <a href={status.siteUrl} target="_blank" rel="noopener noreferrer">{status.siteUrl}</a>
-              </div>
-            )}
-            {status.connectedAt && (
-              <div className="connector-oauth-detail">
-                <strong>Connecté le</strong>
-                <span>{new Date(status.connectedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-              </div>
-            )}
-            {status.isExpired && (
-              <div className="connector-oauth-detail warning">
-                Session expirée — elle sera renouvelée automatiquement au prochain usage.
-              </div>
-            )}
-          </div>
-
-          <div className="connector-actions">
+          {status.siteUrl && (
+            <a
+              href={status.siteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--accent-primary)' }}
+            >
+              {status.siteUrl}
+            </a>
+          )}
+          {status.isExpired && (
+            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-warning, #f59e0b)', margin: '4px 0 0' }}>
+              Session expirée — renouvelée automatiquement au prochain usage.
+            </p>
+          )}
+          <div className="connector-actions" style={{ marginTop: 'var(--spacing-sm)' }}>
             <button
               className="connector-btn danger"
               onClick={handleDisconnect}
               disabled={disconnecting}
             >
-              {disconnecting ? 'Déconnexion...' : 'Se déconnecter'}
+              {disconnecting ? 'Déconnexion…' : 'Se déconnecter'}
             </button>
           </div>
         </div>
