@@ -21,8 +21,6 @@ import type { SyncMetaResponse } from '../../services/api';
    fetches.
    ═══════════════════════════════════════════════════════════════════ */
 
-const REOPEN_FLAG_KEY = 'suivitess:bulk-import-reopen';
-
 const FATHOM_SERVICE = ALL_SERVICES.find(s => s.id === 'fathom')!;
 const OUTLOOK_SERVICE = ALL_SERVICES.find(s => s.id === 'outlook')!;
 const GMAIL_SERVICE = ALL_SERVICES.find(s => s.id === 'gmail')!;
@@ -33,19 +31,6 @@ interface Props {
   syncMeta: SyncMetaResponse | null;
   /** Triggers a fresh syncMeta + sources reload. */
   onRefresh: () => void;
-}
-
-/** Sets the one-shot reopen flag in localStorage so the suivitess
- *  pages re-open the bulk-import modal after the OAuth callback
- *  redirects back. Called from inside the cards via a window-level
- *  hook below — kept here for symmetry with `consumeBulkImportReopenFlag`. */
-function stampReopenFlag(provider: string): void {
-  try {
-    window.localStorage.setItem(REOPEN_FLAG_KEY, JSON.stringify({
-      provider,
-      ts: Date.now(),
-    }));
-  } catch { /* private mode — fall back to manual reopen */ }
 }
 
 /** Inline setup — renders the actual /reglages cards inside the
@@ -71,40 +56,6 @@ export function InlineConnectorSetup({ syncMeta, onRefresh }: Props) {
     loadConnectors();
     onRefresh();
   }, [loadConnectors, onRefresh]);
-
-  // Patch window.location.href setters globally to stamp the reopen
-  // flag whenever an `/api/auth/<provider>?...` redirect is about to
-  // happen from inside the embedded cards. This avoids forking the
-  // shared cards just to add localStorage write — same callback,
-  // works transparently. The patch is removed on unmount.
-  useEffect(() => {
-    const originalAssign = window.location.assign.bind(window.location);
-    const originalReplace = window.location.replace.bind(window.location);
-    const intercept = (url: string | URL) => {
-      const s = String(url);
-      const match = s.match(/\/api\/auth\/([a-z]+)/);
-      if (match) stampReopenFlag(match[1]);
-    };
-    // Override assignments — handles both .href= and .assign().
-    const proto = Object.getPrototypeOf(window.location);
-    const desc = Object.getOwnPropertyDescriptor(proto, 'href');
-    if (desc?.set) {
-      const originalSetter = desc.set;
-      Object.defineProperty(window.location, 'href', {
-        configurable: true,
-        get: desc.get,
-        set(v: string) { intercept(v); originalSetter.call(window.location, v); },
-      });
-    }
-    window.location.assign = ((url: string | URL) => { intercept(url); originalAssign(url); }) as typeof window.location.assign;
-    window.location.replace = ((url: string | URL) => { intercept(url); originalReplace(url); }) as typeof window.location.replace;
-    return () => {
-      // Best-effort cleanup. Window.location is non-trivial to fully
-      // restore; Vite HMR keeps the patched version which is fine.
-      try { window.location.assign = originalAssign; } catch { /* ignore */ }
-      try { window.location.replace = originalReplace; } catch { /* ignore */ }
-    };
-  }, []);
 
   const fathomConnector = connectors.find(c => c.service === 'fathom') ?? null;
   const slackMeta = syncMeta?.slack;
@@ -135,12 +86,7 @@ function SlackCardLink({ slackConfigured }: { slackConfigured: boolean }) {
       <div
         className="connector-card-header"
         style={{ cursor: 'pointer' }}
-        onClick={() => {
-          try {
-            window.localStorage.setItem(REOPEN_FLAG_KEY, JSON.stringify({ provider: 'slack', ts: Date.now() }));
-          } catch { /* private mode */ }
-          window.location.href = '/reglages';
-        }}
+        onClick={() => { window.location.href = '/reglages'; }}
         title="Configurer Slack dans Réglages"
       >
         <div className="connector-card-left">
@@ -179,18 +125,11 @@ function SlackCardLink({ slackConfigured }: { slackConfigured: boolean }) {
   );
 }
 
-/** Read + clear the one-shot "reopen this modal after OAuth callback"
- *  flag set by the embedded cards (via the location.href intercept
- *  above) or by the Slack card. Called by the suivitess pages on
- *  mount — returns true if the consumer should auto-open the modal. */
+/** Always returns false — auto-reopen after OAuth was dropped because
+ *  monkey-patching `window.location` to detect the redirect breaks
+ *  in modern browsers (the property is read-only). Kept exported so
+ *  existing callers in App.tsx / DocumentSelector.tsx don't break;
+ *  remove next sweep. */
 export function consumeBulkImportReopenFlag(): boolean {
-  try {
-    const raw = window.localStorage.getItem(REOPEN_FLAG_KEY);
-    if (!raw) return false;
-    window.localStorage.removeItem(REOPEN_FLAG_KEY);
-    const { ts } = JSON.parse(raw) as { ts?: number };
-    return typeof ts === 'number' && Date.now() - ts < 10 * 60 * 1000;
-  } catch {
-    return false;
-  }
+  return false;
 }
