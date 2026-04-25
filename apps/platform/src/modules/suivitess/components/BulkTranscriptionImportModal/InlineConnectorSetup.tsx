@@ -60,10 +60,10 @@ export function InlineConnectorSetup({ syncMeta, onRefresh }: Props) {
   const fathomConnector = connectors.find(c => c.service === 'fathom') ?? null;
   const slackMeta = syncMeta?.slack;
 
+  // The shared `.connectors-list` class now defaults to a 2-column
+  // grid platform-wide (see ConnectorsPage.css), so the modal renders
+  // the same layout as /reglages without inline overrides.
   return (
-    {/* The shared `.connectors-list` class now defaults to a 2-column
-        grid platform-wide (see ConnectorsPage.css), so the modal
-        renders the same layout as /reglages without inline overrides. */}
     <div className="connectors-list" style={{ marginBottom: 'var(--spacing-md)' }}>
       <AIProviderCard
         service={FATHOM_SERVICE}
