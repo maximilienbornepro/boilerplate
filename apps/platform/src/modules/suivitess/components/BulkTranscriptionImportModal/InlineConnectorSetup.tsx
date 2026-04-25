@@ -208,7 +208,10 @@ export function InlineConnectorSetup({ syncMeta, syncing, onRefresh }: Props) {
       <div style={{
         display: 'grid',
         gap: 'var(--spacing-sm)',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+        // Two cards per row, balanced visually. Drops to 1 column on
+        // narrow viewports (modal max-width = 1100px, but min-width
+        // can shrink in mobile).
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
       }}>
         {PROVIDERS.map(provider => {
           const s = statuses.find(x => x.id === provider.id)!;
