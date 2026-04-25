@@ -398,6 +398,18 @@
   color: var(--text-light);
 }
 
+/* Links inside hints — the default browser dark-blue is unreadable on
+   our dark surfaces. Use the platform accent so the link contrasts on
+   both light and dark themes. */
+.connector-field-hint a {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
+.connector-field-hint a:hover {
+  filter: brightness(1.15);
+}
+
 /* Form actions */
 .connector-actions {
   display: flex;
