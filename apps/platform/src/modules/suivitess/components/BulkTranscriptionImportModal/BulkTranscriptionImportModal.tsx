@@ -744,13 +744,16 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
 
         {phase === 'picking' && (
           <>
-            {/* Inline connector setup — replaces the pre-modal "no
-                connector" gate. Always visible at the picking phase so
-                the user can wire / re-wire a provider without leaving
-                the modal. The banner is compact when connectors are OK
-                and surfaces an actionable warning when none is. */}
-            <InlineConnectorSetup onRefresh={reloadAll} />
-            <SyncStatusBanner meta={syncMeta} syncing={syncingNow} onRefresh={reloadAll} />
+            {/* Unified inline connector setup — Fathom, Gmail, Outlook,
+                Slack with status, last-sync info, and per-card connect
+                buttons. Replaces the pre-modal "no connector" gate AND
+                the previous SyncStatusBanner so the user sees one
+                coherent block. */}
+            <InlineConnectorSetup
+              syncMeta={syncMeta}
+              syncing={syncingNow}
+              onRefresh={reloadAll}
+            />
             {replayableRuns && replayableRuns.length > 0 && (
               <details className={styles.replaySection}>
                 <summary className={styles.replaySummary}>
