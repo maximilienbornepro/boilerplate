@@ -751,7 +751,6 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                 coherent block. */}
             <InlineConnectorSetup
               syncMeta={syncMeta}
-              syncing={syncingNow}
               onRefresh={reloadAll}
             />
             {replayableRuns && replayableRuns.length > 0 && (

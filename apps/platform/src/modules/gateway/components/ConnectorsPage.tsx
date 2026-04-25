@@ -139,7 +139,7 @@ interface ServiceGroup {
   services: ServiceDefinition[];
 }
 
-const SERVICE_GROUPS: ServiceGroup[] = [
+export const SERVICE_GROUPS: ServiceGroup[] = [
   {
     title: 'Gestion de projet',
     description: 'Connectez vos outils de gestion pour importer tickets, sprints et transcriptions dans vos reviews et delivery boards.',
@@ -251,7 +251,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
 const EMAIL_SERVICE_IDS = new Set(['outlook', 'gmail']);
 
 // Flat list of all services (for backward compat with getConnectorForService)
-const ALL_SERVICES = SERVICE_GROUPS.flatMap(g => g.services);
+export const ALL_SERVICES = SERVICE_GROUPS.flatMap(g => g.services);
 
 // ==================== API functions ====================
 
@@ -265,7 +265,7 @@ interface AIUsageSummary {
   lastUsed: string | null;
 }
 
-async function fetchConnectors(): Promise<ConnectorData[]> {
+export async function fetchConnectors(): Promise<ConnectorData[]> {
   const res = await fetch(API_BASE, { credentials: 'include' });
   if (!res.ok) throw new Error('Erreur lors du chargement des connecteurs');
   return res.json();
@@ -985,7 +985,7 @@ function AIProviderForm({
 
 // ==================== Generic AI Provider Card ====================
 
-function AIProviderCard({
+export function AIProviderCard({
   service,
   connector,
   usage,
@@ -1198,7 +1198,7 @@ function CreditSection({ credits }: { credits: CreditInfo }) {
 
 // ==================== Email OAuth Card (Outlook / Gmail) ====================
 
-function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
+export function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
   const [status, setStatus] = useState<{ connected: boolean; emailAddress?: string; isExpired?: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
