@@ -84,6 +84,9 @@ interface ProviderState {
   id: ProviderId;
   connected: boolean;
   loading: boolean;
+  /** Click on the header toggles this — same pattern as EmailOAuthCard
+   *  on the /reglages page so users recognise the affordance. */
+  expanded: boolean;
 }
 
 interface Props {
@@ -121,8 +124,14 @@ function buildSyncLine(p: ProviderSyncMeta | undefined): string | null {
  *  the pattern across the app. */
 export function InlineConnectorSetup({ syncMeta, syncing, onRefresh }: Props) {
   const [statuses, setStatuses] = useState<ProviderState[]>(
-    PROVIDERS.map(p => ({ id: p.id, connected: false, loading: true })),
+    PROVIDERS.map(p => ({ id: p.id, connected: false, loading: true, expanded: false })),
   );
+
+  const toggleExpanded = (id: ProviderId) => {
+    setStatuses(prev => prev.map(s =>
+      s.id === id ? { ...s, expanded: !s.expanded } : s,
+    ));
+  };
 
   useEffect(() => {
     // OAuth providers: read /api/auth/<id>/status. Slack: piggy-back
@@ -140,10 +149,10 @@ export function InlineConnectorSetup({ syncMeta, syncing, onRefresh }: Props) {
       const byId = new Map(results.map(r => [r.id, r.connected]));
       setStatuses(prev => prev.map(s => {
         if (s.id === 'slack') {
-          return { id: 'slack', connected: !!syncMeta?.slack?.configured, loading: false };
+          return { ...s, connected: !!syncMeta?.slack?.configured, loading: false };
         }
         return {
-          id: s.id,
+          ...s,
           connected: byId.get(s.id) ?? false,
           loading: false,
         };
@@ -220,20 +229,16 @@ export function InlineConnectorSetup({ syncMeta, syncing, onRefresh }: Props) {
             : provider.id === 'outlook'
               ? buildSyncLine(syncMeta?.outlook)
               : null;
-          // All cards share the same structure (header + action area)
-          // even when the action is empty — keeps every card the same
-          // height across the 2-column grid. CSS grid stretches rows
-          // to the tallest cell anyway, so consistent DOM = consistent
-          // visual height without inline `height` overrides.
+          // Same pattern as `EmailOAuthCard` on /reglages: clickable
+          // header toggles an expanded body that holds the actions.
+          // Reuses the existing `connector-card`, `connector-card-body`,
+          // `connector-btn` classes so the visual parity is exact.
           return (
-            <div
-              key={provider.id}
-              className="connector-card"
-              style={{ display: 'flex', flexDirection: 'column' }}
-            >
+            <div key={provider.id} className="connector-card">
               <div
                 className="connector-card-header"
-                style={{ cursor: 'default', padding: 'var(--spacing-sm) var(--spacing-md)', flex: 1 }}
+                onClick={() => toggleExpanded(provider.id)}
+                style={{ cursor: 'pointer' }}
               >
                 <div className="connector-card-left">
                   <div className="connector-card-icon" style={{ color: provider.color, width: 32, height: 32 }}>
@@ -262,15 +267,40 @@ export function InlineConnectorSetup({ syncMeta, syncing, onRefresh }: Props) {
                   )}
                 </div>
               </div>
-              <div style={{ padding: '0 var(--spacing-md) var(--spacing-sm)', minHeight: 36 }}>
-                {!s.loading && !s.connected && (
-                  <Button variant="primary" onClick={() => handleConnect(provider)}>
-                    {provider.connectKind === 'oauth'
-                      ? `Connecter ${provider.label}`
-                      : `Configurer ${provider.label}`}
-                  </Button>
-                )}
-              </div>
+              {s.expanded && !s.loading && (
+                <div className="connector-card-body" style={{ padding: 'var(--spacing-md)' }}>
+                  {s.connected ? (
+                    <p style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 'var(--font-size-sm)',
+                      color: 'var(--text-muted)',
+                      margin: 0,
+                    }}>
+                      Connecté. Pour reconfigurer ou déconnecter, ouvre la page
+                      {' '}
+                      <a href="/reglages" style={{ color: 'var(--accent-primary)' }}>Réglages</a>.
+                    </p>
+                  ) : (
+                    <>
+                      <p style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 'var(--font-size-sm)',
+                        color: 'var(--text-muted)',
+                        margin: '0 0 var(--spacing-sm)',
+                      }}>
+                        {provider.connectKind === 'oauth'
+                          ? `Connecte ton compte ${provider.label} pour importer dans SuiviTess.`
+                          : `Configure ${provider.label} dans Réglages (token + canaux).`}
+                      </p>
+                      <Button variant="primary" onClick={() => handleConnect(provider)}>
+                        {provider.connectKind === 'oauth'
+                          ? `Connecter ${provider.label}`
+                          : `Configurer ${provider.label}`}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
