@@ -220,11 +220,23 @@ export function InlineConnectorSetup({ syncMeta, syncing, onRefresh }: Props) {
             : provider.id === 'outlook'
               ? buildSyncLine(syncMeta?.outlook)
               : null;
+          // All cards share the same structure (header + action area)
+          // even when the action is empty — keeps every card the same
+          // height across the 2-column grid. CSS grid stretches rows
+          // to the tallest cell anyway, so consistent DOM = consistent
+          // visual height without inline `height` overrides.
           return (
-            <div key={provider.id} className="connector-card">
-              <div className="connector-card-header" style={{ cursor: 'default', padding: 'var(--spacing-sm) var(--spacing-md)' }}>
+            <div
+              key={provider.id}
+              className="connector-card"
+              style={{ display: 'flex', flexDirection: 'column' }}
+            >
+              <div
+                className="connector-card-header"
+                style={{ cursor: 'default', padding: 'var(--spacing-sm) var(--spacing-md)', flex: 1 }}
+              >
                 <div className="connector-card-left">
-                  <div className="connector-card-icon" style={{ color: provider.color, width: 40, height: 40 }}>
+                  <div className="connector-card-icon" style={{ color: provider.color, width: 32, height: 32 }}>
                     {provider.icon}
                   </div>
                   <div className="connector-card-info">
@@ -250,18 +262,15 @@ export function InlineConnectorSetup({ syncMeta, syncing, onRefresh }: Props) {
                   )}
                 </div>
               </div>
-              {!s.connected && !s.loading && (
-                <div style={{ padding: '0 var(--spacing-md) var(--spacing-sm)' }}>
-                  <Button
-                    variant="primary"
-                    onClick={() => handleConnect(provider)}
-                  >
+              <div style={{ padding: '0 var(--spacing-md) var(--spacing-sm)', minHeight: 36 }}>
+                {!s.loading && !s.connected && (
+                  <Button variant="primary" onClick={() => handleConnect(provider)}>
                     {provider.connectKind === 'oauth'
                       ? `Connecter ${provider.label}`
                       : `Configurer ${provider.label}`}
                   </Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           );
         })}
