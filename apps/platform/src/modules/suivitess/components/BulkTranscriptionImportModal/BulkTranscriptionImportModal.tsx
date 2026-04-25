@@ -789,11 +789,15 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
               <div className={styles.empty}>
                 <p className={styles.emptyTitle}>Aucune source disponible</p>
                 <p className={styles.emptyHint}>
-                  Connecte Fathom, Otter, Gmail ou Outlook dans Réglages pour voir tes transcriptions et mails récents apparaître ici.
+                  {/* Don't redirect — the InlineConnectorSetup panel above
+                      already exposes connect buttons for every supported
+                      provider (Fathom / Gmail / Outlook). Just point the
+                      user upward. */}
+                  Active une source dans le panneau « Connecteurs » ci-dessus,
+                  puis clique « Actualiser les sources ». Tes transcriptions
+                  Fathom / Otter et tes emails Gmail / Outlook s'affichent
+                  ici une fois la première synchronisation faite.
                 </p>
-                <div className={styles.actions}>
-                  <Button variant="primary" onClick={() => { onClose(); window.location.href = '/reglages'; }}>Connecter une IA</Button>
-                </div>
               </div>
             ) : (
               <>
