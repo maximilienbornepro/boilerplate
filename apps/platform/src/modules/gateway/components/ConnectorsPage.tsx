@@ -1241,6 +1241,14 @@ export function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
     <div className="connector-card">
       <div className="connector-card-header" onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }}>
         <div className="connector-card-left">
+          {/* Chevron — same pattern as JiraCard / AIProviderCard so all
+              expandable connector cards share the affordance. Rotates
+              on expand via the `.expanded` modifier. */}
+          <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
           <div className="connector-card-icon" style={{ color: service.color }}>
             {service.icon}
           </div>

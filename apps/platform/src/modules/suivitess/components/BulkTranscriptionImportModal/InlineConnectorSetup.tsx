@@ -93,6 +93,15 @@ function SlackCardLink({ slackConfigured }: { slackConfigured: boolean }) {
         title="Configurer Slack dans Réglages"
       >
         <div className="connector-card-left">
+          {/* Chevron pour la cohérence avec les autres cards
+              expandable. Pas d'animation expanded ici parce que ce
+              card redirige vers /reglages au clic, mais l'icône
+              signale l'affordance "ce header est cliquable". */}
+          <span className="connector-expand-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
           <div className="connector-card-icon" style={{ color: '#4A154B' }}>
             <svg width="24" height="24" viewBox="0 0 270 270" xmlns="http://www.w3.org/2000/svg">
               <path fill="#E01E5A" d="M99.4,151.2c0,7.1-5.8,12.9-12.9,12.9c-7.1,0-12.9-5.8-12.9-12.9c0-7.1,5.8-12.9,12.9-12.9h12.9V151.2z" />
