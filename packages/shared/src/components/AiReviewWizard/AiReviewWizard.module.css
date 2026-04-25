@@ -395,6 +395,30 @@
   color: var(--text-muted);
 }
 
+/* ─── Review stats line ───────────────────────────────────────── */
+/* Unified visual treatment for the "N importés — M ignorés — P
+   restants" counter next to the tile position. All three use the
+   mono font + small size so they read as a progress ribbon. */
+
+.reviewStatDone {
+  color: var(--color-success, #10b981);
+  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.reviewStatSkipped {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.reviewStatLeft {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
 /* ─── Empty state ─────────────────────────────────────────────── */
 
 .emptyState {
