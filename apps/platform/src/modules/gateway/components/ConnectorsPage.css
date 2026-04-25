@@ -63,12 +63,15 @@
 }
 
 /* Connector cards list — 2 columns by default, drops to 1 on narrow
-   viewports. Each card stretches to fill its grid cell so cards on
-   the same row keep an identical height. */
+   viewports. `align-items: start` keeps each card at its natural
+   height: when one card expands (e.g. Jira's OAuth/Token form) the
+   neighbour on the same row no longer stretches into a tall empty
+   block. */
 .connectors-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--spacing-lg);
+  align-items: start;
 }
 
 @media (max-width: 720px) {
