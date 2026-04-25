@@ -62,11 +62,19 @@
   line-height: 1.5;
 }
 
-/* Connector cards list */
+/* Connector cards list — 2 columns by default, drops to 1 on narrow
+   viewports. Each card stretches to fill its grid cell so cards on
+   the same row keep an identical height. */
 .connectors-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--spacing-lg);
+}
+
+@media (max-width: 720px) {
+  .connectors-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Individual connector card */
@@ -178,6 +186,10 @@
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-normal);
   letter-spacing: 0.02em;
+  /* Keep "Non connecté" / "Connecté" on a single line — the right
+     column is narrow inside the bulk-import modal's 2-col grid and
+     was wrapping into a 2nd line. */
+  white-space: nowrap;
 }
 
 .connector-status-dot {
@@ -431,14 +443,22 @@
   border-color: var(--text-light);
 }
 
-.connector-btn.danger {
-  background: transparent;
-  color: var(--error);
+/* Danger — solid red, white text. Mirrors the shared
+   `.shared-btn--danger` treatment so destructive actions look the
+   same whether they're triggered from a `<Button variant="danger">`
+   or a connector-specific `<button class="connector-btn danger">`. */
+.connector-btn.danger,
+.connector-btn.connector-btn-danger {
+  background: var(--error);
+  color: white;
   border: 1px solid var(--error);
 }
 
-.connector-btn.danger:hover:not(:disabled) {
-  background: var(--error-bg);
+.connector-btn.danger:hover:not(:disabled),
+.connector-btn.connector-btn-danger:hover:not(:disabled) {
+  background: var(--error);
+  border-color: var(--error);
+  filter: brightness(0.9);
 }
 
 /* Test result feedback */

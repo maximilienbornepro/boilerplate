@@ -61,18 +61,10 @@ export function InlineConnectorSetup({ syncMeta, onRefresh }: Props) {
   const slackMeta = syncMeta?.slack;
 
   return (
-    <div
-      className="connectors-list"
-      style={{
-        marginBottom: 'var(--spacing-md)',
-        // Force a 2-column grid inside the modal — overrides whatever
-        // single-column flex `connectors-list` defaults to on the
-        // /reglages page (where cards are full-width by design).
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-        gap: 'var(--spacing-sm)',
-      }}
-    >
+    {/* The shared `.connectors-list` class now defaults to a 2-column
+        grid platform-wide (see ConnectorsPage.css), so the modal
+        renders the same layout as /reglages without inline overrides. */}
+    <div className="connectors-list" style={{ marginBottom: 'var(--spacing-md)' }}>
       <AIProviderCard
         service={FATHOM_SERVICE}
         connector={fathomConnector}
