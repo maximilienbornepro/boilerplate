@@ -9,6 +9,7 @@ import { HistoryPanel } from './components/HistoryPanel/HistoryPanel';
 import { RecorderBar } from './components/RecorderBar/RecorderBar';
 import { SuggestionsPanel } from './components/SuggestionsPanel/SuggestionsPanel';
 import { BulkTranscriptionImportModal } from './components/BulkTranscriptionImportModal/BulkTranscriptionImportModal';
+import { consumeBulkImportReopenFlag } from './components/BulkTranscriptionImportModal/InlineConnectorSetup';
 import { EmailPreviewModal } from './components/EmailPreviewModal/EmailPreviewModal';
 import { SubjectAnalysisModal } from './components/SubjectAnalysisModal/SubjectAnalysisModal';
 
@@ -95,6 +96,15 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showImports]);
 
+  // After an OAuth callback that redirected back to this page, the
+  // setup flow stamps a localStorage flag — restore the modal state
+  // automatically so the user lands back where they were.
+  useEffect(() => {
+    if (consumeBulkImportReopenFlag()) {
+      setShowBulkImport(true);
+    }
+  }, []);
+
   // Detect which import sources are configured (OAuth + manual connectors)
   useEffect(() => {
     Promise.all([
@@ -114,22 +124,10 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   }, []);
 
   const openImport = (provider?: string) => {
-    // Gate : if the user clicks "Import" without any configured
-    // provider, surface a toast + redirect to /reglages instead of
-    // silently opening an empty modal. Provider-specific buttons
-    // (Gmail / Outlook) are already gated upstream on their own
-    // provider flag so we only cover the generic case.
-    const hasAny = importProviders.transcription || importProviders.gmail || importProviders.outlook;
-    if (!provider && !hasAny) {
-      addToast({
-        type: 'info',
-        message: "Aucun connecteur d'import configuré — active Fathom, Gmail ou Outlook dans les Réglages puis réessaie.",
-      });
-      setShowActions(false);
-      setShowImports(false);
-      setTimeout(() => navigate('/reglages'), 800);
-      return;
-    }
+    // No more pre-modal gate. The bulk-import modal now embeds an
+    // `<InlineConnectorSetup>` that surfaces a connect panel when no
+    // provider is configured — keeps the UX in the modal rather than
+    // bouncing the user to /reglages and back.
     setImportInitialProvider(provider);
     setShowBulkImport(true);
     setShowImports(false);

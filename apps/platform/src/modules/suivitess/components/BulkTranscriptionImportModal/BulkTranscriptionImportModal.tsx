@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode, type CSSProperties } from 'react';
 import { Modal, Button, LoadingSpinner, StatusTag, TileProgress, ReviewStatsLine } from '@boilerplate/shared/components';
+import { InlineConnectorSetup } from './InlineConnectorSetup';
 import { SkillButton } from '../SkillButton/SkillButton';
 import { getStatusOption } from '../../types';
 import * as api from '../../services/api';
@@ -743,6 +744,12 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
 
         {phase === 'picking' && (
           <>
+            {/* Inline connector setup — replaces the pre-modal "no
+                connector" gate. Always visible at the picking phase so
+                the user can wire / re-wire a provider without leaving
+                the modal. The banner is compact when connectors are OK
+                and surfaces an actionable warning when none is. */}
+            <InlineConnectorSetup onRefresh={reloadAll} />
             <SyncStatusBanner meta={syncMeta} syncing={syncingNow} onRefresh={reloadAll} />
             {replayableRuns && replayableRuns.length > 0 && (
               <details className={styles.replaySection}>

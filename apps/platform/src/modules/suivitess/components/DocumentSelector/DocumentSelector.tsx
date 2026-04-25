@@ -4,6 +4,7 @@ import type { ToastData, Visibility } from '@boilerplate/shared/components';
 import type { Document } from '../../types';
 import * as api from '../../services/api';
 import { BulkTranscriptionImportModal } from '../BulkTranscriptionImportModal/BulkTranscriptionImportModal';
+import { consumeBulkImportReopenFlag } from '../BulkTranscriptionImportModal/InlineConnectorSetup';
 import styles from './DocumentSelector.module.css';
 
 interface DocumentSelectorProps {
@@ -40,6 +41,16 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
   const addToast = (toast: Omit<ToastData, 'id'>) => {
     setToasts(prev => [...prev, { ...toast, id: Date.now().toString() }]);
   };
+
+  // Restore the bulk-import modal after an OAuth callback — the
+  // InlineConnectorSetup panel inside the modal stamps a one-shot
+  // localStorage flag before redirecting to the OAuth provider, and
+  // we consume it here on mount.
+  useEffect(() => {
+    if (consumeBulkImportReopenFlag()) {
+      setShowBulkImport(true);
+    }
+  }, []);
 
   useEffect(() => {
     async function load() {
