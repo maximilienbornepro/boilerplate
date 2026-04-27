@@ -43,15 +43,20 @@
   border-color: var(--accent-primary);
 }
 
-/* Danger */
+/* Danger — solid red, white text. Used for destructive actions
+   (delete connector, delete user, drop dataset, etc.). The previous
+   ghost style read as a secondary action; users were missing the
+   irreversibility cue. */
 .shared-btn--danger {
-  background: transparent;
+  background: var(--error);
   border-color: var(--error);
-  color: var(--error);
+  color: white;
 }
 
 .shared-btn--danger:hover:not(:disabled) {
-  background: var(--error-bg);
+  background: var(--error);
+  border-color: var(--error);
+  filter: brightness(0.9);
 }
 
 /* Disabled */

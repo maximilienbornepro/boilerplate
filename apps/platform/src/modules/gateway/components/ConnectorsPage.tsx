@@ -139,7 +139,7 @@ interface ServiceGroup {
   services: ServiceDefinition[];
 }
 
-const SERVICE_GROUPS: ServiceGroup[] = [
+export const SERVICE_GROUPS: ServiceGroup[] = [
   {
     title: 'Gestion de projet',
     description: 'Connectez vos outils de gestion pour importer tickets, sprints et transcriptions dans vos reviews et delivery boards.',
@@ -251,7 +251,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
 const EMAIL_SERVICE_IDS = new Set(['outlook', 'gmail']);
 
 // Flat list of all services (for backward compat with getConnectorForService)
-const ALL_SERVICES = SERVICE_GROUPS.flatMap(g => g.services);
+export const ALL_SERVICES = SERVICE_GROUPS.flatMap(g => g.services);
 
 // ==================== API functions ====================
 
@@ -265,7 +265,7 @@ interface AIUsageSummary {
   lastUsed: string | null;
 }
 
-async function fetchConnectors(): Promise<ConnectorData[]> {
+export async function fetchConnectors(): Promise<ConnectorData[]> {
   const res = await fetch(API_BASE, { credentials: 'include' });
   if (!res.ok) throw new Error('Erreur lors du chargement des connecteurs');
   return res.json();
@@ -433,38 +433,34 @@ function JiraOAuthTab({ onChanged }: { onChanged: () => void }) {
       {error && <div className="connectors-error">{error}</div>}
 
       {status?.connected ? (
+        // Simplified connected state — the card header already says
+        // "Connecté" via its status pill, so the body just shows the
+        // site URL (if any) and the destructive action. Dropped the
+        // verbose "Compte connecté" header, "Connecté le {date}" line,
+        // and the labels — they were noise on a 2-col grid.
         <div className="connector-oauth-status">
-          <div className="connector-oauth-info">
-            <div className="connector-oauth-connected">
-              <span className="connector-status-dot active" />
-              Compte connecté
-            </div>
-            {status.siteUrl && (
-              <div className="connector-oauth-detail">
-                <strong>Site</strong>
-                <a href={status.siteUrl} target="_blank" rel="noopener noreferrer">{status.siteUrl}</a>
-              </div>
-            )}
-            {status.connectedAt && (
-              <div className="connector-oauth-detail">
-                <strong>Connecté le</strong>
-                <span>{new Date(status.connectedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-              </div>
-            )}
-            {status.isExpired && (
-              <div className="connector-oauth-detail warning">
-                Session expirée — elle sera renouvelée automatiquement au prochain usage.
-              </div>
-            )}
-          </div>
-
-          <div className="connector-actions">
+          {status.siteUrl && (
+            <a
+              href={status.siteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--accent-primary)' }}
+            >
+              {status.siteUrl}
+            </a>
+          )}
+          {status.isExpired && (
+            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-warning, #f59e0b)', margin: '4px 0 0' }}>
+              Session expirée — renouvelée automatiquement au prochain usage.
+            </p>
+          )}
+          <div className="connector-actions" style={{ marginTop: 'var(--spacing-sm)' }}>
             <button
               className="connector-btn danger"
               onClick={handleDisconnect}
               disabled={disconnecting}
             >
-              {disconnecting ? 'Déconnexion...' : 'Se déconnecter'}
+              {disconnecting ? 'Déconnexion…' : 'Se déconnecter'}
             </button>
           </div>
         </div>
@@ -985,7 +981,7 @@ function AIProviderForm({
 
 // ==================== Generic AI Provider Card ====================
 
-function AIProviderCard({
+export function AIProviderCard({
   service,
   connector,
   usage,
@@ -1198,7 +1194,7 @@ function CreditSection({ credits }: { credits: CreditInfo }) {
 
 // ==================== Email OAuth Card (Outlook / Gmail) ====================
 
-function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
+export function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
   const [status, setStatus] = useState<{ connected: boolean; emailAddress?: string; isExpired?: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -1241,6 +1237,14 @@ function EmailOAuthCard({ service }: { service: ServiceDefinition }) {
     <div className="connector-card">
       <div className="connector-card-header" onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }}>
         <div className="connector-card-left">
+          {/* Chevron — same pattern as JiraCard / AIProviderCard so all
+              expandable connector cards share the affordance. Rotates
+              on expand via the `.expanded` modifier. */}
+          <span className={`connector-expand-icon${expanded ? ' expanded' : ''}`}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
           <div className="connector-card-icon" style={{ color: service.color }}>
             {service.icon}
           </div>
