@@ -93,6 +93,15 @@ export interface FathomCallWithTranscript extends FathomCall {
 
 /**
  * Fetch recent calls from Fathom (last 30 days by default).
+ *
+ * Paginates through every page (~25 items each) using `next_cursor`
+ * until exhausted. Without pagination only the first page was
+ * surfaced, silently dropping every recording past the 25th — typical
+ * symptom : the import modal listed only the most recent few calls
+ * and older meetings of the same window were nowhere to be seen.
+ *
+ * Hard cap : `MAX_PAGES` to avoid an infinite loop if the API ever
+ * returns a stale cursor or echoes one back.
  */
 export async function listFathomCalls(userId: number, days: number = 30): Promise<FathomCall[]> {
   const headers = await getFathomAuthHeaders(userId);
@@ -101,31 +110,46 @@ export async function listFathomCalls(userId: number, days: number = 30): Promis
   since.setDate(since.getDate() - days);
   const createdAfter = since.toISOString();
 
-  const url = `${FATHOM_BASE_URL}/meetings?created_after=${encodeURIComponent(createdAfter)}`;
-
-  const response = await fetch(url, { headers });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Fathom API error (${response.status}): ${text.slice(0, 200)}`);
-  }
-
-  const data = await response.json() as {
-    items?: Array<{
-      recording_id?: number;
-      title?: string;
-      meeting_title?: string;
-      created_at?: string;
-      recording_start_time?: string;
-      recording_end_time?: string;
-      url?: string;
-      share_url?: string;
-    }>;
+  type FathomMeetingRow = {
+    recording_id?: number;
+    title?: string;
+    meeting_title?: string;
+    created_at?: string;
+    recording_start_time?: string;
+    recording_end_time?: string;
+    url?: string;
+    share_url?: string;
+  };
+  type FathomMeetingsPage = {
+    items?: FathomMeetingRow[];
+    /** Fathom returns `next_cursor` when more pages exist ; null /
+     *  absent on the last page. We pass it back as `?cursor=…`. */
+    next_cursor?: string | null;
   };
 
-  const items = data.items || [];
+  const MAX_PAGES = 40; // 40 pages × 25 items = 1000 calls — generous upper bound.
+  const collected: FathomMeetingRow[] = [];
+  let cursor: string | null | undefined = null;
 
-  return items.map(m => {
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const params = new URLSearchParams({ created_after: createdAfter });
+    if (cursor) params.set('cursor', cursor);
+    const url = `${FATHOM_BASE_URL}/meetings?${params.toString()}`;
+
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Fathom API error (${response.status}): ${text.slice(0, 200)}`);
+    }
+    const data = await response.json() as FathomMeetingsPage;
+    const items = data.items || [];
+    collected.push(...items);
+
+    if (!data.next_cursor || items.length === 0 || data.next_cursor === cursor) break;
+    cursor = data.next_cursor;
+  }
+
+  return collected.map(m => {
     const start = m.recording_start_time ? new Date(m.recording_start_time).getTime() : 0;
     const end = m.recording_end_time ? new Date(m.recording_end_time).getTime() : 0;
     return {
