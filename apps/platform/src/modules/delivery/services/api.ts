@@ -24,6 +24,10 @@ export interface JiraIssue {
   key: string;
   summary: string;
   status: string;
+  /** Canonical Jira lifecycle bucket — `'new' | 'indeterminate' | 'done'`
+   *  (or `null` when missing). Lets the import modal hide closed
+   *  tickets without depending on localised status names. */
+  statusCategory: 'new' | 'indeterminate' | 'done' | null;
   assignee?: string;
   storyPoints?: number;
   issueType: string;

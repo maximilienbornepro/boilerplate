@@ -58,6 +58,11 @@ export function JiraImportModal({ incrementId, boardId, onImported, onClose }: J
   const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
   const [loadingIssues, setLoadingIssues] = useState(false);
   const [importing, setImporting] = useState(false);
+  /** Hide tickets whose Jira `statusCategory` is `'done'` (Fermé /
+   *  Closed / Resolved / Done — independent of UI language). On by
+   *  default since closed tickets in the active sprint are usually
+   *  noise during a board catch-up. */
+  const [hideDone, setHideDone] = useState(true);
 
   // Existing board tasks — used to flag Jira issues already in the
   // board so the user doesn't re-import duplicates. Loaded once on
@@ -123,18 +128,31 @@ export function JiraImportModal({ incrementId, boardId, onImported, onClose }: J
     setSelectedIssueIds(next);
   };
 
-  const selectAllIssues = () => setSelectedIssueIds(new Set(issues.map(i => i.id)));
+  const selectAllIssues = () => setSelectedIssueIds(new Set(visibleIssues.map(i => i.id)));
   const deselectAllIssues = () => setSelectedIssueIds(new Set());
   /** Tick only the issues whose Jira key isn't already in the board.
    *  The most common bulk-import use case — the user just wants to
    *  catch up on what's missing without manually unticking duplicates. */
   const selectMissingIssues = () => setSelectedIssueIds(
-    new Set(issues.filter(i => !existingJiraKeys.has(i.key)).map(i => i.id)),
+    new Set(visibleIssues.filter(i => !existingJiraKeys.has(i.key)).map(i => i.id)),
+  );
+
+  /** Visible issues = filtered by the "hide done" toggle. The full
+   *  `issues` list stays in state so toggling re-shows hidden rows
+   *  without re-fetching from Jira. */
+  const visibleIssues = useMemo(
+    () => hideDone ? issues.filter(i => i.statusCategory !== 'done') : issues,
+    [issues, hideDone],
+  );
+
+  const hiddenDoneCount = useMemo(
+    () => issues.filter(i => i.statusCategory === 'done').length,
+    [issues],
   );
 
   const missingIssuesCount = useMemo(
-    () => issues.filter(i => !existingJiraKeys.has(i.key)).length,
-    [issues, existingJiraKeys],
+    () => visibleIssues.filter(i => !existingJiraKeys.has(i.key)).length,
+    [visibleIssues, existingJiraKeys],
   );
 
   const goToStep2 = async () => {
@@ -443,23 +461,49 @@ export function JiraImportModal({ incrementId, boardId, onImported, onClose }: J
             <div className={styles.issueActions}>
               <button className={styles.linkBtn} onClick={selectAllIssues}>Tout sélectionner</button>
               <button className={styles.linkBtn} onClick={deselectAllIssues}>Tout désélectionner</button>
-              {/* Quick-action specifically for the catch-up case: tick
-                  every ticket whose Jira key isn't already in the
-                  board. Hidden when there's nothing missing. */}
-              {missingIssuesCount > 0 && missingIssuesCount < issues.length && (
+              {missingIssuesCount > 0 && missingIssuesCount < visibleIssues.length && (
                 <button className={styles.linkBtn} onClick={selectMissingIssues}>
                   Sélectionner les {missingIssuesCount} non importés
                 </button>
+              )}
+              {/* "Hide done" toggle — surfaces only when at least one
+                  closed ticket is in the batch so users with a sprint
+                  full of in-progress tickets don't see a useless
+                  switch. */}
+              {hiddenDoneCount > 0 && (
+                <label
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 'var(--font-size-xs)',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                  }}
+                  title="Les tickets terminés dans Jira (Fermé / Done / Resolved) sont masqués par défaut."
+                >
+                  <input
+                    type="checkbox"
+                    checked={hideDone}
+                    onChange={(e) => setHideDone(e.target.checked)}
+                  />
+                  Masquer les terminés ({hiddenDoneCount})
+                </label>
               )}
               <span className={styles.counter}>{selectedIssueIds.size} sélectionné(s)</span>
             </div>
             {loadingIssues ? (
               <div className={styles.loading}><span className={styles.spinner} /> Chargement des tickets...</div>
-            ) : issues.length === 0 ? (
-              <div className={styles.empty}>Aucun ticket trouve dans ces sprints.</div>
+            ) : visibleIssues.length === 0 ? (
+              <div className={styles.empty}>
+                {issues.length === 0
+                  ? 'Aucun ticket trouve dans ces sprints.'
+                  : `Tous les tickets de ces sprints sont terminés. Décoche « Masquer les terminés » pour les afficher.`}
+              </div>
             ) : (
               <div className={styles.list}>
-                {issues.map(issue => {
+                {visibleIssues.map(issue => {
                   const alreadyImported = existingJiraKeys.has(issue.key);
                   const isBug = mapIssueType(issue.issueType) === 'bug';
                   return (

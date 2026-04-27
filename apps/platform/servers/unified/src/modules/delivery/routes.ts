@@ -888,10 +888,21 @@ export function createDeliveryRoutes(): Router {
     }
 
     const ids = sprintIds.split(',').map(id => id.trim()).join(', ');
-    const jql = `sprint in (${ids}) ORDER BY created DESC`;
+    // Exclude sub-tasks via Jira's built-in `subTaskIssueTypes()`
+    // function — matches the default Jira backlog view (which only
+    // shows parents). Without this we surfaced 2-3x more tickets than
+    // the board itself listed because sub-tasks appear in the sprint
+    // membership but not in the user-visible UI.
+    const jql = `sprint in (${ids}) AND issuetype not in subTaskIssueTypes() ORDER BY created DESC`;
     const params = new URLSearchParams({
       jql,
       maxResults: '100',
+      // Includes `status` (which carries `statusCategory` server-side
+      // when the field is requested by name). The frontend uses
+      // `statusCategory.key === 'done'` to filter out terminal-state
+      // tickets — more robust than matching localised names like
+      // "Fermé" / "Done" / "Closed" which depend on the workflow's
+      // language config.
       fields: 'summary,status,assignee,customfield_10016,issuetype,customfield_10020',
     });
     const searchUrl = `${ctx.baseUrl}/rest/api/3/search/jql?${params}`;
@@ -909,7 +920,13 @@ export function createDeliveryRoutes(): Router {
         key: string;
         fields: {
           summary: string;
-          status: { name: string };
+          status: {
+            name: string;
+            // Jira returns this nested when `fields=status` is asked
+            // for. `key` ∈ { 'new', 'indeterminate', 'done' } and is
+            // the canonical signal independent of the user's language.
+            statusCategory?: { key: string; name: string };
+          };
           assignee?: { displayName: string };
           customfield_10016?: number;
           issuetype: { name: string };
@@ -925,6 +942,10 @@ export function createDeliveryRoutes(): Router {
         key: issue.key,
         summary: issue.fields.summary,
         status: issue.fields.status?.name || 'Unknown',
+        // Surface the canonical `statusCategory.key` so the frontend
+        // can filter out terminal-state tickets robustly (no string
+        // matching against localised status names).
+        statusCategory: issue.fields.status?.statusCategory?.key ?? null,
         assignee: issue.fields.assignee?.displayName,
         storyPoints: issue.fields.customfield_10016 ?? undefined,
         issueType: issue.fields.issuetype?.name || 'Task',
