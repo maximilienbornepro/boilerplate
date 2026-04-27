@@ -693,6 +693,239 @@ export async function analyzeSourceForDocument(
   return { proposals: final, rootLogId: ex.logId };
 }
 
+// ── Multi-source pipeline for a SINGLE locked document ────────────────
+// Mirrors `analyzeMultiSourceForReviews` but uses `tier2PlaceDocument`
+// instead of `tier2PlaceReviews` — the destination doc is pre-known so
+// the IA only chooses section + subjectAction inside it. Runs ONE
+// pipeline (T1×N parallel → T1.5 reconcile → T2 → T3) instead of N
+// sequential per-source pipelines, which is what the doc-scoped bulk
+// import was doing before. Single onProgress stream → no more "loops"
+// in the frontend stepper.
+
+export interface AnalyzeMultiSourceForDocumentInput {
+  sources: MultiSourceInput[];
+  document: DocumentContext;
+  userId: number;
+  userEmail: string;
+}
+
+export interface AnalyzeMultiSourceForDocumentResult {
+  proposals: FinalDocumentProposal[];
+  /** Consolidation metadata aligned with `proposals` — `null` for
+   *  single-source pass-throughs, populated for cross-source merges
+   *  so the modal can surface "N sources" badges per proposal. */
+  consolidationByProposal: Array<ConsolidatedSubject | null>;
+  rootLogId: number | null;
+}
+
+export async function analyzeMultiSourceForDocument(
+  input: AnalyzeMultiSourceForDocumentInput,
+  onProgress: PipelineProgressCallback = NOOP,
+): Promise<AnalyzeMultiSourceForDocumentResult> {
+  const { sources, document, userId, userEmail } = input;
+  const wallStart = Date.now();
+
+  // Single-source fast path — reuse the existing pipeline verbatim,
+  // skip the T1.5 reconcile (zero benefit on one source).
+  if (sources.length === 1) {
+    const only = sources[0];
+    const res = await analyzeSourceForDocument({
+      sourceKind: only.sourceKind,
+      sourceRaw: only.sourceRaw,
+      sourceTitle: only.sourceTitle,
+      document,
+      userId,
+      userEmail,
+    }, onProgress);
+    return {
+      proposals: res.proposals,
+      consolidationByProposal: res.proposals.map(() => null),
+      rootLogId: res.rootLogId,
+    };
+  }
+
+  // T1 per-source in parallel.
+  onProgress({ kind: 't1-start', sourcesCount: sources.length });
+  const extractions = await tier1ExtractMulti({
+    sources, userId, userEmail, documentId: document.id,
+  });
+  const t1WallMs = Math.max(...extractions.map(e => e.durationMs));
+  const totalExtracted = extractions.reduce((s, e) => s + e.subjects.length, 0);
+  const firstLogId = extractions.find(e => e.logId != null)?.logId ?? null;
+  onProgress({
+    kind: 't1-end',
+    subjectsExtracted: totalExtracted,
+    rootLogId: firstLogId,
+    durationMs: t1WallMs,
+  });
+  if (totalExtracted === 0) {
+    // eslint-disable-next-line no-console
+    console.warn(`[pipeline-multi-doc] tier1 returned 0 subjects across ${sources.length} sources — aborting.`);
+    return { proposals: [], consolidationByProposal: [], rootLogId: firstLogId };
+  }
+
+  // T1.5 reconcile.
+  onProgress({ kind: 'reconcile-start' });
+  const rec = await tier15Reconcile({
+    extractions,
+    userId, userEmail,
+    documentId: document.id,
+    parentLogId: firstLogId,
+  });
+  onProgress({
+    kind: 'reconcile-end',
+    subjectsConsolidated: rec.consolidated.length,
+    durationMs: rec.durationMs,
+  });
+  if (rec.consolidated.length === 0) {
+    return { proposals: [], consolidationByProposal: [], rootLogId: firstLogId };
+  }
+
+  // Flatten consolidated → ExtractedSubject for T2.
+  const flattened = consolidatedToExtracted(rec.consolidated);
+
+  const base = {
+    userId, userEmail,
+    sourceKind: 'multi-source',
+    sourceTitle: `${sources.length} sources (${sources.map(s => s.sourceKind).join(' + ')})`,
+    documentId: document.id,
+  };
+
+  // T2 — place-in-document on the consolidated list.
+  onProgress({ kind: 't2-start' });
+  const pl = await tier2PlaceDocument({
+    ...base,
+    subjects: flattened,
+    document,
+    parentLogId: rec.logId,
+  });
+  onProgress({ kind: 't2-end', placementsProduced: pl.placements.length, durationMs: pl.durationMs });
+  if (pl.placements.length === 0) {
+    return { proposals: [], consolidationByProposal: [], rootLogId: firstLogId };
+  }
+
+  // T3 — writers in parallel (same shape as analyzeSourceForDocument).
+  const tier3Start = Date.now();
+  onProgress({ kind: 't3-start', t3Total: pl.placements.length });
+  // eslint-disable-next-line no-console
+  console.log(`[pipeline-multi-doc] tier3 running ${pl.placements.length} writer(s) in parallel…`);
+
+  type ProposalWithConsolidation = { proposal: FinalDocumentProposal; consolidation: ConsolidatedSubject | null };
+
+  const results = await Promise.all(pl.placements.map(async (p): Promise<ProposalWithConsolidation | null> => {
+    try {
+      const subj = flattened[p.subjectIndex];
+      if (!subj) return null;
+      const consolidation = rec.consolidated[p.subjectIndex] ?? null;
+
+      if (p.action === 'enrich') {
+        let existing = '';
+        for (const s of document.sections) {
+          const match = s.subjects.find(x => x.id === p.targetSubjectId);
+          if (match) { existing = match.situationExcerpt; break; }
+        }
+        const w = await tier3Append({
+          ...base,
+          existingSituation: existing,
+          rawQuotes: subj.rawQuotes,
+          subjectTitle: subj.title,
+          parentLogId: pl.logId,
+        });
+        if (!w.appendText || !w.appendText.trim()) return null;
+        return {
+          consolidation,
+          proposal: {
+            action: 'enrich',
+            subjectId: p.targetSubjectId,
+            subjectTitle: p.targetSubjectTitle,
+            sectionName: p.sectionName,
+            appendText: w.appendText,
+            reason: p.reason,
+            sourceRawQuotes: subj.rawQuotes,
+            sourceEntities: subj.entities,
+            sourceParticipants: subj.participants,
+          },
+        };
+      }
+
+      if (p.action === 'create_subject') {
+        const w = await tier3Compose({
+          ...base,
+          title: subj.title,
+          rawQuotes: subj.rawQuotes,
+          parentLogId: pl.logId,
+        });
+        return {
+          consolidation,
+          proposal: {
+            action: 'create_subject',
+            sectionId: p.sectionId,
+            sectionName: p.sectionName,
+            title: subj.title,
+            situation: w.situation,
+            responsibility: subj.responsibilityHint ?? null,
+            status: defaultStatus(subj.statusHint),
+            reason: p.reason,
+            sourceRawQuotes: subj.rawQuotes,
+            sourceEntities: subj.entities,
+            sourceParticipants: subj.participants,
+          },
+        };
+      }
+
+      if (p.action === 'create_section') {
+        const w = await tier3Compose({
+          ...base,
+          title: subj.title,
+          rawQuotes: subj.rawQuotes,
+          parentLogId: pl.logId,
+        });
+        return {
+          consolidation,
+          proposal: {
+            action: 'create_section',
+            sectionName: p.suggestedNewSectionName ?? subj.title,
+            subjects: [{
+              title: subj.title,
+              situation: w.situation,
+              responsibility: subj.responsibilityHint ?? null,
+              status: defaultStatus(subj.statusHint),
+            }],
+            reason: p.reason,
+            sourceRawQuotes: subj.rawQuotes,
+            sourceEntities: subj.entities,
+            sourceParticipants: subj.participants,
+          },
+        };
+      }
+
+      return null;
+    } finally {
+      onProgress({ kind: 't3-writer-done' });
+    }
+  }));
+
+  const kept = results.filter((r): r is ProposalWithConsolidation => r !== null);
+  const tier3WallMs = Date.now() - tier3Start;
+  onProgress({ kind: 't3-end', durationMs: tier3WallMs });
+  const totalMs = Date.now() - wallStart;
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `[pipeline-multi-doc:summary] (${sources.length} sources, document=${document.id}) ` +
+    `T1=${fmtDur(t1WallMs)} · T1.5=${fmtDur(rec.durationMs)} · ` +
+    `T2=${fmtDur(pl.durationMs)} · T3=${fmtDur(tier3WallMs)} · ` +
+    `TOTAL=${fmtDur(totalMs)} · final=${kept.length}/${pl.placements.length} proposals · ` +
+    `consolidated=${rec.consolidated.length} (from ${totalExtracted} extracted)`,
+  );
+
+  return {
+    proposals: kept.map(k => k.proposal),
+    consolidationByProposal: kept.map(k => k.consolidation),
+    rootLogId: firstLogId,
+  };
+}
+
 export interface AnalyzeForReviewsInput {
   sourceKind: SourceKind;
   sourceRaw: string;

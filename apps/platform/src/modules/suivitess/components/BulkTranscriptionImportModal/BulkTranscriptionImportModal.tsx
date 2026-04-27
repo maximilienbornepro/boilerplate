@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode, type CSSProperties } from 'react';
-import { Modal, Button, LoadingSpinner, StatusTag, TileProgress, ReviewStatsLine } from '@boilerplate/shared/components';
+import { Modal, Button, LoadingSpinner, StatusTag, Badge, TileProgress, ReviewStatsLine } from '@boilerplate/shared/components';
 import { InlineConnectorSetup } from './InlineConnectorSetup';
 import { SkillButton } from '../SkillButton/SkillButton';
 import { getStatusOption } from '../../types';
@@ -346,7 +346,11 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
         setAvailableReviews(res.availableReviews);
         const initialRows = buildRowsFromSubjects(res.subjects);
         setRows(initialRows);
-        setConsolidationByRow(res.subjects.map(() => null));
+        // Now that the backend pipeline runs T1×N → T1.5 → T2 → T3 in a
+        // single pass, the response includes consolidation metadata
+        // aligned per proposal — feed it to the rows so the multi-source
+        // badge ("N sources") + chronology tooltip surface in the wizard.
+        setConsolidationByRow(res.consolidationByProposal ?? res.subjects.map(() => null));
         setTotalAtStart(initialRows.length);
       } else if (selectedItems.length === 1) {
         // Single-source — keep the original fast path.
@@ -627,7 +631,12 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
     try {
       const sourceId = primaryItem?.id
         ?? (replayedFromLogId != null ? `replay:${replayedFromLogId}` : 'manual');
-      const res = await api.applyRouting(sourceId, [buildSubjectPayload(row)], lastLogId);
+      // Tag EVERY selected source as imported, not just the first —
+      // otherwise selecting 5 sources only marks the primary one and
+      // the other 4 still surface as "not yet imported" on the next
+      // open of the modal.
+      const allSourceIds = selectedItems.length > 0 ? selectedItems.map(s => s.id) : undefined;
+      const res = await api.applyRouting(sourceId, [buildSubjectPayload(row)], lastLogId, allSourceIds);
 
       // Accumulate the result. Touched reviews = freshly-created reviews
       // + reviews that received new subjects + (for updates) the row's
@@ -686,7 +695,8 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
       // runs without marking a real source as imported again.
       const sourceId = primaryItem?.id
         ?? (replayedFromLogId != null ? `replay:${replayedFromLogId}` : 'manual');
-      const res = await api.applyRouting(sourceId, subjectsToApply, lastLogId);
+      const allSourceIds = selectedItems.length > 0 ? selectedItems.map(s => s.id) : undefined;
+      const res = await api.applyRouting(sourceId, subjectsToApply, lastLogId, allSourceIds);
       setApplyResult(res);
       setPhase('done');
 
@@ -717,7 +727,16 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
   };
 
   // ============ Render ============
-  const sourceTitle = primaryItem?.title;
+  // Source label : single source → its title verbatim ; multi-source
+  // → "N sources : …" so the user always sees that several inputs
+  // were consolidated. The full list lives in the tile metadata
+  // (per-row evidence chain), here we just need a recap line.
+  const sourceTitle = (() => {
+    if (selectedItems.length === 0) return null;
+    if (selectedItems.length === 1) return selectedItems[0].title;
+    const titles = selectedItems.map(s => s.title).filter(Boolean);
+    return `${selectedItems.length} sources : ${titles.join(' · ')}`;
+  })();
   const modalTitle = (
     <>
       {scopedDocumentId
@@ -825,7 +844,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                       <span className={styles.sourceTitle}>{s.title}</span>
                       <span className={styles.providerTag}>{s.provider}</span>
                       {s.alreadyImported && (
-                        <span className={styles.alreadyImportedBadge}>Déjà importé</span>
+                        <Badge type="info">↻ Déjà importé</Badge>
                       )}
                       {s.date && <span className={styles.sourceDate}>{formatDate(s.date)}</span>}
                     </label>

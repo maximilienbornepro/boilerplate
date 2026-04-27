@@ -2319,7 +2319,7 @@ ${filteredContent.slice(0, 30000)}`,
         if (id.startsWith('outlook:')) {
           const dateFilter = id.replace('outlook:', '');
           const { getOutlookMessages } = await import('./outlookCollectorService.js');
-          const msgs = await getOutlookMessages(userId, { days: 30 });
+          const msgs = await getOutlookMessages(userId, dateFilter && dateFilter !== 'unknown' ? { dateFilter } : { days: 30 });
           const filtered = dateFilter && dateFilter !== 'unknown'
             ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
             : msgs;
@@ -2495,7 +2495,7 @@ ${filteredContent.slice(0, 30000)}`,
           if (id.startsWith('outlook:')) {
             const dateFilter = id.replace('outlook:', '');
             const { getOutlookMessages } = await import('./outlookCollectorService.js');
-            const msgs = await getOutlookMessages(userId, { days: 30 });
+            const msgs = await getOutlookMessages(userId, dateFilter && dateFilter !== 'unknown' ? { dateFilter } : { days: 30 });
             const filtered = dateFilter && dateFilter !== 'unknown'
               ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
               : msgs;
@@ -2650,7 +2650,7 @@ ${filteredContent.slice(0, 30000)}`,
             if (id.startsWith('outlook:')) {
               const dateFilter = id.replace('outlook:', '');
               const { getOutlookMessages } = await import('./outlookCollectorService.js');
-              const msgs = await getOutlookMessages(userId, { days: 30 });
+              const msgs = await getOutlookMessages(userId, dateFilter && dateFilter !== 'unknown' ? { dateFilter } : { days: 30 });
               const filtered = dateFilter && dateFilter !== 'unknown'
                 ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
                 : msgs;
@@ -2812,7 +2812,7 @@ ${filteredContent.slice(0, 30000)}`,
         if (id.startsWith('outlook:')) {
           const dateFilter = id.replace('outlook:', '');
           const { getOutlookMessages } = await import('./outlookCollectorService.js');
-          const msgs = await getOutlookMessages(userId, { days: 30 });
+          const msgs = await getOutlookMessages(userId, dateFilter && dateFilter !== 'unknown' ? { dateFilter } : { days: 30 });
           const filtered = dateFilter && dateFilter !== 'unknown'
             ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
             : msgs;
@@ -3026,7 +3026,7 @@ ${filteredContent.slice(0, 30000)}`,
           throw e;
         }
 
-        const { analyzeSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
+        const { analyzeMultiSourceForDocument } = await import('../aiSkills/analyzeSourcePipeline.js');
 
         const documentCtx = {
           id: String(doc.id),
@@ -3044,95 +3044,121 @@ ${filteredContent.slice(0, 30000)}`,
           })),
         };
 
+        // Fetch every source's raw content + its real timestamp (needed
+        // by the T1.5 reconciler to chronologise multi-source evidence).
         // Same multiplex as the streaming bulk endpoint.
-        async function fetchSourceText(src: { source: string; id: string; title: string }): Promise<string | null> {
+        const fetchSource = async (src: { source: string; id: string; title: string; date?: string | null }) => {
+          let raw = '';
+          let ts = src.date || new Date().toISOString();
           try {
             if (src.source === 'fathom') {
               const { getFathomTranscript } = await import('./fathomService.js');
               const entries = await getFathomTranscript(userId, src.id);
-              return entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
-            }
-            if (src.source === 'otter') {
+              raw = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+            } else if (src.source === 'otter') {
               const { getOtterTranscript } = await import('./otterService.js');
               const entries = await getOtterTranscript(userId, src.id);
-              return entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
-            }
-            if (src.source === 'outlook') {
+              raw = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+            } else if (src.source === 'outlook') {
               if (src.id.startsWith('outlook:')) {
                 const dateFilter = src.id.replace('outlook:', '');
                 const { getOutlookMessages } = await import('./outlookCollectorService.js');
-                const msgs = await getOutlookMessages(userId, { days: 30 });
+                const msgs = await getOutlookMessages(userId, dateFilter && dateFilter !== 'unknown' ? { dateFilter } : { days: 30 });
                 const filtered = dateFilter && dateFilter !== 'unknown'
                   ? msgs.filter(m => m.date.slice(0, 10) === dateFilter)
                   : msgs;
-                return filtered.map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`).join('\n');
+                raw = filtered.map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`).join('\n');
+                if (filtered[0]?.date) ts = filtered[0].date;
+              } else {
+                const { getOutlookEmailBody } = await import('./emailService.js');
+                raw = await getOutlookEmailBody(userId, src.id);
               }
-              const { getOutlookEmailBody } = await import('./emailService.js');
-              return await getOutlookEmailBody(userId, src.id);
-            }
-            if (src.source === 'gmail') {
+            } else if (src.source === 'gmail') {
               const { getGmailEmailBody } = await import('./emailService.js');
-              return await getGmailEmailBody(userId, src.id);
-            }
-            if (src.source === 'slack') {
+              raw = await getGmailEmailBody(userId, src.id);
+            } else if (src.source === 'slack') {
               const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
               const slackConfig = await getSlackConfig(userId);
-              if (!slackConfig) return null;
-              const parts = src.id.split(':');
-              const channelId = parts[1] || parts[0];
-              const dateFilter = parts[2];
-              const messages = await getSlackMessages(slackConfig.id, { days: slackConfig.daysToFetch, channelId });
-              const filtered = dateFilter
-                ? messages.filter(m => new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10) === dateFilter)
-                : messages;
-              return filtered
-                .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
-                .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`).join('\n');
+              if (slackConfig) {
+                const parts = src.id.split(':');
+                const channelId = parts[1] || parts[0];
+                const dateFilter = parts[2];
+                const messages = await getSlackMessages(slackConfig.id, { days: slackConfig.daysToFetch, channelId });
+                const filtered = dateFilter
+                  ? messages.filter(m => new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10) === dateFilter)
+                  : messages;
+                const sorted = filtered.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs));
+                raw = sorted.map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`).join('\n');
+                if (sorted[0]?.messageTs) ts = new Date(parseFloat(sorted[0].messageTs) * 1000).toISOString();
+              }
             }
-            return null;
           } catch (err) {
             console.warn(`[doc-bulk-analyze] failed to fetch ${src.source}/${src.id}:`, err);
-            return null;
           }
-        }
-
-        // Progress bridge : we have N sources and each runs a full
-        // T1 → T2 → T3 pipeline. The frontend indicator uses the
-        // first-source boundaries as a good enough signal (it's what
-        // the multi-source bulk does). We fan progress from every
-        // source into the same onProgress → the user sees t1/t2/t3
-        // ticks as they happen.
-        const onProgress = makeOnProgress(job.id);
-
-        const allProposals: FinalReviewProposalAdapted[] = [];
-        let lastLogId: number | null = null;
-        for (const src of sources) {
-          const text = await fetchSourceText(src);
-          if (!text || !text.trim()) continue;
           const sourceKind: 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail' =
             src.source === 'slack' ? 'slack'
             : src.source === 'outlook' ? 'outlook'
             : src.source === 'gmail' ? 'gmail'
-            : src.source === 'fathom' ? 'transcript'
-            : src.source === 'otter' ? 'transcript'
+            : src.source === 'fathom' ? 'fathom'
+            : src.source === 'otter' ? 'otter'
             : 'transcript';
-          try {
-            const { proposals, rootLogId } = await analyzeSourceForDocument({
-              sourceKind,
-              sourceRaw: text,
-              sourceTitle: src.title,
-              document: documentCtx,
-              userId,
-              userEmail: userEmail || '',
-            }, onProgress);
-            if (rootLogId != null) lastLogId = rootLogId;
-            for (const p of proposals) {
-              const fannedOut = adaptDocProposalToReviewShape(p, doc.id, doc.sections);
-              for (const adapted of fannedOut) allProposals.push(adapted);
+          return {
+            sourceId: `${src.source}:${src.id}`,
+            sourceKind,
+            sourceTitle: src.title || `(${src.source}) ${src.id}`,
+            sourceTimestamp: ts,
+            sourceRaw: raw,
+          };
+        };
+
+        // Single onProgress stream covering ONE pipeline run across all
+        // sources : T1×N parallel → T1.5 reconcile → T2 → T3. Replaces
+        // the previous per-source loop that made the stepper "boucle"
+        // back to T1 every time a new source was processed.
+        const onProgress = makeOnProgress(job.id);
+
+        const fetched = await Promise.all(sources.map(fetchSource));
+        const usable = fetched.filter(s => s.sourceRaw.trim().length > 0);
+        if (usable.length === 0) {
+          finishJob(job.id, {
+            summary: 'Aucune source exploitable.',
+            subjects: [],
+            availableReviews: [{
+              id: doc.id,
+              title: doc.title,
+              sections: doc.sections.map(s => ({
+                id: s.id, name: s.name,
+                subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
+              })),
+            }],
+            logId: null,
+          });
+          return;
+        }
+
+        const allProposals: FinalReviewProposalAdapted[] = [];
+        const consolidationByProposal: Array<unknown> = [];
+        let lastLogId: number | null = null;
+        try {
+          const result = await analyzeMultiSourceForDocument({
+            sources: usable,
+            document: documentCtx,
+            userId,
+            userEmail: userEmail || '',
+          }, onProgress);
+          if (result.rootLogId != null) lastLogId = result.rootLogId;
+          // Adapt FinalDocumentProposal[] → FinalReviewProposalAdapted[]
+          // and align the consolidation array per fan-out so the modal
+          // can surface "N sources" badges next to each rendered tile.
+          for (let i = 0; i < result.proposals.length; i++) {
+            const fanned = adaptDocProposalToReviewShape(result.proposals[i], doc.id, doc.sections);
+            for (const adapted of fanned) {
+              allProposals.push(adapted);
+              consolidationByProposal.push(result.consolidationByProposal[i] ?? null);
             }
-          } catch (err) {
-            console.error(`[doc-bulk-analyze] analyzeSourceForDocument failed for ${src.source}/${src.id}:`, err);
           }
+        } catch (err) {
+          console.error(`[doc-bulk-analyze] analyzeMultiSourceForDocument failed:`, err);
         }
 
         const availableReview = {
@@ -3150,6 +3176,8 @@ ${filteredContent.slice(0, 30000)}`,
             ? `${allProposals.length} sujet(s) extrait(s) et routé(s) dans ${doc.title}.`
             : 'Aucun sujet exploitable.',
           subjects: allProposals,
+          consolidationByProposal,
+          sourcesCount: usable.length,
           availableReviews: [availableReview],
           logId: lastLogId,
         });
@@ -3214,8 +3242,14 @@ ${filteredContent.slice(0, 30000)}`,
 
   router.post('/transcription/apply-routing', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
-    const { sourceId, logId, subjects } = (req.body || {}) as {
+    const { sourceId, sourceIds, logId, subjects } = (req.body || {}) as {
       sourceId?: string;
+      /** Every source analysed in the run that produced these subjects.
+       *  Required when ≥2 sources were selected so each one gets a row
+       *  in `suivitess_transcript_imports` and reappears with the
+       *  "Déjà importé" badge on the next open. Falls back to
+       *  `[sourceId]` when only the legacy field is provided. */
+      sourceIds?: string[];
       /** Back-reference to the `ai_analysis_logs.id` row that produced
        *  the proposals the user is now committing. Stored on each
        *  routing_memory entry so /ai-routing can render the per-import
@@ -3535,16 +3569,24 @@ ${filteredContent.slice(0, 30000)}`,
       });
     }
 
-    // Mark the source as imported so it does not appear in bulk-sources again.
-    if (sourceId && subjectsCreated.length > 0) {
+    // Mark every analysed source as imported so they all get the
+    // "Déjà importé" badge next time the modal opens — previously
+    // only `sourceId` (the primary anchor) was tagged, leaving the
+    // other selected sources looking pristine.
+    const idsToTag = (sourceIds && sourceIds.length > 0)
+      ? sourceIds
+      : (sourceId ? [sourceId] : []);
+    if (idsToTag.length > 0 && subjectsCreated.length > 0) {
       try {
         const firstReview = subjectsCreated[0].reviewId;
-        await db.pool.query(
-          `INSERT INTO suivitess_transcript_imports (document_id, call_id, provider, call_title)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT DO NOTHING`,
-          [firstReview, sourceId, 'bulk-router', ''],
-        );
+        for (const sid of idsToTag) {
+          await db.pool.query(
+            `INSERT INTO suivitess_transcript_imports (document_id, call_id, provider, call_title)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT DO NOTHING`,
+            [firstReview, sid, 'bulk-router', ''],
+          );
+        }
       } catch { /* ignore — best effort */ }
     }
 
