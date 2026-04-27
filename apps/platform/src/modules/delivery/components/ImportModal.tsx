@@ -12,12 +12,16 @@ const CONNECTOR_META: Record<string, { name: string; color: string; icon: JSX.El
 
 interface ImportModalProps {
   incrementId: string;
+  /** Board id of the destination — required so the Jira import can
+   *  fetch existing tasks (to flag duplicates) and find/create the
+   *  Anomalie container. */
+  boardId: string;
   activeConnectors: ActiveConnector[];
   onImported: () => void;
   onClose: () => void;
 }
 
-export function ImportModal({ incrementId, activeConnectors, onImported, onClose }: ImportModalProps) {
+export function ImportModal({ incrementId, boardId, activeConnectors, onImported, onClose }: ImportModalProps) {
   // Keep only connectors we actually know how to import from.
   const importableConnectors = activeConnectors.filter(c => CONNECTOR_META[c.service]);
 
@@ -28,7 +32,7 @@ export function ImportModal({ incrementId, activeConnectors, onImported, onClose
   const handleImported = () => { onImported(); onClose(); };
 
   if (selectedService === 'jira') {
-    return <JiraImportModal incrementId={incrementId} onImported={handleImported} onClose={activeConnectors.length > 1 ? () => setSelectedService(null) : onClose} />;
+    return <JiraImportModal incrementId={incrementId} boardId={boardId} onImported={handleImported} onClose={activeConnectors.length > 1 ? () => setSelectedService(null) : onClose} />;
   }
 
   const title = !selectedService

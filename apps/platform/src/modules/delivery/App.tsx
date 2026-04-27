@@ -901,6 +901,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
           {showImportModal && (
             <ImportModal
               incrementId={defaultSprintId}
+              boardId={board.id}
               activeConnectors={activeConnectors}
               onImported={loadTasks}
               onClose={() => setShowImportModal(false)}
