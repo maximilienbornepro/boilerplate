@@ -118,11 +118,15 @@ function buildCompactedPlan(
   for (let i = 0; i < sortedRows.length; i++) remap.set(sortedRows[i], i);
 
   // 3. Surface the new shapes — original objects are spread so callers
-  //    that read other fields keep working.
+  //    that read other fields keep working. `staticPositions` is the
+  //    one-stop "after-state position" map: every Jira task gets ONE
+  //    entry whether it stayed put (kind=static) or was moved by a
+  //    selected recommendation (kind=reco). The GridPreview reads
+  //    only this map, so missing entries = invisible tickets.
   const staticPositions: TaskPosition[] = [];
   const staticMoves: CompactedPlan['staticMoves'] = [];
   for (const s of slots) {
-    if (s.kind !== 'static') continue;
+    if (s.kind === 'addition') continue;
     const newRow = remap.get(s.row) ?? s.row;
     staticPositions.push({
       taskId: s.taskId!,
@@ -131,7 +135,7 @@ function buildCompactedPlan(
       row: newRow,
       rowSpan: s.rowSpan,
     });
-    if (newRow !== s.row) {
+    if (s.kind === 'static' && newRow !== s.row) {
       staticMoves.push({ taskId: s.taskId!, startCol: s.startCol, endCol: s.endCol, row: newRow });
     }
   }
@@ -646,8 +650,12 @@ interface GridPreviewProps {
   selectedIds: Set<string>;
 }
 
-// Shared sizing logic — computes how many cols/rows the grid needs given
-// all placements (current + recommended + additions).
+// Shared sizing logic — computes how many cols/rows the grid needs
+// given the AFTER-state placements only. We deliberately ignore
+// `r.current` (the pre-move position) here so the grid doesn't
+// stretch tall to accommodate ghost rows that no longer hold
+// anything in the compacted view. The Comparaison view has its own
+// before/after sizing.
 function useGridSize(
   positions: TaskPosition[],
   recommendations: AnalyzedTask[],
@@ -663,8 +671,6 @@ function useGridSize(
     for (const r of recommendations) {
       if (r.recommended.endCol > maxCol) maxCol = r.recommended.endCol;
       if (r.recommended.row > maxRow) maxRow = r.recommended.row;
-      if (r.current.endCol > maxCol) maxCol = r.current.endCol;
-      if (r.current.row > maxRow) maxRow = r.current.row;
     }
     for (const a of additions) {
       if (a.recommended.endCol > maxCol) maxCol = a.recommended.endCol;
