@@ -28,17 +28,25 @@ Pour chaque ticket, dans cet ordre :
 
 1. **Filtre abandonnés** → si le statut est abandonné/annulé, le ticket
    est exclu du board (cf. §1).
-2. **Règle passé-seulement pour review/livraison** → si le statut est
-   « En revue » / « En livraison » / QA / Test / Validation, placement
-   forcé avant la barre aujourd'hui (cf. §2).
-3. **Sinon, placement par catégorie de statut** (done / in_progress /
-   blocked / todo) + catégorie de version (cf. §3-5).
-4. **Contrainte in_progress couvre aujourd'hui** → si in_progress ou
-   blocked, on garantit que le ticket chevauche la barre aujourd'hui
-   (cf. §6).
-5. **Largeur** calculée depuis l'estimation (cf. §7).
-6. **Empilement des lignes** dans chaque colonne cible (cf. §8).
-7. **Skip no-op** → si la cible calculée = position actuelle, pas de
+2. **Règle parking lot** → si le ticket est `blocked`, sans version
+   cible, OU sans estimation, il est pinné dans la **dernière colonne**
+   avec une **largeur de 1**, indépendamment de toute autre règle
+   (cf. §5 ▸ parking lot).
+3. **Règle passé-seulement pour review/livraison** → si le statut est
+   « En revue » / « En livraison » / QA / Test / Validation (et que le
+   ticket a passé le parking-lot), placement forcé avant la barre
+   aujourd'hui (cf. §2).
+4. **Sinon, placement par catégorie de statut** (done / in_progress /
+   todo) + catégorie de version (cf. §3-5).
+5. **Contrainte in_progress couvre aujourd'hui** → si in_progress, on
+   garantit que le ticket chevauche la barre aujourd'hui (cf. §6).
+   `blocked` est déjà sorti via §parking-lot.
+6. **Largeur** calculée depuis l'estimation (cf. §7) — fixée à 1
+   pour les parking-lot.
+7. **Empilement des lignes** dans chaque colonne cible (cf. §8). Au
+   sein d'une même colonne, l'ordre est : `in_progress` au-dessus
+   (rows basses), puis `todo`, puis `blocked`, puis `done`.
+8. **Skip no-op** → si la cible calculée = position actuelle, pas de
    proposition de déplacement (cf. §9).
 
 ---
@@ -136,20 +144,39 @@ Utilisé par §5 pour placer les tickets `todo`.
 
 ## §5 · Choix de la colonne cible
 
-**Fonction TS** : `chooseStartCol(statusCat, versionCat, todayCol, totalCols, width)`
+**Fonctions TS** : `isParkingLot(statusCat, versionCat, estWidth)` +
+`chooseStartCol(statusCat, versionCat, todayCol, totalCols, width, estWidth)`
 
-Pour les tickets qui n'ont **pas** été captés par §1 ou §2 :
+### §5.0 · Parking lot (priorité maximale)
+
+Le ticket est routé vers la **dernière colonne** avec **largeur = 1**
+si :
+
+- `statusCat === 'blocked'`, OU
+- `versionCat === 'none'` (aucune version cible), OU
+- `estWidth === null` (aucune estimation, ni `estimatedDays`, ni `storyPoints`).
+
+Le pin parking-lot prime sur tout le reste — review/delivery, done,
+in_progress, etc. : si le ticket coche au moins une condition
+parking-lot, il file en dernière colonne.
+
+**Pourquoi** : ces tickets ne sont pas réellement plannifiables. Les
+empiler dans la zone de planification les rend bruyants et masque ce
+qui est vraiment prêt à être travaillé. Un parking-lot à droite les
+garde visibles sans qu'ils consomment d'espace planifié.
+
+### §5.1 · Tickets schedulables (sortie du parking-lot)
 
 | Catégorie statut | Colonne cible |
 |---|---|
 | `done` | `todayCol - 1` (juste avant la barre aujourd'hui) |
-| `in_progress` / `blocked` | Centré autour de `todayCol` (§6 garantit l'overlap) |
+| `in_progress` | Centré autour de `todayCol` (§6 garantit l'overlap) |
 | `todo` + version `next` | Juste après la barre aujourd'hui |
 | `todo` + version `later` | Vers la droite (semaines futures) |
-| `todo` + version `past` | `todayCol - 1` (à traiter d'urgence, normalement impossible) |
-| `todo` + version `none` | Dernière colonne visible |
+| `todo` + version `past` | Centre droit (rare — la version est sortie) |
 
-Toujours clampé dans `[0, totalCols - width]`.
+Toujours clampé dans `[0, totalCols - width]`. Note : `blocked` et
+`todo + none` ne sont jamais ici — ils sont attrapés en §5.0.
 
 ---
 
@@ -157,8 +184,9 @@ Toujours clampé dans `[0, totalCols - width]`.
 
 **Fonction TS** : `ensureOverlapsToday(startCol, width, todayCol, totalCols)`
 
-Tout ticket `in_progress` ou `blocked` **DOIT** chevaucher la colonne
-`todayCol`, quelle que soit sa largeur :
+Tout ticket `in_progress` (uniquement — `blocked` est sorti par §5.0
+parking-lot) **DOIT** chevaucher la colonne `todayCol`, quelle que
+soit sa largeur :
 
 - Si `endCol ≤ todayCol` → décalé à droite pour que `endCol = todayCol + 1`.
 - Si `startCol > todayCol` → décalé à gauche pour que `startCol = todayCol`.
@@ -194,14 +222,27 @@ Toujours clampé à `totalCols`.
 
 ## §8 · Empilement des lignes dans une colonne
 
-**Fonction TS** : `packRows(bucket)`
+**Fonction TS** : `packRows(bucket)` + `statusRowPriority(cat)`
 
 Plusieurs tickets visent la même colonne cible → on les empile :
 
-1. Trier par : `ready` en premier (prêts à travailler), puis par
-   estimation croissante.
-2. Affecter `row = 0` au premier, puis incrémenter pour chaque
-   conflit d'overlap (tickets qui se chevauchent en colonnes).
+1. Trier par **priorité de statut** (le statut prime sur la qualité),
+   row la plus basse = visuellement la plus haute :
+   | Catégorie | Priorité (row) |
+   |---|---|
+   | `in_progress` | 0 (au-dessus) |
+   | `todo` | 1 |
+   | `blocked` | 2 |
+   | `done` | 3 |
+2. Au sein d'un même statut : `ready` (prêts à travailler) en premier,
+   puis description, puis estimation, puis taskId comme tiebreaker
+   stable.
+3. Affecter la row la plus basse libre pour chaque ticket (greedy),
+   en évitant les overlaps de colonnes.
+
+**Pourquoi le statut prime** : un ticket actif (en cours) doit être
+visible avant les tickets passifs (à faire) au regard d'aujourd'hui —
+l'utilisateur doit voir d'un coup d'œil ce qui avance.
 
 Les additions venant du sprint sont placées **après** tous les tickets
 repositionnés de la même colonne (baseRow = max des rows existantes + 1).

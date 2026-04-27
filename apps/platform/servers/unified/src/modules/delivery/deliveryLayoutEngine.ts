@@ -166,6 +166,24 @@ export function widthFromEstimation(
   return Math.max(1, Math.ceil(days / 5));
 }
 
+/** Tickets that fall in the "parking lot" — meaning they aren't
+ *  actionable yet and shouldn't compete for column real-estate with
+ *  scheduled work :
+ *   - `blocked` (impediment, not movable)
+ *   - no target version (`versionCategory === 'none'`)
+ *   - no estimation at all (we can't size a slot for them)
+ *  These are pinned to the rightmost column with a fixed width of 1.
+ *  @see prompts/delivery/layout-rules.md §5 */
+export function isParkingLot(
+  statusCat: StatusCategory,
+  versionCat: VersionCategory,
+  estWidth: number | null,
+): boolean {
+  return statusCat === 'blocked'
+    || versionCat === 'none'
+    || estWidth == null;
+}
+
 /** Pick the target column based on status category + version category +
  *  today column. Returns the `startCol` for a width=1 ticket ; caller may
  *  adjust depending on actual width. Always clamped to the grid.
@@ -176,17 +194,22 @@ export function chooseStartCol(
   todayCol: number,
   totalCols: number,
   width: number,
+  estWidth: number | null = width, // legacy callers — assume estWidth = width
 ): number {
   const lastCol = Math.max(0, totalCols - width);
+  // Parking lot — pinned to the rightmost column.
+  if (isParkingLot(statusCat, versionCat, estWidth)) {
+    return lastCol;
+  }
   // Rule 1 : done tickets stay strictly BEFORE today.
   if (statusCat === 'done') {
     if (todayCol <= 0) return 0;
     return clamp(todayCol - 1, 0, lastCol);
   }
-  // Rule 2 : in_progress + blocked cover today (enforced later by
-  //   ensureOverlapsToday). Here we just pick today - overlap/2 so a wide
-  //   ticket is centered around today.
-  if (statusCat === 'in_progress' || statusCat === 'blocked') {
+  // Rule 2 : in_progress covers today (enforced later by
+  //   ensureOverlapsToday). `blocked` is captured by the parking-lot
+  //   branch above so it doesn't reach this point.
+  if (statusCat === 'in_progress') {
     if (todayCol < 0) return 0;
     const centered = todayCol - Math.floor((width - 1) / 2);
     return clamp(centered, 0, lastCol);
@@ -195,7 +218,7 @@ export function chooseStartCol(
   //   next    → first third after today
   //   later   → second third
   //   past    → fin de board (puisque la version est déjà livrée, pas d'urgence)
-  //   none    → fin de board
+  //   none    → handled by parking lot (above)
   const afterToday = Math.max(0, todayCol >= 0 ? todayCol + 1 : 0);
   const remaining = Math.max(1, totalCols - afterToday);
   let start: number;
@@ -204,7 +227,7 @@ export function chooseStartCol(
   } else if (versionCat === 'later') {
     start = afterToday + Math.floor(remaining / 3);
   } else {
-    // past or none → fin de board
+    // past or other → fin de board (defensive default)
     start = afterToday + Math.floor((remaining * 2) / 3);
   }
   return clamp(start, 0, lastCol);
@@ -233,9 +256,28 @@ export function ensureOverlapsToday(
   return startCol;
 }
 
+/** Status priority for row packing — lower number = higher up on
+ *  screen. `in_progress` work always sits above `todo` in the same
+ *  column so the user instantly sees what's actively being worked on
+ *  versus what's still planned. `blocked` is below `todo` (it's
+ *  technically in `done`-grade territory: nothing's moving) and `done`
+ *  is the floor. */
+function statusRowPriority(cat?: StatusCategory): number {
+  switch (cat) {
+    case 'in_progress': return 0;
+    case 'todo':        return 1;
+    case 'blocked':     return 2;
+    case 'done':        return 3;
+    default:            return 1;
+  }
+}
+
 /** Inside a single column (same startCol), assign row numbers so that
  *  tickets don't overlap in time. Higher-quality tickets (ready, with
  *  description) go to low rows ; lower-quality ones go further down.
+ *  Within the same column, `in_progress` tickets are pinned ABOVE
+ *  `todo` ones (status priority wins over quality score) so the
+ *  user always sees active work first.
  *  Only packs tickets that END in this column or later — earlier tickets
  *  keep their own row.
  *
@@ -243,11 +285,14 @@ export function ensureOverlapsToday(
  *  row assignment.
  *  @see prompts/delivery/layout-rules.md §8 */
 export function packRows(
-  column: Array<{ taskId: string; startCol: number; endCol: number; qualityFlags: QualityFlags }>,
+  column: Array<{ taskId: string; startCol: number; endCol: number; qualityFlags: QualityFlags; statusCat?: StatusCategory }>,
 ): Map<string, number> {
-  // Sort : ready first, then hasDescription, then hasEstimation, then taskId
-  //   (stable tiebreaker).
+  // Sort : status priority first (in_progress > todo > blocked > done),
+  // then quality score, then taskId (stable tiebreaker).
   const sorted = [...column].sort((a, b) => {
+    const aPrio = statusRowPriority(a.statusCat);
+    const bPrio = statusRowPriority(b.statusCat);
+    if (aPrio !== bPrio) return aPrio - bPrio;
     const aScore = (a.qualityFlags.ready ? 4 : 0)
       + (a.qualityFlags.hasMeaningfulDescription ? 2 : 0)
       + (a.qualityFlags.hasEstimation ? 1 : 0);
@@ -321,7 +366,14 @@ export function computeBoardPlan(input: LayoutInput): BoardPlan {
     };
     const currentDuration = Math.max(1, t.position.endCol - t.position.startCol);
     const estWidth = widthFromEstimation(t.estimatedDays, t.storyPoints);
-    const width = Math.max(1, Math.min(grid.totalCols, estWidth ?? currentDuration));
+    // Parking-lot tickets (blocked / no version / no estimation) always
+    // get width = 1 regardless of their `currentDuration`. They sit in
+    // the rightmost column as a 1-cell pin so the schedulable area
+    // stays uncluttered.
+    const isParking = isParkingLot(statusCat, t.versionCategory, estWidth);
+    const width = isParking
+      ? 1
+      : Math.max(1, Math.min(grid.totalCols, estWidth ?? currentDuration));
 
     const rawStatus = t.externalStatus ?? t.boardStatus;
     let startCol: number;
@@ -331,7 +383,11 @@ export function computeBoardPlan(input: LayoutInput): BoardPlan {
     // done and must NEVER sit in the future. If they're already strictly
     // before the today bar, keep them put (no spurious move proposal).
     // Otherwise, snap them to the slot ending exactly on the today bar.
-    if (isReviewOrDeliveryStatus(rawStatus) && grid.todayCol > 0) {
+    // Parking-lot tickets bypass this — they go to the last column.
+    if (isParking) {
+      startCol = chooseStartCol(statusCat, t.versionCategory, grid.todayCol, grid.totalCols, width, estWidth);
+      endCol = startCol + width;
+    } else if (isReviewOrDeliveryStatus(rawStatus) && grid.todayCol > 0) {
       if (t.position.endCol <= grid.todayCol) {
         // Already in the past — leave it. Using the current position means
         // the no-op skip below will prune this placement automatically.
@@ -343,8 +399,8 @@ export function computeBoardPlan(input: LayoutInput): BoardPlan {
         endCol = startCol + width;
       }
     } else {
-      startCol = chooseStartCol(statusCat, t.versionCategory, grid.todayCol, grid.totalCols, width);
-      if (statusCat === 'in_progress' || statusCat === 'blocked') {
+      startCol = chooseStartCol(statusCat, t.versionCategory, grid.todayCol, grid.totalCols, width, estWidth);
+      if (statusCat === 'in_progress') {
         startCol = ensureOverlapsToday(startCol, width, grid.todayCol, grid.totalCols);
       }
       endCol = startCol + width;
@@ -362,6 +418,7 @@ export function computeBoardPlan(input: LayoutInput): BoardPlan {
       startCol: b.startCol,
       endCol: b.endCol,
       qualityFlags: b.qualityFlags,
+      statusCat: b.statusCat,
     })));
     for (const b of bucket) {
       const row = rowMap.get(b.ticket.id) ?? 0;
@@ -414,20 +471,27 @@ export function computeBoardPlan(input: LayoutInput): BoardPlan {
       ready: m.hasEstimation && m.hasDescription && statusCat !== 'blocked',
     };
     const estWidth = widthFromEstimation(m.estimatedDays, m.storyPoints);
-    const width = Math.max(1, Math.min(grid.totalCols, estWidth ?? 1));
+    const isParking = isParkingLot(statusCat, m.versionCategory, estWidth);
+    const width = isParking
+      ? 1
+      : Math.max(1, Math.min(grid.totalCols, estWidth ?? 1));
     let startCol: number;
     let endCol: number;
 
     // Same past-only rule as above — additions in review/delivery state
     // are pulled in from the sprint but are essentially done, so they go
-    // straight to the slot ending on the today bar.
-    if (isReviewOrDeliveryStatus(m.status) && grid.todayCol > 0) {
+    // straight to the slot ending on the today bar. Parking-lot pins to
+    // last column ahead of any other rule.
+    if (isParking) {
+      startCol = chooseStartCol(statusCat, m.versionCategory, grid.todayCol, grid.totalCols, width, estWidth);
+      endCol = startCol + width;
+    } else if (isReviewOrDeliveryStatus(m.status) && grid.todayCol > 0) {
       endCol = grid.todayCol;
       startCol = clamp(grid.todayCol - width, 0, Math.max(0, grid.totalCols - width));
       endCol = startCol + width;
     } else {
-      startCol = chooseStartCol(statusCat, m.versionCategory, grid.todayCol, grid.totalCols, width);
-      if (statusCat === 'in_progress' || statusCat === 'blocked') {
+      startCol = chooseStartCol(statusCat, m.versionCategory, grid.todayCol, grid.totalCols, width, estWidth);
+      if (statusCat === 'in_progress') {
         startCol = ensureOverlapsToday(startCol, width, grid.todayCol, grid.totalCols);
       }
       endCol = startCol + width;
@@ -452,6 +516,7 @@ export function computeBoardPlan(input: LayoutInput): BoardPlan {
       startCol: b.startCol,
       endCol: b.endCol,
       qualityFlags: b.qualityFlags,
+      statusCat: b.statusCat,
     })));
     for (const b of bucket) {
       const row = (rowMap.get(b.missing.externalKey) ?? 0) + baseRow;
