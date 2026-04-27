@@ -111,6 +111,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSanityModal, setShowSanityModal] = useState(false);
+  const [sanityMode, setSanityMode] = useState<'ai' | 'deterministic'>('ai');
   const [showLayoutRulesModal, setShowLayoutRulesModal] = useState(false);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -784,6 +785,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                     onClick={() => {
                       setShowActionsMenu(false);
                       if (tasks.some(t => t.source && t.source !== 'manual')) {
+                        setSanityMode('ai');
                         setShowSanityModal(true);
                       } else if (onNavigate) {
                         onNavigate('/reglages');
@@ -791,6 +793,18 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                     }}
                   >
                     Vérifier avec l'IA
+                  </button>
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      setSanityMode('deterministic');
+                      setShowSanityModal(true);
+                    }}
+                    title="Repositionne les tickets existants via le layout engine, sans appel IA (gratuit, instantané)"
+                  >
+                    🪄 Repositionner (sans IA)
                   </button>
                   <button
                     type="button"
@@ -920,6 +934,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
           {showSanityModal && (
             <SanityCheckModal
               boardId={board.id}
+              mode={sanityMode}
               onClose={() => setShowSanityModal(false)}
               onApplied={() => { setShowSanityModal(false); loadTasks(); }}
             />

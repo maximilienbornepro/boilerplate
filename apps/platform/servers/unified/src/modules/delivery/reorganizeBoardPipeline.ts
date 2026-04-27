@@ -312,3 +312,114 @@ export async function analyzeSanityCheckPipeline(
     columns: columnsArr,
   };
 }
+
+/** Deterministic-only variant — same output shape as
+ *  {@link analyzeSanityCheckPipeline} but skips both LLM tiers:
+ *    - Tier 1 (assess) → uses an empty assessment, the layout engine
+ *      falls back to the snapshot's raw `hasEstimation` /
+ *      `hasDescription` flags.
+ *    - Tier 2 (write reasoning) → emits a fixed sentence per move so
+ *      the SanityCheckModal renders the same UI without an LLM call.
+ *
+ *  Useful when the user wants a fast, free, repeatable layout pass
+ *  without paying tokens or waiting for an AI response — e.g. after
+ *  a bulk Jira import that scattered tickets across the board.
+ *
+ *  Doesn't touch additions from the sprint (caller passes
+ *  `missingFromBoard: []`) — this entry point is strictly
+ *  re-positioning of existing board tickets. */
+export async function analyzeRepositionDeterministic(
+  snapshot: BoardSnapshot,
+): Promise<SanityCheckResult> {
+  const wallStart = Date.now();
+  const stats = computeBoardAnalysis(snapshot);
+
+  if (snapshot.tasks.length === 0) {
+    return { summary: 'Aucune tâche à repositionner.', analysis: stats, columns: [] };
+  }
+
+  // No tier-1 / tier-2 LLM calls — pass empty assessment, fixed
+  // reasoning. The layout engine has its own raw-flags fallback.
+  const plan = computeBoardPlan({
+    tickets: snapshot.tasks,
+    missingFromBoard: snapshot.missingFromBoard,
+    assessment: {},
+    grid: { totalCols: snapshot.totalCols, todayCol: snapshot.todayCol },
+  });
+
+  const MAX_MOVES = 25;
+  const MAX_ADDITIONS = 15;
+  const moves = plan.placements.filter(p => !p.isAddition).slice(0, MAX_MOVES);
+  const additions = plan.placements.filter(p => p.isAddition).slice(0, MAX_ADDITIONS);
+
+  const fixedReasoning = 'Repositionnement déterministe (règles parking-lot + statut prioritaire — sans IA).';
+
+  // Same shape mapping as the AI variant — kept verbatim so the
+  // SanityCheckModal renders identical UI.
+  const taskById = new Map(snapshot.tasks.map(t => [t.id, t]));
+  const missingByKey = new Map(snapshot.missingFromBoard.map(m => [m.externalKey, m]));
+  const columns = new Map<number, ColumnPlan>();
+  const ensureCol = (col: number): ColumnPlan => {
+    let c = columns.get(col);
+    if (!c) {
+      c = { col, label: `Semaine ${col + 1}`, strategy: '', tasks: [], additions: [] };
+      columns.set(col, c);
+    }
+    return c;
+  };
+
+  for (const p of moves) {
+    const t = taskById.get(p.taskId);
+    if (!t) continue;
+    const c = ensureCol(p.to.startCol);
+    c.tasks.push({
+      taskId: p.taskId,
+      taskTitle: t.title,
+      externalKey: t.externalKey,
+      source: t.source,
+      status: p.status,
+      version: p.version,
+      versionCategory: p.versionCategory,
+      hasEstimation: p.qualityFlags.hasEstimation,
+      hasDescription: p.qualityFlags.hasMeaningfulDescription,
+      current: t.position,
+      recommended: { startCol: p.to.startCol, endCol: p.to.endCol, row: p.to.row },
+      reasoning: fixedReasoning,
+    });
+  }
+  for (const p of additions) {
+    const key = p.externalKey ?? p.taskId;
+    const m = missingByKey.get(key);
+    if (!m) continue;
+    const c = ensureCol(p.to.startCol);
+    c.additions.push({
+      externalKey: key,
+      source: m.source,
+      summary: m.summary,
+      status: p.status,
+      version: p.version,
+      versionCategory: p.versionCategory,
+      hasEstimation: p.qualityFlags.hasEstimation,
+      hasDescription: p.qualityFlags.hasMeaningfulDescription,
+      storyPoints: m.storyPoints,
+      estimatedDays: m.estimatedDays,
+      assignee: m.assignee,
+      iterationName: m.iterationName,
+      recommended: { startCol: p.to.startCol, endCol: p.to.endCol, row: p.to.row },
+      reasoning: fixedReasoning,
+    });
+  }
+  for (const c of columns.values()) {
+    const total = c.tasks.length + c.additions.length;
+    c.strategy = total === 0 ? 'Colonne vide.' : `${total} ticket(s) repositionné(s).`;
+  }
+  const columnsArr = [...columns.values()].sort((a, b) => a.col - b.col);
+  // eslint-disable-next-line no-console
+  console.log(`[delivery-reposition-deterministic] ${moves.length} moves · ${fmtDur(Date.now() - wallStart)}`);
+
+  return {
+    summary: `${moves.length} repositionnement(s) proposé(s) (sans IA).`,
+    analysis: stats,
+    columns: columnsArr,
+  };
+}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
 import {
-  runSanityCheck, applySanityMoves, fetchTasksForBoard, fetchPositionsForBoard,
+  runSanityCheck, runRepositionDeterministic, applySanityMoves, fetchTasksForBoard, fetchPositionsForBoard,
   type ColumnPlan, type AnalyzedTask, type ProposedAddition, type BoardAnalysis, type TaskPosition,
   type SanityAdditionPayload,
 } from '../../services/api';
@@ -13,6 +13,9 @@ interface Props {
   onClose: () => void;
   onApplied: () => void;
   onToast?: (toast: { type: 'success' | 'error' | 'warning'; message: string }) => void;
+  /** `'ai'` (défaut) → pipeline complet avec assessment + reasoning LLM.
+   *  `'deterministic'` → bypass IA, layout engine seul, pas d'additions. */
+  mode?: 'ai' | 'deterministic';
 }
 
 type ViewMode = 'list' | 'grid' | 'compare';
@@ -164,7 +167,7 @@ function buildCompactedPlan(
   };
 }
 
-export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props) {
+export function SanityCheckModal({ boardId, onClose, onApplied, onToast, mode = 'ai' }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [summary, setSummary] = useState('');
@@ -178,8 +181,9 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
 
   useEffect(() => {
     setLoading(true);
+    const loader = mode === 'deterministic' ? runRepositionDeterministic : runSanityCheck;
     Promise.all([
-      runSanityCheck(boardId),
+      loader(boardId),
       fetchTasksForBoard(boardId).catch(() => [] as Task[]),
       fetchPositionsForBoard(boardId).catch(() => [] as TaskPosition[]),
     ])
@@ -200,7 +204,7 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
         setError(err.message || 'Analyse échouée');
       })
       .finally(() => setLoading(false));
-  }, [boardId]);
+  }, [boardId, mode]);
 
   const allTasks: AnalyzedTask[] = useMemo(
     () => columns.flatMap(c => c.tasks),
@@ -295,11 +299,19 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
   };
 
   return (
-    <Modal title="✨ Vérification IA du board" onClose={onClose} size="xl">
+    <Modal
+      title={mode === 'deterministic' ? '🪄 Repositionnement (sans IA)' : '✨ Vérification IA du board'}
+      onClose={onClose}
+      size="xl"
+    >
       <div className={styles.content}>
         {loading ? (
           <div className={styles.loading}>
-            <LoadingSpinner message="L'IA analyse votre board…" />
+            <LoadingSpinner
+              message={mode === 'deterministic'
+                ? 'Repositionnement déterministe en cours…'
+                : 'L\'IA analyse votre board…'}
+            />
           </div>
         ) : error ? (
           <div className={styles.error}>
@@ -411,7 +423,18 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
 
 function AnalysisPanel({ summary, analysis }: { summary: string; analysis: BoardAnalysis }) {
   const statusEntries = Object.entries(analysis.byStatus).sort((a, b) => b[1] - a[1]);
-  const versionEntries = analysis.versions;
+  // Versions: only `next` + `later` matter for placement (future/active
+  // releases). Past versions are not actionable here — Jira projects
+  // accumulate hundreds of them over years, blowing up the panel for
+  // no signal. We keep a count instead so the user knows how many were
+  // ignored. If the project has zero future versions, fall back to the
+  // 3 most-recent past versions so the panel still shows something.
+  const futureVersions = analysis.versions.filter(v => v.category === 'next' || v.category === 'later');
+  const pastVersions = analysis.versions.filter(v => v.category === 'past');
+  const versionEntries = futureVersions.length > 0 ? futureVersions : pastVersions.slice(0, 3);
+  const hiddenPastCount = futureVersions.length > 0
+    ? pastVersions.length
+    : Math.max(0, pastVersions.length - versionEntries.length);
   // Collapsed by default — the summary line carries the essential signal
   // and users asked for the stats grid not to crowd the proposals view.
   // Persist the preference so it sticks across modal opens.
@@ -487,6 +510,14 @@ function AnalysisPanel({ summary, analysis }: { summary: string; analysis: Board
                     <span className={styles.chipCat}>{categoryLabel(v.category)}</span>
                   </span>
                 ))}
+                {hiddenPastCount > 0 && (
+                  <span
+                    className={styles.chip}
+                    title="Versions déjà sorties — non actionnables pour le placement"
+                  >
+                    +{hiddenPastCount} passée{hiddenPastCount > 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
             </div>
           )}
