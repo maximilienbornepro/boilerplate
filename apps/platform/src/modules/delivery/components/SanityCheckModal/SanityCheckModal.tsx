@@ -21,6 +21,145 @@ type ViewMode = 'list' | 'grid' | 'compare';
 const taskKey = (id: string) => `t:${id}`;
 const additionKey = (externalKey: string) => `a:${externalKey}`;
 
+interface CompactedPlan {
+  /** Static tasks with their (possibly shifted) row after squashing
+   *  empty rows out of the after-state. Includes ALL Jira tasks not
+   *  in `recommendations`, plus those in recommendations but not
+   *  selected (they stay at their current position). */
+  staticPositions: TaskPosition[];
+  /** Recommendations with `recommended.row` remapped to the
+   *  compacted grid. Original `current` row stays as-is for
+   *  Comparaison view rendering. */
+  recommendations: AnalyzedTask[];
+  /** Additions with `recommended.row` remapped to the compacted grid. */
+  additions: ProposedAddition[];
+  /** Moves to send on apply for tasks whose row was shifted purely
+   *  by the row-squashing pass (i.e. NOT in user-selected
+   *  recommendations) — required so the DB stays in sync with the
+   *  compacted preview. */
+  staticMoves: Array<{ taskId: string; startCol: number; endCol: number; row: number }>;
+}
+
+/** Squash empty rows out of the after-state of the AI sanity plan.
+ *  Builds a single (originalRow → contiguousIndex) remap based on
+ *  every row used by the projected layout (static tasks + selected
+ *  moves + selected additions) and applies it everywhere.
+ *
+ *  Why: the AI sometimes proposes positions like row 0, 2, 5, 10 —
+ *  visually leaving gaps L1/L3/L4/L6-L9. The user asked to remove
+ *  those gaps so the board reads as a tight column instead of a
+ *  scattered list. */
+function buildCompactedPlan(
+  tasks: Task[],
+  positions: TaskPosition[],
+  recommendations: AnalyzedTask[],
+  additions: ProposedAddition[],
+  selected: Set<string>,
+): CompactedPlan {
+  const positionByTaskId = new Map(positions.map(p => [p.taskId, p]));
+  const recoByTaskId = new Map(recommendations.map(r => [r.taskId, r]));
+
+  // 1. Project each item to its after-row.
+  type Slot = {
+    kind: 'static' | 'reco' | 'addition';
+    taskId?: string;
+    externalKey?: string;
+    startCol: number;
+    endCol: number;
+    row: number;
+    rowSpan: number;
+  };
+  const slots: Slot[] = [];
+
+  for (const task of tasks) {
+    if (task.source !== 'jira') continue;
+    const reco = recoByTaskId.get(task.id);
+    const cur = positionByTaskId.get(task.id);
+    if (reco && selected.has(taskKey(task.id))) {
+      slots.push({
+        kind: 'reco',
+        taskId: task.id,
+        startCol: reco.recommended.startCol,
+        endCol: reco.recommended.endCol,
+        row: reco.recommended.row,
+        rowSpan: cur?.rowSpan ?? 1,
+      });
+    } else if (cur) {
+      slots.push({
+        kind: 'static',
+        taskId: task.id,
+        startCol: cur.startCol,
+        endCol: cur.endCol,
+        row: cur.row,
+        rowSpan: cur.rowSpan ?? 1,
+      });
+    }
+  }
+  for (const a of additions) {
+    if (!selected.has(additionKey(a.externalKey))) continue;
+    slots.push({
+      kind: 'addition',
+      externalKey: a.externalKey,
+      startCol: a.recommended.startCol,
+      endCol: a.recommended.endCol,
+      row: a.recommended.row,
+      rowSpan: 1,
+    });
+  }
+
+  // 2. Build the remap from "rows actually used (with rowSpan)" to
+  //    contiguous indices.
+  const occupied = new Set<number>();
+  for (const s of slots) {
+    for (let r = s.row; r < s.row + s.rowSpan; r++) occupied.add(r);
+  }
+  const sortedRows = [...occupied].sort((a, b) => a - b);
+  const remap = new Map<number, number>();
+  for (let i = 0; i < sortedRows.length; i++) remap.set(sortedRows[i], i);
+
+  // 3. Surface the new shapes — original objects are spread so callers
+  //    that read other fields keep working.
+  const staticPositions: TaskPosition[] = [];
+  const staticMoves: CompactedPlan['staticMoves'] = [];
+  for (const s of slots) {
+    if (s.kind !== 'static') continue;
+    const newRow = remap.get(s.row) ?? s.row;
+    staticPositions.push({
+      taskId: s.taskId!,
+      startCol: s.startCol,
+      endCol: s.endCol,
+      row: newRow,
+      rowSpan: s.rowSpan,
+    });
+    if (newRow !== s.row) {
+      staticMoves.push({ taskId: s.taskId!, startCol: s.startCol, endCol: s.endCol, row: newRow });
+    }
+  }
+
+  const compactedRecommendations: AnalyzedTask[] = recommendations.map(r => ({
+    ...r,
+    recommended: {
+      ...r.recommended,
+      row: remap.get(r.recommended.row) ?? r.recommended.row,
+    },
+  }));
+
+  const compactedAdditions: ProposedAddition[] = additions.map(a => ({
+    ...a,
+    recommended: {
+      ...a.recommended,
+      row: remap.get(a.recommended.row) ?? a.recommended.row,
+    },
+  }));
+
+  return {
+    staticPositions,
+    recommendations: compactedRecommendations,
+    additions: compactedAdditions,
+    staticMoves,
+  };
+}
+
 export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -69,6 +208,15 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
     [columns],
   );
 
+  /** Compact the after-state — squashes empty rows out of the
+   *  combined static + moves + additions grid. Recomputed when the
+   *  selection changes so toggling a recommendation/addition off
+   *  re-introduces the gap if needed. */
+  const compactedPlan = useMemo(
+    () => buildCompactedPlan(tasks, positions, allTasks, allAdditions, selected),
+    [tasks, positions, allTasks, allAdditions, selected],
+  );
+
   const totalProposals = allTasks.length + allAdditions.length;
 
   const toggle = (key: string) => {
@@ -92,15 +240,21 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
   };
 
   const handleApply = async () => {
-    const moves = allTasks
+    // Use the COMPACTED plan so applied positions match what the user
+    // saw in the preview. `compactedPlan.staticMoves` contains tasks
+    // whose row shifted purely because of the row-squashing pass —
+    // they're appended to the moves payload so the DB stays
+    // consistent with the visible grid.
+    const moves = compactedPlan.recommendations
       .filter(t => selected.has(taskKey(t.taskId)))
       .map(t => ({
         taskId: t.taskId,
         startCol: t.recommended.startCol,
         endCol: t.recommended.endCol,
         row: t.recommended.row,
-      }));
-    const additionsPayload: SanityAdditionPayload[] = allAdditions
+      }))
+      .concat(compactedPlan.staticMoves);
+    const additionsPayload: SanityAdditionPayload[] = compactedPlan.additions
       .filter(a => selected.has(additionKey(a.externalKey)))
       .map(a => ({
         externalKey: a.externalKey,
@@ -201,9 +355,9 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
             {view === 'grid' && (
               <GridPreview
                 tasks={tasks}
-                positions={positions}
-                recommendations={allTasks}
-                additions={allAdditions}
+                positions={compactedPlan.staticPositions}
+                recommendations={compactedPlan.recommendations}
+                additions={compactedPlan.additions}
                 selectedIds={selected}
               />
             )}
@@ -212,8 +366,8 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
               <ComparePreview
                 tasks={tasks}
                 positions={positions}
-                recommendations={allTasks}
-                additions={allAdditions}
+                recommendations={compactedPlan.recommendations}
+                additions={compactedPlan.additions}
                 selectedIds={selected}
               />
             )}
