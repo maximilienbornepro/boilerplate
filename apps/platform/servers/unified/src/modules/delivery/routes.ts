@@ -888,10 +888,21 @@ export function createDeliveryRoutes(): Router {
     }
 
     const ids = sprintIds.split(',').map(id => id.trim()).join(', ');
-    const jql = `sprint in (${ids}) ORDER BY created DESC`;
+    // Exclude sub-tasks via Jira's built-in `subTaskIssueTypes()`
+    // function — matches the default Jira backlog view (which only
+    // shows parents). Without this we surfaced 2-3x more tickets than
+    // the board itself listed because sub-tasks appear in the sprint
+    // membership but not in the user-visible UI.
+    const jql = `sprint in (${ids}) AND issuetype not in subTaskIssueTypes() ORDER BY created DESC`;
     const params = new URLSearchParams({
       jql,
       maxResults: '100',
+      // Includes `status` (which carries `statusCategory` server-side
+      // when the field is requested by name). The frontend uses
+      // `statusCategory.key === 'done'` to filter out terminal-state
+      // tickets — more robust than matching localised names like
+      // "Fermé" / "Done" / "Closed" which depend on the workflow's
+      // language config.
       fields: 'summary,status,assignee,customfield_10016,issuetype,customfield_10020',
     });
     const searchUrl = `${ctx.baseUrl}/rest/api/3/search/jql?${params}`;
@@ -909,7 +920,13 @@ export function createDeliveryRoutes(): Router {
         key: string;
         fields: {
           summary: string;
-          status: { name: string };
+          status: {
+            name: string;
+            // Jira returns this nested when `fields=status` is asked
+            // for. `key` ∈ { 'new', 'indeterminate', 'done' } and is
+            // the canonical signal independent of the user's language.
+            statusCategory?: { key: string; name: string };
+          };
           assignee?: { displayName: string };
           customfield_10016?: number;
           issuetype: { name: string };
@@ -925,6 +942,10 @@ export function createDeliveryRoutes(): Router {
         key: issue.key,
         summary: issue.fields.summary,
         status: issue.fields.status?.name || 'Unknown',
+        // Surface the canonical `statusCategory.key` so the frontend
+        // can filter out terminal-state tickets robustly (no string
+        // matching against localised status names).
+        statusCategory: issue.fields.status?.statusCategory?.key ?? null,
         assignee: issue.fields.assignee?.displayName,
         storyPoints: issue.fields.customfield_10016 ?? undefined,
         issueType: issue.fields.issuetype?.name || 'Task',
@@ -1207,6 +1228,112 @@ export function createDeliveryRoutes(): Router {
       missingFromBoard: missingCapped,
     }, req.user!.email);
 
+    res.json(result);
+  }));
+
+  // ════════════════════════════════════════════════════════════════════
+  // Deterministic reposition — runs the layout engine on the board's
+  // current tickets without ANY LLM call. Same response shape as
+  // /ai-sanity-check so the existing SanityCheckModal can consume it.
+  // No credit deduction (pure compute, no token cost).
+  // ════════════════════════════════════════════════════════════════════
+  router.post('/boards/:boardId/reposition-deterministic', asyncHandler(async (req, res) => {
+    const { boardId } = req.params;
+    const board = await db.getBoardById(boardId);
+    if (!board) { res.status(404).json({ error: 'Board non trouvé' }); return; }
+
+    const tasks = await db.getAllTasksForBoard(boardId);
+    const externalTasks = tasks.filter(t => t.source && t.source !== 'manual');
+    if (externalTasks.length === 0) {
+      res.status(400).json({
+        error: 'Aucun ticket externe sur ce board, rien à repositionner.',
+      });
+      return;
+    }
+
+    const {
+      parseExternalKey, computeTodayCol, categorizeVersions, categoryOf,
+    } = await import('./deliveryAISanityService.js');
+    const { analyzeRepositionDeterministic } = await import('./reorganizeBoardPipeline.js');
+
+    // Fetch Jira fix versions so the layout engine knows which release
+    // is `next` / `later` / `past`. We don't fetch ticket-level live
+    // data — DB metadata + version dates are enough for placement.
+    const rawVersions: Array<{ name: string; releaseDate: string | null }> = [];
+    const ctx = await getJiraContext(req.user!.id);
+    if (ctx) {
+      const projectKeys = new Set<string>();
+      for (const t of externalTasks) {
+        if (t.source !== 'jira') continue;
+        const k = parseExternalKey(t.title);
+        if (k) projectKeys.add(k.split('-')[0]);
+      }
+      for (const projectKey of projectKeys) {
+        try {
+          const versionsResp = await fetch(
+            `${ctx.baseUrl}/rest/api/3/project/${projectKey}/versions`,
+            { headers: ctx.headers },
+          );
+          if (!versionsResp.ok) continue;
+          const versions = await versionsResp.json() as Array<{ name: string; releaseDate?: string }>;
+          for (const v of versions) {
+            rawVersions.push({ name: v.name, releaseDate: v.releaseDate ?? null });
+          }
+        } catch { /* best effort */ }
+      }
+    }
+    const classifiedVersions = categorizeVersions(
+      Array.from(new Map(rawVersions.map(v => [v.name, v])).values()),
+    );
+
+    const positions = await db.getPositionsForBoard(boardId);
+    const positionByTaskId = new Map(positions.map(p => [p.taskId, p]));
+    const totalCols = board.boardType === 'agile' ? (board.durationWeeks ?? 6) : 4;
+    const todayCol = computeTodayCol(board.startDate, board.endDate, totalCols);
+
+    const snapshotTasks = externalTasks.map(t => {
+      const externalKey = parseExternalKey(t.title);
+      const pos = positionByTaskId.get(t.id);
+      // Delivery tasks store the fixVersion in `description` (set
+      // during Jira import). Use it directly — no live fetch needed.
+      const releaseTag = t.description && t.description.trim().length > 0
+        ? t.description.trim()
+        : null;
+      return {
+        id: t.id,
+        title: t.title,
+        externalKey,
+        source: t.source,
+        boardStatus: t.status,
+        externalStatus: null, // no live fetch
+        storyPoints: t.storyPoints ?? null,
+        estimatedDays: t.estimatedDays ?? null,
+        hasEstimation: !!(t.estimatedDays || t.storyPoints),
+        // Without live data the description field of delivery_tasks
+        // already holds the fixVersion (not narrative text), so we
+        // can't tell if there's a real description. Default to false —
+        // the layout engine treats `hasDescription` as an optional
+        // quality signal, not a placement driver.
+        hasDescription: false,
+        hasAssignee: !!t.assignee,
+        releaseTag,
+        versionCategory: categoryOf(releaseTag, classifiedVersions),
+        position: pos
+          ? { startCol: pos.startCol, endCol: pos.endCol, row: pos.row }
+          : { startCol: 0, endCol: 1, row: 0 },
+      };
+    });
+    const MAX_TASKS = 50;
+
+    const result = await analyzeRepositionDeterministic({
+      boardId,
+      boardName: board.name,
+      totalCols,
+      todayCol,
+      tasks: snapshotTasks.slice(0, MAX_TASKS),
+      versions: classifiedVersions,
+      missingFromBoard: [],
+    });
     res.json(result);
   }));
 

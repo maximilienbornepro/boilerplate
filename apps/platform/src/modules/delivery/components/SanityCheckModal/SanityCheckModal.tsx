@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
 import {
-  runSanityCheck, applySanityMoves, fetchTasksForBoard, fetchPositionsForBoard,
+  runSanityCheck, runRepositionDeterministic, applySanityMoves, fetchTasksForBoard, fetchPositionsForBoard,
   type ColumnPlan, type AnalyzedTask, type ProposedAddition, type BoardAnalysis, type TaskPosition,
   type SanityAdditionPayload,
 } from '../../services/api';
@@ -13,6 +13,9 @@ interface Props {
   onClose: () => void;
   onApplied: () => void;
   onToast?: (toast: { type: 'success' | 'error' | 'warning'; message: string }) => void;
+  /** `'ai'` (défaut) → pipeline complet avec assessment + reasoning LLM.
+   *  `'deterministic'` → bypass IA, layout engine seul, pas d'additions. */
+  mode?: 'ai' | 'deterministic';
 }
 
 type ViewMode = 'list' | 'grid' | 'compare';
@@ -21,7 +24,150 @@ type ViewMode = 'list' | 'grid' | 'compare';
 const taskKey = (id: string) => `t:${id}`;
 const additionKey = (externalKey: string) => `a:${externalKey}`;
 
-export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props) {
+interface CompactedPlan {
+  /** Static tasks with their (possibly shifted) row after squashing
+   *  empty rows out of the after-state. Includes ALL Jira tasks not
+   *  in `recommendations`, plus those in recommendations but not
+   *  selected (they stay at their current position). */
+  staticPositions: TaskPosition[];
+  /** Recommendations with `recommended.row` remapped to the
+   *  compacted grid. Original `current` row stays as-is for
+   *  Comparaison view rendering. */
+  recommendations: AnalyzedTask[];
+  /** Additions with `recommended.row` remapped to the compacted grid. */
+  additions: ProposedAddition[];
+  /** Moves to send on apply for tasks whose row was shifted purely
+   *  by the row-squashing pass (i.e. NOT in user-selected
+   *  recommendations) — required so the DB stays in sync with the
+   *  compacted preview. */
+  staticMoves: Array<{ taskId: string; startCol: number; endCol: number; row: number }>;
+}
+
+/** Squash empty rows out of the after-state of the AI sanity plan.
+ *  Builds a single (originalRow → contiguousIndex) remap based on
+ *  every row used by the projected layout (static tasks + selected
+ *  moves + selected additions) and applies it everywhere.
+ *
+ *  Why: the AI sometimes proposes positions like row 0, 2, 5, 10 —
+ *  visually leaving gaps L1/L3/L4/L6-L9. The user asked to remove
+ *  those gaps so the board reads as a tight column instead of a
+ *  scattered list. */
+function buildCompactedPlan(
+  tasks: Task[],
+  positions: TaskPosition[],
+  recommendations: AnalyzedTask[],
+  additions: ProposedAddition[],
+  selected: Set<string>,
+): CompactedPlan {
+  const positionByTaskId = new Map(positions.map(p => [p.taskId, p]));
+  const recoByTaskId = new Map(recommendations.map(r => [r.taskId, r]));
+
+  // 1. Project each item to its after-row.
+  type Slot = {
+    kind: 'static' | 'reco' | 'addition';
+    taskId?: string;
+    externalKey?: string;
+    startCol: number;
+    endCol: number;
+    row: number;
+    rowSpan: number;
+  };
+  const slots: Slot[] = [];
+
+  for (const task of tasks) {
+    if (task.source !== 'jira') continue;
+    const reco = recoByTaskId.get(task.id);
+    const cur = positionByTaskId.get(task.id);
+    if (reco && selected.has(taskKey(task.id))) {
+      slots.push({
+        kind: 'reco',
+        taskId: task.id,
+        startCol: reco.recommended.startCol,
+        endCol: reco.recommended.endCol,
+        row: reco.recommended.row,
+        rowSpan: cur?.rowSpan ?? 1,
+      });
+    } else if (cur) {
+      slots.push({
+        kind: 'static',
+        taskId: task.id,
+        startCol: cur.startCol,
+        endCol: cur.endCol,
+        row: cur.row,
+        rowSpan: cur.rowSpan ?? 1,
+      });
+    }
+  }
+  for (const a of additions) {
+    if (!selected.has(additionKey(a.externalKey))) continue;
+    slots.push({
+      kind: 'addition',
+      externalKey: a.externalKey,
+      startCol: a.recommended.startCol,
+      endCol: a.recommended.endCol,
+      row: a.recommended.row,
+      rowSpan: 1,
+    });
+  }
+
+  // 2. Build the remap from "rows actually used (with rowSpan)" to
+  //    contiguous indices.
+  const occupied = new Set<number>();
+  for (const s of slots) {
+    for (let r = s.row; r < s.row + s.rowSpan; r++) occupied.add(r);
+  }
+  const sortedRows = [...occupied].sort((a, b) => a - b);
+  const remap = new Map<number, number>();
+  for (let i = 0; i < sortedRows.length; i++) remap.set(sortedRows[i], i);
+
+  // 3. Surface the new shapes — original objects are spread so callers
+  //    that read other fields keep working. `staticPositions` is the
+  //    one-stop "after-state position" map: every Jira task gets ONE
+  //    entry whether it stayed put (kind=static) or was moved by a
+  //    selected recommendation (kind=reco). The GridPreview reads
+  //    only this map, so missing entries = invisible tickets.
+  const staticPositions: TaskPosition[] = [];
+  const staticMoves: CompactedPlan['staticMoves'] = [];
+  for (const s of slots) {
+    if (s.kind === 'addition') continue;
+    const newRow = remap.get(s.row) ?? s.row;
+    staticPositions.push({
+      taskId: s.taskId!,
+      startCol: s.startCol,
+      endCol: s.endCol,
+      row: newRow,
+      rowSpan: s.rowSpan,
+    });
+    if (s.kind === 'static' && newRow !== s.row) {
+      staticMoves.push({ taskId: s.taskId!, startCol: s.startCol, endCol: s.endCol, row: newRow });
+    }
+  }
+
+  const compactedRecommendations: AnalyzedTask[] = recommendations.map(r => ({
+    ...r,
+    recommended: {
+      ...r.recommended,
+      row: remap.get(r.recommended.row) ?? r.recommended.row,
+    },
+  }));
+
+  const compactedAdditions: ProposedAddition[] = additions.map(a => ({
+    ...a,
+    recommended: {
+      ...a.recommended,
+      row: remap.get(a.recommended.row) ?? a.recommended.row,
+    },
+  }));
+
+  return {
+    staticPositions,
+    recommendations: compactedRecommendations,
+    additions: compactedAdditions,
+    staticMoves,
+  };
+}
+
+export function SanityCheckModal({ boardId, onClose, onApplied, onToast, mode = 'ai' }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [summary, setSummary] = useState('');
@@ -35,8 +181,9 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
 
   useEffect(() => {
     setLoading(true);
+    const loader = mode === 'deterministic' ? runRepositionDeterministic : runSanityCheck;
     Promise.all([
-      runSanityCheck(boardId),
+      loader(boardId),
       fetchTasksForBoard(boardId).catch(() => [] as Task[]),
       fetchPositionsForBoard(boardId).catch(() => [] as TaskPosition[]),
     ])
@@ -57,7 +204,7 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
         setError(err.message || 'Analyse échouée');
       })
       .finally(() => setLoading(false));
-  }, [boardId]);
+  }, [boardId, mode]);
 
   const allTasks: AnalyzedTask[] = useMemo(
     () => columns.flatMap(c => c.tasks),
@@ -67,6 +214,15 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
   const allAdditions: ProposedAddition[] = useMemo(
     () => columns.flatMap(c => c.additions),
     [columns],
+  );
+
+  /** Compact the after-state — squashes empty rows out of the
+   *  combined static + moves + additions grid. Recomputed when the
+   *  selection changes so toggling a recommendation/addition off
+   *  re-introduces the gap if needed. */
+  const compactedPlan = useMemo(
+    () => buildCompactedPlan(tasks, positions, allTasks, allAdditions, selected),
+    [tasks, positions, allTasks, allAdditions, selected],
   );
 
   const totalProposals = allTasks.length + allAdditions.length;
@@ -92,15 +248,21 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
   };
 
   const handleApply = async () => {
-    const moves = allTasks
+    // Use the COMPACTED plan so applied positions match what the user
+    // saw in the preview. `compactedPlan.staticMoves` contains tasks
+    // whose row shifted purely because of the row-squashing pass —
+    // they're appended to the moves payload so the DB stays
+    // consistent with the visible grid.
+    const moves = compactedPlan.recommendations
       .filter(t => selected.has(taskKey(t.taskId)))
       .map(t => ({
         taskId: t.taskId,
         startCol: t.recommended.startCol,
         endCol: t.recommended.endCol,
         row: t.recommended.row,
-      }));
-    const additionsPayload: SanityAdditionPayload[] = allAdditions
+      }))
+      .concat(compactedPlan.staticMoves);
+    const additionsPayload: SanityAdditionPayload[] = compactedPlan.additions
       .filter(a => selected.has(additionKey(a.externalKey)))
       .map(a => ({
         externalKey: a.externalKey,
@@ -137,11 +299,19 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
   };
 
   return (
-    <Modal title="✨ Vérification IA du board" onClose={onClose} size="xl">
+    <Modal
+      title={mode === 'deterministic' ? '🪄 Repositionnement (sans IA)' : '✨ Vérification IA du board'}
+      onClose={onClose}
+      size="xl"
+    >
       <div className={styles.content}>
         {loading ? (
           <div className={styles.loading}>
-            <LoadingSpinner message="L'IA analyse votre board…" />
+            <LoadingSpinner
+              message={mode === 'deterministic'
+                ? 'Repositionnement déterministe en cours…'
+                : 'L\'IA analyse votre board…'}
+            />
           </div>
         ) : error ? (
           <div className={styles.error}>
@@ -201,9 +371,9 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
             {view === 'grid' && (
               <GridPreview
                 tasks={tasks}
-                positions={positions}
-                recommendations={allTasks}
-                additions={allAdditions}
+                positions={compactedPlan.staticPositions}
+                recommendations={compactedPlan.recommendations}
+                additions={compactedPlan.additions}
                 selectedIds={selected}
               />
             )}
@@ -212,8 +382,8 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
               <ComparePreview
                 tasks={tasks}
                 positions={positions}
-                recommendations={allTasks}
-                additions={allAdditions}
+                recommendations={compactedPlan.recommendations}
+                additions={compactedPlan.additions}
                 selectedIds={selected}
               />
             )}
@@ -253,7 +423,18 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast }: Props
 
 function AnalysisPanel({ summary, analysis }: { summary: string; analysis: BoardAnalysis }) {
   const statusEntries = Object.entries(analysis.byStatus).sort((a, b) => b[1] - a[1]);
-  const versionEntries = analysis.versions;
+  // Versions: only `next` + `later` matter for placement (future/active
+  // releases). Past versions are not actionable here — Jira projects
+  // accumulate hundreds of them over years, blowing up the panel for
+  // no signal. We keep a count instead so the user knows how many were
+  // ignored. If the project has zero future versions, fall back to the
+  // 3 most-recent past versions so the panel still shows something.
+  const futureVersions = analysis.versions.filter(v => v.category === 'next' || v.category === 'later');
+  const pastVersions = analysis.versions.filter(v => v.category === 'past');
+  const versionEntries = futureVersions.length > 0 ? futureVersions : pastVersions.slice(0, 3);
+  const hiddenPastCount = futureVersions.length > 0
+    ? pastVersions.length
+    : Math.max(0, pastVersions.length - versionEntries.length);
   // Collapsed by default — the summary line carries the essential signal
   // and users asked for the stats grid not to crowd the proposals view.
   // Persist the preference so it sticks across modal opens.
@@ -329,6 +510,14 @@ function AnalysisPanel({ summary, analysis }: { summary: string; analysis: Board
                     <span className={styles.chipCat}>{categoryLabel(v.category)}</span>
                   </span>
                 ))}
+                {hiddenPastCount > 0 && (
+                  <span
+                    className={styles.chip}
+                    title="Versions déjà sorties — non actionnables pour le placement"
+                  >
+                    +{hiddenPastCount} passée{hiddenPastCount > 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -492,8 +681,12 @@ interface GridPreviewProps {
   selectedIds: Set<string>;
 }
 
-// Shared sizing logic — computes how many cols/rows the grid needs given
-// all placements (current + recommended + additions).
+// Shared sizing logic — computes how many cols/rows the grid needs
+// given the AFTER-state placements only. We deliberately ignore
+// `r.current` (the pre-move position) here so the grid doesn't
+// stretch tall to accommodate ghost rows that no longer hold
+// anything in the compacted view. The Comparaison view has its own
+// before/after sizing.
 function useGridSize(
   positions: TaskPosition[],
   recommendations: AnalyzedTask[],
@@ -509,8 +702,6 @@ function useGridSize(
     for (const r of recommendations) {
       if (r.recommended.endCol > maxCol) maxCol = r.recommended.endCol;
       if (r.recommended.row > maxRow) maxRow = r.recommended.row;
-      if (r.current.endCol > maxCol) maxCol = r.current.endCol;
-      if (r.current.row > maxRow) maxRow = r.current.row;
     }
     for (const a of additions) {
       if (a.recommended.endCol > maxCol) maxCol = a.recommended.endCol;

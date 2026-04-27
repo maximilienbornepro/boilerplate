@@ -24,6 +24,10 @@ export interface JiraIssue {
   key: string;
   summary: string;
   status: string;
+  /** Canonical Jira lifecycle bucket — `'new' | 'indeterminate' | 'done'`
+   *  (or `null` when missing). Lets the import modal hide closed
+   *  tickets without depending on localised status names. */
+  statusCategory: 'new' | 'indeterminate' | 'done' | null;
   assignee?: string;
   storyPoints?: number;
   issueType: string;
@@ -564,6 +568,19 @@ export interface SanityMoveRecommendation {
 
 export async function runSanityCheck(boardId: string): Promise<SanityCheckResponse> {
   const res = await fetch(`${API_BASE}/boards/${boardId}/ai-sanity-check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+  });
+  return handleResponse<SanityCheckResponse>(res);
+}
+
+/** Deterministic reposition — same shape as `runSanityCheck` but
+ *  skips both LLM tiers and only routes existing tickets through
+ *  the layout engine (no missing-from-sprint discovery, no AI
+ *  reasoning). Used by the Actions menu "Repositionner sans IA". */
+export async function runRepositionDeterministic(boardId: string): Promise<SanityCheckResponse> {
+  const res = await fetch(`${API_BASE}/boards/${boardId}/reposition-deterministic`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

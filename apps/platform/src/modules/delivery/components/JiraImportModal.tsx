@@ -1,28 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Modal, ModalBody, Button } from '@boilerplate/shared/components';
 import {
   fetchJiraProjects,
   fetchJiraSprints,
   fetchJiraIssues,
   fetchJiraIssueByUrl,
+  fetchTasksForBoard,
   createTask,
+  nestTaskApi,
 } from '../services/api';
-import type { JiraProject, JiraSprint, JiraIssue, JiraIssueFromUrl } from '../services/api';
+import type { JiraProject, JiraSprint, JiraIssue, JiraIssueFromUrl, Task } from '../services/api';
 import { recordJiraProjectUsage, sortJiraProjectsByUsage } from '../services/jiraProjectUsage';
-import { mapIssueType, formatJiraTitle } from '../utils/jiraUtils';
+import { mapIssueType, formatJiraTitle, extractJiraKey } from '../utils/jiraUtils';
 import styles from './JiraImportModal.module.css';
 
 interface JiraImportModalProps {
   incrementId: string;
+  /** Board id of the destination — used to detect tickets already
+   *  imported (so duplicates don't get re-created) and to find or
+   *  create the "Anomalie" container that bug tickets are nested
+   *  under on bulk import. */
+  boardId: string;
   onImported: () => void;
   onClose: () => void;
 }
+
+/** Title of the auto-created container that bulk-imported bug tickets
+ *  are nested under. The user asked for this systematic placement so
+ *  every imported anomaly lands in one predictable spot regardless of
+ *  the source sprint. */
+const ANOMALIE_CONTAINER_TITLE = 'Anomalie';
 
 type Step = 'sprints' | 'issues';
 /** Top-level mode : the user either scrolls sprints OR pastes a URL. */
 type Mode = 'sprints' | 'url';
 
-export function JiraImportModal({ incrementId, onImported, onClose }: JiraImportModalProps) {
+export function JiraImportModal({ incrementId, boardId, onImported, onClose }: JiraImportModalProps) {
   const [mode, setMode] = useState<Mode>('sprints');
   const [step, setStep] = useState<Step>('sprints');
 
@@ -45,8 +58,35 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
   const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
   const [loadingIssues, setLoadingIssues] = useState(false);
   const [importing, setImporting] = useState(false);
+  /** Hide tickets whose Jira `statusCategory` is `'done'` (Fermé /
+   *  Closed / Resolved / Done — independent of UI language). On by
+   *  default since closed tickets in the active sprint are usually
+   *  noise during a board catch-up. */
+  const [hideDone, setHideDone] = useState(true);
+
+  // Existing board tasks — used to flag Jira issues already in the
+  // board so the user doesn't re-import duplicates. Loaded once on
+  // mount and refreshed whenever a successful import happens.
+  const [existingTasks, setExistingTasks] = useState<Task[]>([]);
+  const existingJiraKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const t of existingTasks) {
+      const k = extractJiraKey(t.title);
+      if (k) keys.add(k);
+    }
+    return keys;
+  }, [existingTasks]);
 
   const [error, setError] = useState<string | null>(null);
+
+  // Pre-load the board's tasks so step 2 can mark already-imported
+  // tickets without an extra round-trip when the user clicks "Suivant".
+  useEffect(() => {
+    if (!boardId) return;
+    fetchTasksForBoard(boardId)
+      .then(setExistingTasks)
+      .catch(() => { /* non-fatal — duplicate detection just stays blank */ });
+  }, [boardId]);
 
   // Load projects on mount
   useEffect(() => {
@@ -88,8 +128,32 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
     setSelectedIssueIds(next);
   };
 
-  const selectAllIssues = () => setSelectedIssueIds(new Set(issues.map(i => i.id)));
+  const selectAllIssues = () => setSelectedIssueIds(new Set(visibleIssues.map(i => i.id)));
   const deselectAllIssues = () => setSelectedIssueIds(new Set());
+  /** Tick only the issues whose Jira key isn't already in the board.
+   *  The most common bulk-import use case — the user just wants to
+   *  catch up on what's missing without manually unticking duplicates. */
+  const selectMissingIssues = () => setSelectedIssueIds(
+    new Set(visibleIssues.filter(i => !existingJiraKeys.has(i.key)).map(i => i.id)),
+  );
+
+  /** Visible issues = filtered by the "hide done" toggle. The full
+   *  `issues` list stays in state so toggling re-shows hidden rows
+   *  without re-fetching from Jira. */
+  const visibleIssues = useMemo(
+    () => hideDone ? issues.filter(i => i.statusCategory !== 'done') : issues,
+    [issues, hideDone],
+  );
+
+  const hiddenDoneCount = useMemo(
+    () => issues.filter(i => i.statusCategory === 'done').length,
+    [issues],
+  );
+
+  const missingIssuesCount = useMemo(
+    () => visibleIssues.filter(i => !existingJiraKeys.has(i.key)).length,
+    [visibleIssues, existingJiraKeys],
+  );
 
   const goToStep2 = async () => {
     setLoadingIssues(true);
@@ -106,13 +170,55 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
     }
   };
 
+  /** Find the existing top-level "Anomalie" container in the board,
+   *  or create one if none exists. Top-level = `parentTaskId == null`
+   *  to avoid nesting under another container by accident. */
+  const ensureAnomalieContainer = async (): Promise<string | null> => {
+    const existing = existingTasks.find(t =>
+      t.source === 'manual'
+      && (t.parentTaskId == null)
+      && t.title.trim().toLowerCase() === ANOMALIE_CONTAINER_TITLE.toLowerCase(),
+    );
+    if (existing) return existing.id;
+    try {
+      const created = await createTask({
+        title: ANOMALIE_CONTAINER_TITLE,
+        type: 'bug',
+        source: 'manual',
+        incrementId,
+      });
+      // Cache it locally so a 2nd import in the same modal session
+      // doesn't create a duplicate container.
+      setExistingTasks(prev => [...prev, created as Task]);
+      return created.id;
+    } catch {
+      return null;
+    }
+  };
+
   const handleImport = async () => {
     const toImport = issues.filter(i => selectedIssueIds.has(i.id));
     setImporting(true);
     setError(null);
     let failed = 0;
+
+    // Pre-create / fetch the Anomalie container only if at least one
+    // bug is in the batch — avoid spawning the container for purely
+    // feature/tech imports.
+    const hasBugs = toImport.some(i => mapIssueType(i.issueType) === 'bug');
+    let anomalieContainerId: string | null = null;
+    if (hasBugs) {
+      anomalieContainerId = await ensureAnomalieContainer();
+    }
+
+    // Run imports sequentially when nesting is involved so the order
+    // of nestTaskApi calls is deterministic. Non-bug imports stay
+    // parallel — they don't touch shared state.
+    const bugs = toImport.filter(i => mapIssueType(i.issueType) === 'bug');
+    const nonBugs = toImport.filter(i => mapIssueType(i.issueType) !== 'bug');
+
     await Promise.all(
-      toImport.map(issue =>
+      nonBugs.map(issue =>
         createTask({
           title: formatJiraTitle(issue.key, issue.summary),
           type: mapIssueType(issue.issueType),
@@ -122,9 +228,33 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
           sprintName: issue.sprintName,
           incrementId,
           source: 'jira',
-        }).catch(() => { failed++; })
-      )
+        }).catch(() => { failed++; }),
+      ),
     );
+
+    for (const issue of bugs) {
+      try {
+        const created = await createTask({
+          title: formatJiraTitle(issue.key, issue.summary),
+          type: 'bug',
+          status: issue.status,
+          storyPoints: issue.storyPoints,
+          assignee: issue.assignee,
+          sprintName: issue.sprintName,
+          incrementId,
+          source: 'jira',
+        });
+        if (anomalieContainerId) {
+          await nestTaskApi(created.id, anomalieContainerId).catch(() => {
+            /* nesting is best-effort — leave the bug at root if it
+               fails rather than killing the whole import. */
+          });
+        }
+      } catch {
+        failed++;
+      }
+    }
+
     setImporting(false);
     if (failed > 0 && failed < toImport.length) {
       setError(`${failed} ticket(s) n'ont pas pu etre importes.`);
@@ -331,30 +461,104 @@ export function JiraImportModal({ incrementId, onImported, onClose }: JiraImport
             <div className={styles.issueActions}>
               <button className={styles.linkBtn} onClick={selectAllIssues}>Tout sélectionner</button>
               <button className={styles.linkBtn} onClick={deselectAllIssues}>Tout désélectionner</button>
+              {missingIssuesCount > 0 && missingIssuesCount < visibleIssues.length && (
+                <button className={styles.linkBtn} onClick={selectMissingIssues}>
+                  Sélectionner les {missingIssuesCount} non importés
+                </button>
+              )}
+              {/* "Hide done" toggle — surfaces only when at least one
+                  closed ticket is in the batch so users with a sprint
+                  full of in-progress tickets don't see a useless
+                  switch. */}
+              {hiddenDoneCount > 0 && (
+                <label
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 'var(--font-size-xs)',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                  }}
+                  title="Les tickets terminés dans Jira (Fermé / Done / Resolved) sont masqués par défaut."
+                >
+                  <input
+                    type="checkbox"
+                    checked={hideDone}
+                    onChange={(e) => setHideDone(e.target.checked)}
+                  />
+                  Masquer les terminés ({hiddenDoneCount})
+                </label>
+              )}
               <span className={styles.counter}>{selectedIssueIds.size} sélectionné(s)</span>
             </div>
             {loadingIssues ? (
               <div className={styles.loading}><span className={styles.spinner} /> Chargement des tickets...</div>
-            ) : issues.length === 0 ? (
-              <div className={styles.empty}>Aucun ticket trouve dans ces sprints.</div>
+            ) : visibleIssues.length === 0 ? (
+              <div className={styles.empty}>
+                {issues.length === 0
+                  ? 'Aucun ticket trouve dans ces sprints.'
+                  : `Tous les tickets de ces sprints sont terminés. Décoche « Masquer les terminés » pour les afficher.`}
+              </div>
             ) : (
               <div className={styles.list}>
-                {issues.map(issue => (
-                  <label key={issue.id} className={styles.item}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIssueIds.has(issue.id)}
-                      onChange={() => toggleIssue(issue.id)}
-                    />
-                    <span className={styles.issueKey}>{issue.key}</span>
-                    <span className={styles.issueSummary}>{issue.summary}</span>
-                    <span className={styles.issueMeta}>
-                      {issue.status}
-                      {issue.storyPoints != null && ` · ${issue.storyPoints}pt`}
-                      {issue.assignee && ` · ${issue.assignee}`}
-                    </span>
-                  </label>
-                ))}
+                {visibleIssues.map(issue => {
+                  const alreadyImported = existingJiraKeys.has(issue.key);
+                  const isBug = mapIssueType(issue.issueType) === 'bug';
+                  return (
+                    <label
+                      key={issue.id}
+                      className={styles.item}
+                      style={alreadyImported ? { opacity: 0.55 } : undefined}
+                      title={alreadyImported ? 'Ce ticket est déjà dans le board' : undefined}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIssueIds.has(issue.id)}
+                        onChange={() => toggleIssue(issue.id)}
+                      />
+                      <span className={styles.issueKey}>{issue.key}</span>
+                      <span className={styles.issueSummary}>{issue.summary}</span>
+                      <span className={styles.issueMeta}>
+                        {issue.status}
+                        {issue.storyPoints != null && ` · ${issue.storyPoints}pt`}
+                        {issue.assignee && ` · ${issue.assignee}`}
+                      </span>
+                      {alreadyImported && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontFamily: 'var(--font-mono)',
+                            padding: '1px 6px',
+                            borderRadius: 'var(--radius-sm)',
+                            background: 'var(--bg-tertiary, rgba(255,255,255,0.05))',
+                            color: 'var(--text-muted)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          ✓ déjà importé
+                        </span>
+                      )}
+                      {!alreadyImported && isBug && (
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontFamily: 'var(--font-mono)',
+                            padding: '1px 6px',
+                            borderRadius: 'var(--radius-sm)',
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            color: '#ef4444',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title="Sera placé automatiquement dans le container Anomalie"
+                        >
+                          → Anomalie
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
               </div>
             )}
           </div>

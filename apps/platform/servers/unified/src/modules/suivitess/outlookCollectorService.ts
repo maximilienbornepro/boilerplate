@@ -94,12 +94,21 @@ export async function storeOutlookEmails(
 
 export async function getOutlookMessages(
   userId: number,
-  opts: { days?: number; excludeImported?: boolean },
+  opts: { days?: number; excludeImported?: boolean; dateFilter?: string | null },
 ): Promise<OutlookMessage[]> {
   const conditions = ['om.user_id = $1'];
   const params: unknown[] = [userId];
 
-  if (opts.days) {
+  // `dateFilter` (YYYY-MM-DD) — when fetching the content of a specific
+  // daily digest we want EVERY mail of that day, not the most recent
+  // 200 across the whole window. Filtering in SQL bypasses the
+  // global LIMIT cap that was silently dropping older days when the
+  // user had a busy mailbox (typical symptom : "EAD / contrôle
+  // parental" mails missing from the digest the IA analysed).
+  if (opts.dateFilter) {
+    params.push(opts.dateFilter);
+    conditions.push(`om.date::date = $${params.length}::date`);
+  } else if (opts.days) {
     conditions.push(`om.date >= NOW() - INTERVAL '${Math.min(60, opts.days)} days'`);
   }
 
@@ -113,12 +122,17 @@ export async function getOutlookMessages(
     conditions.push('sti.id IS NULL');
   }
 
+  // Cap : tight when filtering by date (~all mails of one day),
+  // generous otherwise so the bulk-source list isn't artificially
+  // capped at 200 mails of which only a tiny window is visible.
+  const limit = opts.dateFilter ? 500 : 1000;
+
   const { rows } = await pool.query(
     `SELECT om.* FROM outlook_messages om
      ${excludeJoin}
      WHERE ${conditions.join(' AND ')}
      ORDER BY om.date DESC
-     LIMIT 200`,
+     LIMIT ${limit}`,
     params,
   );
 

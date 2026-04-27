@@ -693,15 +693,25 @@ export interface ApplyRoutingResponse {
 }
 
 export async function applyRouting(
-  sourceId: string,
+  sourceId: string | null,
   subjects: ApplyRoutingSubject[],
   logId?: number | null,
+  /** All sources analyzed in the same run — required when ≥2 sources
+   *  were selected so the backend tags every one of them as "imported"
+   *  in `suivitess_transcript_imports`. Falls back to `[sourceId]`
+   *  when omitted (single-source / replay runs). */
+  sourceIds?: string[],
 ): Promise<ApplyRoutingResponse> {
   const response = await fetch(`${API_BASE}/transcription/apply-routing`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ sourceId, subjects, logId: logId ?? null }),
+    body: JSON.stringify({
+      sourceId,
+      sourceIds: sourceIds && sourceIds.length > 0 ? sourceIds : (sourceId ? [sourceId] : []),
+      subjects,
+      logId: logId ?? null,
+    }),
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
@@ -870,7 +880,13 @@ export async function analyzeDocumentBulkWithPolling(
   sources: Array<{ source: string; id: string; title: string; date?: string | null }>,
   onStatus: (status: PipelineJobStatus) => void,
   opts: { intervalMs?: number; signal?: AbortSignal } = {},
-): Promise<AnalysisResponse> {
+): Promise<MultiSourceAnalysisResponse> {
+  // Returns MultiSourceAnalysisResponse — same shape as the global
+  // multi-source flow now that the backend pipeline has been aligned
+  // (single T1×N → T1.5 → T2 → T3 run instead of N per-source loops).
+  // `consolidationByProposal` is populated on ≥2 sources so the modal
+  // can surface multi-source badges next to each tile. On a single
+  // source, it falls back to an array of nulls.
   const interval = opts.intervalMs ?? 500;
   const { jobId } = await startAnalyzeDocumentBulkJob(docId, sources);
   // eslint-disable-next-line no-constant-condition
@@ -878,7 +894,20 @@ export async function analyzeDocumentBulkWithPolling(
     if (opts.signal?.aborted) throw new Error('aborted');
     const status = await getPipelineJob(jobId);
     onStatus(status);
-    if (status.phase === 'done') return status.result as AnalysisResponse;
+    if (status.phase === 'done') {
+      const r = status.result as MultiSourceAnalysisResponse | AnalysisResponse;
+      // Defensive : older backends only returned AnalysisResponse — fill
+      // a per-proposal null array so the UI keeps working.
+      return {
+        ...r,
+        consolidationByProposal: ('consolidationByProposal' in r && r.consolidationByProposal)
+          ? r.consolidationByProposal
+          : (r.subjects?.map(() => null) ?? []),
+        sourcesCount: ('sourcesCount' in r && typeof r.sourcesCount === 'number')
+          ? r.sourcesCount
+          : sources.length,
+      };
+    }
     if (status.phase === 'error') throw new Error(status.error || 'Pipeline error');
     await new Promise<void>(r => setTimeout(r, interval));
   }
