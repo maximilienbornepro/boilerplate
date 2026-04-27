@@ -272,33 +272,42 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
       const positionMap = new Map(positions.map(p => [p.taskId, p]));
       const newTaskRowByCol = buildRowTracker(positions);
 
-      // Build a map : Jira project key → existing row (so newly-imported
-      // tasks of the same project land in the same row range instead of
-      // being scattered). Derived from tasks that already have a saved position.
-      const projectToRow = new Map<string, number>();
+      // Track the FIRST FREE row right after each Jira project's
+      // existing tickets. New tickets of the same project land on
+      // that row (so they keep grouped together). The map is updated
+      // after each placement, so when we import 5 new TVFIRE tickets
+      // they cascade down (5, 6, 7, 8, 9) instead of all stacking on
+      // the first free row of the project — which used to cause
+      // overlaps with the very first new ticket.
+      const projectNextFreeRow = new Map<string, number>();
       for (const t of visibleTasks) {
         const pos = positionMap.get(t.id);
         if (!pos) continue;
         const key = extractJiraKey(t.title);
-        if (key) {
-          const projectKey = key.split('-')[0];
-          if (!projectToRow.has(projectKey)) {
-            projectToRow.set(projectKey, pos.row);
-          }
-        }
+        if (!key) continue;
+        const projectKey = key.split('-')[0];
+        const endRow = pos.row + (pos.rowSpan ?? 1);
+        const current = projectNextFreeRow.get(projectKey) ?? 0;
+        if (endRow > current) projectNextFreeRow.set(projectKey, endRow);
       }
 
       const transformedTasks: Task[] = visibleTasks.map((taskData) => {
         const savedPosition = positionMap.get(taskData.id);
         const defaultCol = 0;
 
-        // Try to place unsaved tasks in the same row as their Jira project
+        // Pick a row for unsaved tasks. Same project as an existing
+        // ticket → next free row in that project's vertical band.
+        // Otherwise → next free row at the start of the grid.
+        // In both branches the bookkeeping counter is incremented so
+        // the next un-positioned task of the same family doesn't
+        // stack on top.
         let defaultRow = newTaskRowByCol[defaultCol] || 0;
         if (!savedPosition) {
           const extKey = extractJiraKey(taskData.title);
           const projKey = extKey ? extKey.split('-')[0] : null;
-          if (projKey && projectToRow.has(projKey)) {
-            defaultRow = projectToRow.get(projKey)!;
+          if (projKey && projectNextFreeRow.has(projKey)) {
+            defaultRow = projectNextFreeRow.get(projKey)!;
+            projectNextFreeRow.set(projKey, defaultRow + 1);
           } else {
             if (defaultCol in newTaskRowByCol) newTaskRowByCol[defaultCol]++;
           }
@@ -987,18 +996,20 @@ function SiblingBoardPanel({
         const positionMap = new Map(positions.map(p => [p.taskId, p]));
         const newTaskRowByCol = buildRowTracker(positions);
 
-        // Project → row map so un-positioned Jira tasks of the same
-        // project land in the same row range (same heuristic as the
-        // main board's loader).
-        const projectToRow = new Map<string, number>();
+        // Project → next free row, mirrors the main BoardView loader.
+        // See the comment there for why this is a "next free" map
+        // rather than "first row" — avoids overlaps when multiple
+        // un-positioned tickets of the same project are loaded at once.
+        const projectNextFreeRow = new Map<string, number>();
         for (const t of rawTasks) {
           const pos = positionMap.get(t.id);
           if (!pos) continue;
           const key = extractJiraKey(t.title);
-          if (key) {
-            const projectKey = key.split('-')[0];
-            if (!projectToRow.has(projectKey)) projectToRow.set(projectKey, pos.row);
-          }
+          if (!key) continue;
+          const projectKey = key.split('-')[0];
+          const endRow = pos.row + (pos.rowSpan ?? 1);
+          const current = projectNextFreeRow.get(projectKey) ?? 0;
+          if (endRow > current) projectNextFreeRow.set(projectKey, endRow);
         }
 
         const transformed: Task[] = rawTasks.map(taskData => {
@@ -1008,8 +1019,9 @@ function SiblingBoardPanel({
           if (!savedPosition) {
             const extKey = extractJiraKey(taskData.title);
             const projKey = extKey ? extKey.split('-')[0] : null;
-            if (projKey && projectToRow.has(projKey)) {
-              defaultRow = projectToRow.get(projKey)!;
+            if (projKey && projectNextFreeRow.has(projKey)) {
+              defaultRow = projectNextFreeRow.get(projKey)!;
+              projectNextFreeRow.set(projKey, defaultRow + 1);
             } else if (defaultCol in newTaskRowByCol) {
               newTaskRowByCol[defaultCol]++;
             }
