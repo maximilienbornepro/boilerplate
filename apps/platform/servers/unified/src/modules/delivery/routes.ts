@@ -292,8 +292,11 @@ export function createDeliveryRoutes(): Router {
       `<g transform="translate(${p.x} ${p.y})">${p.svgInner}</g>`,
     ).join('\n  ');
 
+    // No background <rect> — the canvas is transparent so the paste
+    // blends into whatever Figma frame the user drops it on instead
+    // of forcing a white slab. Header text + per-task SVGs keep
+    // their own fills.
     const composite = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW + padding}" height="${canvasH}" viewBox="0 0 ${canvasW + padding} ${canvasH}">
-  <rect width="${canvasW + padding}" height="${canvasH}" fill="#ffffff"/>
   <text x="${padding}" y="${padding - 10}" font-size="20" font-weight="700" fill="#111827" font-family="system-ui, sans-serif">${board.name}</text>
   ${groups}
 </svg>`;
