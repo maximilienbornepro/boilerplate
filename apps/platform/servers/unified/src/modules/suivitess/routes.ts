@@ -3351,10 +3351,16 @@ ${filteredContent.slice(0, 30000)}`,
               && s.updatedSituation !== null
               && String(s.updatedSituation).trim().length > 0
             ) {
+              // Smart merge : same-day imports share a single date
+              // header, leading "— "/"- " on header lines is stripped.
+              // Pure function — see situationMerge.ts for invariants.
+              const { mergeSituationAppend, todayFrFr } = await import('./situationMerge.js');
               const currentSituation = existing.situation || '';
-              const newSituation = currentSituation
-                ? `${currentSituation}\n\n${s.updatedSituation}`
-                : s.updatedSituation;
+              const newSituation = mergeSituationAppend(
+                currentSituation,
+                String(s.updatedSituation),
+                todayFrFr(),
+              );
               updateFragments.push(`situation = $${idx++}`);
               updateValues.push(newSituation);
             }

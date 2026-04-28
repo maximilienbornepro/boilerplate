@@ -1021,7 +1021,14 @@ export async function analyzeSourceForReviews(
         suggestedNewSectionName: p.suggestedNewSectionName ?? null,
         subjectAction: 'update-existing-subject',
         targetSubjectId: p.targetSubjectId ?? null,
-        updatedSituation: (existing ? existing + '\n' : '') + w.appendText,
+        // Send ONLY the new appendText (not the existing prepended).
+        // apply-routing concatenates onto the live current situation
+        // server-side ; sending the merged value here was making the
+        // existing content appear twice, and forced a fresh "Mise à
+        // jour automatique en date du …" header on every successive
+        // commit even within the same import. Smart merge (same-day
+        // dedup, leading-dash strip) lives in the route handler now.
+        updatedSituation: w.appendText,
         updatedStatus: null, // the writer skill doesn't touch status
         updatedResponsibility: null,
         confidence: p.confidence,
@@ -1496,7 +1503,14 @@ export async function analyzeMultiSourceForReviews(
             suggestedNewSectionName: p.suggestedNewSectionName ?? null,
             subjectAction: 'update-existing-subject',
             targetSubjectId: p.targetSubjectId ?? null,
-            updatedSituation: (existing ? existing + '\n' : '') + w.appendText,
+            // Send ONLY the new appendText (not the existing prepended).
+        // apply-routing concatenates onto the live current situation
+        // server-side ; sending the merged value here was making the
+        // existing content appear twice, and forced a fresh "Mise à
+        // jour automatique en date du …" header on every successive
+        // commit even within the same import. Smart merge (same-day
+        // dedup, leading-dash strip) lives in the route handler now.
+        updatedSituation: w.appendText,
             updatedStatus: null,
             updatedResponsibility: null,
             confidence: p.confidence,

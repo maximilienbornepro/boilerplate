@@ -50,6 +50,10 @@ produit un double bullet visuel (`• •`) dans l'app.
 - **Préfixe de date** : commence ton `appendText` par `Mise à jour
   automatique en date du ${today} :` **uniquement** si `existingSituation`
   n'est pas vide. Si vide, écris directement les faits.
+- **Pas de tiret avant le préfixe** : n'écris JAMAIS `— Mise à jour …`
+  ni `- Mise à jour …`. Le préfixe commence directement par le mot
+  `Mise`. Si tu vois un tiret devant des en-têtes existants dans
+  `existingSituation`, ne le copie pas dans ta nouvelle entrée.
 - **Multilignes** : un fait = une ligne. Utilise `\n` entre les lignes.
 - **Pas de préfixe de puce** : commence chaque ligne directement par le texte
   du fait. La puce est rendue par l'app à partir de l'indentation.
