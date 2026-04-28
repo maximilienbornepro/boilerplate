@@ -134,6 +134,16 @@ async function init() {
 }
 
 init().catch((err) => {
-  logger.error('server.init.failed', { error: (err as Error).message });
+  // Capture the full error context — previously only `.message` was
+  // logged, which silently dropped string throws / errors with empty
+  // messages and made boot failures opaque. Print the full thing so
+  // any future regression has a stack trace to chase.
+  logger.error('server.init.failed', {
+    error: (err as Error).message || String(err),
+    stack: (err as Error).stack,
+    name: (err as Error).name,
+  });
+  // eslint-disable-next-line no-console
+  console.error('[server.init.failed]', err);
   process.exit(1);
 });
