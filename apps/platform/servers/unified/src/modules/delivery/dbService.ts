@@ -45,6 +45,20 @@ function mapTaskRow(row: Record<string, unknown>): TaskRow {
 
 const TASK_COLUMNS = 'id, title, type, status, story_points, estimated_days, assignee, priority, increment_id, sprint_name, source, parent_task_id, description';
 
+/**
+ * Fetch a single task by id. Returns `null` when no row matches.
+ * Used by the per-container Figma export endpoint that needs to
+ * locate one task without knowing its incrementId upfront.
+ */
+export async function getTaskById(id: string): Promise<TaskRow | null> {
+  const result = await pool.query(
+    `SELECT ${TASK_COLUMNS} FROM delivery_tasks WHERE id = $1`,
+    [id],
+  );
+  if (result.rows.length === 0) return null;
+  return mapTaskRow(result.rows[0]);
+}
+
 export async function getAllTasks(incrementId: string): Promise<TaskRow[]> {
   const result = await pool.query(
     `SELECT ${TASK_COLUMNS} FROM delivery_tasks WHERE increment_id = $1 ORDER BY created_at`,

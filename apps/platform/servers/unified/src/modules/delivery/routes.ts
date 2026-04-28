@@ -4,8 +4,8 @@ import { asyncHandler } from '@boilerplate/shared/server';
 import * as db from './dbService.js';
 import { getJiraContext, getUserJiraToken } from '../jiraAuth.js';
 import {
-  generateTaskSvg, generateMepMarkerSvg, normalizeStatus,
-  COLUMN_WIDTH, COLUMN_GAP, type TaskForFigma,
+  generateTaskSvg, generateContainerSvg, generateMepMarkerSvg, normalizeStatus,
+  COLUMN_WIDTH, COLUMN_GAP, type TaskForFigma, type ContainerChildForFigma,
 } from './figmaExport.js';
 
 export function createDeliveryRoutes(): Router {
@@ -83,7 +83,7 @@ export function createDeliveryRoutes(): Router {
           colSpan,
         };
 
-        const children = visibleTasks
+        const children: ContainerChildForFigma[] = visibleTasks
           .filter(c => c.parentTaskId === task.id)
           .map(c => {
             const cKey = c.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
@@ -91,14 +91,24 @@ export function createDeliveryRoutes(): Router {
               jiraKey: cKey ? cKey[1] : '',
               title: c.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim(),
               status: normalizeStatus(c.status),
+              storyPoints: c.storyPoints ?? null,
             };
           });
+
+        // Container tasks (manual parents grouping ≥1 child) get a
+        // richer SVG that lists every child inside — so the imported
+        // Figma node mirrors what's on screen instead of a flat title
+        // card. Regular jira tasks keep the lightweight one-card SVG.
+        const isContainer = task.source === 'manual' && children.length > 0;
+        const svg = isContainer
+          ? generateContainerSvg(taskData, children)
+          : generateTaskSvg(taskData);
 
         return {
           id: task.id, jiraKey, title: titleClean, status: taskData.status,
           colSpan, children,
           position: { startCol, endCol, row: pos?.row ?? 0 },
-          svg: generateTaskSvg(taskData),
+          svg,
         };
       });
 
@@ -115,6 +125,183 @@ export function createDeliveryRoutes(): Router {
 
   // ============ Authenticated routes below ============
   router.use(...route({ tier: 'authenticated' }));
+
+  // ============ Single-container Figma SVG ============
+  // Returns the SVG of ONE task — useful for the "Copier pour Figma"
+  // button on a container header so the user can paste a single
+  // container into Figma without dragging the whole board. For
+  // container parents the response is the rich child-list SVG ;
+  // for leaf jira tasks it's the lightweight card.
+  router.get('/tasks/:taskId/figma-svg', asyncHandler(async (req, res) => {
+    const taskId = req.params.taskId as string;
+    const task = await db.getTaskById(taskId);
+    if (!task) { res.status(404).json({ error: 'Tâche non trouvée' }); return; }
+
+    // Direct lookup by parent_task_id — finds every child regardless of
+    // sprint. Previously we filtered `getAllTasksForBoard(task.incrementId)`
+    // which is scoped to ONE sprint, so children sitting in a sibling
+    // sprint of the same board were dropped — the visible symptom was
+    // a copied container with a single chip when the on-screen
+    // container clearly showed more.
+    const children = await db.getChildTasks(task.id);
+
+    const keyMatch = task.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
+    const jiraKey = keyMatch ? keyMatch[1] : task.title.slice(0, 20);
+    const titleClean = task.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim() || task.title;
+
+    const taskData: TaskForFigma = {
+      jiraKey, title: titleClean,
+      status: normalizeStatus(task.status),
+      version: null,
+      estimatedDays: task.estimatedDays,
+      // Match the on-screen container width — the React TaskBlock
+      // renders the chip list at the container's actual colSpan, not
+      // a fixed 1. Falls back to 1 if no position is set.
+      colSpan: 1,
+    };
+
+    // Try to find the on-board position to size the SVG to the actual
+    // visual width the user sees. Cheap : single query, only used to
+    // pick a sane colSpan ; falls back to 1 silently.
+    if (task.incrementId) {
+      try {
+        const positions = await db.getTaskPositions(task.incrementId);
+        const pos = positions.find(p => p.taskId === task.id);
+        if (pos) {
+          taskData.colSpan = Math.max(1, pos.endCol - pos.startCol);
+        }
+      } catch { /* keep default colSpan */ }
+    }
+
+    const childTasks: ContainerChildForFigma[] = children
+      .map(c => {
+        const cKey = c.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
+        return {
+          jiraKey: cKey ? cKey[1] : '',
+          title: c.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim(),
+          status: normalizeStatus(c.status),
+          storyPoints: c.storyPoints ?? null,
+        };
+      });
+
+    const isContainer = task.source === 'manual' && childTasks.length > 0;
+    const svg = isContainer
+      ? generateContainerSvg(taskData, childTasks)
+      : generateTaskSvg(taskData);
+
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(svg);
+  }));
+
+  // ============ Composite Figma SVG (authenticated) ============
+  // Returns a single big `image/svg+xml` document that lays out every
+  // visible task at its grid position. Pasting that SVG into Figma
+  // creates one vector group per task (containers expand into their
+  // chip list), preserving the on-screen layout 1:1.
+  //
+  // Used by the "Copier pour Figma" action in the delivery board —
+  // the frontend writes this payload to the clipboard so the user can
+  // paste directly into Figma without going through the plugin.
+  router.get('/boards/:boardId/figma-svg', asyncHandler(async (req, res) => {
+    const boardId = req.params.boardId as string;
+    const board = await db.getBoardById(boardId);
+    if (!board) { res.status(404).json({ error: 'Board non trouvé' }); return; }
+
+    const totalCols = board.boardType === 'calendaire' ? 4 : (board.durationWeeks ?? 6);
+    const tasks = await db.getAllTasksForBoard(boardId);
+    const positions = await db.getPositionsForBoard(boardId);
+    const posMap = new Map(positions.map(p => [p.taskId, p]));
+
+    let hiddenIds = new Set<string>();
+    try {
+      const state = await db.getIncrementState(boardId);
+      hiddenIds = new Set(state.hiddenTaskIds || []);
+    } catch { /* no state */ }
+    const visibleTasks = tasks.filter(t => !hiddenIds.has(t.id));
+
+    // Same layout constants as the plugin (kept in sync via figmaExport.ts).
+    const ROW_HEIGHT = 200;
+
+    type Placed = { x: number; y: number; svgInner: string; width: number; height: number };
+    const placed: Placed[] = [];
+
+    for (const task of visibleTasks.filter(t => !t.parentTaskId)) {
+      const pos = posMap.get(task.id);
+      const startCol = pos?.startCol ?? 0;
+      const endCol = pos?.endCol ?? (startCol + 1);
+      const colSpan = endCol - startCol;
+      const row = pos?.row ?? 0;
+
+      const keyMatch = task.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
+      const jiraKey = keyMatch ? keyMatch[1] : task.title.slice(0, 20);
+      const titleClean = task.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim() || task.title;
+
+      const taskData: TaskForFigma = {
+        jiraKey, title: titleClean,
+        status: normalizeStatus(task.status),
+        version: null,
+        estimatedDays: task.estimatedDays,
+        colSpan,
+      };
+
+      const childTasks: ContainerChildForFigma[] = visibleTasks
+        .filter(c => c.parentTaskId === task.id)
+        .map(c => {
+          const cKey = c.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
+          return {
+            jiraKey: cKey ? cKey[1] : '',
+            title: c.title.replace(/^\[[A-Z][A-Z0-9_]+-\d+\]\s*/, '').trim(),
+            status: normalizeStatus(c.status),
+            storyPoints: c.storyPoints ?? null,
+          };
+        });
+
+      const isContainer = task.source === 'manual' && childTasks.length > 0;
+      const svg = isContainer
+        ? generateContainerSvg(taskData, childTasks)
+        : generateTaskSvg(taskData);
+
+      // Strip the outer <svg …> tags — we re-wrap each task at its
+      // position via a <g transform="translate(x y)"> in the composite.
+      const inner = svg
+        .replace(/^[\s\S]*?<svg[^>]*>/, '')
+        .replace(/<\/svg>\s*$/, '');
+      const widthMatch = svg.match(/<svg[^>]*\swidth="(\d+)"/);
+      const heightMatch = svg.match(/<svg[^>]*\sheight="(\d+)"/);
+      const width = widthMatch ? Number(widthMatch[1]) : COLUMN_WIDTH - COLUMN_GAP;
+      const height = heightMatch ? Number(heightMatch[1]) : ROW_HEIGHT;
+
+      placed.push({
+        x: startCol * COLUMN_WIDTH,
+        y: row * ROW_HEIGHT,
+        svgInner: inner,
+        width, height,
+      });
+    }
+
+    // Composite canvas — bound to the union of all placed boxes plus a
+    // small padding so Figma fits the paste cleanly.
+    const padding = 40;
+    const canvasW = Math.max(totalCols * COLUMN_WIDTH, 1);
+    const canvasH = placed.length > 0
+      ? Math.max(...placed.map(p => p.y + p.height)) + padding
+      : ROW_HEIGHT;
+
+    const groups = placed.map(p =>
+      `<g transform="translate(${p.x} ${p.y})">${p.svgInner}</g>`,
+    ).join('\n  ');
+
+    const composite = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW + padding}" height="${canvasH}" viewBox="0 0 ${canvasW + padding} ${canvasH}">
+  <rect width="${canvasW + padding}" height="${canvasH}" fill="#ffffff"/>
+  <text x="${padding}" y="${padding - 10}" font-size="20" font-weight="700" fill="#111827" font-family="system-ui, sans-serif">${board.name}</text>
+  ${groups}
+</svg>`;
+
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(composite);
+  }));
 
   // ============ Layout engine rules doc (human-readable) ============
   // Returns the hand-maintained markdown catalog that describes every
@@ -872,6 +1059,137 @@ export function createDeliveryRoutes(): Router {
     });
 
     res.status(201).json(task);
+  }));
+
+  // ============ Refresh Jira data on a board ============
+  // Walks every Jira-sourced task on the board and re-fetches its
+  // current state from Jira (title, status, story points, estimate,
+  // assignee, fixVersion). Batched via /rest/api/3/search?jql=key in
+  // (...) so a board with 50 tickets only takes 1-2 round trips.
+  // The user's edited title is preserved if they renamed locally
+  // (the Jira summary update only applies when the prefix `[KEY]`
+  // pattern still matches the stored title).
+  router.post('/boards/:boardId/refresh-jira', asyncHandler(async (req, res) => {
+    const boardId = req.params.boardId as string;
+    const board = await db.getBoardById(boardId);
+    if (!board) { res.status(404).json({ error: 'Board non trouvé' }); return; }
+
+    const ctx = await getJiraContext(req.user!.id);
+    if (!ctx) {
+      res.status(400).json({ error: 'Compte Jira non connecté.' });
+      return;
+    }
+
+    const tasks = await db.getAllTasksForBoard(boardId);
+    // Keep only Jira-sourced tasks with a parseable [KEY] prefix.
+    type Refreshable = { id: string; key: string; storedTitle: string };
+    const refreshable: Refreshable[] = [];
+    for (const t of tasks) {
+      if (t.source !== 'jira') continue;
+      const m = t.title.match(/^\[([A-Z][A-Z0-9_]+-\d+)\]/);
+      if (!m) continue;
+      refreshable.push({ id: t.id, key: m[1], storedTitle: t.title });
+    }
+    if (refreshable.length === 0) {
+      res.json({ refreshed: 0, total: 0, errors: [] });
+      return;
+    }
+
+    // Batch via JQL `key in (…)` — Jira allows 100 keys per request.
+    const BATCH = 100;
+    const jiraByKey = new Map<string, {
+      summary?: string;
+      status?: string;
+      assignee?: string | null;
+      storyPoints?: number | null;
+      estimatedDays?: number | null;
+      priority?: string | null;
+      fixVersion?: string | null;
+    }>();
+    const errors: Array<{ key: string; reason: string }> = [];
+
+    for (let i = 0; i < refreshable.length; i += BATCH) {
+      const batch = refreshable.slice(i, i + BATCH);
+      const jql = `key in (${batch.map(r => r.key).join(',')})`;
+      const params = new URLSearchParams({
+        jql,
+        fields: 'summary,status,assignee,customfield_10016,timetracking,fixVersions,priority',
+        maxResults: String(BATCH),
+      });
+      try {
+        const resp = await fetch(`${ctx.baseUrl}/rest/api/3/search/jql?${params}`, {
+          headers: ctx.headers,
+        });
+        if (!resp.ok) {
+          errors.push({ key: batch[0].key, reason: `Jira ${resp.status}: ${(await resp.text()).slice(0, 120)}` });
+          continue;
+        }
+        const data = await resp.json() as {
+          issues?: Array<{
+            key: string;
+            fields: {
+              summary?: string;
+              status?: { name?: string };
+              assignee?: { displayName?: string } | null;
+              customfield_10016?: number | null;
+              timetracking?: { originalEstimateSeconds?: number };
+              fixVersions?: Array<{ name?: string }>;
+              priority?: { name?: string };
+            };
+          }>;
+        };
+        for (const iss of data.issues || []) {
+          const f = iss.fields;
+          const estSec = f.timetracking?.originalEstimateSeconds;
+          jiraByKey.set(iss.key, {
+            summary: f.summary,
+            status: f.status?.name,
+            assignee: f.assignee?.displayName ?? null,
+            storyPoints: f.customfield_10016 ?? null,
+            estimatedDays: estSec ? Math.round((estSec / (8 * 60 * 60)) * 10) / 10 : null,
+            priority: f.priority?.name ?? null,
+            fixVersion: f.fixVersions?.[0]?.name ?? null,
+          });
+        }
+      } catch (err) {
+        errors.push({ key: batch[0].key, reason: (err as Error).message });
+      }
+    }
+
+    // Apply diffs. Title gets `[KEY] <new summary>` only when the
+    // stored title still starts with the [KEY] prefix — if the user
+    // renamed locally (no prefix), we preserve their wording.
+    let refreshedCount = 0;
+    for (const r of refreshable) {
+      const fresh = jiraByKey.get(r.key);
+      if (!fresh) {
+        errors.push({ key: r.key, reason: 'Ticket absent de la réponse Jira' });
+        continue;
+      }
+      const updates: Record<string, unknown> = {};
+      if (fresh.summary && r.storedTitle.startsWith(`[${r.key}]`)) {
+        updates.title = `[${r.key}] ${fresh.summary}`;
+      }
+      if (fresh.status) updates.status = fresh.status;
+      if (fresh.assignee !== undefined) updates.assignee = fresh.assignee;
+      if (fresh.storyPoints !== undefined) updates.storyPoints = fresh.storyPoints;
+      if (fresh.estimatedDays !== undefined) updates.estimatedDays = fresh.estimatedDays;
+      if (fresh.priority !== undefined) updates.priority = fresh.priority;
+      // `description` field stores the fixVersion (delivery convention,
+      // see line ~1026 above) — keep that contract on refresh too.
+      if (fresh.fixVersion !== undefined) updates.description = fresh.fixVersion;
+
+      if (Object.keys(updates).length > 0) {
+        try {
+          await db.updateTask(r.id, updates);
+          refreshedCount++;
+        } catch (err) {
+          errors.push({ key: r.key, reason: `DB update failed : ${(err as Error).message}` });
+        }
+      }
+    }
+
+    res.json({ refreshed: refreshedCount, total: refreshable.length, errors });
   }));
 
   router.get('/jira/issues', asyncHandler(async (req, res) => {

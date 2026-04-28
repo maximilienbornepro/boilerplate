@@ -626,3 +626,66 @@ export async function fetchLayoutRules(): Promise<string> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.text();
 }
+
+// ============ Figma export ============
+
+/** Fetches a composite `image/svg+xml` of every visible task on a
+ *  board, positioned at its grid coordinates. Container tasks render
+ *  with their child chips embedded — same shape used by the Figma
+ *  plugin. The response is raw SVG XML, ready to write to the
+ *  clipboard so the user can paste it directly into Figma. */
+export async function fetchBoardFigmaSvg(boardId: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/boards/${boardId}/figma-svg`, { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+// ============ Jira refresh ============
+
+export interface JiraRefreshResponse {
+  refreshed: number;
+  total: number;
+  errors: Array<{ key: string; reason: string }>;
+}
+
+/** Re-pull every Jira-sourced task on a board from Jira and write the
+ *  fresh fields (title, status, story points, estimate, assignee, fix
+ *  version) back to the DB. Use after editing tickets in Jira so the
+ *  delivery board reflects the latest state. */
+export async function refreshJiraTasks(boardId: string): Promise<JiraRefreshResponse> {
+  const res = await fetch(`${API_BASE}/boards/${boardId}/refresh-jira`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return handleResponse<JiraRefreshResponse>(res);
+}
+
+/** Single-task variant of `fetchBoardFigmaSvg` — returns the SVG of
+ *  ONE task only. For containers, the SVG includes the rich child
+ *  chip list ; for leaf tasks it's the lightweight card. Used by the
+ *  per-container "Copier pour Figma" button so the user can paste a
+ *  single container without dragging the whole board. */
+export async function fetchTaskFigmaSvg(taskId: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/tasks/${taskId}/figma-svg`, { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+/** Helper that copies a raw SVG string to the clipboard, doubling
+ *  as `image/svg+xml` (Figma will paste as vector groups) and
+ *  `text/plain` (so a code editor / Slack still receives the XML).
+ *  Falls back to plain `writeText` when ClipboardItem isn't
+ *  available (Firefox, older Safari). */
+export async function copySvgToClipboard(svg: string): Promise<void> {
+  if (navigator.clipboard && typeof window.ClipboardItem !== 'undefined') {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'image/svg+xml': new Blob([svg], { type: 'image/svg+xml' }),
+        'text/plain': new Blob([svg], { type: 'text/plain' }),
+      }),
+    ]);
+    return;
+  }
+  await navigator.clipboard.writeText(svg);
+}

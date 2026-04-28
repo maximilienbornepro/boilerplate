@@ -8,7 +8,7 @@ import { ImportModal } from './components/ImportModal';
 import { SanityCheckModal } from './components/SanityCheckModal/SanityCheckModal';
 import { LayoutRulesModal } from './components/LayoutRulesModal/LayoutRulesModal';
 import { generateSprintsForBoard, type BoardConfig } from './utils/sprintGeneration';
-import { Layout, ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
+import { Layout, ModuleHeader, LoadingSpinner, ToastContainer, type ToastData } from '@boilerplate/shared/components';
 import type { Board } from './services/api';
 import { fetchBoard, fetchBoards } from './services/api';
 import {
@@ -112,6 +112,10 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSanityModal, setShowSanityModal] = useState(false);
   const [sanityMode, setSanityMode] = useState<'ai' | 'deterministic'>('ai');
+  const [toasts, setToasts] = useState<ToastData[]>([]);
+  const pushToast = (type: ToastData['type'], message: string) => {
+    setToasts(t => [...t, { id: `${Date.now()}-${Math.random()}`, type, message }]);
+  };
   const [showLayoutRulesModal, setShowLayoutRulesModal] = useState(false);
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -776,6 +780,32 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                   >
                     Importer des tâches
                   </button>
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={async () => {
+                      // Pull every Jira ticket on the board fresh from
+                      // Jira. Cheap : one batched JQL query per 100
+                      // tickets. Reloads the board afterwards so the
+                      // user sees the new titles/statuses immediately.
+                      setShowActionsMenu(false);
+                      try {
+                        const { refreshJiraTasks } = await import('./services/api');
+                        const res = await refreshJiraTasks(board.id);
+                        await loadTasks();
+                        const errPart = res.errors.length > 0 ? ` (${res.errors.length} erreurs)` : '';
+                        pushToast(
+                          res.errors.length > 0 ? 'warning' : 'success',
+                          `Jira : ${res.refreshed}/${res.total} ticket${res.total > 1 ? 's' : ''} rafraîchi${res.refreshed > 1 ? 's' : ''}${errPart}`,
+                        );
+                      } catch (err) {
+                        pushToast('error', err instanceof Error ? err.message : 'Rafraîchissement échoué');
+                      }
+                    }}
+                    title="Re-pull les tickets Jira existants pour récupérer les titres/statuts à jour"
+                  >
+                    🔄 Rafraîchir depuis Jira
+                  </button>
                   <div className="delivery-actions-divider" />
 
                   <div className="delivery-actions-group-title">IA</div>
@@ -816,6 +846,32 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                     title="Voir les règles de placement appliquées par le layout engine"
                   >
                     🧩 Règles de placement
+                  </button>
+                  <div className="delivery-actions-divider" />
+
+                  <div className="delivery-actions-group-title">Export</div>
+                  <button
+                    type="button"
+                    className="delivery-actions-item"
+                    onClick={async () => {
+                      // Fetch the composite SVG (server lays every task
+                      // out at its grid position, container chips
+                      // included) and write it to the clipboard. Pasting
+                      // into Figma converts the XML to vector groups
+                      // 1:1 — no plugin round-trip needed.
+                      setShowActionsMenu(false);
+                      try {
+                        const { fetchBoardFigmaSvg, copySvgToClipboard } = await import('./services/api');
+                        const svg = await fetchBoardFigmaSvg(board.id);
+                        await copySvgToClipboard(svg);
+                        pushToast('success', 'SVG copié — colle dans Figma (Cmd/Ctrl+V)');
+                      } catch (err) {
+                        pushToast('error', err instanceof Error ? err.message : 'Copie échouée');
+                      }
+                    }}
+                    title="Copie le board entier (containers + tickets) au format SVG, prêt à coller dans Figma"
+                  >
+                    ⧉ Copier pour Figma
                   </button>
                 </div>
               )}
@@ -882,6 +938,16 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                   onNestTask={handleNestTask}
                   onUnnestTask={handleUnnestTask}
                   onAddTask={() => setShowAddTask(true)}
+                  onCopyToFigma={async (taskId) => {
+                    try {
+                      const { fetchTaskFigmaSvg, copySvgToClipboard } = await import('./services/api');
+                      const svg = await fetchTaskFigmaSvg(taskId);
+                      await copySvgToClipboard(svg);
+                      pushToast('success', 'Container copié — colle dans Figma');
+                    } catch (err) {
+                      pushToast('error', err instanceof Error ? err.message : 'Copie échouée');
+                    }
+                  }}
                 />
               </div>
               {/* Consolidated view : each sibling board (same period) gets
@@ -945,6 +1011,10 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
           )}
         </div>
       </div>
+      <ToastContainer
+        toasts={toasts}
+        onClose={(id) => setToasts(t => t.filter(x => x.id !== id))}
+      />
     </Layout>
   );
 }

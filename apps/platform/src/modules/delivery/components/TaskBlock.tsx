@@ -82,11 +82,16 @@ interface TaskBlockProps {
   /** Called when a container is dragged and released over a different
    *  project row label (detected via elementsFromPoint on mouseup). */
   onProjectDrop?: (taskId: string, project: string) => void;
+  /** Optional handler for the per-container "Copier pour Figma"
+   *  button rendered in the container header. App.tsx owns the
+   *  network call + clipboard write + toast. Only surfaced when
+   *  the task is a container. */
+  onCopyToFigma?: (taskId: string) => void;
 }
 
 export function TaskBlock({
   task, totalCols, rowHeight, readOnly = false,
-  onUpdate, onDelete, onResize, onMove, onNestTask, onUnnest, jiraBaseUrl, onProjectDrop,
+  onUpdate, onDelete, onResize, onMove, onNestTask, onUnnest, jiraBaseUrl, onProjectDrop, onCopyToFigma,
 }: TaskBlockProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(task.title);
@@ -347,6 +352,22 @@ export function TaskBlock({
                 <span className={styles.containerDaysBadge}>{totalDays}j</span>
               ) : null;
             })()}
+            {/* Per-container Figma copy — fetches the container SVG
+                (with chips embedded) and writes it to the clipboard.
+                Stops propagation so the click never starts a drag or
+                opens the edit modal. */}
+            {!readOnly && onCopyToFigma && (
+              <button
+                type="button"
+                className={styles.containerFigmaBtn}
+                onClick={(e) => { e.stopPropagation(); onCopyToFigma(task.id); }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => e.stopPropagation()}
+                title="Copier ce container au format SVG (à coller dans Figma)"
+              >
+                ⧉ Figma
+              </button>
+            )}
           </div>
 
           {task.description && (

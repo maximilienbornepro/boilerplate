@@ -33,6 +33,10 @@ interface BoardDeliveryProps {
   onContainerProjectChange?: (taskId: string, project: string) => void;
   /** Called when the user clicks "+ Tâche" in the empty state. */
   onAddTask?: () => void;
+  /** Called when the user clicks the per-container "Copier pour Figma"
+   *  button — forwarded down to TaskBlock. App.tsx owns the fetch +
+   *  clipboard write + toast feedback. */
+  onCopyToFigma?: (taskId: string) => void;
 }
 
 /** Vertical pitch between rows on the board grid. Tasks are positioned at
@@ -80,6 +84,7 @@ export function BoardDelivery({
   availableProjects = [],
   onContainerProjectChange,
   onAddTask,
+  onCopyToFigma,
 }: BoardDeliveryProps) {
   // Group tasks by Jira project. Each project gets its own BoardRow.
   // Containers (manual tasks) check the override map first, then fall
@@ -176,6 +181,7 @@ export function BoardDelivery({
               : undefined
             }
             onProjectDrop={onContainerProjectChange}
+            onCopyToFigma={onCopyToFigma}
           />
         ))}
       </div>

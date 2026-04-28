@@ -78,6 +78,34 @@
   white-space: nowrap;
 }
 
+/* Compact per-container "Copier pour Figma" CTA — sits next to the
+   days badge, only visible on hover so it never competes with the
+   container's content for attention. */
+.containerFigmaBtn {
+  background: var(--bg-secondary, #1f2937);
+  color: var(--text-secondary, #d1d5db);
+  border: 1px solid var(--border-color, #374151);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: var(--font-weight-medium);
+  flex-shrink: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+
+.containerBlock:hover .containerFigmaBtn {
+  opacity: 1;
+}
+
+.containerFigmaBtn:hover {
+  background: var(--accent-primary, #667eea);
+  color: #fff;
+  border-color: var(--accent-primary, #667eea);
+}
+
 .containerTitle {
   font-size: 12px;
   font-weight: var(--font-weight-bold);

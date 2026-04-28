@@ -23,6 +23,9 @@ interface BoardRowProps {
   /** Called when a container is dragged and released over a different
    *  row's label. Detected via elementsFromPoint on mouseup inside TaskBlock. */
   onProjectDrop?: (taskId: string, project: string) => void;
+  /** Per-container "Copier pour Figma" handler. Forwarded into every
+   *  TaskBlock — only containers actually surface the button. */
+  onCopyToFigma?: (taskId: string) => void;
 }
 
 export function BoardRow({
@@ -41,6 +44,7 @@ export function BoardRow({
   jiraBaseUrl,
   onContainerDrop,
   onProjectDrop,
+  onCopyToFigma,
 }: BoardRowProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   // Account for rowSpan when computing the container height
@@ -113,6 +117,7 @@ export function BoardRow({
             onUnnest={readOnly ? undefined : onUnnestTask}
             jiraBaseUrl={jiraBaseUrl}
             onProjectDrop={onProjectDrop}
+            onCopyToFigma={onCopyToFigma}
           />
         ))}
 

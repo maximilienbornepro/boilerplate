@@ -129,6 +129,126 @@ export function generateTaskSvg(task: TaskForFigma): string {
 </svg>`;
 }
 
+/** Children rendered inside a container SVG. Mirrors the chip metadata
+ *  rendered by the React TaskBlock so the Figma export looks like the
+ *  on-screen container (title + total days + stacked chips). */
+export interface ContainerChildForFigma {
+  jiraKey: string;
+  title: string;
+  status: string;
+  storyPoints: number | null;
+}
+
+/**
+ * Render a "container" task (a manual parent that groups N child Jira
+ * tickets, e.g. the "Anomalie" container) as a Figma-paste-ready SVG.
+ * Differs from `generateTaskSvg` in that children are visually nested
+ * inside the box as chips — so the Figma node mirrors the on-screen
+ * container 1:1 instead of a flat card.
+ *
+ * Layout (per chip row, top→bottom) :
+ *   [statusDot]  [jiraKey badge]  [title]  [storyPoints]
+ *
+ * Container box height grows with `children.length`. Capped at
+ * MAX_VISIBLE_CHIPS to keep the export from blowing up on huge
+ * containers — the same cap used in the React component.
+ */
+const MAX_VISIBLE_CHIPS = 12;
+const CHIP_HEIGHT = 36;
+const CHIP_GAP = 6;
+
+export function generateContainerSvg(
+  task: TaskForFigma,
+  children: ContainerChildForFigma[],
+): string {
+  const colSpan = task.colSpan || 1;
+  const width = colSpan * COLUMN_WIDTH - COLUMN_GAP;
+  const padding = 20;
+
+  const visibleChildren = children.slice(0, MAX_VISIBLE_CHIPS);
+  const hiddenCount = Math.max(0, children.length - MAX_VISIBLE_CHIPS);
+
+  // Header row (title + total days) ~ 56px, optional "and N more" line,
+  // then one row per visible chip + bottom padding.
+  const headerHeight = 56;
+  const moreHintHeight = hiddenCount > 0 ? 24 : 0;
+  const chipsTotal = visibleChildren.length * (CHIP_HEIGHT + CHIP_GAP);
+  const height = Math.max(120, headerHeight + chipsTotal + moreHintHeight + padding);
+
+  const totalDays = children.reduce((sum, c) => {
+    // We only export storyPoints today — `estimatedDays` is not in the
+    // child shape produced by the route. Treat 1 SP ≈ 1 day for the
+    // visual badge (same heuristic the React component uses).
+    return sum + (c.storyPoints ?? 0);
+  }, 0);
+
+  // Header
+  let header = `<text x="${padding}" y="${padding + 22}" font-size="20" font-weight="700" fill="#1f2937" font-family="system-ui, sans-serif">${escapeXml(task.title)}</text>`;
+  if (totalDays > 0) {
+    const txt = `${totalDays}j`;
+    const w = txt.length * 11 + 18;
+    header += `<rect x="${width - padding - w}" y="${padding}" width="${w}" height="28" rx="6" fill="#0ea5e9"/>`;
+    header += `<text x="${width - padding - w / 2}" y="${padding + 20}" font-size="14" font-weight="700" fill="#fff" text-anchor="middle" font-family="system-ui, sans-serif">${txt}</text>`;
+  }
+
+  // Stacked child chips
+  const chipParts: string[] = [];
+  visibleChildren.forEach((c, i) => {
+    const y = headerHeight + i * (CHIP_HEIGHT + CHIP_GAP);
+    const statusColor = STATUS_COLORS[c.status] || '#6b7280';
+    const projectKey = c.jiraKey?.split('-')[0] || '';
+    const colors = PROJECT_FIGMA_COLORS[projectKey] || PROJECT_FIGMA_COLORS.TVSMART;
+
+    // Chip background
+    chipParts.push(`<rect x="${padding}" y="${y}" width="${width - 2 * padding}" height="${CHIP_HEIGHT}" rx="6" fill="#ffffff" stroke="rgba(0,0,0,0.08)"/>`);
+
+    // Status dot (left)
+    let cursorX = padding + 12;
+    chipParts.push(`<circle cx="${cursorX}" cy="${y + CHIP_HEIGHT / 2}" r="5" fill="${statusColor}"/>`);
+    cursorX += 14;
+
+    // Jira key badge
+    if (c.jiraKey) {
+      const kw = c.jiraKey.length * 8 + 12;
+      chipParts.push(`<rect x="${cursorX}" y="${y + 8}" width="${kw}" height="20" rx="4" fill="${colors.badge}"/>`);
+      chipParts.push(`<text x="${cursorX + kw / 2}" y="${y + 22}" font-size="12" font-weight="700" fill="${colors.badgeText}" text-anchor="middle" font-family="system-ui, sans-serif">${escapeXml(c.jiraKey)}</text>`);
+      cursorX += kw + 8;
+    }
+
+    // Story points pill on the right
+    let titleEndX = width - padding - 8;
+    if (c.storyPoints != null) {
+      const sp = `${c.storyPoints}`;
+      const spw = sp.length * 9 + 14;
+      chipParts.push(`<rect x="${width - padding - 8 - spw}" y="${y + 8}" width="${spw}" height="20" rx="10" fill="#eef2ff"/>`);
+      chipParts.push(`<text x="${width - padding - 8 - spw / 2}" y="${y + 22}" font-size="12" font-weight="600" fill="#4338ca" text-anchor="middle" font-family="system-ui, sans-serif">${escapeXml(sp)}</text>`);
+      titleEndX = width - padding - 8 - spw - 10;
+    }
+
+    // Title (truncated to fit)
+    const availPx = Math.max(40, titleEndX - cursorX);
+    const charsAvail = Math.floor(availPx / 7.5);
+    const truncated = c.title.length > charsAvail
+      ? c.title.slice(0, Math.max(0, charsAvail - 1)) + '…'
+      : c.title;
+    chipParts.push(`<text x="${cursorX}" y="${y + 22}" font-size="13" fill="#1f2937" font-family="system-ui, sans-serif">${escapeXml(truncated)}</text>`);
+  });
+
+  // "+N de plus" hint when chips were capped
+  let moreHint = '';
+  if (hiddenCount > 0) {
+    const y = headerHeight + visibleChildren.length * (CHIP_HEIGHT + CHIP_GAP) + 4;
+    moreHint = `<text x="${padding}" y="${y + 14}" font-size="12" fill="#6b7280" font-style="italic" font-family="system-ui, sans-serif">+${hiddenCount} ticket${hiddenCount > 1 ? 's' : ''} non affiché${hiddenCount > 1 ? 's' : ''}</text>`;
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="${width}" height="${height}" rx="14" fill="#f9fafb" stroke="#9ca3af" stroke-width="2" stroke-dasharray="6,4"/>
+  ${header}
+  ${chipParts.join('\n  ')}
+  ${moreHint}
+</svg>`;
+}
+
 export function generateMepMarkerSvg(version: string, date: string): string {
   const width = 120;
   const height = 60;
