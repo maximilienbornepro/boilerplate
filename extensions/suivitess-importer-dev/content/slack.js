@@ -77,6 +77,49 @@
     return [...new Set(channels)];
   }
 
+  // ==================== DEBUG LOGGING ====================
+
+  /** Per-day breakdown of what the Slack scraper just pulled out of the
+   *  current view — printed to the page console so the user can verify
+   *  WHY a given day looks under-counted (Slack's virtualized scroller
+   *  only renders ~50 messages around the viewport ; older messages
+   *  require manual scroll up before re-running the extraction). */
+  function logSlackExtraction(messages, channel, durationMs) {
+    const byDay = new Map();
+    for (const m of messages) {
+      const ts = parseFloat(m.id.split('/')[1] || '');
+      const d = isNaN(ts) ? null : new Date(ts * 1000);
+      const key = d ? d.toISOString().slice(0, 10) : '?';
+      const arr = byDay.get(key) || [];
+      arr.push(m);
+      byDay.set(key, arr);
+    }
+    const dayStats = Array.from(byDay.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([day, list]) => `  ${day} : ${list.length} msg(s)`)
+      .join('\n');
+
+    /* eslint-disable no-console */
+    console.groupCollapsed(
+      `%c[SuiviTess] Slack extraction (${channel}) → ${messages.length} msgs%c (${durationMs.toFixed(0)}ms)`,
+      'color:#10b981;font-weight:bold', 'color:#6b7280',
+    );
+    console.log('Par jour :');
+    console.log(dayStats || '  (aucun)');
+    console.table(messages.map(m => ({
+      date: m.date,
+      sender: m.sender,
+      text: (m.fullText || m.text).slice(0, 80),
+      id: m.id,
+    })));
+    console.log(
+      '%c💡 Si des messages anciens manquent, scroll vers le haut dans Slack puis relance — le DOM ne contient que ce qui est rendu autour du viewport.',
+      'color:#f59e0b',
+    );
+    console.groupEnd();
+    /* eslint-enable no-console */
+  }
+
   // ==================== MESSAGE HANDLER ====================
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -116,8 +159,10 @@
 
     if (message.action === 'getMessages') {
       try {
+        const t0 = performance.now();
         const messages = extractMessagesFromView();
         const channels = getChannelList();
+        logSlackExtraction(messages, getCurrentChannelName(), performance.now() - t0);
         sendResponse({
           success: true,
           items: messages,

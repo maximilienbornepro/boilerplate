@@ -143,39 +143,55 @@
   /**
    * Scroll the virtualized list and accumulate emails from each viewport.
    * Returns deduplicated list of all emails found within last 7 days.
+   *
+   * Tunables — increased to compensate for a typical busy mailbox where
+   * 30 × 400 = 12000px wasn't enough to surface a full 7-day window.
+   * Also tolerates a few "old" rows in a row before stopping (Outlook
+   * pins / promoted items may sit above today's mail and would
+   * previously trip the early break).
    */
   async function extractEmails() {
+    const t0 = performance.now();
     const accumulated = new Map(); // id → email object
+    const skippedOld = [];          // for diagnostics
 
     // First pass: grab what's visible now
     for (const e of extractVisibleEmails()) {
       if (isWithinLastWeek(e.date)) accumulated.set(e.id, e);
+      else skippedOld.push(e);
     }
 
     const container = findScrollContainer();
-    if (!container) return Array.from(accumulated.values());
+    if (!container) {
+      const result = Array.from(accumulated.values());
+      logExtraction(result, skippedOld, performance.now() - t0, 'no-scroll-container');
+      return result;
+    }
 
-    // Scroll progressively and accumulate
-    const SCROLL_STEP = 400;
-    const MAX_SCROLLS = 30;
-    let reachedOldMails = false;
+    const SCROLL_STEP = 600;
+    const MAX_SCROLLS = 60;
+    const OLD_TOLERANCE = 8; // consecutive old rows before we give up
+    let consecutiveOld = 0;
 
     for (let i = 0; i < MAX_SCROLLS; i++) {
       container.scrollTop += SCROLL_STEP;
       await new Promise(r => setTimeout(r, 250));
 
       const visible = extractVisibleEmails();
+      let foundFreshThisPass = false;
       for (const e of visible) {
         if (!isWithinLastWeek(e.date)) {
-          reachedOldMails = true;
+          if (!accumulated.has(e.id)) skippedOld.push(e);
           continue;
         }
         if (!accumulated.has(e.id)) {
           accumulated.set(e.id, e);
+          foundFreshThisPass = true;
         }
       }
 
-      if (reachedOldMails) break;
+      if (!foundFreshThisPass) consecutiveOld++; else consecutiveOld = 0;
+      if (consecutiveOld >= OLD_TOLERANCE) break;
 
       // Stop if scroll didn't move (end of list)
       if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) break;
@@ -184,7 +200,47 @@
     // Scroll back to top
     container.scrollTop = 0;
 
-    return Array.from(accumulated.values());
+    const result = Array.from(accumulated.values());
+    logExtraction(result, skippedOld, performance.now() - t0, 'ok');
+    return result;
+  }
+
+  /** Pretty per-day breakdown printed to the page console — lets the
+   *  user inspect WHY a given day looks under-counted (parsing
+   *  failures, conversation-view collapsing N messages into 1 row,
+   *  scroll didn't reach far enough, …). */
+  function logExtraction(emails, skippedOld, durationMs, reason) {
+    const byDay = new Map();
+    for (const e of emails) {
+      const d = parseDate(e.date);
+      const key = d ? d.toISOString().slice(0, 10) : '?';
+      const arr = byDay.get(key) || [];
+      arr.push(e);
+      byDay.set(key, arr);
+    }
+    const dayStats = Array.from(byDay.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([day, list]) => `  ${day} : ${list.length} mail(s)`)
+      .join('\n');
+
+    /* eslint-disable no-console */
+    console.groupCollapsed(
+      `%c[SuiviTess] Outlook extraction → ${emails.length} mails%c (${durationMs.toFixed(0)}ms · ${reason})`,
+      'color:#10b981;font-weight:bold', 'color:#6b7280',
+    );
+    console.log('Par jour :');
+    console.log(dayStats || '  (aucun)');
+    console.table(emails.map(e => ({
+      date: e.date,
+      sender: e.sender,
+      subject: e.subject.slice(0, 80),
+      id: e.id,
+    })));
+    if (skippedOld.length > 0) {
+      console.log(`%c${skippedOld.length} mails ignorés (>7j)`, 'color:#9ca3af');
+    }
+    console.groupEnd();
+    /* eslint-enable no-console */
   }
 
   async function extractEmailBody(emailId) {
