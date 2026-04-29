@@ -951,3 +951,40 @@ export async function replayRun(t2LogId: number): Promise<ReplayResponse> {
   }
   return res.json();
 }
+
+// ============ Source content preview ============
+
+export interface SourceContentItem {
+  sender: string;
+  /** ISO timestamp when known (Slack), otherwise the source's raw
+   *  `date` string (Outlook digest gives `2026-04-28T14:30:00Z` style),
+   *  or `null` for transcripts with no per-line timestamps. */
+  ts: string | null;
+  subject: string;
+  preview: string;
+  bodyChars?: number;
+}
+
+export interface SourceContentResponse {
+  source: string;
+  id: string;
+  count: number;
+  items: SourceContentItem[];
+}
+
+/** Fetch the underlying message-level rows that a source digest will
+ *  feed to the AI pipeline — used by the "👁 Voir les mails / messages"
+ *  preview in the bulk-import modal so the user can verify exactly
+ *  what's about to be analysed before triggering T1. Cheap : reads
+ *  from the local DB / connector cache, no LLM. */
+export async function fetchSourceContent(source: string, id: string): Promise<SourceContentResponse> {
+  const params = new URLSearchParams({ source, id });
+  const res = await fetch(`${API_BASE}/transcription/source-content?${params.toString()}`, {
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}

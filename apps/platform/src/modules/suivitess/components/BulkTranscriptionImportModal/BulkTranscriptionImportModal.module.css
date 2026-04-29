@@ -358,6 +358,96 @@
   background: color-mix(in srgb, var(--accent-primary) 6%, transparent);
 }
 
+/* Right-most cell of a .sourceItem subgrid : packs the "Déjà
+   importé" badge, the date label and the "▸ Contenu" toggle on one
+   line, right-aligned, so the 4-col grid alignment isn't broken
+   when one or several of them are absent. */
+.sourceMetaCell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  white-space: nowrap;
+}
+
+.sourcePreviewBtn {
+  margin-left: var(--spacing-sm);
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+.sourcePreviewBtn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+}
+
+/* Preview panel — direct child of .sourceList grid, spans every
+   column so it stretches the full row beneath its source. */
+.sourcePreviewPanel {
+  grid-column: 1 / -1;
+  margin: calc(var(--spacing-xs) * -1) 0 var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+.sourcePreviewHint { color: var(--text-muted); margin: 0; }
+.sourcePreviewError { color: var(--error, #dc2626); margin: 0; }
+.sourcePreviewCount {
+  margin: 0 0 var(--spacing-sm);
+  color: var(--text-primary);
+}
+.sourcePreviewList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-height: 280px;
+  overflow-y: auto;
+}
+.sourcePreviewItem {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+.sourcePreviewLine1 {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+.sourcePreviewLine1 strong {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
+}
+.sourcePreviewTs,
+.sourcePreviewChars { font-family: var(--font-mono); }
+.sourcePreviewSubject {
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  margin-top: 2px;
+}
+.sourcePreviewBody {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .sourceTitle {
   min-width: 0;
   font-size: var(--font-size-sm);

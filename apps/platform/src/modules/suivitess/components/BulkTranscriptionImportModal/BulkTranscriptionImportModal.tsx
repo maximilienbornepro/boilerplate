@@ -832,22 +832,12 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                 </p>
                 <div className={styles.sourceList}>
                   {sources.map(s => (
-                    <label
+                    <SourceRow
                       key={s.id}
-                      className={`${styles.sourceItem} ${selectedIds.has(s.id) ? styles.sourceItemSelected : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(s.id)}
-                        onChange={() => toggleSelect(s.id)}
-                      />
-                      <span className={styles.sourceTitle}>{s.title}</span>
-                      <span className={styles.providerTag}>{s.provider}</span>
-                      {s.alreadyImported && (
-                        <Badge type="info">↻ Déjà importé</Badge>
-                      )}
-                      {s.date && <span className={styles.sourceDate}>{formatDate(s.date)}</span>}
-                    </label>
+                      source={s}
+                      selected={selectedIds.has(s.id)}
+                      onToggle={() => toggleSelect(s.id)}
+                    />
                   ))}
                 </div>
                 <div className={styles.actions}>
@@ -2852,5 +2842,116 @@ function InlineNameEditor({
         </svg>
       </button>
     </span>
+  );
+}
+
+// ====================================================================
+// SourceRow — one row in the bulk-import source picker, with an
+// expandable "Voir le contenu" panel that reveals the underlying
+// messages (emails / Slack messages / transcript lines) the AI will
+// receive. Lets the user verify that what looks like e.g. "outlook
+// 28/04/2026" really has the messages they expect, before paying the
+// LLM tokens.
+// ====================================================================
+
+function SourceRow({
+  source,
+  selected,
+  onToggle,
+}: {
+  source: api.BulkSourceItem;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [content, setContent] = useState<api.SourceContentResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const togglePreview = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+    setExpanded(true);
+    if (content) return; // cached
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.fetchSourceContent(source.provider, source.id);
+      setContent(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Aperçu indisponible');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Render the label and the optional preview panel as TWO siblings —
+  // .sourceList is a CSS Grid with subgrid items, so a wrapper <div>
+  // would break the column alignment. The panel sets `grid-column:
+  // 1 / -1` to span the full row width.
+  return (
+    <>
+      <label className={`${styles.sourceItem} ${selected ? styles.sourceItemSelected : ''}`}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggle}
+        />
+        <span className={styles.sourceTitle}>{source.title}</span>
+        <span className={styles.providerTag}>{source.provider}</span>
+        <span className={styles.sourceMetaCell}>
+          {source.alreadyImported && (
+            <Badge type="info">↻ Déjà importé</Badge>
+          )}
+          {source.date && <span className={styles.sourceDate}>{formatDate(source.date)}</span>}
+          <button
+            type="button"
+            className={styles.sourcePreviewBtn}
+            onClick={togglePreview}
+            title="Voir le contenu réel qui sera envoyé à l'IA"
+          >
+            {expanded ? '▾' : '▸'} Contenu
+          </button>
+        </span>
+      </label>
+      {expanded && (
+        <div className={styles.sourcePreviewPanel}>
+          {loading && <p className={styles.sourcePreviewHint}>Chargement…</p>}
+          {error && <p className={styles.sourcePreviewError}>⚠ {error}</p>}
+          {content && content.count === 0 && !loading && (
+            <p className={styles.sourcePreviewHint}>
+              Aucun élément stocké pour cette source — le scraper Chrome n'a peut-être pas tout capturé.
+              Vérifie les logs <code>[SuiviTess]</code> dans la console de l'onglet Outlook/Slack.
+            </p>
+          )}
+          {content && content.count > 0 && (
+            <>
+              <p className={styles.sourcePreviewCount}>
+                <strong>{content.count}</strong> élément{content.count > 1 ? 's' : ''} sera{content.count > 1 ? 'ont' : ''} envoyé{content.count > 1 ? 's' : ''} à l'IA :
+              </p>
+              <ul className={styles.sourcePreviewList}>
+                {content.items.map((it, i) => (
+                  <li key={i} className={styles.sourcePreviewItem}>
+                    <div className={styles.sourcePreviewLine1}>
+                      <strong>{it.sender}</strong>
+                      {it.ts && <span className={styles.sourcePreviewTs}>{formatDate(it.ts)}</span>}
+                      {typeof it.bodyChars === 'number' && (
+                        <span className={styles.sourcePreviewChars}>{it.bodyChars} car.</span>
+                      )}
+                    </div>
+                    {it.subject && <div className={styles.sourcePreviewSubject}>{it.subject}</div>}
+                    {it.preview && <div className={styles.sourcePreviewBody}>{it.preview}</div>}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </>
   );
 }
