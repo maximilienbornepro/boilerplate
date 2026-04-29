@@ -239,3 +239,52 @@ main {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* Expandable row : the subject cell becomes clickable to toggle a
+   second tr that holds the captured body / preview. */
+.email-table tr.expandable .cell-subject {
+  cursor: pointer;
+}
+.expand-toggle {
+  display: inline-block;
+  width: 14px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  margin-right: 4px;
+}
+.email-table tr.row-expanded {
+  background: var(--bg);
+}
+.expanded-cell {
+  padding: 12px 32px !important;
+  background: var(--bg);
+}
+.body-text {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 11px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.body-preview-only {
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  color: var(--warn);
+  font-size: 12px;
+}
+.body-preview-only strong { color: var(--warn); }
+.body-empty {
+  padding: 10px 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 12px;
+}

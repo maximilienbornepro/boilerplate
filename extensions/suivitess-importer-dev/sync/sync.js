@@ -13,6 +13,61 @@
   const serverDomain = (() => {
     try { return new URL(serverUrl).host; } catch { return serverUrl; }
   })();
+  // `?mode=replay` = open the dashboard without launching a fresh sync
+  // (just review what was persisted from the last run). The popup
+  // adds this when re-opening the dashboard from the history menu.
+  const replayMode = params.get('mode') === 'replay';
+
+  const STORAGE_KEY = 'lastOutlookSync';
+
+  /** Persist the current `emails` array + run metadata to
+   *  chrome.storage.local. Stored fields are kept lean (no body —
+   *  it's already on the server, and storage.local has a per-key
+   *  cap of ~5MB). */
+  async function persistSnapshot(extra = {}) {
+    try {
+      // Bodies are kept too so the user can inspect what got
+      // extracted in the dashboard (expandable row). Truncated at
+      // 20k chars per body to stay safe under chrome.storage.local's
+      // ~5MB per-key cap on a busy mailbox.
+      const lean = emails.map(e => ({
+        id: e.id,
+        subject: e.subject,
+        sender: e.sender,
+        date: e.date,
+        preview: e.preview,
+        threadCount: e.threadCount,
+        body: e.body ? String(e.body).slice(0, 20000) : null,
+        bodyChars: e.bodyChars,
+        status: e.status,
+        error: e.error,
+        syncedAt: e.syncedAt,
+      }));
+      await chrome.storage.local.set({
+        [STORAGE_KEY]: {
+          syncedAt: new Date().toISOString(),
+          serverDomain,
+          serverUrl,
+          emails: lean,
+          ...extra,
+        },
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[SuiviTess sync] persist failed:', err);
+    }
+  }
+
+  async function loadSnapshot() {
+    try {
+      const data = await chrome.storage.local.get([STORAGE_KEY]);
+      return data?.[STORAGE_KEY] || null;
+    } catch { return null; }
+  }
+
+  async function clearSnapshot() {
+    try { await chrome.storage.local.remove([STORAGE_KEY]); } catch { /* ignore */ }
+  }
 
   // ── DOM refs ───────────────────────────────────────────────────────────
   const $ = id => document.getElementById(id);
@@ -164,15 +219,19 @@
   }
 
   async function trustedClickAt(x, y) {
-    // Sequence : pressed + released at the same coords. Outlook expects
-    // a single click ; double-clicks open the email in a new window.
+    // Some Outlook builds bind their selection logic on a hover-then-
+    // click sequence — fire `mouseMoved` first so React's synthetic
+    // event tree sees a stable target before the press.
     await chrome.debugger.sendCommand(dbgTarget, 'Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x, y, button: 'left', clickCount: 1,
+      type: 'mouseMoved', x, y, button: 'none',
     });
+    await new Promise(r => setTimeout(r, 30));
     await chrome.debugger.sendCommand(dbgTarget, 'Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x, y, button: 'left', clickCount: 1,
+      type: 'mousePressed', x, y, button: 'left', clickCount: 1,
+    });
+    await new Promise(r => setTimeout(r, 30));
+    await chrome.debugger.sendCommand(dbgTarget, 'Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
     });
   }
 
@@ -181,62 +240,106 @@
   }
 
   async function getReadingPaneSig() {
-    const r = await callOutlookTab('getReadingPaneSignature').catch(() => ({ signature: '' }));
-    return r.signature || '';
+    const r = await callOutlookTab('getReadingPaneSignature').catch(() => ({ signature: '', subject: '' }));
+    return { sig: r.signature || '', subject: r.subject || '' };
   }
 
-  async function waitForPaneChange(prevSig, timeoutMs = 2500) {
-    // Tighter poll loop : 80ms instead of 200ms, capped at 2.5s
-    // (was 4.5s). Outlook's reading pane usually re-renders well
-    // under a second after a trusted click ; longer waits were
-    // pure idle time multiplied by the email count.
+  async function waitForPaneChange(prev, expectedSubject, timeoutMs = 5000) {
+    // Two parallel signals : either (a) the subject heading in the
+    // reading pane matches our target, OR (b) the inner-text snapshot
+    // changes substantially. Either is enough to say "the pane has
+    // loaded a different mail". Subject-match is the strong signal,
+    // sig-diff is the fallback when Outlook doesn't expose the
+    // heading where we expect it.
+    //
+    // Logs each iteration's snapshot so we can see in the console
+    // exactly when/why the loop bailed. Cold-cache first click can
+    // take ~3-4s — 5s ceiling balances responsiveness vs missed
+    // detections.
     const start = Date.now();
+    const expectedNorm = (expectedSubject || '').trim().toLowerCase().slice(0, 80);
     while (Date.now() - start < timeoutMs) {
-      await new Promise(r => setTimeout(r, 80));
-      const sig = await getReadingPaneSig();
-      if (sig && sig !== prevSig && sig.length > 20) {
-        await new Promise(r => setTimeout(r, 100)); // small settle
+      await new Promise(r => setTimeout(r, 100));
+      const cur = await getReadingPaneSig();
+      const subjMatch = expectedNorm
+        && cur.subject
+        && cur.subject.trim().toLowerCase().includes(expectedNorm);
+      const sigChanged = cur.sig && cur.sig !== prev.sig && cur.sig.length > 20;
+      if (subjMatch || sigChanged) {
+        await new Promise(r => setTimeout(r, 150)); // settle
         return true;
       }
     }
+    // eslint-disable-next-line no-console
+    console.warn('[SuiviTess sync] pane change timeout', {
+      expected: expectedSubject?.slice(0, 60),
+      lastSubject: (await getReadingPaneSig()).subject?.slice(0, 60),
+    });
     return false;
   }
 
-  async function fetchBodyForEmail(email, indexInList) {
-    // ≈ 80 px per virtuoso row — enough to bias the scroll toward
-    // the target so virtuoso renders it.
-    const APPROX_ROW_HEIGHT = 80;
-    const targetScrollTop = Math.max(0, (indexInList || 0) * APPROX_ROW_HEIGHT - 200);
+  // Adaptive scroll position kept across iterations — after each
+  // successful body fetch we advance it slightly so the just-clicked
+  // row drifts off-screen and the next one scrolls into the
+  // virtuoso render window. This survives variable row heights
+  // (notifications/calendar invites are taller than plain mails).
+  let listScrollTop = 0;
 
-    // 1) Single round-trip : scroll + rect lookup. With a retry that
-    // doubles the scroll offset if virtuoso missed the row (rare
-    // after the perf rework but kept as a safety net).
-    let rectResp;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        rectResp = await callOutlookTab('scrollAndGetRect', {
-          convId: email.id,
-          targetScrollTop: attempt === 0
-            ? targetScrollTop
-            : Math.max(0, targetScrollTop - 600),
-        });
-        if (rectResp?.success) break;
-      } catch (err) {
-        rectResp = { success: false, error: err.message };
+  async function fetchBodyForEmail(email) {
+    // 1) Hunt for the row in two passes :
+    //    Pass A : start where the previous iteration left off and
+    //             scroll DOWN incrementally (Outlook usually keeps
+    //             the selected row in view, so the next one is
+    //             nearby).
+    //    Pass B : if Pass A exhausts, reset to the very top of the
+    //             inbox and walk down again — covers the case where
+    //             Outlook re-rendered the list (e.g. mark-as-read +
+    //             a background mail sync) and our cached scroll
+    //             position no longer points anywhere useful.
+    const SCROLL_STEP = 600;
+    const MAX_SCROLL_TRIES = 12;
+    let rectResp = null;
+
+    async function huntFromOffset(startOffset) {
+      let probe = startOffset;
+      for (let attempt = 0; attempt < MAX_SCROLL_TRIES; attempt++) {
+        try {
+          const r = await callOutlookTab('scrollAndGetRect', {
+            convId: email.id,
+            targetScrollTop: probe,
+          });
+          if (r?.success) {
+            listScrollTop = probe;
+            return r;
+          }
+        } catch { /* swallow + retry */ }
+        probe += SCROLL_STEP;
       }
-    }
-    if (!rectResp?.success || !rectResp.rect) {
-      return { ok: false, body: null, error: rectResp?.error || 'row not found' };
+      return null;
     }
 
-    // 2) Capture pane signature before, dispatch trusted click, wait for change
+    rectResp = await huntFromOffset(listScrollTop);
+    if (!rectResp) {
+      // Pass B : full reset.
+      // eslint-disable-next-line no-console
+      console.log('[SuiviTess sync] row missing — resetting to top + full walk');
+      rectResp = await huntFromOffset(0);
+    }
+
+    if (!rectResp?.success || !rectResp.rect) {
+      return { ok: false, body: null, error: 'row not found after full scroll' };
+    }
+
+    // 2) Capture pane signature before, dispatch trusted click, wait
+    // for either the subject to match `email.subject` OR the snapshot
+    // inner-text to change.
     const before = await getReadingPaneSig();
     try {
       await trustedClickAt(rectResp.rect.x, rectResp.rect.y);
     } catch (err) {
       return { ok: false, body: null, error: `click: ${err.message}` };
     }
-    const changed = await waitForPaneChange(before);
+    const changed = await waitForPaneChange(before, email.subject);
     if (!changed) {
       return { ok: false, body: null, error: 'reading pane did not load (timeout)' };
     }
@@ -255,6 +358,14 @@
       return { ok: false, body: null, error: `body: ${err.message}` };
     }
     const body = bodyResp?.body || '';
+
+    // Stabilisation pause — Outlook batches mark-as-read updates
+    // and re-renders the inbox list every ~3-4 clicks. If the next
+    // iteration races against that re-flow, the lookup misses.
+    // 350ms is just enough to let the list settle without dragging
+    // the total wall time too much.
+    await new Promise(r => setTimeout(r, 350));
+
     // Threshold lowered from 20 → 5 chars — short auto-replies
     // ("ok", "lu", "merci !") are still legitimate body content.
     if (body.length < 5) return { ok: false, body: null, error: 'empty body extracted' };
@@ -263,10 +374,48 @@
 
   // ── Main flow ─────────────────────────────────────────────────────────
   (async function run() {
-    if (!outlookTabId) {
-      barSub.textContent = '⚠ Aucun onglet Outlook fourni — relance depuis le popup.';
-      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Erreur : tabId manquant.</td></tr>';
-      return;
+    // Replay mode : just hydrate from chrome.storage.local and stop.
+    // Used when the popup re-opens the dashboard from history without
+    // wanting to trigger a fresh scrape. Also kicks in when the
+    // dashboard URL is missing the Outlook tabId.
+    if (replayMode || !outlookTabId) {
+      const snap = await loadSnapshot();
+      if (snap) {
+        emails = (snap.emails || []).map(e => ({ ...e, bodyChars: e.bodyChars || (e.body?.length || 0) }));
+        progressFill.style.width = '100%';
+        progressText.textContent = `Dernière synchro : ${new Date(snap.syncedAt).toLocaleString('fr-FR')} sur ${snap.serverDomain}`;
+        barSub.textContent = `Mode lecture — ${emails.length} mail(s) issus de la dernière synchro. Clique 'Relancer la sync' pour repartir.`;
+        renderTable();
+        updateStats();
+        retryBtn.textContent = '↻ Relancer une sync complète';
+        retryBtn.disabled = false;
+        retryBtn.removeEventListener('click', retryFailed);
+        retryBtn.addEventListener('click', () => {
+          window.location.search = `?tabId=${outlookTabId || ''}&serverUrl=${encodeURIComponent(serverUrl)}`;
+        });
+        return;
+      }
+      if (!outlookTabId) {
+        barSub.textContent = '⚠ Aucun onglet Outlook fourni — relance depuis le popup.';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Erreur : tabId manquant.</td></tr>';
+        return;
+      }
+    }
+
+    // First, hydrate the table with whatever was persisted last time
+    // so the user has SOMETHING to look at while the new sync warms up.
+    const previous = await loadSnapshot();
+    if (previous?.emails?.length) {
+      emails = previous.emails.map(e => ({
+        ...e,
+        bodyChars: e.bodyChars || (e.body?.length || 0),
+        // Mark every row as queued — the new sync will overwrite each
+        // status as it processes.
+        status: 'queued',
+      }));
+      barSub.textContent = `Pré-chargé : ${emails.length} mails de la sync du ${new Date(previous.syncedAt).toLocaleString('fr-FR')} — relance en cours…`;
+      renderTable();
+      updateStats();
     }
 
     barSub.textContent = `Onglet Outlook #${outlookTabId} · destination : ${serverUrl}`;
@@ -295,7 +444,21 @@
     renderTable();
     updateStats();
 
-    // 2) Body extraction via chrome.debugger (trusted clicks)
+    // 2) Body extraction via chrome.debugger (trusted clicks).
+    // Chrome throttles background tabs : when the user switches to
+    // this dashboard, the Outlook tab loses CPU/DOM activity and
+    // the reading pane stops rendering — every body comes back
+    // empty. We ACTIVATE the Outlook tab for the duration of the
+    // scrape, then return the user to the dashboard at the end.
+    // The dashboard itself runs the orchestration via extension
+    // APIs (chrome.debugger / chrome.tabs.sendMessage) which are
+    // NOT subject to background-tab throttling, so the loop keeps
+    // ticking even when the user is staring at Outlook.
+    let dashboardTabId = null;
+    try {
+      dashboardTabId = (await chrome.tabs.getCurrent())?.id ?? null;
+    } catch { /* fall back to detached behavior */ }
+
     progressText.textContent = `Connexion DevTools à l'onglet Outlook…`;
     try {
       await dbgAttach();
@@ -304,7 +467,43 @@
       progressText.textContent = `⚠ ${err.message}`;
       return;
     }
-    barSub.textContent = `Onglet Outlook #${outlookTabId} · destination : ${serverUrl} · DevTools attaché`;
+
+    // Bring Outlook to the foreground so the page actually renders
+    // while we click through it. Best-effort — if the user has
+    // closed the tab we error out cleanly.
+    try {
+      await chrome.tabs.update(outlookTabId, { active: true });
+      const outlookTab = await chrome.tabs.get(outlookTabId);
+      if (outlookTab?.windowId != null) {
+        await chrome.windows.update(outlookTab.windowId, { focused: true });
+      }
+    } catch (err) {
+      progressText.textContent = `⚠ Onglet Outlook fermé : ${err.message}`;
+      await dbgDetach();
+      return;
+    }
+
+    barSub.textContent = `Outlook au premier plan pendant la sync — re-bascule auto à la fin · destination ${serverUrl}`;
+
+    // Wrap every iteration in its own try/catch so an Outlook re-render,
+    // a stale signature or a transient debugger drop on one row doesn't
+    // tank the whole loop. We also auto-re-attach the debugger between
+    // iterations if Chrome reports it detached (typically happens when
+    // Outlook reloads the SPA, e.g. after a background session refresh).
+    async function safeFetch(email) {
+      try {
+        if (!dbgAttached) {
+          // eslint-disable-next-line no-console
+          console.warn('[SuiviTess sync] debugger detached mid-loop — re-attaching');
+          await dbgAttach();
+        }
+        return await fetchBodyForEmail(email);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[SuiviTess sync] iteration error', err);
+        return { ok: false, body: null, error: err?.message || String(err) };
+      }
+    }
 
     for (let i = 0; i < emails.length; i++) {
       const e = emails[i];
@@ -315,7 +514,7 @@
       renderTable();
       updateStats();
 
-      const result = await fetchBodyForEmail(e, i);
+      const result = await safeFetch(e);
       if (result.ok) {
         e.body = result.body;
         e.bodyChars = result.body.length;
@@ -329,6 +528,16 @@
     }
 
     await dbgDetach();
+
+    // Bring the user back to the dashboard now that the loud part
+    // is over. Wrapped in try/catch — if the dashboard tab id was
+    // never resolved (chrome.tabs.getCurrent failed at boot) we
+    // skip silently, the user can switch back manually.
+    if (dashboardTabId) {
+      try {
+        await chrome.tabs.update(dashboardTabId, { active: true });
+      } catch { /* ignore */ }
+    }
 
     // 3) Push everything (with bodies when we got them) to the backend
     progressText.textContent = `Push vers ${serverDomain}…`;
@@ -372,6 +581,10 @@
     renderTable();
     updateStats();
     retryBtn.disabled = emails.filter(e => e.status === 'failed').length === 0;
+
+    // Persist the final state so reloading the dashboard surfaces
+    // the last sync without having to re-run everything.
+    await persistSnapshot();
   })();
 
   // Detach the debugger if the dashboard tab is closed mid-sync.
@@ -424,6 +637,11 @@
   }
 
   // ── Render ────────────────────────────────────────────────────────────
+  // Tracks which rows are currently expanded (key = email.id) so the
+  // expansion survives re-renders triggered by the live progress
+  // updates during the sync.
+  const expandedIds = new Set();
+
   function renderTable() {
     const filterTxt = filterInput.value.trim().toLowerCase();
     const filterStatus = statusFilter.value;
@@ -437,18 +655,51 @@
       tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Aucun mail correspondant.</td></tr>';
       return;
     }
-    const html = visible.map(e => `
-      <tr class="row-${e.status}">
-        <td><span class="status-badge ${e.status}">${labelFor(e.status)}</span></td>
-        <td class="cell-date">${escapeHtml(formatShortDate(e.date))}</td>
-        <td class="cell-sender" title="${escapeHtml(e.sender || '')}">${escapeHtml((e.sender || '').slice(0, 50))}</td>
-        <td class="cell-subject" title="${escapeHtml(e.subject || '')}">${escapeHtml(e.subject || '(sans objet)')}</td>
-        <td class="cell-thread">${e.threadCount && e.threadCount > 1 ? '💬 ' + e.threadCount : '·'}</td>
-        <td class="cell-body ${e.bodyChars > 20 ? 'has' : 'empty'}">${e.bodyChars > 0 ? e.bodyChars + ' c.' : '—'}</td>
-      </tr>
-      ${e.error ? `<tr class="row-failed"><td colspan="6" style="padding:4px 12px 8px 130px;color:var(--err);font-size:11px">⚠ ${escapeHtml(e.error.slice(0, 200))}</td></tr>` : ''}
-    `).join('');
+    const html = visible.map(e => {
+      const isExpanded = expandedIds.has(e.id);
+      const hasBody = e.body && e.body.length > 0;
+      const bodyExcerpt = hasBody ? e.body.slice(0, 20000) : '';
+      const previewText = !hasBody && e.preview ? e.preview : '';
+      const expandRow = isExpanded ? `
+        <tr class="row-expanded">
+          <td colspan="6" class="expanded-cell">
+            ${hasBody
+              ? `<pre class="body-text">${escapeHtml(bodyExcerpt)}</pre>`
+              : previewText
+                ? `<div class="body-preview-only"><strong>Preview seule</strong> (corps non récupéré) :<br>${escapeHtml(previewText)}</div>`
+                : `<div class="body-empty">Aucun contenu capturé.</div>`}
+          </td>
+        </tr>
+      ` : '';
+      return `
+        <tr class="row-${e.status} expandable" data-id="${escapeHtml(e.id)}">
+          <td><span class="status-badge ${e.status}">${labelFor(e.status)}</span></td>
+          <td class="cell-date">${escapeHtml(formatShortDate(e.date))}</td>
+          <td class="cell-sender" title="${escapeHtml(e.sender || '')}">${escapeHtml((e.sender || '').slice(0, 50))}</td>
+          <td class="cell-subject" title="${escapeHtml(e.subject || '')}">
+            <span class="expand-toggle" aria-expanded="${isExpanded}">${isExpanded ? '▾' : '▸'}</span>
+            ${escapeHtml(e.subject || '(sans objet)')}
+          </td>
+          <td class="cell-thread">${e.threadCount && e.threadCount > 1 ? '💬 ' + e.threadCount : '·'}</td>
+          <td class="cell-body ${e.bodyChars > 20 ? 'has' : 'empty'}">${e.bodyChars > 0 ? e.bodyChars + ' c.' : '—'}</td>
+        </tr>
+        ${e.error ? `<tr class="row-failed"><td colspan="6" style="padding:4px 12px 8px 130px;color:var(--err);font-size:11px">⚠ ${escapeHtml(e.error.slice(0, 200))}</td></tr>` : ''}
+        ${expandRow}
+      `;
+    }).join('');
     tbody.innerHTML = html;
+
+    // Wire expand/collapse on click — limited to the subject cell so
+    // the row's surrounding chrome (status badge, date) remains
+    // non-interactive.
+    for (const tr of tbody.querySelectorAll('tr.expandable')) {
+      const id = tr.getAttribute('data-id');
+      const subjectCell = tr.querySelector('.cell-subject');
+      subjectCell?.addEventListener('click', () => {
+        if (expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
+        renderTable();
+      });
+    }
   }
 
   function updateStats() {

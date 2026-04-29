@@ -736,10 +736,25 @@
 
     // Read the current reading-pane signature — used by the dashboard
     // to detect when a click has actually loaded a different mail.
+    // Wider snapshot (1500 chars) than before — two consecutive
+    // mails often share the first ~200 chars when their reply chain
+    // headers look similar, which used to make the change-detector
+    // think the pane hadn't moved. Also pulls the subject element
+    // from the pane (`role="heading"` / `h1` near the top) which is
+    // the most reliable "this is a different mail now" signal.
     if (message.action === 'getReadingPaneSignature') {
       const pane = querySelector(document, SELECTORS.readingPane);
-      const sig = pane ? (pane.innerText || pane.textContent || '').slice(0, 200) : '';
-      sendResponse({ success: true, signature: sig });
+      let sig = '';
+      let paneSubject = '';
+      if (pane) {
+        sig = (pane.innerText || pane.textContent || '').slice(0, 1500);
+        // Try multiple selectors covering the variants Outlook uses.
+        const subjEl = pane.querySelector(
+          'div[role="heading"] span, div[role="heading"], h1, h2[role="heading"], div[data-testid="message-subject"]',
+        );
+        paneSubject = (subjEl?.textContent || '').trim();
+      }
+      sendResponse({ success: true, signature: sig, subject: paneSubject });
       return false;
     }
 
