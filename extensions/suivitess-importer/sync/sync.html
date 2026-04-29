@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>SuiviTess Importer — Sync Outlook</title>
+  <link rel="stylesheet" href="sync.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="bar-left">
+      <h1>📧 Sync Outlook → <span id="server-domain">…</span></h1>
+      <div class="bar-sub" id="bar-sub">Connexion à l'onglet Outlook…</div>
+    </div>
+    <div class="bar-right">
+      <div class="stat ok"><span class="stat-num" id="stat-ok">0</span><span class="stat-label">Synchronisés</span></div>
+      <div class="stat warn"><span class="stat-num" id="stat-warn">0</span><span class="stat-label">Sans corps</span></div>
+      <div class="stat err"><span class="stat-num" id="stat-err">0</span><span class="stat-label">Échecs</span></div>
+      <div class="stat queue"><span class="stat-num" id="stat-queue">0</span><span class="stat-label">En file</span></div>
+    </div>
+  </header>
+
+  <div class="progress-wrap">
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="progress-text" id="progress-text">Préparation…</div>
+  </div>
+
+  <div class="filter-bar">
+    <input type="text" id="filter" placeholder="Filtrer par sujet ou expéditeur…">
+    <select id="status-filter">
+      <option value="">Tous les statuts</option>
+      <option value="queued">En file</option>
+      <option value="extracting">En cours</option>
+      <option value="ok">Synchronisés</option>
+      <option value="empty">Sans corps</option>
+      <option value="failed">Échecs</option>
+    </select>
+    <button id="retry-failed" class="btn-secondary" disabled>↻ Rejouer les échecs</button>
+    <button id="close-btn" class="btn-secondary">Fermer</button>
+  </div>
+
+  <main>
+    <table class="email-table">
+      <thead>
+        <tr>
+          <th class="col-status">Statut</th>
+          <th class="col-date">Date</th>
+          <th class="col-sender">Expéditeur</th>
+          <th class="col-subject">Sujet</th>
+          <th class="col-thread">Fil</th>
+          <th class="col-body">Corps</th>
+        </tr>
+      </thead>
+      <tbody id="email-tbody">
+        <tr><td colspan="6" class="empty-state">Connexion en cours…</td></tr>
+      </tbody>
+    </table>
+  </main>
+
+  <script src="sync.js"></script>
+</body>
+</html>

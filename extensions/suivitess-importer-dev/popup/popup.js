@@ -583,73 +583,25 @@
 
   async function syncOutlookToServer() {
     hideError();
-    setProviderBadge('outlook', 'Outlook — Synchronisation...');
 
+    // Open the fullscreen sync dashboard in a new tab — it orchestrates
+    // the body extraction + push + live progress table on its own,
+    // independent of the popup which closes the moment the user
+    // navigates away. The dashboard messages back to the Outlook tab
+    // via chrome.tabs.sendMessage to drive the scraper.
     try {
-      // 1) Scrape emails from the page WITH per-row click-through
-      // body extraction so the AI receives the full thread content,
-      // not just the 500-char preview rendered in the inbox row.
-      const emails = await scrapeItems({ withBodies: true });
-      if (emails.length === 0) {
-        showError('Aucun email trouvé sur cette page.');
-        return;
-      }
-      // Final summary in the popup grouped by day.
-      renderExtractionSummary(emails);
-
-      // 2) For each email, try to grab the body (click to open + read)
-      // For now we send subject + preview — bodies require clicking each mail.
-      const payload = emails.map(e => ({
-        id: e.id,
-        subject: e.subject || '(sans objet)',
-        sender: e.sender || 'Inconnu',
-        date: e.date || '',
-        preview: e.preview || '',
-        body: e.body || null,
-        // Surfaced so the platform can warn the user that a row
-        // covers a threaded conversation and only the latest message
-        // was scraped (full-thread extraction needs the user to open
-        // each thread before syncing).
-        threadCount: e.threadCount || 1,
-      }));
-
-      // 3) Push to server
-      const result = await apiFetch('/suivitess-api/outlook/sync', {
-        method: 'POST',
-        body: JSON.stringify({ emails: payload }),
-      });
-
-      setProviderBadge('outlook', 'Outlook');
-
-      resultSection.classList.remove('hidden');
-      // Surface stored AND skipped so the user knows when the server
-      // rejected rows (used to be hidden — `result.stored=0/skipped=32`
-      // showed up as a green "✓ 0 email(s) synchronisé(s)" with no
-      // signal that anything was wrong). The errors array carries
-      // human-readable reasons (e.g. constraint violations).
-      const skipped = result.skipped || 0;
-      const errs = Array.isArray(result.errors) ? result.errors : [];
-      const baseMsg = `${result.stored} email(s) synchronisé(s).`;
-      if (skipped > 0) {
-        resultMsg.innerHTML = `⚠ ${baseMsg} <strong>${skipped} ignoré(s)</strong>${errs.length ? ` — premier motif : <code>${escapeHtml(errs[0].reason)}</code>` : ''}.`;
-        resultMsg.className = 'result-msg error';
-        // eslint-disable-next-line no-console
-        console.warn('[SuiviTess Importer] sync errors:', errs);
-      } else {
-        resultMsg.textContent = `✓ ${baseMsg} Ouvrez SuiviTess > "Importer & ranger" pour les analyser.`;
-        resultMsg.className = 'result-msg';
-      }
-
+      const [activeTab] = await new Promise(r =>
+        chrome.tabs.query({ active: true, currentWindow: true }, r),
+      );
+      if (!activeTab) { showError('Pas d\'onglet Outlook actif.'); return; }
+      const dashUrl = chrome.runtime.getURL('sync/sync.html')
+        + `?tabId=${activeTab.id}`
+        + `&serverUrl=${encodeURIComponent(serverUrl || ENV.defaultServerUrl)}`;
+      await chrome.tabs.create({ url: dashUrl });
+      // Close the popup — the dashboard takes over.
+      window.close();
     } catch (err) {
-      setProviderBadge('outlook', 'Outlook');
-
-      if (err.message.includes('Non connecte')) {
-        resultSection.classList.remove('hidden');
-        resultMsg.innerHTML = `✗ Non connecté au serveur.<br><a href="${serverUrl || ENV.defaultServerUrl}" target="_blank" style="color:#10b981">Connectez-vous ici</a>, puis rechargez cette page.`;
-        resultMsg.className = 'result-msg error';
-      } else {
-        showError(err.message);
-      }
+      showError(err.message || 'Impossible d\'ouvrir le dashboard de sync');
     }
   }
 
