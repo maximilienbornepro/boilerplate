@@ -261,6 +261,18 @@ input:focus, select:focus {
   text-overflow: ellipsis;
 }
 
+.thread-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
 .item-channel {
   display: inline-block;
   padding: 1px 5px;

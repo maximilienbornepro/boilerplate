@@ -243,10 +243,18 @@
 
       const isEmail = provider === 'outlook';
 
+      // Thread badge — surfaces "💬 N msgs" next to the subject
+      // when an Outlook row covers a multi-message conversation, so
+      // the user knows the AI will only get the latest reply unless
+      // they open the thread before sync.
+      const threadBadge = isEmail && item.threadCount && item.threadCount > 1
+        ? `<span class="thread-badge" title="Conversation à ${item.threadCount} messages — ouvre-la avant la sync pour que l'IA voie tout le fil">💬 ${item.threadCount}</span>`
+        : '';
+
       row.innerHTML = `
         <input type="checkbox" ${selectedIds.has(item.id) ? 'checked' : ''} />
         <div class="item-info">
-          <div class="item-subject">${escapeHtml(isEmail ? item.subject : item.text?.slice(0, 80))}</div>
+          <div class="item-subject">${escapeHtml(isEmail ? item.subject : item.text?.slice(0, 80))} ${threadBadge}</div>
           <div class="item-meta">
             ${!isEmail && item.channel ? `<span class="item-channel">#${escapeHtml(item.channel)}</span>` : ''}
             ${escapeHtml(isEmail ? item.sender : item.sender)} - ${escapeHtml(item.date || '')}
@@ -480,6 +488,11 @@
         date: e.date || '',
         preview: e.preview || '',
         body: e.body || null,
+        // Surfaced so the platform can warn the user that a row
+        // covers a threaded conversation and only the latest message
+        // was scraped (full-thread extraction needs the user to open
+        // each thread before syncing).
+        threadCount: e.threadCount || 1,
       }));
 
       // 3) Push to server

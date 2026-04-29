@@ -93,6 +93,29 @@
 
   // ==================== EXTRACTION (with scroll accumulation) ====================
 
+  /** Detect a thread-count badge in the row, e.g. "(5)" or a span
+   *  with aria-label like "5 messages". Outlook surfaces this when
+   *  the row groups multiple replies (conversation view). Returns
+   *  the integer, or 1 when no badge is found (= single message).
+   *  Used downstream so the user sees in the bulk-import preview
+   *  that a row covers a whole thread, not just one message. */
+  function detectThreadCount(item) {
+    // 1. aria-label on a child element — most reliable when present
+    const labelled = item.querySelector('[aria-label*="message"]');
+    if (labelled) {
+      const m = (labelled.getAttribute('aria-label') || '').match(/(\d+)\s*message/i);
+      if (m) return Math.max(1, parseInt(m[1], 10));
+    }
+    // 2. Visible "(N)" near the subject
+    const txt = item.textContent || '';
+    const m2 = txt.match(/\((\d{1,3})\)/);
+    if (m2) {
+      const n = parseInt(m2[1], 10);
+      if (n >= 2 && n <= 999) return n; // sanity bounds
+    }
+    return 1;
+  }
+
   function extractVisibleEmails() {
     const items = querySelectorAll(document, SELECTORS.mailItem);
     const emails = [];
@@ -110,6 +133,7 @@
       const preview = previewEl?.textContent?.trim() || '';
 
       const convId = item.getAttribute('data-convid') || item.getAttribute('id') || `mail-${Date.now()}-${Math.random()}`;
+      const threadCount = detectThreadCount(item);
 
       emails.push({
         id: convId,
@@ -117,6 +141,7 @@
         sender,
         date: dateText,
         preview: preview.slice(0, 500),
+        threadCount,
       });
     }
 
@@ -234,8 +259,17 @@
       date: e.date,
       sender: e.sender,
       subject: e.subject.slice(0, 80),
+      thread: e.threadCount && e.threadCount > 1 ? `${e.threadCount} msgs` : '1',
       id: e.id,
     })));
+    const threadedCount = emails.filter(e => e.threadCount && e.threadCount > 1).length;
+    if (threadedCount > 0) {
+      const totalHidden = emails.reduce((s, e) => s + Math.max(0, (e.threadCount || 1) - 1), 0);
+      console.log(
+        `%c${threadedCount} conversation(s) groupent ${totalHidden} message(s) supplémentaire(s) — ouvre chaque mail avant la sync pour que l'extension lise tout le fil, ou passe Outlook en vue "Messages individuels".`,
+        'color:#f59e0b',
+      );
+    }
     if (skippedOld.length > 0) {
       console.log(`%c${skippedOld.length} mails ignorés (>7j)`, 'color:#9ca3af');
     }
@@ -243,8 +277,58 @@
     /* eslint-enable no-console */
   }
 
-  async function extractEmailBody(emailId) {
-    // Try to find the currently open mail's body
+  // Per-message block selectors used by the threaded-aware body
+  // extractor. Outlook renders each message in a thread as its own
+  // <article> / collapsible header inside the reading pane.
+  const THREAD_MESSAGE_SELECTORS = [
+    '[role="article"]',
+    'div[aria-label*="message"][aria-expanded]',
+    'div[data-convitemid]',
+  ];
+  const THREAD_SENDER_SELECTORS = [
+    'span[data-testid="message-sender"]',
+    'div.OZZZK span',
+    'div.AbDvi span',
+    'span[title*="@"]',
+  ];
+
+  /**
+   * Read the currently-open mail / thread out of the reading pane.
+   *
+   * For a single-message view, returns the body text as before.
+   * For a threaded conversation, walks every message block in the
+   * pane and concatenates them with `[Sender]: …\n---\n` separators
+   * so the AI receives the full chain instead of only the latest
+   * reply (which was the previous behaviour and made T1 routinely
+   * miss subjects only mentioned earlier in the thread).
+   */
+  async function extractEmailBody(_emailId) {
+    // Find every message block in the reading pane.
+    let blocks = [];
+    for (const sel of THREAD_MESSAGE_SELECTORS) {
+      const found = document.querySelectorAll(sel);
+      if (found.length > 0) { blocks = Array.from(found); break; }
+    }
+
+    if (blocks.length > 1) {
+      const parts = [];
+      for (const b of blocks) {
+        const senderEl = THREAD_SENDER_SELECTORS
+          .map(s => b.querySelector(s))
+          .find(Boolean);
+        const sender = senderEl?.textContent?.trim() || '?';
+        const text = (b.innerText || b.textContent || '').trim();
+        if (!text) continue;
+        parts.push(`[${sender}]:\n${text}`);
+      }
+      if (parts.length > 0) {
+        // eslint-disable-next-line no-console
+        console.log(`%c[SuiviTess] thread body extracted — ${parts.length} messages`, 'color:#10b981');
+        return parts.join('\n\n--- next message ---\n\n');
+      }
+    }
+
+    // Single-message fallback : grab the whole reading pane.
     const bodyEl = querySelector(document, SELECTORS.body);
     if (bodyEl) {
       return bodyEl.innerText?.trim() || bodyEl.textContent?.trim() || '';
