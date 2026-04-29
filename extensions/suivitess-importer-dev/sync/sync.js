@@ -99,6 +99,51 @@
   statusFilter.addEventListener('change', renderTable);
   retryBtn.addEventListener('click', () => retryFailed());
 
+  // 🗑 Clear-all : wipes the local snapshot AND tells the backend to
+  // delete every outlook_messages row for this user. Two-step confirm
+  // to avoid an accidental nuke. After completion the table is empty
+  // and the user can re-launch a fresh 7-day sync.
+  const clearAllBtn = $('clear-all-btn');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', async () => {
+      const confirmed = window.confirm(
+        '⚠ Supprimer toutes les données ?\n\n' +
+        '• Snapshot local de l\'extension\n' +
+        '• Tous les mails stockés côté serveur (outlook_messages)\n\n' +
+        'La prochaine sync repartira de zéro sur les 7 derniers jours.'
+      );
+      if (!confirmed) return;
+      clearAllBtn.disabled = true;
+      try {
+        await clearSnapshot();
+        // Tell the backend to wipe outlook_messages for this user.
+        const token = await getAuthToken();
+        if (token) {
+          for (const path of ['/suivitess-api/outlook/clear', '/suivitess/api/outlook/clear']) {
+            try {
+              const url = `${serverUrl.replace(/\/+$/, '')}${path}`;
+              const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+              });
+              if (res.ok) break;
+            } catch { /* try next path */ }
+          }
+        }
+        emails = [];
+        renderTable();
+        updateStats();
+        progressFill.style.width = '0%';
+        progressText.textContent = '🗑 Tout effacé. Recharge la page pour relancer une sync.';
+        barSub.textContent = `Storage purged · ${serverDomain}`;
+      } catch (err) {
+        progressText.textContent = `⚠ Effacement échoué : ${err.message}`;
+      } finally {
+        clearAllBtn.disabled = false;
+      }
+    });
+  }
+
   // ── Bridge helpers ─────────────────────────────────────────────────────
   function callOutlookTab(action, extra = {}) {
     return new Promise((resolve, reject) => {

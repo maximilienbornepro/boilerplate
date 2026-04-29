@@ -2182,6 +2182,23 @@ ${filteredContent.slice(0, 30000)}`,
     res.json(result);
   }));
 
+  // POST /outlook/clear — wipe every stored Outlook message for the
+  // current user. Used by the extension's "🗑 Tout effacer" button
+  // when the user wants to re-index the last 7 days from scratch.
+  // Cascades on `outlook_messages.user_id` only — does NOT touch
+  // suivitess_transcript_imports (the import-history bookkeeping is
+  // useful even after a refresh).
+  router.post('/outlook/clear', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { rows } = await db.pool.query(
+      'DELETE FROM outlook_messages WHERE user_id = $1 RETURNING id',
+      [userId],
+    );
+    // eslint-disable-next-line no-console
+    console.log(`[outlook-collector] cleared ${rows.length} messages for user ${userId}`);
+    res.json({ deleted: rows.length });
+  }));
+
   // Get Outlook collector status.
   router.get('/outlook/status', asyncHandler(async (req, res) => {
     const { getOutlookMessageCount } = await import('./outlookCollectorService.js');

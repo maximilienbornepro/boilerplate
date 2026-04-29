@@ -61,7 +61,13 @@
     // Reading-pane content area — used to detect when a click on a
     // mail row has actually loaded a different mail (we wait until
     // the inner text changes between two snapshots before scraping).
+    // Outlook Monarch uses `[role="main"][aria-label="Volet de
+    // lecture"]` ; classic Outlook uses `ReadingPaneContainerId` ;
+    // bottom-pane and other variants are covered by the looser
+    // selectors at the end.
     readingPane: [
+      'div[role="main"][aria-label="Volet de lecture"]',
+      'div[role="main"][aria-label="Reading pane"]',
       'div#ReadingPaneContainerId',
       'div[data-app-section="ReadingPane"]',
       'div[id^="ReadingPane"]',
@@ -406,19 +412,81 @@
   async function extractEmailBody(_emailId) {
     const roots = getAllDocumentRoots();
 
-    // Find every message block in any root.
+    // 1) Multi-message thread — walk the actual Outlook Monarch
+    // structure (verified live on outlook.cloud.microsoft 2026-04-30) :
+    //   • `div.Q8TCC[aria-label$=" messages"]` is the thread wrapper
+    //     (label like "7 messages"). Its descendants alternate between
+    //     collapsed message wrappers (`[aria-expanded="false"]`) and
+    //     the currently-expanded one (`[aria-expanded="true"]`).
+    //   • Each message has a `[role="heading"][aria-level="3"]` with
+    //     the sender name. Clicking it triggers Outlook's lazy fetch
+    //     of that message's body — the click is honoured even when
+    //     `event.isTrusted=false`, contrary to the click-on-row case.
+    //   • Each expanded message renders a `[role="document"]` whose
+    //     innerText is the body. Once every header is clicked, the
+    //     concatenation of every `[role="document"]` innerText is the
+    //     full thread content.
+    for (const root of roots) {
+      const threadWrapper = root.querySelector(
+        'div.Q8TCC[aria-label$=" messages"], div.Q8TCC[aria-label$=" message"]',
+      );
+      if (!threadWrapper) continue;
+
+      // Find every sender heading inside the thread (one per message).
+      // Filter out the recipient heading ("À : …") and date headings
+      // (e.g. "Ven 24/04/2026 11:09") — those have aria-level="3" too
+      // but aren't the actionable expand toggle.
+      const senderHeads = Array.from(
+        threadWrapper.querySelectorAll('[role="heading"][aria-level="3"]'),
+      ).filter(h => {
+        const txt = (h.textContent || '').trim();
+        if (!txt) return false;
+        if (/^(À|To)\s*:/.test(txt)) return false;
+        // Date headers : "Ven 24/04/2026 11:09" / "Mer 18/02/2026 06:04".
+        if (/^\w+\s+\d{1,2}\/\d{1,2}\/\d{4}/.test(txt)) return false;
+        return true;
+      });
+
+      // Click every collapsed sender header to lazy-load its body.
+      let clicked = 0;
+      for (const h of senderHeads) {
+        if (h.closest('[aria-expanded="false"]')) {
+          try { h.click(); clicked++; } catch { /* ignore */ }
+          // Tiny per-click pause so virtuoso lazy fetches sequentially.
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+      if (clicked > 0) {
+        // One settle wait for the last fetched body to render.
+        await new Promise(r => setTimeout(r, 1200));
+      }
+
+      // Concatenate every rendered message body.
+      const docs = threadWrapper.querySelectorAll('[role="document"]');
+      const parts = [];
+      for (const d of docs) {
+        const text = (d.innerText || d.textContent || '').trim();
+        if (text.length > 5) parts.push(text);
+      }
+      if (parts.length > 0) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `%c[SuiviTess] thread extraction — ${parts.length} messages, ${parts.reduce((s, p) => s + p.length, 0)} chars (clicked ${clicked} headers)`,
+          'color:#10b981',
+        );
+        return parts.join('\n\n--- next message ---\n\n');
+      }
+    }
+
+    // 2) Older Outlook builds : per-message blocks via legacy selectors.
     let blocks = [];
     for (const root of roots) {
       for (const sel of THREAD_MESSAGE_SELECTORS) {
         const found = root.querySelectorAll(sel);
-        if (found.length > 0) {
-          blocks = Array.from(found);
-          break;
-        }
+        if (found.length > 0) { blocks = Array.from(found); break; }
       }
       if (blocks.length > 0) break;
     }
-
     if (blocks.length > 1) {
       const parts = [];
       for (const b of blocks) {
@@ -435,7 +503,7 @@
       }
     }
 
-    // Single-message fallback : try every body selector across every
+    // 3) Single-message fallback : try every body selector across every
     // root (top doc + iframes). Returns the first non-trivial hit.
     for (const root of roots) {
       for (const sel of SELECTORS.body) {
