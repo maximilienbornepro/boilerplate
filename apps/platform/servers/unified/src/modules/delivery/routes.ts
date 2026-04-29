@@ -62,9 +62,9 @@ export function createDeliveryRoutes(): Router {
 
     const visibleTasks = tasks.filter(t => !hiddenIds.has(t.id));
 
-    const exportTasks = visibleTasks
+    const exportTasks = await Promise.all(visibleTasks
       .filter(t => !t.parentTaskId)
-      .map(task => {
+      .map(async task => {
         const pos = posMap.get(task.id);
         const startCol = pos?.startCol ?? 0;
         const endCol = pos?.endCol ?? (startCol + 1);
@@ -83,8 +83,16 @@ export function createDeliveryRoutes(): Router {
           colSpan,
         };
 
-        const children: ContainerChildForFigma[] = visibleTasks
-          .filter(c => c.parentTaskId === task.id)
+        // Source children directly from `parent_task_id` instead of
+        // narrowing through `visibleTasks` — `getAllTasksForBoard`
+        // gates on `increment_id` and silently drops children whose
+        // sprint id doesn't follow the `<boardId>_*` shape (or is
+        // NULL), which is what was making the per-board export look
+        // partial vs the per-container export. Hidden children are
+        // still excluded so the visual matches the on-screen state.
+        const rawChildren = await db.getChildTasks(task.id);
+        const children: ContainerChildForFigma[] = rawChildren
+          .filter(c => !hiddenIds.has(c.id))
           .map(c => {
             const cKey = c.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
             return {
@@ -110,7 +118,7 @@ export function createDeliveryRoutes(): Router {
           position: { startCol, endCol, row: pos?.row ?? 0 },
           svg,
         };
-      });
+      }));
 
     res.json({
       boardId: board.id, boardName: board.name, boardType: board.boardType,
@@ -245,8 +253,17 @@ export function createDeliveryRoutes(): Router {
         colSpan,
       };
 
-      const childTasks: ContainerChildForFigma[] = visibleTasks
-        .filter(c => c.parentTaskId === task.id)
+      // Use the same source as the per-container endpoint —
+      // getChildTasks() matches by `parent_task_id` directly, so it
+      // surfaces every child of the container regardless of which
+      // sprint they live in (`getAllTasksForBoard` filters by
+      // `increment_id`, which can drop children whose sprint id
+      // doesn't follow the `<boardId>_*` pattern). Hidden children
+      // are still excluded so the export mirrors the on-screen
+      // visible state.
+      const rawChildren = await db.getChildTasks(task.id);
+      const childTasks: ContainerChildForFigma[] = rawChildren
+        .filter(c => !hiddenIds.has(c.id))
         .map(c => {
           const cKey = c.title.match(/^\[?([A-Z][A-Z0-9_]+-\d+)\]?/);
           return {
