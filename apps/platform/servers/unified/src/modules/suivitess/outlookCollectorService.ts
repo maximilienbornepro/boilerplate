@@ -46,6 +46,12 @@ export async function initOutlookCollector(): Promise<void> {
       UNIQUE(user_id, message_id)
     )
   `);
+  // Lift the sender length cap — Outlook lists every recipient on a
+  // multi-CC mail in a single string ("Foo; Bar; Baz; …") that easily
+  // crosses 200 chars, and the INSERT was silently failing on those
+  // rows (caught + dropped by storeOutlookEmails). Idempotent ALTER,
+  // safe to run on every boot.
+  await pool.query("ALTER TABLE outlook_messages ALTER COLUMN sender TYPE TEXT");
   await pool.query('CREATE INDEX IF NOT EXISTS idx_outlook_messages_user ON outlook_messages(user_id, date DESC)');
 
   console.log('[Outlook Collector] Initialized');
@@ -67,9 +73,10 @@ export async function storeOutlookEmails(
     preview: string;
     body?: string;
   }>,
-): Promise<{ stored: number; skipped: number }> {
+): Promise<{ stored: number; skipped: number; errors: Array<{ messageId: string; reason: string }> }> {
   let stored = 0;
   let skipped = 0;
+  const errors: Array<{ messageId: string; reason: string }> = [];
   for (const e of emails) {
     try {
       const parsedDate = parseOutlookDate(e.date);
@@ -83,11 +90,19 @@ export async function storeOutlookEmails(
         [userId, e.id, e.subject, e.sender, parsedDate, e.preview?.slice(0, 500) || '', e.body || null],
       );
       stored++;
-    } catch {
+    } catch (err) {
+      // Surface the failure so a future regression doesn't repeat the
+      // 200-char sender truncation drama (was silently dropping every
+      // multi-CC mail because the catch was empty). Errors are bubbled
+      // back to /outlook/sync → popup → user.
+      const reason = err instanceof Error ? err.message : String(err);
+      // eslint-disable-next-line no-console
+      console.warn(`[outlook-collector] insert failed for ${e.id}: ${reason}`);
+      errors.push({ messageId: e.id, reason: reason.slice(0, 200) });
       skipped++;
     }
   }
-  return { stored, skipped };
+  return { stored, skipped, errors };
 }
 
 // ============ Query ============

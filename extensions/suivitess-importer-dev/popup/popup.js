@@ -504,8 +504,23 @@
       setProviderBadge('outlook', 'Outlook');
 
       resultSection.classList.remove('hidden');
-      resultMsg.textContent = `✓ ${result.stored} email(s) synchronisé(s). Ouvrez SuiviTess > "Importer & ranger" pour les analyser.`;
-      resultMsg.className = 'result-msg';
+      // Surface stored AND skipped so the user knows when the server
+      // rejected rows (used to be hidden — `result.stored=0/skipped=32`
+      // showed up as a green "✓ 0 email(s) synchronisé(s)" with no
+      // signal that anything was wrong). The errors array carries
+      // human-readable reasons (e.g. constraint violations).
+      const skipped = result.skipped || 0;
+      const errs = Array.isArray(result.errors) ? result.errors : [];
+      const baseMsg = `${result.stored} email(s) synchronisé(s).`;
+      if (skipped > 0) {
+        resultMsg.innerHTML = `⚠ ${baseMsg} <strong>${skipped} ignoré(s)</strong>${errs.length ? ` — premier motif : <code>${escapeHtml(errs[0].reason)}</code>` : ''}.`;
+        resultMsg.className = 'result-msg error';
+        // eslint-disable-next-line no-console
+        console.warn('[SuiviTess Importer] sync errors:', errs);
+      } else {
+        resultMsg.textContent = `✓ ${baseMsg} Ouvrez SuiviTess > "Importer & ranger" pour les analyser.`;
+        resultMsg.className = 'result-msg';
+      }
 
     } catch (err) {
       setProviderBadge('outlook', 'Outlook');
