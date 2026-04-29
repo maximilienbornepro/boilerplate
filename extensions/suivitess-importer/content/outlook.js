@@ -359,6 +359,23 @@
     'span[title*="@"]',
   ];
 
+  /** Walk every same-origin iframe in the document and return the
+   *  inner documents. Outlook web sometimes renders mail bodies
+   *  inside `<iframe>` for HTML safety, in which case our top-level
+   *  querySelectors miss them entirely → "pas de corps" everywhere. */
+  function getAllDocumentRoots() {
+    const roots = [document];
+    try {
+      for (const f of document.querySelectorAll('iframe')) {
+        try {
+          const doc = f.contentDocument;
+          if (doc && doc.body) roots.push(doc);
+        } catch { /* cross-origin */ }
+      }
+    } catch { /* ignore */ }
+    return roots;
+  }
+
   /**
    * Read the currently-open mail / thread out of the reading pane.
    *
@@ -368,13 +385,25 @@
    * so the AI receives the full chain instead of only the latest
    * reply (which was the previous behaviour and made T1 routinely
    * miss subjects only mentioned earlier in the thread).
+   *
+   * Searches across the top document AND every reachable iframe
+   * because Outlook hosts mail HTML inside an iframe in many
+   * tenants — without that we'd return empty body for every row.
    */
   async function extractEmailBody(_emailId) {
-    // Find every message block in the reading pane.
+    const roots = getAllDocumentRoots();
+
+    // Find every message block in any root.
     let blocks = [];
-    for (const sel of THREAD_MESSAGE_SELECTORS) {
-      const found = document.querySelectorAll(sel);
-      if (found.length > 0) { blocks = Array.from(found); break; }
+    for (const root of roots) {
+      for (const sel of THREAD_MESSAGE_SELECTORS) {
+        const found = root.querySelectorAll(sel);
+        if (found.length > 0) {
+          blocks = Array.from(found);
+          break;
+        }
+      }
+      if (blocks.length > 0) break;
     }
 
     if (blocks.length > 1) {
@@ -389,16 +418,25 @@
         parts.push(`[${sender}]:\n${text}`);
       }
       if (parts.length > 0) {
-        // eslint-disable-next-line no-console
-        console.log(`%c[SuiviTess] thread body extracted — ${parts.length} messages`, 'color:#10b981');
         return parts.join('\n\n--- next message ---\n\n');
       }
     }
 
-    // Single-message fallback : grab the whole reading pane.
-    const bodyEl = querySelector(document, SELECTORS.body);
-    if (bodyEl) {
-      return bodyEl.innerText?.trim() || bodyEl.textContent?.trim() || '';
+    // Single-message fallback : try every body selector across every
+    // root (top doc + iframes). Returns the first non-trivial hit.
+    for (const root of roots) {
+      const bodyEl = querySelector(root, SELECTORS.body);
+      if (bodyEl) {
+        const txt = (bodyEl.innerText || bodyEl.textContent || '').trim();
+        if (txt.length > 20) return txt;
+      }
+    }
+
+    // Last-ditch — grab whatever's visible in the reading pane root.
+    const pane = querySelector(document, SELECTORS.readingPane);
+    if (pane) {
+      const txt = (pane.innerText || pane.textContent || '').trim();
+      if (txt.length > 20) return txt;
     }
     return '';
   }
@@ -419,16 +457,41 @@
     return txt;
   }
 
-  async function waitForReadingPaneChange(prevSignature, timeoutMs = 4000) {
+  /** Outlook list rows ignore plain `.click()` — they're wired with
+   *  custom pointerdown handlers. Dispatch a full pointer + mouse
+   *  event sequence on the most likely clickable target (the row's
+   *  subject element, falling back to the row itself). */
+  function simulateRowClick(row) {
+    const target = row.querySelector('span.TtcXM, div.IjzWp, div[role="option"]') || row;
+    const rect = target.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const baseInit = {
+      bubbles: true, cancelable: true, view: window,
+      clientX: x, clientY: y, button: 0,
+    };
+    try {
+      target.dispatchEvent(new PointerEvent('pointerdown', { ...baseInit, pointerId: 1, pointerType: 'mouse' }));
+      target.dispatchEvent(new MouseEvent('mousedown', baseInit));
+      target.dispatchEvent(new PointerEvent('pointerup', { ...baseInit, pointerId: 1, pointerType: 'mouse' }));
+      target.dispatchEvent(new MouseEvent('mouseup', baseInit));
+      target.dispatchEvent(new MouseEvent('click', baseInit));
+    } catch {
+      // Fallback to plain .click() if pointer events aren't supported.
+      try { target.click(); } catch { /* ignore */ }
+    }
+  }
+
+  async function waitForReadingPaneChange(prevSignature, timeoutMs = 6000) {
     const start = Date.now();
     let last = prevSignature;
     while (Date.now() - start < timeoutMs) {
-      await new Promise(r => setTimeout(r, 150));
+      await new Promise(r => setTimeout(r, 200));
       const sig = readingPaneSignature();
       if (sig && sig !== prevSignature && sig.length > 20) {
         // Wait one more frame for the body to settle in case the pane
         // is rendering progressively.
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 350));
         return true;
       }
       last = sig;
@@ -458,19 +521,22 @@
     }
 
     const enriched = [];
+    const stats = { ok: 0, empty: 0, notFound: 0, paneStuck: 0 };
+
     for (let i = 0; i < emails.length; i++) {
       const e = emails[i];
       onProgress?.(i, emails.length, e.subject || '(sans objet)');
-      const row = findRowById(e.id);
-      if (!row) {
-        // Scroll to where it might be — virtuoso unmounts rows we
-        // walked past in the initial scrape.
-        root.scrollTop = Math.max(0, root.scrollTop - 600);
-        await new Promise(r => setTimeout(r, 250));
-      }
-      const target = findRowById(e.id);
+
+      let target = findRowById(e.id);
       if (!target) {
-        // Couldn't find the row — keep the email with preview only.
+        // Walk the scroll up by one viewport to remount the row that
+        // virtuoso evicted ; one shot, don't loop or we'd waste time.
+        root.scrollTop = Math.max(0, root.scrollTop - 600);
+        await new Promise(r => setTimeout(r, 200));
+        target = findRowById(e.id);
+      }
+      if (!target) {
+        stats.notFound++;
         enriched.push(e);
         continue;
       }
@@ -478,31 +544,47 @@
       const before = readingPaneSignature();
       try {
         target.scrollIntoView({ block: 'center', behavior: 'instant' });
-        target.click();
+        simulateRowClick(target);
       } catch {
         enriched.push(e);
         continue;
       }
-      await waitForReadingPaneChange(before);
 
-      // Try to expand all collapsed messages in the thread (Outlook
-      // collapses replies older than the latest by default). Best
-      // effort — we click any "Show all messages" / "Voir tous les
-      // messages" button if present.
+      const changed = await waitForReadingPaneChange(before);
+      if (!changed) stats.paneStuck++;
+
+      // Best-effort thread expand — fire-and-forget, no extra wait
+      // unless we actually clicked something.
+      let clickedExpand = 0;
       try {
         const expandBtns = document.querySelectorAll(
-          'button[aria-label*="messages"], button[aria-label*="Show all"], button[aria-label*="Tout afficher"], button[aria-label*="Tout dérouler"]',
+          'button[aria-label*="messages"], button[aria-label*="Show all"], button[aria-label*="Tout afficher"], button[aria-label*="Tout dérouler"], button[aria-label*="all messages"]',
         );
         for (const btn of expandBtns) {
-          try { btn.click(); } catch { /* ignore */ }
+          try { btn.click(); clickedExpand++; } catch { /* ignore */ }
         }
-        if (expandBtns.length > 0) await new Promise(r => setTimeout(r, 300));
       } catch { /* ignore */ }
+      if (clickedExpand > 0) await new Promise(r => setTimeout(r, 200));
 
       const body = await extractEmailBody(e.id);
+      const bodyLen = body?.length || 0;
+      if (bodyLen > 20) stats.ok++; else stats.empty++;
+
       enriched.push({ ...e, body: body || null });
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `%c[SuiviTess] body[${i + 1}/${emails.length}] %c${(e.subject || '').slice(0, 60)} %c→ ${bodyLen} chars${changed ? '' : ' (pane unchanged!)'}`,
+        'color:#6b7280', 'color:#e0e0e0', bodyLen > 20 ? 'color:#10b981' : 'color:#f59e0b',
+      );
     }
+
     onProgress?.(emails.length, emails.length);
+    // eslint-disable-next-line no-console
+    console.log(
+      `%c[SuiviTess] body-fetch summary — ok:${stats.ok} empty:${stats.empty} not-found:${stats.notFound} pane-stuck:${stats.paneStuck}`,
+      stats.empty + stats.notFound > 0 ? 'color:#f59e0b;font-weight:bold' : 'color:#10b981;font-weight:bold',
+    );
     return enriched;
   }
 
