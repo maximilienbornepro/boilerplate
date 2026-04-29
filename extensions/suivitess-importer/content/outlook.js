@@ -116,8 +116,28 @@
     return 1;
   }
 
+  /** Scope mail-item lookup to the actual inbox virtuoso scroller —
+   *  `div[data-convid]` rows also appear in the left sidebar's
+   *  "Pinned messages" / "Recent" / "Search results" panels and on
+   *  the Cortana suggestion strip, which is what was making the
+   *  scraper return seemingly random mails (mixed across folders).
+   *  Falls back to the document root only if no scroller is found. */
+  function getMailListRoot() {
+    return findScrollContainer() || document;
+  }
+
   function extractVisibleEmails() {
-    const items = querySelectorAll(document, SELECTORS.mailItem);
+    const root = getMailListRoot();
+    // Only honour rows that look like inbox items : data-convid +
+    // role="option" on the row OR an ancestor with role="listbox".
+    // This filters out the sidebar suggestions which use
+    // role="treeitem" / no listbox parent.
+    const all = querySelectorAll(root, SELECTORS.mailItem);
+    const items = Array.from(all).filter(it => {
+      if (it.getAttribute('role') === 'option') return true;
+      return !!it.closest('[role="listbox"]');
+    });
+
     const emails = [];
 
     for (const item of items) {
@@ -169,64 +189,103 @@
    * Scroll the virtualized list and accumulate emails from each viewport.
    * Returns deduplicated list of all emails found within last 7 days.
    *
-   * Tunables — increased to compensate for a typical busy mailbox where
-   * 30 × 400 = 12000px wasn't enough to surface a full 7-day window.
-   * Also tolerates a few "old" rows in a row before stopping (Outlook
-   * pins / promoted items may sit above today's mail and would
-   * previously trip the early break).
+   * Strategy :
+   *  1. Force-scroll the virtuoso back to the top so we always start
+   *     from the most recent message (otherwise a user who left their
+   *     inbox scrolled mid-way captures only that window).
+   *  2. Wait long enough between scrolls for virtuoso to render the
+   *     newly-uncovered rows (250ms was racy on slow machines, bumped
+   *     to 400ms).
+   *  3. Don't stop on "no fresh seen this pass" — virtuoso can have
+   *     a few empty frames between renders. Only stop on a long run
+   *     (16 consecutive empty scrolls) OR when the actual scrollTop
+   *     stops moving (we've truly hit the bottom).
+   *  4. After the main scroll, do a final reverse-scroll back through
+   *     the list so virtuoso re-mounts rows it had unmounted near
+   *     the top — captures the "I scrolled past, those rows are now
+   *     gone from the DOM" case.
+   *  5. Log the exact exit reason so the user sees WHY scraping
+   *     stopped (max-scrolls / bottom / stale / no-container).
    */
   async function extractEmails() {
     const t0 = performance.now();
     const accumulated = new Map(); // id → email object
     const skippedOld = [];          // for diagnostics
+    const scrollDiag = [];          // per-iteration log
 
-    // First pass: grab what's visible now
+    const container = findScrollContainer();
+
+    // Try to start from the top so we always begin with the freshest
+    // mails — a leftover mid-list scroll position would otherwise cap
+    // what we see.
+    if (container) {
+      container.scrollTop = 0;
+      await new Promise(r => setTimeout(r, 400));
+    }
+
+    // First pass at top
     for (const e of extractVisibleEmails()) {
       if (isWithinLastWeek(e.date)) accumulated.set(e.id, e);
       else skippedOld.push(e);
     }
 
-    const container = findScrollContainer();
     if (!container) {
       const result = Array.from(accumulated.values());
-      logExtraction(result, skippedOld, performance.now() - t0, 'no-scroll-container');
+      logExtraction(result, skippedOld, performance.now() - t0, 'no-scroll-container', scrollDiag);
       return result;
     }
 
     const SCROLL_STEP = 600;
-    const MAX_SCROLLS = 60;
-    const OLD_TOLERANCE = 8; // consecutive old rows before we give up
-    let consecutiveOld = 0;
+    const MAX_SCROLLS = 100;
+    const STALE_TOLERANCE = 16;
+    let consecutiveStale = 0;
+    let lastScrollTop = container.scrollTop;
+    let exitReason = 'max-scrolls';
 
     for (let i = 0; i < MAX_SCROLLS; i++) {
       container.scrollTop += SCROLL_STEP;
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 400));
 
+      const beforeSize = accumulated.size;
       const visible = extractVisibleEmails();
-      let foundFreshThisPass = false;
       for (const e of visible) {
         if (!isWithinLastWeek(e.date)) {
           if (!accumulated.has(e.id)) skippedOld.push(e);
           continue;
         }
-        if (!accumulated.has(e.id)) {
-          accumulated.set(e.id, e);
-          foundFreshThisPass = true;
-        }
+        if (!accumulated.has(e.id)) accumulated.set(e.id, e);
       }
+      const fresh = accumulated.size - beforeSize;
 
-      if (!foundFreshThisPass) consecutiveOld++; else consecutiveOld = 0;
-      if (consecutiveOld >= OLD_TOLERANCE) break;
+      // If scrollTop didn't actually move AND no new mails appeared,
+      // count it as stale ; otherwise keep scrolling.
+      const moved = container.scrollTop !== lastScrollTop;
+      if (fresh === 0 && !moved) consecutiveStale++; else consecutiveStale = 0;
+      lastScrollTop = container.scrollTop;
 
-      // Stop if scroll didn't move (end of list)
-      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) break;
+      scrollDiag.push({ i, scrollTop: container.scrollTop, fresh, totalAccum: accumulated.size, moved });
+
+      if (consecutiveStale >= STALE_TOLERANCE) { exitReason = 'stale'; break; }
+      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) {
+        exitReason = 'bottom-reached';
+        break;
+      }
     }
 
-    // Scroll back to top
+    // Reverse pass — virtuoso has likely unmounted the top rows by
+    // now ; scroll back to the top and re-extract so they re-render.
     container.scrollTop = 0;
+    await new Promise(r => setTimeout(r, 400));
+    for (const e of extractVisibleEmails()) {
+      if (isWithinLastWeek(e.date)) {
+        if (!accumulated.has(e.id)) accumulated.set(e.id, e);
+      } else if (!accumulated.has(e.id)) {
+        skippedOld.push(e);
+      }
+    }
 
     const result = Array.from(accumulated.values());
-    logExtraction(result, skippedOld, performance.now() - t0, 'ok');
+    logExtraction(result, skippedOld, performance.now() - t0, exitReason, scrollDiag);
     return result;
   }
 
