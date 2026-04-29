@@ -3,7 +3,7 @@
   "name": "SuiviTess Importer (Dev)",
   "description": "Importer des mails Outlook et messages Slack dans SuiviTess — Dev local",
   "version": "1.1.1",
-  "permissions": ["activeTab", "storage", "scripting", "cookies"],
+  "permissions": ["activeTab", "storage", "scripting", "cookies", "debugger", "tabs"],
   "host_permissions": [
     "https://outlook.office.com/*",
     "https://outlook.office365.com/*",

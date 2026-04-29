@@ -2059,6 +2059,111 @@ ${filteredContent.slice(0, 30000)}`,
   // ==================== Outlook Collector ====================
 
   // Push scraped Outlook emails from the Chrome extension.
+  // Server-side body enrichment via Microsoft Graph — used by the
+  // Chrome extension when the DOM scrape can't get bodies (Outlook
+  // ignores synthetic click events because `event.isTrusted = false`,
+  // so the reading pane never loads). Takes a list of conversation
+  // IDs (the `data-convid` from the inbox row scrape) and pulls the
+  // latest message body of each via /me/messages?$filter=conversationId.
+  // Updates outlook_messages in place. Returns per-conv-id status.
+  router.post('/outlook/enrich-bodies', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { convIds } = req.body as { convIds?: string[] };
+    if (!Array.isArray(convIds) || convIds.length === 0) {
+      res.status(400).json({ error: 'convIds[] requis' });
+      return;
+    }
+
+    const { getToken } = await import('./emailService.js');
+    let token: string;
+    try {
+      token = await getToken(userId, 'outlook');
+    } catch {
+      res.status(400).json({
+        error: 'Outlook OAuth non configuré. Va dans /reglages → Connecteurs → Outlook pour te connecter, puis relance la sync.',
+      });
+      return;
+    }
+
+    type Outcome = { convId: string; status: 'updated' | 'no-message' | 'error'; bodyChars?: number; reason?: string };
+    const outcomes: Outcome[] = [];
+
+    // Cap concurrency at 6 to avoid hammering Graph.
+    const queue = [...convIds];
+    const workers: Promise<void>[] = [];
+    for (let w = 0; w < 6; w++) {
+      workers.push((async () => {
+        while (queue.length > 0) {
+          const convId = queue.shift();
+          if (!convId) break;
+          try {
+            // Pull every message of the conversation, ordered ASC so we
+            // can assemble [Sender]: body\n--- next message ---\n…
+            const filter = `conversationId eq '${convId.replace(/'/g, "''")}'`;
+            const url =
+              `https://graph.microsoft.com/v1.0/me/messages?` +
+              `$filter=${encodeURIComponent(filter)}&` +
+              `$select=id,subject,from,receivedDateTime,body&` +
+              `$orderby=receivedDateTime asc&$top=20`;
+            const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            if (!resp.ok) {
+              outcomes.push({ convId, status: 'error', reason: `Graph ${resp.status}` });
+              continue;
+            }
+            const data = await resp.json() as {
+              value?: Array<{
+                from?: { emailAddress?: { name?: string; address?: string } };
+                body?: { content?: string; contentType?: string };
+                receivedDateTime?: string;
+              }>;
+            };
+            const msgs = data.value || [];
+            if (msgs.length === 0) {
+              outcomes.push({ convId, status: 'no-message' });
+              continue;
+            }
+            const parts: string[] = [];
+            for (const m of msgs) {
+              const sender = m.from?.emailAddress?.name || m.from?.emailAddress?.address || '?';
+              const raw = m.body?.content || '';
+              const text = m.body?.contentType === 'html'
+                ? raw
+                    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                : raw.trim();
+              if (!text) continue;
+              parts.push(`[${sender}]:\n${text}`);
+            }
+            const body = parts.join('\n\n--- next message ---\n\n');
+            // Update outlook_messages in place — match by user_id +
+            // message_id where message_id IS the convId we received
+            // from the extension. Body update only ; subject/sender/date
+            // already populated by the metadata sync.
+            await db.pool.query(
+              `UPDATE outlook_messages SET body = $1 WHERE user_id = $2 AND message_id = $3`,
+              [body, userId, convId],
+            );
+            outcomes.push({ convId, status: 'updated', bodyChars: body.length });
+          } catch (err) {
+            outcomes.push({ convId, status: 'error', reason: (err as Error).message?.slice(0, 200) || 'unknown' });
+          }
+        }
+      })());
+    }
+    await Promise.all(workers);
+
+    res.json({
+      total: convIds.length,
+      updated: outcomes.filter(o => o.status === 'updated').length,
+      noMessage: outcomes.filter(o => o.status === 'no-message').length,
+      errors: outcomes.filter(o => o.status === 'error').length,
+      outcomes,
+    });
+  }));
+
   router.post('/outlook/sync', asyncHandler(async (req, res) => {
     const { emails } = req.body as { emails?: Array<{
       id: string; subject: string; sender: string; date: string;

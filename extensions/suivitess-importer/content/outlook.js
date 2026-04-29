@@ -641,6 +641,92 @@
       });
       return true; // async
     }
+
+    // Used by the chrome.debugger flow in the sync dashboard : returns
+    // the row's screen-space bounding box so the dashboard can dispatch
+    // a real (isTrusted) click via Input.dispatchMouseEvent at the
+    // row's centre. Also auto-scrolls the row into view first because
+    // virtuoso unmounts off-screen rows and a click at coords outside
+    // the viewport hits nothing.
+    if (message.action === 'getRowRect') {
+      try {
+        const root = getMailListRoot();
+        const all = querySelectorAll(root, SELECTORS.mailItem);
+        let row = null;
+        for (const it of all) {
+          if (it.getAttribute('data-convid') === message.convId) { row = it; break; }
+        }
+        if (!row) {
+          // Walk one viewport up to remount the row that virtuoso evicted.
+          const scrollTarget = findScrollContainer();
+          if (scrollTarget) {
+            scrollTarget.scrollTop = Math.max(0, scrollTarget.scrollTop - 800);
+          }
+        }
+        // Wait one frame for the scroll to settle before re-querying.
+        setTimeout(() => {
+          const all2 = querySelectorAll(getMailListRoot(), SELECTORS.mailItem);
+          let row2 = null;
+          for (const it of all2) {
+            if (it.getAttribute('data-convid') === message.convId) { row2 = it; break; }
+          }
+          if (!row2) {
+            sendResponse({ success: false, error: 'row not in DOM (virtuoso unmounted)' });
+            return;
+          }
+          row2.scrollIntoView({ block: 'center', behavior: 'instant' });
+          // Extra frame for scrollIntoView to settle.
+          requestAnimationFrame(() => {
+            const r = row2.getBoundingClientRect();
+            // Aim for a clickable child first (subject span) when present
+            // — Outlook's row click handler is delegated, but landing
+            // close to the subject is the most reliable target.
+            const inner = row2.querySelector('span.TtcXM, div.IjzWp') || row2;
+            const ir = inner.getBoundingClientRect();
+            sendResponse({
+              success: true,
+              rect: {
+                x: ir.left + ir.width / 2,
+                y: ir.top + ir.height / 2,
+                width: r.width,
+                height: r.height,
+              },
+              devicePixelRatio: window.devicePixelRatio || 1,
+              viewport: { width: window.innerWidth, height: window.innerHeight },
+            });
+          });
+        }, 200);
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      return true; // async (we delay sendResponse via setTimeout)
+    }
+
+    // Read the current reading-pane signature — used by the dashboard
+    // to detect when a click has actually loaded a different mail.
+    if (message.action === 'getReadingPaneSignature') {
+      const pane = querySelector(document, SELECTORS.readingPane);
+      const sig = pane ? (pane.innerText || pane.textContent || '').slice(0, 200) : '';
+      sendResponse({ success: true, signature: sig });
+      return false;
+    }
+
+    // Best-effort thread expand inside the currently-open mail.
+    if (message.action === 'expandThreadMessages') {
+      try {
+        const expandBtns = document.querySelectorAll(
+          'button[aria-label*="messages"], button[aria-label*="Show all"], button[aria-label*="Tout afficher"], button[aria-label*="Tout dérouler"], button[aria-label*="all messages"]',
+        );
+        let n = 0;
+        for (const btn of expandBtns) {
+          try { btn.click(); n++; } catch { /* ignore */ }
+        }
+        sendResponse({ success: true, clicked: n });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      return false;
+    }
   });
 
   console.log('[SuiviTess Importer] Outlook content script loaded');

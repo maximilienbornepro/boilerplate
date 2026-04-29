@@ -134,6 +134,109 @@
     }
   });
 
+  // ── Debugger-based click helpers ──────────────────────────────────────
+  // chrome.debugger lets us dispatch trusted (isTrusted=true) input
+  // events that Outlook actually honours — synthetic JS clicks have
+  // isTrusted=false and the reading pane never opens. Attach once,
+  // dispatch press/release per row, detach at end. Banner showing
+  // "Cette extension débogue cet onglet" appears on the Outlook tab
+  // throughout the sync — that's the cost of trusted events.
+
+  let dbgAttached = false;
+  const dbgTarget = { tabId: outlookTabId };
+
+  async function dbgAttach() {
+    if (dbgAttached) return;
+    await chrome.debugger.attach(dbgTarget, '1.3');
+    dbgAttached = true;
+    // If the user closes the Outlook tab mid-sync the debugger auto-
+    // detaches — keep the flag in sync so we don't try to send
+    // commands afterwards.
+    chrome.debugger.onDetach.addListener((source) => {
+      if (source.tabId === outlookTabId) dbgAttached = false;
+    });
+  }
+
+  async function dbgDetach() {
+    if (!dbgAttached) return;
+    try { await chrome.debugger.detach(dbgTarget); } catch { /* already gone */ }
+    dbgAttached = false;
+  }
+
+  async function trustedClickAt(x, y) {
+    // Sequence : pressed + released at the same coords. Outlook expects
+    // a single click ; double-clicks open the email in a new window.
+    await chrome.debugger.sendCommand(dbgTarget, 'Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x, y, button: 'left', clickCount: 1,
+    });
+    await chrome.debugger.sendCommand(dbgTarget, 'Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x, y, button: 'left', clickCount: 1,
+    });
+  }
+
+  async function getRowRect(convId) {
+    return callOutlookTab('getRowRect', { convId });
+  }
+
+  async function getReadingPaneSig() {
+    const r = await callOutlookTab('getReadingPaneSignature').catch(() => ({ signature: '' }));
+    return r.signature || '';
+  }
+
+  async function waitForPaneChange(prevSig, timeoutMs = 4500) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      await new Promise(r => setTimeout(r, 200));
+      const sig = await getReadingPaneSig();
+      if (sig && sig !== prevSig && sig.length > 20) {
+        await new Promise(r => setTimeout(r, 250)); // settle
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async function fetchBodyForEmail(email) {
+    // 1) Find row + get its centre coords
+    let rectResp;
+    try {
+      rectResp = await getRowRect(email.id);
+    } catch (err) {
+      return { ok: false, body: null, error: `rect: ${err.message}` };
+    }
+    if (!rectResp?.success || !rectResp.rect) {
+      return { ok: false, body: null, error: rectResp?.error || 'row not found' };
+    }
+
+    // 2) Capture pane signature before, dispatch trusted click, wait for change
+    const before = await getReadingPaneSig();
+    try {
+      await trustedClickAt(rectResp.rect.x, rectResp.rect.y);
+    } catch (err) {
+      return { ok: false, body: null, error: `click: ${err.message}` };
+    }
+    const changed = await waitForPaneChange(before);
+    if (!changed) {
+      return { ok: false, body: null, error: 'reading pane did not load (timeout)' };
+    }
+
+    // 3) Optional thread expand, then extract body
+    try { await callOutlookTab('expandThreadMessages'); } catch { /* ignore */ }
+    await new Promise(r => setTimeout(r, 250));
+
+    let bodyResp;
+    try {
+      bodyResp = await callOutlookTab('getEmailBody', { id: email.id });
+    } catch (err) {
+      return { ok: false, body: null, error: `body: ${err.message}` };
+    }
+    const body = bodyResp?.body || '';
+    if (body.length < 20) return { ok: false, body: null, error: 'empty body extracted' };
+    return { ok: true, body, error: null };
+  }
+
   // ── Main flow ─────────────────────────────────────────────────────────
   (async function run() {
     if (!outlookTabId) {
@@ -145,7 +248,7 @@
     barSub.textContent = `Onglet Outlook #${outlookTabId} · destination : ${serverUrl}`;
     progressText.textContent = 'Lecture de la liste des mails…';
 
-    // 1) List
+    // 1) List with metadata only
     let listResp;
     try {
       listResp = await callOutlookTab('getEmails');
@@ -157,7 +260,7 @@
     emails = (listResp.items || []).map(e => ({
       ...e,
       body: null,
-      bodyChars: 0,
+      bodyChars: e.preview ? e.preview.length : 0,
       status: 'queued',
     }));
     if (emails.length === 0) {
@@ -168,70 +271,75 @@
     renderTable();
     updateStats();
 
-    // 2) Body extraction (delegates to content script ; live progress
-    //    via the chrome.runtime.onMessage above)
-    progressText.textContent = `Préparation de l'extraction de ${emails.length} corps…`;
-    let enriched;
+    // 2) Body extraction via chrome.debugger (trusted clicks)
+    progressText.textContent = `Connexion DevTools à l'onglet Outlook…`;
     try {
-      const resp = await callOutlookTab('getEmailsWithBodies');
-      enriched = resp.items || [];
+      await dbgAttach();
     } catch (err) {
-      barSub.textContent = `⚠ Extraction interrompue : ${err.message}`;
+      barSub.textContent = `⚠ Impossible d'attacher le débogueur : ${err.message}`;
+      progressText.textContent = `⚠ ${err.message}`;
       return;
     }
+    barSub.textContent = `Onglet Outlook #${outlookTabId} · destination : ${serverUrl} · DevTools attaché`;
 
-    // Merge body data back, mark statuses
-    const byId = new Map(enriched.map(e => [e.id, e]));
-    for (const e of emails) {
-      const fresh = byId.get(e.id);
-      if (fresh) {
-        e.body = fresh.body || null;
-        e.bodyChars = e.body ? e.body.length : 0;
-        e.status = e.bodyChars > 20 ? 'ok' : 'empty';
+    for (let i = 0; i < emails.length; i++) {
+      const e = emails[i];
+      e.status = 'extracting';
+      const pct = Math.round((i / emails.length) * 90); // body phase = 0–90%
+      progressFill.style.width = `${pct}%`;
+      progressText.textContent = `Lecture du corps — ${i + 1}/${emails.length} (${pct}%) · ${(e.subject || '').slice(0, 60)}`;
+      renderTable();
+      updateStats();
+
+      const result = await fetchBodyForEmail(e);
+      if (result.ok) {
+        e.body = result.body;
+        e.bodyChars = result.body.length;
+        e.status = 'ok';
       } else {
-        e.status = 'failed';
-        e.error = 'Pas dans la réponse de l\'extraction';
+        e.body = null;
+        e.bodyChars = e.preview ? e.preview.length : 0;
+        e.status = 'empty';
+        e.error = result.error;
       }
     }
-    progressFill.style.width = '70%';
-    progressText.textContent = `Extraction terminée — push vers ${serverDomain}…`;
-    renderTable();
-    updateStats();
 
-    // 3) Push to backend
+    await dbgDetach();
+
+    // 3) Push everything (with bodies when we got them) to the backend
+    progressText.textContent = `Push vers ${serverDomain}…`;
+    progressFill.style.width = '92%';
     try {
-      const payload = emails
-        .filter(e => e.status !== 'failed')
-        .map(e => ({
-          id: e.id,
-          subject: e.subject || '(sans objet)',
-          sender: e.sender || 'Inconnu',
-          date: e.date || '',
-          preview: e.preview || '',
-          body: e.body || null,
-          threadCount: e.threadCount || 1,
-        }));
+      const payload = emails.map(e => ({
+        id: e.id,
+        subject: e.subject || '(sans objet)',
+        sender: e.sender || 'Inconnu',
+        date: e.date || '',
+        preview: e.preview || '',
+        body: e.body || null,
+        threadCount: e.threadCount || 1,
+      }));
       const result = await pushToBackend(payload);
       progressFill.style.width = '100%';
       const skipped = result.skipped || 0;
       const errs = Array.isArray(result.errors) ? result.errors : [];
-      // Cross-reference per-email errors
       const errIds = new Set(errs.map(x => x.messageId));
       for (const e of emails) {
         if (errIds.has(e.id)) {
           e.status = 'failed';
           const found = errs.find(x => x.messageId === e.id);
           e.error = found?.reason || 'INSERT failed';
-        } else if (e.status === 'ok' || e.status === 'empty') {
+        } else if (e.status === 'ok') {
           e.syncedAt = new Date().toISOString();
         }
       }
       progressText.textContent = `✓ ${result.stored} mail(s) synchronisé(s)${skipped ? ` · ${skipped} ignoré(s)` : ''} sur ${serverDomain}`;
-      barSub.textContent = `Sync OK — ${result.stored}/${emails.length} stockés. Tu peux fermer cet onglet.`;
+      const withBody = emails.filter(e => e.bodyChars > 20).length;
+      barSub.textContent = `Sync OK — ${result.stored}/${emails.length} stockés · ${withBody} avec corps complet`;
     } catch (err) {
       progressText.textContent = `⚠ Push échoué : ${err.message}`;
       for (const e of emails) {
-        if (e.status === 'ok' || e.status === 'empty') {
+        if (e.status === 'ok') {
           e.status = 'failed';
           e.error = err.message;
         }
@@ -241,6 +349,13 @@
     updateStats();
     retryBtn.disabled = emails.filter(e => e.status === 'failed').length === 0;
   })();
+
+  // Detach the debugger if the dashboard tab is closed mid-sync.
+  window.addEventListener('beforeunload', () => {
+    if (dbgAttached) {
+      try { chrome.debugger.detach(dbgTarget); } catch { /* ignore */ }
+    }
+  });
 
   // ── Retry failed ──────────────────────────────────────────────────────
   async function retryFailed() {
