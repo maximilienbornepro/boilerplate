@@ -50,6 +50,25 @@ Dans ce cas :
 - `sectionId` = section qui le contient
 - `sectionName` = nom de cette section
 
+## Hint Tier 1 : `mappedToExistingSubjectId`
+
+Chaque sujet d'input peut porter un champ `mappedToExistingSubjectId`.
+C'est le **résultat de l'ancrage Tier 1** — l'extracteur a déjà repéré
+qu'un sujet existant du document décrit le même objet métier.
+
+- **Si non-null** : tu DOIS choisir `action: "enrich"` avec
+  `targetSubjectId = mappedToExistingSubjectId`, sauf si ce sujet
+  existant n'apparaît pas dans le `document.sections` que tu reçois
+  (cas rare : sujet supprimé entre Tier 1 et Tier 2). Honorer ce hint
+  est presque toujours la bonne décision — le validateur humain en
+  aval rattrapera les fusions abusives.
+- **Si null** : applique tes règles habituelles (matching titre,
+  rawQuotes, responsable, …).
+
+Tu peux **surcharger** un hint non-null seulement avec une bonne
+raison documentée dans `reason` (ex : « le sujet existant a été clos,
+le nouveau parle d'une régression différente »).
+
 ## Règles pour choisir la section d'un nouveau sujet
 
 Si le sujet n'est pas un doublon :

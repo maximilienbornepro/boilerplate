@@ -56,6 +56,45 @@ export interface ExtractedSubject {
   statusHint: string | null;
   responsibilityHint: string | null;
   confidence: 'high' | 'medium' | 'low';
+  /** Tier 1 anchoring : when the extractor recognises that an existing
+   *  subject in the destination document covers the same business
+   *  topic, it copies that subject's id here. T2 (placement) reads it
+   *  as a strong hint to default to `enrich` instead of running its
+   *  own title-similarity match. `null` when the subject is genuinely
+   *  new, or when the extractor wasn't given an `existing_subjects`
+   *  context (review-scoped flows for now). */
+  mappedToExistingSubjectId?: string | null;
+}
+
+/** Lightweight snapshot of an existing subject, fed to the Tier 1
+ *  extractor as anchoring context. Subset of the full
+ *  `DocumentContext.sections[].subjects[]` shape — the extractor
+ *  doesn't need the full situation, just enough to disambiguate. */
+export interface ExistingSubjectAnchor {
+  id: string;
+  title: string;
+  status: string | null;
+  sectionName: string;
+  situationExcerpt: string;
+}
+
+/** Flatten a `DocumentContext` to the anchor format. Excerpts are
+ *  trimmed to ~180 chars — the extractor only needs enough context
+ *  to recognise the subject, not the full history. */
+export function buildAnchorsFromDocument(doc: DocumentContext): ExistingSubjectAnchor[] {
+  const anchors: ExistingSubjectAnchor[] = [];
+  for (const section of doc.sections) {
+    for (const sub of section.subjects) {
+      anchors.push({
+        id: sub.id,
+        title: sub.title,
+        status: sub.status ?? null,
+        sectionName: section.name,
+        situationExcerpt: (sub.situationExcerpt || '').slice(0, 180),
+      });
+    }
+  }
+  return anchors;
 }
 
 export interface DocumentContext {
@@ -267,17 +306,57 @@ interface TierBase {
   documentId: string | null;
 }
 
+/** Cap fed to T1 — keeps the prompt token-budget bounded on suivis
+ *  with hundreds of subjects. Chosen so the worst-case payload sits
+ *  around 4-5k tokens (50 × ~80 tokens incl. the situation excerpt). */
+const TIER1_EXISTING_SUBJECTS_CAP = 50;
+
+/** Trim+rank the existing subjects passed to T1 — non-closed first
+ *  (most likely to receive new updates), then by title length so very
+ *  long titles don't crowd out the budget. Returns at most CAP items. */
+export function selectExistingSubjectsForExtraction(
+  candidates: ExistingSubjectAnchor[],
+): ExistingSubjectAnchor[] {
+  const isClosed = (s: ExistingSubjectAnchor) => {
+    const st = (s.status || '').toLowerCase();
+    return st.includes('terminé') || st.includes('done') || st.includes('🟢');
+  };
+  return [...candidates]
+    .sort((a, b) => {
+      const ca = isClosed(a) ? 1 : 0;
+      const cb = isClosed(b) ? 1 : 0;
+      if (ca !== cb) return ca - cb; // open first
+      return (a.title?.length || 0) - (b.title?.length || 0);
+    })
+    .slice(0, TIER1_EXISTING_SUBJECTS_CAP);
+}
+
 async function tier1Extract(base: TierBase & {
   sourceRaw: string;
+  existingSubjects?: ExistingSubjectAnchor[];
 }): Promise<{ logId: number | null; subjects: ExtractedSubject[]; durationMs: number }> {
   const t0 = Date.now();
+  // Build the optional `existingSubjects` block. Only emitted when
+  // we have anchors — the prompt explicitly tolerates the absence
+  // and falls back to the unanchored extraction behaviour.
+  const ranked = base.existingSubjects && base.existingSubjects.length > 0
+    ? selectExistingSubjectsForExtraction(base.existingSubjects)
+    : [];
+  const existingBlock = ranked.length > 0
+    ? `\n\n## existingSubjects (sujets déjà suivis dans le document de destination)\n\n` +
+      `\`\`\`json\n${JSON.stringify(ranked, null, 2)}\n\`\`\`\n`
+    : '';
+
   const run = await runSkill({
     slug: extractorSlugFor(base.sourceKind as SourceKind),
     userId: base.userId,
     userEmail: base.userEmail,
     // Use buildContext (cacheable) — the skill body goes to system with
     // cache_control, the user message carries only the source.
-    buildContext: () => `## Source brute\n\n${base.sourceRaw.slice(0, 30000)}\n\nRenvoie UNIQUEMENT le tableau JSON des sujets extraits.`,
+    buildContext: () =>
+      `## Source brute\n\n${base.sourceRaw.slice(0, 30000)}` +
+      existingBlock +
+      `\n\nRenvoie UNIQUEMENT le tableau JSON des sujets extraits.`,
     inputContent: base.sourceRaw,
     sourceKind: base.sourceKind,
     sourceTitle: base.sourceTitle,
@@ -564,9 +643,18 @@ export async function analyzeSourceForDocument(
     documentId: input.document.id,
   };
 
-  // Tier 1
+  // Tier 1 — extract WITH anchoring context. The extractor sees the
+  // document's existing subjects so it can re-use their titles
+  // verbatim instead of inventing paraphrases that T2 would later
+  // have to fuzzy-match. Mapping result lands in
+  // `subject.mappedToExistingSubjectId` for T2 to honour.
+  const anchors = buildAnchorsFromDocument(input.document);
   onProgress({ kind: 't1-start' });
-  const ex = await tier1Extract({ ...base, sourceRaw: input.sourceRaw });
+  const ex = await tier1Extract({
+    ...base,
+    sourceRaw: input.sourceRaw,
+    existingSubjects: anchors,
+  });
   onProgress({ kind: 't1-end', subjectsExtracted: ex.subjects.length, rootLogId: ex.logId, durationMs: ex.durationMs });
   if (ex.subjects.length === 0) {
     // eslint-disable-next-line no-console
@@ -744,10 +832,14 @@ export async function analyzeMultiSourceForDocument(
     };
   }
 
-  // T1 per-source in parallel.
+  // T1 per-source in parallel — same anchoring context as the
+  // single-source flow (every parallel call gets the same set of
+  // existingSubjects, prompt-cached after the first hit).
+  const anchors = buildAnchorsFromDocument(document);
   onProgress({ kind: 't1-start', sourcesCount: sources.length });
   const extractions = await tier1ExtractMulti({
     sources, userId, userEmail, documentId: document.id,
+    existingSubjects: anchors,
   });
   const t1WallMs = Math.max(...extractions.map(e => e.durationMs));
   const totalExtracted = extractions.reduce((s, e) => s + e.subjects.length, 0);
@@ -1133,6 +1225,10 @@ export interface ConsolidatedSubject {
   mergedEntities: string[];
   mergedStatusHint: string | null;
   mergedResponsibilityHint: string | null;
+  /** Tier 1 anchoring propagated through reconciliation : non-null
+   *  when every contributing extraction agreed on the same existing
+   *  subject id. T2 reads it as a strong "default to enrich" hint. */
+  mappedToExistingSubjectId: string | null;
 }
 
 /** Run tier 1 extractors for every source in parallel. Preserves the order
@@ -1143,13 +1239,14 @@ async function tier1ExtractMulti(params: {
   userId: number;
   userEmail: string;
   documentId: string | null;
+  existingSubjects?: ExistingSubjectAnchor[];
 }): Promise<Array<{
   source: MultiSourceInput;
   logId: number | null;
   subjects: ExtractedSubject[];
   durationMs: number;
 }>> {
-  const { sources, userId, userEmail, documentId } = params;
+  const { sources, userId, userEmail, documentId, existingSubjects } = params;
   return Promise.all(sources.map(async (src) => {
     const res = await tier1Extract({
       userId, userEmail,
@@ -1157,6 +1254,7 @@ async function tier1ExtractMulti(params: {
       sourceTitle: src.sourceTitle,
       documentId,
       sourceRaw: src.sourceRaw,
+      existingSubjects,
     });
     return { source: src, ...res };
   }));
@@ -1254,6 +1352,14 @@ function enrichConsolidated(
   let latestStatusHint: string | null = null;
   let latestResponsibilityHint: string | null = null;
   let latestTs = '';
+  // Vote across the contributing extractions on
+  // `mappedToExistingSubjectId`. Trust the LLM's reconciliation when
+  // it already filled the field ; otherwise reconstruct from the
+  // underlying T1 extractions : if every contributing extraction
+  // points to the same id, propagate it ; if they diverge or any
+  // is null, propagate null (T2 will run its own match).
+  const mappingVotes = new Map<string, number>();
+  let totalEvidenceWithMapping = 0;
 
   for (const ev of c.evidence) {
     // Dedupe rawQuotes from evidence.
@@ -1270,7 +1376,21 @@ function enrichConsolidated(
         if (origSubj.statusHint) latestStatusHint = origSubj.statusHint;
         if (origSubj.responsibilityHint) latestResponsibilityHint = origSubj.responsibilityHint;
       }
+      const mapped = origSubj.mappedToExistingSubjectId;
+      if (mapped) {
+        mappingVotes.set(mapped, (mappingVotes.get(mapped) || 0) + 1);
+        totalEvidenceWithMapping++;
+      }
     }
+  }
+
+  // Take the LLM's value first ; only fall back to the vote if it
+  // didn't fill the field. The vote requires unanimity across the
+  // evidence that has a mapping, AND coverage of the majority of
+  // sources — otherwise we leave it null and let T2 decide.
+  let mapped: string | null = c.mappedToExistingSubjectId ?? null;
+  if (!mapped && mappingVotes.size === 1 && totalEvidenceWithMapping >= Math.ceil(c.evidence.length / 2)) {
+    mapped = Array.from(mappingVotes.keys())[0];
   }
 
   return {
@@ -1280,6 +1400,7 @@ function enrichConsolidated(
     mergedEntities: Array.from(entities),
     mergedStatusHint: latestStatusHint,
     mergedResponsibilityHint: latestResponsibilityHint,
+    mappedToExistingSubjectId: mapped,
   };
 }
 
@@ -1310,6 +1431,7 @@ function buildPassThroughConsolidation(
         mergedEntities: s.entities,
         mergedStatusHint: s.statusHint,
         mergedResponsibilityHint: s.responsibilityHint,
+        mappedToExistingSubjectId: s.mappedToExistingSubjectId ?? null,
       });
     }
   }
@@ -1333,6 +1455,7 @@ function consolidatedToExtracted(
     statusHint: c.mergedStatusHint,
     responsibilityHint: c.mergedResponsibilityHint,
     confidence: 'medium' as const,
+    mappedToExistingSubjectId: c.mappedToExistingSubjectId ?? null,
   }));
 }
 

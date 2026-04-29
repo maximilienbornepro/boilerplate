@@ -91,6 +91,7 @@ Champs :
 | Champ | Type | Rôle |
 |---|---|---|
 | `canonicalTitle` | string | Titre consolidé du sujet — choisis le plus clair parmi les titres sources ou reformule légèrement |
+| `mappedToExistingSubjectId` | string\|null | **Propagation Tier 1** : si toutes les extractions d'origine pointent vers le même `mappedToExistingSubjectId` non-null, recopie cet `id`. Si elles divergent ou sont toutes null, mets `null` — Tier 2 tranchera. |
 | `evidence[]` | array | 1..N entrées. Même taille que `sources` qui parlent du sujet |
 | `evidence[].sourceId` | string | Recopié de l'entrée source |
 | `evidence[].sourceType` | string | "transcription", "slack", ou "outlook" |

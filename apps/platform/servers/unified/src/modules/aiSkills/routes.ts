@@ -116,6 +116,42 @@ export function createRoutes(): Router {
     res.json(row);
   }));
 
+  // POST /ai-skills/api/admin/reseed-all — force-refresh every registered
+  // skill from its shipped .md, ignoring `is_customized`. Useful after a
+  // deploy that ships prompt updates and the running DB still holds an
+  // older version (because the skill was ever edited via the admin
+  // surface, the boot-time `seedSkill` skips it). Idempotent — replays
+  // safely. Optional body { slugPrefix } narrows the reset to skills
+  // whose slug starts with the given string (e.g. "suivitess-").
+  router.post('/admin/reseed-all', asyncHandler(async (req, res, next) => {
+    if (RESERVED_SLUG_NAMES.has('admin')) { next(); return; }
+    const slugPrefix = typeof req.body?.slugPrefix === 'string' ? req.body.slugPrefix : '';
+    const reset: Array<{ slug: string; chars: number; wasCustomized: boolean }> = [];
+    const errors: Array<{ slug: string; error: string }> = [];
+    for (const def of SKILLS) {
+      if (slugPrefix && !def.slug.startsWith(slugPrefix)) continue;
+      try {
+        const before = await db.getSkillBySlug(def.slug);
+        const defaultContent = await readDefaultFile(def);
+        await db.seedSkill(def.slug, def.name, def.description, defaultContent);
+        const row = await db.resetSkillToDefault(def.slug, defaultContent, req.user!.id);
+        await ensureSkillVersion(def.slug, defaultContent, req.user!.id);
+        reset.push({
+          slug: def.slug,
+          chars: defaultContent.length,
+          wasCustomized: before?.is_customized || false,
+        });
+        // eslint-disable-next-line no-console
+        console.log(`[ai-skills] force-reseed ${def.slug} (${defaultContent.length} chars, was-customized=${before?.is_customized})`);
+        // Touch `row` so the linter doesn't complain about unused.
+        void row;
+      } catch (err) {
+        errors.push({ slug: def.slug, error: (err as Error).message?.slice(0, 200) || 'unknown' });
+      }
+    }
+    res.json({ resetCount: reset.length, errorsCount: errors.length, reset, errors });
+  }));
+
   // POST /ai-skills/api/:slug/reset — restore shipped default
   router.post('/:slug/reset', asyncHandler(async (req, res, next) => {
     const slug = String(req.params.slug);
