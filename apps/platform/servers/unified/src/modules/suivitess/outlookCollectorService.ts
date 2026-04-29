@@ -209,14 +209,71 @@ export function groupOutlookMessagesByDay(
 
 // ============ Helpers ============
 
-function parseOutlookDate(dateStr: string): Date | null {
+/**
+ * Best-effort parse of the various date formats Outlook web shows on
+ * a mail row. Listed from most precise to most ambiguous :
+ *
+ *   1. "Lun 13/04/2026 12:26"           — full title attribute
+ *   2. ISO 8601 anything `new Date()` understands
+ *   3. "Hier 14:30" / "Hier"            — yesterday at the given time
+ *   4. "Aujourd'hui 09:12" / "Aujourd'hui" — today at the given time
+ *   5. Bare time like "14:30"            — today at that time
+ *
+ * Falls back to `new Date()` only when none of the above match.
+ * Previously every relative format silently fell back to `new Date()`,
+ * so all of yesterday's mails were stamped as "today" at server clock,
+ * which broke the per-day digest grouping.
+ */
+export function parseOutlookDate(dateStr: string): Date | null {
   if (!dateStr) return null;
-  // Format "Lun 13/04/2026 12:26"
-  const match = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(\d{1,2}):(\d{2})/);
-  if (match) return new Date(+match[3], +match[2] - 1, +match[1], +match[4], +match[5]);
-  // ISO format
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? new Date() : d;
+  const s = dateStr.trim();
+
+  // 1. Full date "Lun 13/04/2026 12:26"
+  const fullMatch = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*(\d{1,2}):(\d{2})/);
+  if (fullMatch) return new Date(+fullMatch[3], +fullMatch[2] - 1, +fullMatch[1], +fullMatch[4], +fullMatch[5]);
+
+  // 2. ISO / RFC anything Date() can parse natively (e.g. "2026-04-29T14:30:00Z").
+  if (/[-T:]/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  const lower = s.toLowerCase();
+  const timeMatch = s.match(/(\d{1,2}):(\d{2})/);
+  const now = new Date();
+
+  // 3. "Hier" — yesterday, optionally with a time. We default the
+  // hour to local noon (not midnight) when missing so that a
+  // negative-offset timezone (server UTC, user CEST) doesn't push
+  // the row back to the day-before in UTC.
+  if (lower.startsWith('hier')) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    if (timeMatch) d.setHours(+timeMatch[1], +timeMatch[2], 0, 0);
+    else d.setHours(12, 0, 0, 0);
+    return d;
+  }
+
+  // 4. "Aujourd'hui" — today, optionally with a time.
+  if (lower.startsWith("aujourd")) {
+    const d = new Date(now);
+    if (timeMatch) d.setHours(+timeMatch[1], +timeMatch[2], 0, 0);
+    return d;
+  }
+
+  // 5. Bare time "14:30" — today at that time. (Outlook drops the
+  // date label for very recent mails of the current day.)
+  if (/^\d{1,2}:\d{2}$/.test(s) && timeMatch) {
+    const d = new Date(now);
+    d.setHours(+timeMatch[1], +timeMatch[2], 0, 0);
+    return d;
+  }
+
+  // Last resort — give it to Date() and accept whatever, otherwise stamp
+  // as now so the row at least makes it into the table (we'd rather
+  // mis-date than drop entirely).
+  const fallback = new Date(s);
+  return isNaN(fallback.getTime()) ? new Date() : fallback;
 }
 
 function mapMessage(row: Record<string, unknown>): OutlookMessage {

@@ -2069,7 +2069,11 @@ ${filteredContent.slice(0, 30000)}`,
       return;
     }
     const { storeOutlookEmails } = await import('./outlookCollectorService.js');
-    const result = await storeOutlookEmails(req.user!.id, emails.slice(0, 200));
+    // Cap raised from 200 → 2000 because the extension scrapes a 7-day
+    // window which can easily exceed 200 on a busy mailbox ; the
+    // previous cap was silently dropping the tail (and the order of
+    // pushed items isn't guaranteed to put the most recent days first).
+    const result = await storeOutlookEmails(req.user!.id, emails.slice(0, 2000));
     res.json(result);
   }));
 
@@ -2286,6 +2290,103 @@ ${filteredContent.slice(0, 30000)}`,
     });
 
     res.json(items.slice(0, 50));
+  }));
+
+  // GET /transcription/source-content?source=outlook&id=outlook:YYYY-MM-DD
+  // Inspect the raw items that a digest will feed to the AI — used by
+  // the bulk-import modal's "👁 Voir les mails" preview so the user
+  // can verify exactly what will be analysed before triggering T1.
+  // Returns one row per underlying message, regardless of how the
+  // digest is grouped on the source list.
+  router.get('/transcription/source-content', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { source, id } = req.query as { source?: string; id?: string };
+    if (!source || !id) {
+      res.status(400).json({ error: 'source et id requis' });
+      return;
+    }
+
+    type ContentItem = {
+      sender: string;
+      ts: string | null;
+      subject: string;
+      preview: string;
+      bodyChars?: number;
+    };
+    const items: ContentItem[] = [];
+
+    try {
+      if (source === 'outlook' && id.startsWith('outlook:')) {
+        const dateFilter = id.replace('outlook:', '');
+        const validDate = dateFilter && dateFilter !== 'unknown' ? dateFilter : null;
+        const { getOutlookMessages } = await import('./outlookCollectorService.js');
+        const msgs = await getOutlookMessages(userId, validDate ? { dateFilter: validDate } : { days: 30 });
+        const filtered = validDate ? msgs : msgs;
+        for (const m of filtered) {
+          items.push({
+            sender: m.sender || 'Inconnu',
+            ts: m.date ?? null,
+            subject: m.subject || '(sans objet)',
+            preview: (m.preview || '').slice(0, 200),
+            bodyChars: m.body ? m.body.length : 0,
+          });
+        }
+      } else if (source === 'slack' && id.startsWith('slack:')) {
+        const parts = id.split(':');
+        const channelId = parts[1] || parts[0];
+        const dateFilter = parts[2];
+        const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+        const cfg = await getSlackConfig(userId);
+        if (cfg) {
+          const messages = await getSlackMessages(cfg.id, { days: cfg.daysToFetch, channelId });
+          const filtered = dateFilter
+            ? messages.filter(m => new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10) === dateFilter)
+            : messages;
+          for (const m of filtered.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))) {
+            items.push({
+              sender: m.senderName || 'Inconnu',
+              ts: new Date(parseFloat(m.messageTs) * 1000).toISOString(),
+              subject: '',
+              preview: (m.text || '').slice(0, 200),
+              bodyChars: (m.text || '').length,
+            });
+          }
+        }
+      } else if (source === 'fathom') {
+        const { getFathomTranscript } = await import('./fathomService.js');
+        try {
+          const entries = await getFathomTranscript(userId, id);
+          for (const e of entries) {
+            items.push({
+              sender: e.speaker || 'Inconnu',
+              ts: null,
+              subject: '',
+              preview: (e.text || '').slice(0, 200),
+              bodyChars: (e.text || '').length,
+            });
+          }
+        } catch { /* fathom may not be linked */ }
+      } else if (source === 'otter') {
+        const { getOtterTranscript } = await import('./otterService.js');
+        try {
+          const entries = await getOtterTranscript(userId, id);
+          for (const e of entries) {
+            items.push({
+              sender: e.speaker || 'Inconnu',
+              ts: null,
+              subject: '',
+              preview: (e.text || '').slice(0, 200),
+              bodyChars: (e.text || '').length,
+            });
+          }
+        } catch { /* otter may not be linked */ }
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[source-content] ${source}/${id} failed:`, err);
+    }
+
+    res.json({ source, id, count: items.length, items });
   }));
 
   // POST /transcription/analyze-and-route
