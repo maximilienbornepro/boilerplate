@@ -213,11 +213,16 @@
 
   // ==================== SCRAPING ====================
 
-  async function scrapeItems() {
+  async function scrapeItems(opts = {}) {
     return new Promise((resolve, reject) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs[0]) { reject(new Error('Pas d\'onglet actif')); return; }
-        const action = provider === 'outlook' ? 'getEmails' : 'getMessages';
+        // Outlook gets a "with bodies" mode for the actual sync push —
+        // it click-walks each row to capture the full thread content.
+        // Slack still uses the lighter `getMessages` action.
+        const action = provider === 'outlook'
+          ? (opts.withBodies ? 'getEmailsWithBodies' : 'getEmails')
+          : 'getMessages';
         chrome.tabs.sendMessage(tabs[0].id, { action }, (response) => {
           if (chrome.runtime.lastError) {
             reject(new Error('Content script non charge. Rechargez la page.'));
@@ -230,6 +235,115 @@
           resolve(response.items || []);
         });
       });
+    });
+  }
+
+  // Listen for body-fetch progress emitted by the content script and
+  // render a small loader with the current subject + percentage.
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.action === 'bodiesProgress') {
+      renderBodyProgress(msg.done, msg.total, msg.subject);
+    }
+  });
+
+  function renderBodyProgress(done, total, subject) {
+    let bar = document.getElementById('body-progress');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'body-progress';
+      bar.className = 'body-progress';
+      bar.innerHTML = `
+        <div class="body-progress-track"><div class="body-progress-fill"></div></div>
+        <div class="body-progress-label"></div>
+      `;
+      const anchor = document.querySelector('.actions-section') || document.body;
+      anchor.parentNode.insertBefore(bar, anchor);
+    }
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    bar.querySelector('.body-progress-fill').style.width = `${pct}%`;
+    const label = bar.querySelector('.body-progress-label');
+    if (done >= total) {
+      label.textContent = `✓ ${total} mail(s) — corps récupéré`;
+      setTimeout(() => bar?.remove(), 1500);
+    } else {
+      const trimmed = (subject || '…').slice(0, 50);
+      label.textContent = `Lecture du corps — ${done + 1}/${total} (${pct}%) · ${trimmed}`;
+    }
+  }
+
+  /** Per-day summary rendered after the body-fetch pass. Groups
+   *  emails by their date string, sorts groups newest-first, lists
+   *  each subject in collapsed details so the user can verify what
+   *  ended up in the sync at a glance. */
+  function renderExtractionSummary(emails) {
+    let panel = document.getElementById('extraction-summary');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'extraction-summary';
+      panel.className = 'extraction-summary';
+      const anchor = document.querySelector('.actions-section') || document.body;
+      anchor.parentNode.insertBefore(panel, anchor);
+    }
+
+    const groups = new Map();
+    for (const e of emails) {
+      const key = parseDayKey(e.date) || 'sans-date';
+      const arr = groups.get(key) || [];
+      arr.push(e);
+      groups.set(key, arr);
+    }
+    const ordered = Array.from(groups.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+
+    const html = [
+      `<div class="extraction-summary-header">${emails.length} mail(s) prêt(s) à pousser :</div>`,
+      ...ordered.map(([day, list]) => {
+        const label = day === 'sans-date' ? 'Sans date' : formatDayLabel(day);
+        const rows = list.map(e => {
+          const subj = escapeHtml((e.subject || '(sans objet)').slice(0, 80));
+          const sender = escapeHtml((e.sender || '').slice(0, 40));
+          const bodyChars = e.body ? e.body.length : 0;
+          const bodyHint = bodyChars > 0
+            ? `<span class="extraction-summary-body">📄 ${bodyChars} car.</span>`
+            : `<span class="extraction-summary-body extraction-summary-body-empty">⚠ pas de corps</span>`;
+          return `<li><span class="extraction-summary-subject">${subj}</span><span class="extraction-summary-sender">${sender}</span>${bodyHint}</li>`;
+        }).join('');
+        return `
+          <details class="extraction-summary-day" open>
+            <summary>${label} — ${list.length} mail(s)</summary>
+            <ul>${rows}</ul>
+          </details>
+        `;
+      }),
+    ].join('');
+    panel.innerHTML = html;
+  }
+
+  function parseDayKey(rawDate) {
+    if (!rawDate) return null;
+    // "Lun 13/04/2026 12:26" → "2026-04-13"
+    const m = rawDate.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) {
+      const dd = m[1].padStart(2, '0');
+      const mm = m[2].padStart(2, '0');
+      return `${m[3]}-${mm}-${dd}`;
+    }
+    // ISO
+    if (/^\d{4}-\d{2}-\d{2}/.test(rawDate)) return rawDate.slice(0, 10);
+    const lower = rawDate.toLowerCase();
+    const today = new Date();
+    if (lower.startsWith("aujourd")) return today.toISOString().slice(0, 10);
+    if (lower.startsWith('hier')) {
+      const d = new Date(today); d.setDate(d.getDate() - 1);
+      return d.toISOString().slice(0, 10);
+    }
+    return null;
+  }
+
+  function formatDayLabel(yyyymmdd) {
+    const d = new Date(yyyymmdd + 'T12:00:00');
+    if (isNaN(d.getTime())) return yyyymmdd;
+    return d.toLocaleDateString('fr-FR', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     });
   }
 
@@ -472,12 +586,16 @@
     setProviderBadge('outlook', 'Outlook — Synchronisation...');
 
     try {
-      // 1) Scrape emails from the page
-      const emails = await scrapeItems();
+      // 1) Scrape emails from the page WITH per-row click-through
+      // body extraction so the AI receives the full thread content,
+      // not just the 500-char preview rendered in the inbox row.
+      const emails = await scrapeItems({ withBodies: true });
       if (emails.length === 0) {
         showError('Aucun email trouvé sur cette page.');
         return;
       }
+      // Final summary in the popup grouped by day.
+      renderExtractionSummary(emails);
 
       // 2) For each email, try to grab the body (click to open + read)
       // For now we send subject + preview — bodies require clicking each mail.

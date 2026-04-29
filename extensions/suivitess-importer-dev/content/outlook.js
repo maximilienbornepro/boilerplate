@@ -48,6 +48,14 @@
       'div[role="document"]',
       'div#ReadingPaneContainerId',
     ],
+    // Reading-pane content area — used to detect when a click on a
+    // mail row has actually loaded a different mail (we wait until
+    // the inner text changes between two snapshots before scraping).
+    readingPane: [
+      'div#ReadingPaneContainerId',
+      'div[data-app-section="ReadingPane"]',
+      'div[role="main"]',
+    ],
   };
 
   function querySelector(el, selectorList) {
@@ -395,6 +403,109 @@
     return '';
   }
 
+  // ==================== FULL-BODY EXTRACTION ====================
+  // For every email in the list we click the row, wait for the reading
+  // pane to load, then run extractEmailBody (which handles threaded
+  // conversations by walking every per-message block). The user is
+  // navigated through their inbox visually — slow but the only way to
+  // get the actual thread content.
+
+  function readingPaneSignature() {
+    const pane = querySelector(document, SELECTORS.readingPane);
+    if (!pane) return '';
+    // Use a hash of the first 200 chars of the pane innerText as a
+    // change-detection signature. Cheap and survives rerenders.
+    const txt = (pane.innerText || pane.textContent || '').slice(0, 200);
+    return txt;
+  }
+
+  async function waitForReadingPaneChange(prevSignature, timeoutMs = 4000) {
+    const start = Date.now();
+    let last = prevSignature;
+    while (Date.now() - start < timeoutMs) {
+      await new Promise(r => setTimeout(r, 150));
+      const sig = readingPaneSignature();
+      if (sig && sig !== prevSignature && sig.length > 20) {
+        // Wait one more frame for the body to settle in case the pane
+        // is rendering progressively.
+        await new Promise(r => setTimeout(r, 200));
+        return true;
+      }
+      last = sig;
+    }
+    // eslint-disable-next-line no-console
+    console.warn('[SuiviTess] reading-pane did not change in time, last sig:', last?.slice(0, 60));
+    return false;
+  }
+
+  /** Click each row sequentially and grab the full body (incl. all
+   *  thread messages). Reports progress through `onProgress(done, total)`
+   *  so the popup can render a counter without waiting for the whole
+   *  batch. */
+  async function fetchAllBodies(emails, onProgress) {
+    const root = getMailListRoot();
+    if (!root) return emails;
+    const selectorList = SELECTORS.mailItem;
+
+    // Re-locate each row by id at click time — virtuoso may have
+    // unmounted/remounted it between the initial extraction and now.
+    function findRowById(id) {
+      const all = querySelectorAll(root, selectorList);
+      for (const item of all) {
+        if (item.getAttribute('data-convid') === id) return item;
+      }
+      return null;
+    }
+
+    const enriched = [];
+    for (let i = 0; i < emails.length; i++) {
+      const e = emails[i];
+      onProgress?.(i, emails.length, e.subject || '(sans objet)');
+      const row = findRowById(e.id);
+      if (!row) {
+        // Scroll to where it might be — virtuoso unmounts rows we
+        // walked past in the initial scrape.
+        root.scrollTop = Math.max(0, root.scrollTop - 600);
+        await new Promise(r => setTimeout(r, 250));
+      }
+      const target = findRowById(e.id);
+      if (!target) {
+        // Couldn't find the row — keep the email with preview only.
+        enriched.push(e);
+        continue;
+      }
+
+      const before = readingPaneSignature();
+      try {
+        target.scrollIntoView({ block: 'center', behavior: 'instant' });
+        target.click();
+      } catch {
+        enriched.push(e);
+        continue;
+      }
+      await waitForReadingPaneChange(before);
+
+      // Try to expand all collapsed messages in the thread (Outlook
+      // collapses replies older than the latest by default). Best
+      // effort — we click any "Show all messages" / "Voir tous les
+      // messages" button if present.
+      try {
+        const expandBtns = document.querySelectorAll(
+          'button[aria-label*="messages"], button[aria-label*="Show all"], button[aria-label*="Tout afficher"], button[aria-label*="Tout dérouler"]',
+        );
+        for (const btn of expandBtns) {
+          try { btn.click(); } catch { /* ignore */ }
+        }
+        if (expandBtns.length > 0) await new Promise(r => setTimeout(r, 300));
+      } catch { /* ignore */ }
+
+      const body = await extractEmailBody(e.id);
+      enriched.push({ ...e, body: body || null });
+    }
+    onProgress?.(emails.length, emails.length);
+    return enriched;
+  }
+
   // ==================== MESSAGE HANDLER ====================
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -409,6 +520,34 @@
       }).catch(err => {
         sendResponse({ success: false, error: err.message, provider: 'outlook' });
       });
+      return true; // async
+    }
+
+    if (message.action === 'getEmailsWithBodies') {
+      // Two-phase scrape : list first, then click-through each row to
+      // grab the full body (incl. thread messages). Slow but the only
+      // way to capture content beyond the 500-char preview Outlook
+      // renders in the row. Progress is forwarded via runtime messages
+      // so the popup can render a "Body 5 / 32" counter live.
+      (async () => {
+        try {
+          const list = await extractEmails();
+          const t0 = performance.now();
+          const enriched = await fetchAllBodies(list, (done, total, subject) => {
+            try {
+              chrome.runtime.sendMessage({ action: 'bodiesProgress', done, total, subject });
+            } catch { /* popup may have closed */ }
+          });
+          // eslint-disable-next-line no-console
+          console.log(
+            `%c[SuiviTess] full-body fetch → ${enriched.length} emails · ${(performance.now() - t0).toFixed(0)}ms`,
+            'color:#10b981;font-weight:bold',
+          );
+          sendResponse({ success: true, items: enriched, provider: 'outlook' });
+        } catch (err) {
+          sendResponse({ success: false, error: err.message, provider: 'outlook' });
+        }
+      })();
       return true; // async
     }
 

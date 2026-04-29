@@ -261,6 +261,108 @@ input:focus, select:focus {
   text-overflow: ellipsis;
 }
 
+/* Body-fetch live loader (rendered between the actions row and the
+   items list during sync) */
+.body-progress {
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 6px;
+}
+.body-progress-track {
+  height: 4px;
+  background: #2a2a2a;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.body-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #10b981, #34d399);
+  transition: width 0.2s ease;
+}
+.body-progress-label {
+  font-size: 10px;
+  color: #d1d5db;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Per-day extraction summary shown after the body-fetch pass */
+.extraction-summary {
+  margin: 8px 0;
+  padding: 8px 10px;
+  background: #161616;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  font-size: 11px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.extraction-summary-header {
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 6px;
+}
+.extraction-summary-day {
+  margin-bottom: 6px;
+}
+.extraction-summary-day summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #fbbf24;
+  padding: 4px 0;
+  list-style: none;
+}
+.extraction-summary-day summary::-webkit-details-marker { display: none; }
+.extraction-summary-day summary::before {
+  content: '▸ ';
+  display: inline-block;
+  transition: transform 0.15s;
+}
+.extraction-summary-day[open] summary::before {
+  content: '▾ ';
+}
+.extraction-summary-day ul {
+  list-style: none;
+  margin: 4px 0 8px 12px;
+  padding: 0;
+}
+.extraction-summary-day li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  color: #d1d5db;
+  border-bottom: 1px solid #1f1f1f;
+}
+.extraction-summary-subject {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.extraction-summary-sender {
+  color: #9ca3af;
+  font-size: 10px;
+  flex-shrink: 0;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.extraction-summary-body {
+  font-size: 10px;
+  color: #10b981;
+  flex-shrink: 0;
+}
+.extraction-summary-body-empty {
+  color: #f59e0b;
+}
+
 .thread-badge {
   display: inline-block;
   margin-left: 6px;
