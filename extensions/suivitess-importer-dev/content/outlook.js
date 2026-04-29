@@ -41,12 +41,22 @@
       'div[data-testid="virtuoso-scroller"]',
       'div.jEpCF',
     ],
-    // Mail body in reading pane
+    // Mail body in reading pane — multiple selectors covering the
+    // various Outlook web builds (Monarch / classic / bottom-pane).
     body: [
       'div[aria-label="Corps du message"]',
       'div[aria-label="Message body"]',
+      'div[aria-label*="message body" i]',
+      'div[aria-label*="corps du" i]',
       'div[role="document"]',
       'div#ReadingPaneContainerId',
+      'div[data-app-section="ReadingPane"] [role="document"]',
+      'div[data-app-section="ReadingPane"] [aria-label]',
+      // Fallback : the actual rendered HTML of the latest message
+      'div.allowTextSelection',
+      'div.PlainText',
+      'div[id^="UniqueMessageBody"]',
+      'div[id^="rlb"]',
     ],
     // Reading-pane content area — used to detect when a click on a
     // mail row has actually loaded a different mail (we wait until
@@ -54,7 +64,10 @@
     readingPane: [
       'div#ReadingPaneContainerId',
       'div[data-app-section="ReadingPane"]',
+      'div[id^="ReadingPane"]',
       'div[role="main"]',
+      // The raw fallback : the right pane that's split from the list
+      'div.WACContainer',
     ],
   };
 
@@ -425,18 +438,24 @@
     // Single-message fallback : try every body selector across every
     // root (top doc + iframes). Returns the first non-trivial hit.
     for (const root of roots) {
-      const bodyEl = querySelector(root, SELECTORS.body);
-      if (bodyEl) {
-        const txt = (bodyEl.innerText || bodyEl.textContent || '').trim();
-        if (txt.length > 20) return txt;
+      for (const sel of SELECTORS.body) {
+        const matches = root.querySelectorAll(sel);
+        for (const el of matches) {
+          const txt = (el.innerText || el.textContent || '').trim();
+          if (txt.length > 5) return txt;
+        }
       }
     }
 
     // Last-ditch — grab whatever's visible in the reading pane root.
-    const pane = querySelector(document, SELECTORS.readingPane);
-    if (pane) {
-      const txt = (pane.innerText || pane.textContent || '').trim();
-      if (txt.length > 20) return txt;
+    // Threshold lowered to 5 because some short replies legitimately
+    // fit in fewer than 20 chars ("ok", "lu", "merci !").
+    for (const root of roots) {
+      const pane = querySelector(root, SELECTORS.readingPane);
+      if (pane) {
+        const txt = (pane.innerText || pane.textContent || '').trim();
+        if (txt.length > 5) return txt;
+      }
     }
     return '';
   }
@@ -642,64 +661,77 @@
       return true; // async
     }
 
-    // Used by the chrome.debugger flow in the sync dashboard : returns
-    // the row's screen-space bounding box so the dashboard can dispatch
-    // a real (isTrusted) click via Input.dispatchMouseEvent at the
-    // row's centre. Also auto-scrolls the row into view first because
-    // virtuoso unmounts off-screen rows and a click at coords outside
-    // the viewport hits nothing.
-    if (message.action === 'getRowRect') {
+    // Combined scroll + rect lookup — saves one round-trip per row
+    // (was: scrollListTo → 250ms wait → getRowRect → 200ms wait → raf).
+    // The dashboard now calls this as `scrollAndGetRect`, with an
+    // optional `targetScrollTop` to coax virtuoso into rendering the
+    // window around the row before we query it.
+    if (message.action === 'scrollAndGetRect') {
       try {
-        const root = getMailListRoot();
-        const all = querySelectorAll(root, SELECTORS.mailItem);
-        let row = null;
-        for (const it of all) {
-          if (it.getAttribute('data-convid') === message.convId) { row = it; break; }
+        const container = findScrollContainer();
+        if (typeof message.targetScrollTop === 'number' && container) {
+          container.scrollTop = Math.max(0, message.targetScrollTop);
         }
-        if (!row) {
-          // Walk one viewport up to remount the row that virtuoso evicted.
-          const scrollTarget = findScrollContainer();
-          if (scrollTarget) {
-            scrollTarget.scrollTop = Math.max(0, scrollTarget.scrollTop - 800);
+        // One frame for virtuoso to render, then look up + reply.
+        requestAnimationFrame(() => {
+          const root = getMailListRoot();
+          const all = querySelectorAll(root, SELECTORS.mailItem);
+          let row = null;
+          for (const it of all) {
+            if (it.getAttribute('data-convid') === message.convId) { row = it; break; }
           }
-        }
-        // Wait one frame for the scroll to settle before re-querying.
-        setTimeout(() => {
-          const all2 = querySelectorAll(getMailListRoot(), SELECTORS.mailItem);
-          let row2 = null;
-          for (const it of all2) {
-            if (it.getAttribute('data-convid') === message.convId) { row2 = it; break; }
-          }
-          if (!row2) {
+          if (!row) {
             sendResponse({ success: false, error: 'row not in DOM (virtuoso unmounted)' });
             return;
           }
-          row2.scrollIntoView({ block: 'center', behavior: 'instant' });
-          // Extra frame for scrollIntoView to settle.
+          row.scrollIntoView({ block: 'center', behavior: 'instant' });
           requestAnimationFrame(() => {
-            const r = row2.getBoundingClientRect();
-            // Aim for a clickable child first (subject span) when present
-            // — Outlook's row click handler is delegated, but landing
-            // close to the subject is the most reliable target.
-            const inner = row2.querySelector('span.TtcXM, div.IjzWp') || row2;
+            const inner = row.querySelector('span.TtcXM, div.IjzWp') || row;
             const ir = inner.getBoundingClientRect();
+            const rr = row.getBoundingClientRect();
             sendResponse({
               success: true,
               rect: {
                 x: ir.left + ir.width / 2,
                 y: ir.top + ir.height / 2,
-                width: r.width,
-                height: r.height,
+                width: rr.width,
+                height: rr.height,
               },
-              devicePixelRatio: window.devicePixelRatio || 1,
-              viewport: { width: window.innerWidth, height: window.innerHeight },
             });
           });
-        }, 200);
+        });
       } catch (err) {
         sendResponse({ success: false, error: err.message });
       }
-      return true; // async (we delay sendResponse via setTimeout)
+      return true;
+    }
+
+    // Legacy single-shot rect lookup — kept for back-compat with the
+    // older dashboard build. Deprecated, prefer `scrollAndGetRect`.
+    if (message.action === 'getRowRect') {
+      const root = getMailListRoot();
+      const all = querySelectorAll(root, SELECTORS.mailItem);
+      let row = null;
+      for (const it of all) {
+        if (it.getAttribute('data-convid') === message.convId) { row = it; break; }
+      }
+      if (!row) {
+        sendResponse({ success: false, error: 'row not in DOM (virtuoso unmounted)' });
+        return false;
+      }
+      row.scrollIntoView({ block: 'center', behavior: 'instant' });
+      requestAnimationFrame(() => {
+        const inner = row.querySelector('span.TtcXM, div.IjzWp') || row;
+        const ir = inner.getBoundingClientRect();
+        sendResponse({
+          success: true,
+          rect: {
+            x: ir.left + ir.width / 2,
+            y: ir.top + ir.height / 2,
+          },
+        });
+      });
+      return true;
     }
 
     // Read the current reading-pane signature — used by the dashboard
@@ -709,6 +741,28 @@
       const sig = pane ? (pane.innerText || pane.textContent || '').slice(0, 200) : '';
       sendResponse({ success: true, signature: sig });
       return false;
+    }
+
+    // Scroll the inbox list virtuoso to a target offset (px from top)
+    // so the dashboard's debugger flow can keep the next row mounted
+    // BEFORE asking for its rect — virtuoso aggressively unmounts
+    // off-screen rows after each click, which was making every row
+    // past the first vanish from the DOM.
+    if (message.action === 'scrollListTo') {
+      try {
+        const container = findScrollContainer();
+        if (!container) {
+          sendResponse({ success: false, error: 'no scroll container' });
+          return false;
+        }
+        const target = Math.max(0, Math.min(container.scrollHeight, message.scrollTop || 0));
+        container.scrollTop = target;
+        // Give virtuoso one frame to render the new viewport.
+        setTimeout(() => sendResponse({ success: true, scrollTop: container.scrollTop }), 250);
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      return true; // async
     }
 
     // Best-effort thread expand inside the currently-open mail.

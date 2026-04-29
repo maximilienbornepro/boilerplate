@@ -185,26 +185,45 @@
     return r.signature || '';
   }
 
-  async function waitForPaneChange(prevSig, timeoutMs = 4500) {
+  async function waitForPaneChange(prevSig, timeoutMs = 2500) {
+    // Tighter poll loop : 80ms instead of 200ms, capped at 2.5s
+    // (was 4.5s). Outlook's reading pane usually re-renders well
+    // under a second after a trusted click ; longer waits were
+    // pure idle time multiplied by the email count.
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 80));
       const sig = await getReadingPaneSig();
       if (sig && sig !== prevSig && sig.length > 20) {
-        await new Promise(r => setTimeout(r, 250)); // settle
+        await new Promise(r => setTimeout(r, 100)); // small settle
         return true;
       }
     }
     return false;
   }
 
-  async function fetchBodyForEmail(email) {
-    // 1) Find row + get its centre coords
+  async function fetchBodyForEmail(email, indexInList) {
+    // ≈ 80 px per virtuoso row — enough to bias the scroll toward
+    // the target so virtuoso renders it.
+    const APPROX_ROW_HEIGHT = 80;
+    const targetScrollTop = Math.max(0, (indexInList || 0) * APPROX_ROW_HEIGHT - 200);
+
+    // 1) Single round-trip : scroll + rect lookup. With a retry that
+    // doubles the scroll offset if virtuoso missed the row (rare
+    // after the perf rework but kept as a safety net).
     let rectResp;
-    try {
-      rectResp = await getRowRect(email.id);
-    } catch (err) {
-      return { ok: false, body: null, error: `rect: ${err.message}` };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        rectResp = await callOutlookTab('scrollAndGetRect', {
+          convId: email.id,
+          targetScrollTop: attempt === 0
+            ? targetScrollTop
+            : Math.max(0, targetScrollTop - 600),
+        });
+        if (rectResp?.success) break;
+      } catch (err) {
+        rectResp = { success: false, error: err.message };
+      }
     }
     if (!rectResp?.success || !rectResp.rect) {
       return { ok: false, body: null, error: rectResp?.error || 'row not found' };
@@ -222,9 +241,12 @@
       return { ok: false, body: null, error: 'reading pane did not load (timeout)' };
     }
 
-    // 3) Optional thread expand, then extract body
-    try { await callOutlookTab('expandThreadMessages'); } catch { /* ignore */ }
-    await new Promise(r => setTimeout(r, 250));
+    // 3) Skip the thread-expand call when the row's threadCount is 1
+    // (no replies to unfold). Saves ~50ms per single-message mail.
+    if (email.threadCount && email.threadCount > 1) {
+      try { await callOutlookTab('expandThreadMessages'); } catch { /* ignore */ }
+      await new Promise(r => setTimeout(r, 150));
+    }
 
     let bodyResp;
     try {
@@ -233,7 +255,9 @@
       return { ok: false, body: null, error: `body: ${err.message}` };
     }
     const body = bodyResp?.body || '';
-    if (body.length < 20) return { ok: false, body: null, error: 'empty body extracted' };
+    // Threshold lowered from 20 → 5 chars — short auto-replies
+    // ("ok", "lu", "merci !") are still legitimate body content.
+    if (body.length < 5) return { ok: false, body: null, error: 'empty body extracted' };
     return { ok: true, body, error: null };
   }
 
@@ -291,7 +315,7 @@
       renderTable();
       updateStats();
 
-      const result = await fetchBodyForEmail(e);
+      const result = await fetchBodyForEmail(e, i);
       if (result.ok) {
         e.body = result.body;
         e.bodyChars = result.body.length;
