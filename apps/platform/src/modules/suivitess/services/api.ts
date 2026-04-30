@@ -962,6 +962,9 @@ export interface SourceContentItem {
   ts: string | null;
   subject: string;
   preview: string;
+  /** Full body content (capped server-side at 8000 chars per item)
+   *  so the user can expand the row and read what the AI will see. */
+  body?: string | null;
   bodyChars?: number;
 }
 

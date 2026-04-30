@@ -2428,14 +2428,21 @@ ${filteredContent.slice(0, 30000)}`,
       return;
     }
 
+    // Per-message preview for the bulk-import "▸ Contenu" panel.
+    // `body` is included so the user can verify EXACTLY what the AI
+    // will receive — capped at 8 000 chars per item to keep the
+    // payload reasonable on a busy day. The frontend lets the user
+    // click to expand each row's full body.
     type ContentItem = {
       sender: string;
       ts: string | null;
       subject: string;
       preview: string;
+      body?: string | null;
       bodyChars?: number;
     };
     const items: ContentItem[] = [];
+    const PER_ITEM_BODY_CAP = 8000;
 
     try {
       if (source === 'outlook' && id.startsWith('outlook:')) {
@@ -2445,12 +2452,14 @@ ${filteredContent.slice(0, 30000)}`,
         const msgs = await getOutlookMessages(userId, validDate ? { dateFilter: validDate } : { days: 30 });
         const filtered = validDate ? msgs : msgs;
         for (const m of filtered) {
+          const fullBody = m.body || '';
           items.push({
             sender: m.sender || 'Inconnu',
             ts: m.date ?? null,
             subject: m.subject || '(sans objet)',
             preview: (m.preview || '').slice(0, 200),
-            bodyChars: m.body ? m.body.length : 0,
+            body: fullBody ? fullBody.slice(0, PER_ITEM_BODY_CAP) : null,
+            bodyChars: fullBody.length,
           });
         }
       } else if (source === 'slack' && id.startsWith('slack:')) {
@@ -2465,12 +2474,14 @@ ${filteredContent.slice(0, 30000)}`,
             ? messages.filter(m => new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10) === dateFilter)
             : messages;
           for (const m of filtered.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))) {
+            const text = m.text || '';
             items.push({
               sender: m.senderName || 'Inconnu',
               ts: new Date(parseFloat(m.messageTs) * 1000).toISOString(),
               subject: '',
-              preview: (m.text || '').slice(0, 200),
-              bodyChars: (m.text || '').length,
+              preview: text.slice(0, 200),
+              body: text.slice(0, PER_ITEM_BODY_CAP),
+              bodyChars: text.length,
             });
           }
         }
@@ -2479,12 +2490,14 @@ ${filteredContent.slice(0, 30000)}`,
         try {
           const entries = await getFathomTranscript(userId, id);
           for (const e of entries) {
+            const text = e.text || '';
             items.push({
               sender: e.speaker || 'Inconnu',
               ts: null,
               subject: '',
-              preview: (e.text || '').slice(0, 200),
-              bodyChars: (e.text || '').length,
+              preview: text.slice(0, 200),
+              body: text.slice(0, PER_ITEM_BODY_CAP),
+              bodyChars: text.length,
             });
           }
         } catch { /* fathom may not be linked */ }
@@ -2493,12 +2506,14 @@ ${filteredContent.slice(0, 30000)}`,
         try {
           const entries = await getOtterTranscript(userId, id);
           for (const e of entries) {
+            const text = e.text || '';
             items.push({
               sender: e.speaker || 'Inconnu',
               ts: null,
               subject: '',
-              preview: (e.text || '').slice(0, 200),
-              bodyChars: (e.text || '').length,
+              preview: text.slice(0, 200),
+              body: text.slice(0, PER_ITEM_BODY_CAP),
+              bodyChars: text.length,
             });
           }
         } catch { /* otter may not be linked */ }

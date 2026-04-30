@@ -193,10 +193,37 @@ main {
   font-size: 12px;
   vertical-align: top;
 }
-.email-table tr.row-extracting { background: rgba(96, 165, 250, 0.06); }
+.email-table tr.row-extracting {
+  background: rgba(96, 165, 250, 0.12);
+  box-shadow: inset 3px 0 0 var(--info);
+}
 .email-table tr.row-ok { background: transparent; }
 .email-table tr.row-empty { background: rgba(245, 158, 11, 0.06); }
 .email-table tr.row-failed { background: rgba(239, 68, 68, 0.07); }
+
+/* Rows hydrated from the previous snapshot are dimmed slightly so
+   they read as "settled, no need to look at this" while the new run
+   highlights what's actually in flight. */
+.email-table tr.row-from-prev:not(.row-extracting) td {
+  opacity: 0.72;
+}
+
+/* Origin badge — clarifies whether the row was already in the snapshot
+   or freshly detected. Sits next to the subject. */
+.origin-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  border-radius: 3px;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.origin-badge.new   { background: rgba(16, 185, 129, 0.18); color: var(--accent-2); }
+.origin-badge.prev  { background: rgba(96, 165, 250, 0.12); color: var(--info); }
+.origin-badge.stale { background: rgba(156, 163, 175, 0.15); color: var(--text-muted); }
 
 .cell-subject {
   color: var(--text);

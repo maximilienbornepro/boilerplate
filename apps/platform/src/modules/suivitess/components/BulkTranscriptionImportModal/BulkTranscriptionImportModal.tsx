@@ -2935,17 +2935,7 @@ function SourceRow({
               </p>
               <ul className={styles.sourcePreviewList}>
                 {content.items.map((it, i) => (
-                  <li key={i} className={styles.sourcePreviewItem}>
-                    <div className={styles.sourcePreviewLine1}>
-                      <strong>{it.sender}</strong>
-                      {it.ts && <span className={styles.sourcePreviewTs}>{formatDate(it.ts)}</span>}
-                      {typeof it.bodyChars === 'number' && (
-                        <span className={styles.sourcePreviewChars}>{it.bodyChars} car.</span>
-                      )}
-                    </div>
-                    {it.subject && <div className={styles.sourcePreviewSubject}>{it.subject}</div>}
-                    {it.preview && <div className={styles.sourcePreviewBody}>{it.preview}</div>}
-                  </li>
+                  <SourceContentItemRow key={i} item={it} />
                 ))}
               </ul>
             </>
@@ -2953,5 +2943,45 @@ function SourceRow({
         </div>
       )}
     </>
+  );
+}
+
+// ====================================================================
+// SourceContentItemRow — one row inside the "▸ Contenu" panel of a
+// source. Shows sender, timestamp, body size, subject, preview, and
+// (on click) the FULL body that will be fed to the AI. Lets the user
+// audit exactly what content is captured before paying for T1.
+// ====================================================================
+
+function SourceContentItemRow({ item }: { item: api.SourceContentItem }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasFullBody = !!item.body && item.body.length > (item.preview?.length ?? 0);
+
+  return (
+    <li className={styles.sourcePreviewItem}>
+      <div className={styles.sourcePreviewLine1}>
+        <strong>{item.sender}</strong>
+        {item.ts && <span className={styles.sourcePreviewTs}>{formatDate(item.ts)}</span>}
+        {typeof item.bodyChars === 'number' && (
+          <span className={styles.sourcePreviewChars}>{item.bodyChars} car.</span>
+        )}
+        {hasFullBody && (
+          <button
+            type="button"
+            className={styles.sourcePreviewExpandBtn}
+            onClick={() => setExpanded(v => !v)}
+          >
+            {expanded ? '▾ Masquer le corps' : '▸ Voir le corps complet'}
+          </button>
+        )}
+      </div>
+      {item.subject && <div className={styles.sourcePreviewSubject}>{item.subject}</div>}
+      {!expanded && item.preview && (
+        <div className={styles.sourcePreviewBody}>{item.preview}</div>
+      )}
+      {expanded && item.body && (
+        <pre className={styles.sourcePreviewFullBody}>{item.body}</pre>
+      )}
+    </li>
   );
 }

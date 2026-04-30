@@ -447,18 +447,27 @@
       }
     }
 
-    // First, hydrate the table with whatever was persisted last time
-    // so the user has SOMETHING to look at while the new sync warms up.
+    // First, hydrate the table from the persisted snapshot — KEEPING
+    // each row's last-known status (ok / empty / failed). That way
+    // the dashboard reopens on a stable view ("voilà ce qui a déjà
+    // été synchronisé") instead of resetting everything to "En file"
+    // which gave the impression of starting from scratch every time.
     const previous = await loadSnapshot();
+    const previousById = new Map();
     if (previous?.emails?.length) {
       emails = previous.emails.map(e => ({
         ...e,
         bodyChars: e.bodyChars || (e.body?.length || 0),
-        // Mark every row as queued — the new sync will overwrite each
-        // status as it processes.
-        status: 'queued',
+        // Preserved status (ok/empty/failed). Newly-detected mails
+        // from the upcoming scrape will appear with status='new' →
+        // 'extracting' → final ; existing mails keep their status
+        // until they're actually re-processed.
+        status: e.status || 'ok',
+        wasInPreviousRun: true,
       }));
-      barSub.textContent = `Pré-chargé : ${emails.length} mails de la sync du ${new Date(previous.syncedAt).toLocaleString('fr-FR')} — relance en cours…`;
+      for (const e of emails) previousById.set(e.id, e);
+      const okCount = emails.filter(e => e.status === 'ok').length;
+      barSub.textContent = `Pré-chargé : ${emails.length} mails de la sync du ${new Date(previous.syncedAt).toLocaleString('fr-FR')} (${okCount} avec corps) — recherche des nouveautés…`;
       renderTable();
       updateStats();
     }
@@ -475,12 +484,47 @@
       tbody.innerHTML = `<tr><td colspan="6" class="empty-state">${escapeHtml(err.message)}</td></tr>`;
       return;
     }
-    emails = (listResp.items || []).map(e => ({
-      ...e,
-      body: null,
-      bodyChars: e.preview ? e.preview.length : 0,
-      status: 'queued',
-    }));
+
+    // Merge strategy : a mail seen for the first time is added with
+    // status='new' (treated by downstream as 'queued' for fetch).
+    // A mail already in the previous snapshot keeps its status —
+    // we won't re-fetch its body unless it's marked 'failed'/'empty'.
+    // This preserves the "what's been done" view across runs.
+    const incoming = listResp.items || [];
+    const incomingIds = new Set(incoming.map(e => e.id));
+    const merged = [];
+    for (const inc of incoming) {
+      const prev = previousById.get(inc.id);
+      if (prev) {
+        // Refresh metadata (subject/sender/date may have changed) but
+        // keep body/status/error from the last run.
+        merged.push({
+          ...prev,
+          subject: inc.subject ?? prev.subject,
+          sender: inc.sender ?? prev.sender,
+          date: inc.date ?? prev.date,
+          preview: inc.preview ?? prev.preview,
+          threadCount: inc.threadCount ?? prev.threadCount,
+        });
+      } else {
+        merged.push({
+          ...inc,
+          body: null,
+          bodyChars: inc.preview ? inc.preview.length : 0,
+          status: 'queued',
+          isNewSinceLastRun: true,
+        });
+      }
+    }
+    // Keep mails from previous runs that aren't in this scrape (older
+    // than 7 days now) ONLY if they had a body — they're history, the
+    // user can still inspect them.
+    for (const prev of emails) {
+      if (!incomingIds.has(prev.id) && prev.body) {
+        merged.push({ ...prev, isStale: true });
+      }
+    }
+    emails = merged;
     if (emails.length === 0) {
       barSub.textContent = '⚠ Aucun mail trouvé sur la page Outlook.';
       tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Aucun mail à synchroniser.</td></tr>';
@@ -550,12 +594,25 @@
       }
     }
 
-    for (let i = 0; i < emails.length; i++) {
-      const e = emails[i];
+    // Identify the rows that actually need body extraction this run :
+    // either fresh queued mails (new since last sync) or rows that
+    // failed / came back empty before (we re-try them). Already-OK
+    // rows are SKIPPED — saves a ton of time and respects the "what's
+    // already done" view on the dashboard.
+    const toProcess = emails.filter(e =>
+      e.status === 'queued' || e.status === 'failed' || e.status === 'empty',
+    );
+    if (toProcess.length === 0) {
+      progressFill.style.width = '90%';
+      progressText.textContent = `Aucun nouveau mail à analyser — tout le snapshot est déjà à jour.`;
+    }
+
+    for (let i = 0; i < toProcess.length; i++) {
+      const e = toProcess[i];
       e.status = 'extracting';
-      const pct = Math.round((i / emails.length) * 90); // body phase = 0–90%
+      const pct = Math.round((i / toProcess.length) * 90);
       progressFill.style.width = `${pct}%`;
-      progressText.textContent = `Lecture du corps — ${i + 1}/${emails.length} (${pct}%) · ${(e.subject || '').slice(0, 60)}`;
+      progressText.textContent = `Lecture du corps — ${i + 1}/${toProcess.length} (${pct}%) · ${(e.subject || '').slice(0, 60)}`;
       renderTable();
       updateStats();
 
@@ -564,6 +621,7 @@
         e.body = result.body;
         e.bodyChars = result.body.length;
         e.status = 'ok';
+        e.error = undefined;
       } else {
         e.body = null;
         e.bodyChars = e.preview ? e.preview.length : 0;
@@ -716,14 +774,26 @@
           </td>
         </tr>
       ` : '';
+      // Origin marker — clarifies WHY a row is in this state :
+      //   • new     — first time seen, freshly captured this run
+      //   • old     — already extracted in a previous sync, untouched
+      //   • stale   — older than 7 days, kept for history view only
+      const originBadge = e.isNewSinceLastRun
+        ? '<span class="origin-badge new" title="Nouveau mail détecté lors de cette sync">✨ nouveau</span>'
+        : e.isStale
+          ? '<span class="origin-badge stale" title="Plus dans la fenêtre 7 jours — historique">📦 ancien</span>'
+          : e.wasInPreviousRun
+            ? '<span class="origin-badge prev" title="Synchronisé lors d\'une session précédente">↺ précédent</span>'
+            : '';
       return `
-        <tr class="row-${e.status} expandable" data-id="${escapeHtml(e.id)}">
+        <tr class="row-${e.status} expandable ${e.wasInPreviousRun ? 'row-from-prev' : ''}" data-id="${escapeHtml(e.id)}">
           <td><span class="status-badge ${e.status}">${labelFor(e.status)}</span></td>
           <td class="cell-date">${escapeHtml(formatShortDate(e.date))}</td>
           <td class="cell-sender" title="${escapeHtml(e.sender || '')}">${escapeHtml((e.sender || '').slice(0, 50))}</td>
           <td class="cell-subject" title="${escapeHtml(e.subject || '')}">
             <span class="expand-toggle" aria-expanded="${isExpanded}">${isExpanded ? '▾' : '▸'}</span>
             ${escapeHtml(e.subject || '(sans objet)')}
+            ${originBadge}
           </td>
           <td class="cell-thread">${e.threadCount && e.threadCount > 1 ? '💬 ' + e.threadCount : '·'}</td>
           <td class="cell-body ${e.bodyChars > 20 ? 'has' : 'empty'}">${e.bodyChars > 0 ? e.bodyChars + ' c.' : '—'}</td>
