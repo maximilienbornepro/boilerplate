@@ -331,49 +331,50 @@
   let listScrollTop = 0;
 
   async function fetchBodyForEmail(email) {
-    // 1) Hunt for the row in two passes :
-    //    Pass A : start where the previous iteration left off and
-    //             scroll DOWN incrementally (Outlook usually keeps
-    //             the selected row in view, so the next one is
-    //             nearby).
-    //    Pass B : if Pass A exhausts, reset to the very top of the
-    //             inbox and walk down again — covers the case where
-    //             Outlook re-rendered the list (e.g. mark-as-read +
-    //             a background mail sync) and our cached scroll
-    //             position no longer points anywhere useful.
-    const SCROLL_STEP = 600;
-    const MAX_SCROLL_TRIES = 12;
+    // 1) Jump to the row's absolute Y position recorded at scrape
+    // time (canvasY = top - rootTop + container.scrollTop). This
+    // is the row's stable coordinate inside virtuoso's canvas — it
+    // doesn't change when we scroll, only when rows are added/
+    // removed above. Subtract a small margin so the row is just
+    // inside the viewport, not glued to the top.
+    const VIEWPORT_MARGIN = 100;
     let rectResp = null;
+    const canvasY = typeof email.scrollTopAtCapture === 'number'
+      ? email.scrollTopAtCapture
+      : null;
 
-    async function huntFromOffset(startOffset) {
-      let probe = startOffset;
-      for (let attempt = 0; attempt < MAX_SCROLL_TRIES; attempt++) {
+    if (canvasY !== null) {
+      try {
+        const r = await callOutlookTab('scrollAndGetRect', {
+          convId: email.id,
+          targetScrollTop: Math.max(0, canvasY - VIEWPORT_MARGIN),
+        });
+        if (r?.success) rectResp = r;
+      } catch { /* fall through */ }
+    }
+
+    // Two short fallbacks if the absolute Y missed (e.g. virtuoso
+    // freshly added a notification banner above the list, shifting
+    // every row down). Try ±300px around the captured Y.
+    if (!rectResp) {
+      for (const delta of [300, -300, 600, -600]) {
+        const probe = Math.max(0, (canvasY ?? 0) - VIEWPORT_MARGIN + delta);
         try {
           const r = await callOutlookTab('scrollAndGetRect', {
             convId: email.id,
             targetScrollTop: probe,
           });
-          if (r?.success) {
-            listScrollTop = probe;
-            return r;
-          }
-        } catch { /* swallow + retry */ }
-        probe += SCROLL_STEP;
+          if (r?.success) { rectResp = r; break; }
+        } catch { /* swallow */ }
       }
-      return null;
-    }
-
-    rectResp = await huntFromOffset(listScrollTop);
-    if (!rectResp) {
-      // Pass B : full reset.
-      // eslint-disable-next-line no-console
-      console.log('[SuiviTess sync] row missing — resetting to top + full walk');
-      rectResp = await huntFromOffset(0);
     }
 
     if (!rectResp?.success || !rectResp.rect) {
-      return { ok: false, body: null, error: 'row not found after full scroll' };
+      // eslint-disable-next-line no-console
+      console.warn('[SuiviTess sync] row missed', { id: email.id, canvasY, subject: email.subject?.slice(0, 60) });
+      return { ok: false, body: null, error: `row not found (canvasY=${canvasY})` };
     }
+    listScrollTop = canvasY ?? listScrollTop;
 
     // 2) Capture pane signature before, dispatch trusted click, wait
     // for either the subject to match `email.subject` OR the snapshot
@@ -418,7 +419,13 @@
   }
 
   // ── Main flow ─────────────────────────────────────────────────────────
-  (async function run() {
+  // Sync flow extracted into a named function so the "🔄 Relancer la
+  // sync" button can re-invoke it without reloading the page. Each
+  // call re-attaches the debugger if needed, switches focus back to
+  // the Outlook tab, and reuses the existing in-memory `emails` array
+  // (so previously-OK rows stay 'ok' and aren't re-clicked).
+  let syncRunning = false;
+  async function runSync() {
     // Replay mode : just hydrate from chrome.storage.local and stop.
     // Used when the popup re-opens the dashboard from history without
     // wanting to trigger a fresh scrape. Also kicks in when the
@@ -447,35 +454,46 @@
       }
     }
 
-    // First, hydrate the table from the persisted snapshot — KEEPING
-    // each row's last-known status (ok / empty / failed). That way
-    // the dashboard reopens on a stable view ("voilà ce qui a déjà
-    // été synchronisé") instead of resetting everything to "En file"
-    // which gave the impression of starting from scratch every time.
-    const previous = await loadSnapshot();
+    // Hydrate the previousById map. Two cases :
+    //  • First run : load from chrome.storage.local snapshot, mark
+    //    every row as wasInPreviousRun.
+    //  • Refresh button : reuse the in-memory `emails` array — every
+    //    row already has its status/body. Don't reload from storage,
+    //    that would discard fresh extractions made in this session.
     const previousById = new Map();
-    if (previous?.emails?.length) {
-      emails = previous.emails.map(e => ({
-        ...e,
-        bodyChars: e.bodyChars || (e.body?.length || 0),
-        // Preserved status (ok/empty/failed). Newly-detected mails
-        // from the upcoming scrape will appear with status='new' →
-        // 'extracting' → final ; existing mails keep their status
-        // until they're actually re-processed.
-        status: e.status || 'ok',
-        wasInPreviousRun: true,
-      }));
-      for (const e of emails) previousById.set(e.id, e);
-      const okCount = emails.filter(e => e.status === 'ok').length;
-      barSub.textContent = `Pré-chargé : ${emails.length} mails de la sync du ${new Date(previous.syncedAt).toLocaleString('fr-FR')} (${okCount} avec corps) — recherche des nouveautés…`;
-      renderTable();
-      updateStats();
+    if (emails.length === 0) {
+      const previous = await loadSnapshot();
+      if (previous?.emails?.length) {
+        emails = previous.emails.map(e => ({
+          ...e,
+          bodyChars: e.bodyChars || (e.body?.length || 0),
+          status: e.status || 'ok',
+          wasInPreviousRun: true,
+        }));
+        const okCount = emails.filter(e => e.status === 'ok').length;
+        barSub.textContent = `Pré-chargé : ${emails.length} mails de la sync du ${new Date(previous.syncedAt).toLocaleString('fr-FR')} (${okCount} avec corps) — recherche des nouveautés…`;
+      }
     }
+    for (const e of emails) {
+      previousById.set(e.id, e);
+      // Drop any "newSinceLastRun" / "stale" flag from the previous
+      // round — they'll be recomputed against the upcoming scrape.
+      e.isNewSinceLastRun = false;
+      e.isStale = false;
+      // Anything we'd marked as previous-run stays that way ; freshly-
+      // OK rows from this session also count as "previous" for the
+      // next scrape.
+      if (!e.wasInPreviousRun) e.wasInPreviousRun = true;
+    }
+    renderTable();
+    updateStats();
 
     barSub.textContent = `Onglet Outlook #${outlookTabId} · destination : ${serverUrl}`;
     progressText.textContent = 'Lecture de la liste des mails…';
 
-    // 1) List with metadata only
+    // 1) List — scrape only the inbox tab the user is currently on
+    // (typically "Prioritaire"). Per user direction, we don't crawl
+    // "Autres" — those mails are intentionally filtered out.
     let listResp;
     try {
       listResp = await callOutlookTab('getEmails');
@@ -607,28 +625,51 @@
       progressText.textContent = `Aucun nouveau mail à analyser — tout le snapshot est déjà à jour.`;
     }
 
+    // eslint-disable-next-line no-console
+    console.log(`[SuiviTess sync] body-fetch loop : ${toProcess.length} mails à traiter`);
     for (let i = 0; i < toProcess.length; i++) {
       const e = toProcess[i];
+      const tag = `${i + 1}/${toProcess.length}`;
       e.status = 'extracting';
       const pct = Math.round((i / toProcess.length) * 90);
       progressFill.style.width = `${pct}%`;
-      progressText.textContent = `Lecture du corps — ${i + 1}/${toProcess.length} (${pct}%) · ${(e.subject || '').slice(0, 60)}`;
+      progressText.textContent = `Lecture du corps — ${tag} (${pct}%) · ${(e.subject || '').slice(0, 60)}`;
       renderTable();
       updateStats();
 
-      const result = await safeFetch(e);
+      let result;
+      try {
+        result = await safeFetch(e);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error(`[SuiviTess sync] ${tag} FATAL`, err);
+        result = { ok: false, body: null, error: `fatal: ${err?.message || err}` };
+      }
+
       if (result.ok) {
         e.body = result.body;
         e.bodyChars = result.body.length;
         e.status = 'ok';
         e.error = undefined;
+        // eslint-disable-next-line no-console
+        console.log(`[SuiviTess sync] ${tag} ✓ ${result.body.length} chars · ${(e.subject || '').slice(0, 50)}`);
       } else {
         e.body = null;
         e.bodyChars = e.preview ? e.preview.length : 0;
         e.status = 'empty';
         e.error = result.error;
+        // eslint-disable-next-line no-console
+        console.warn(`[SuiviTess sync] ${tag} ✗ ${result.error} · ${(e.subject || '').slice(0, 50)}`);
+      }
+
+      // Persist after each iteration so a crash mid-loop doesn't lose
+      // the partial progress — the user can reopen and resume.
+      if ((i + 1) % 5 === 0) {
+        try { await persistSnapshot(); } catch { /* ignore */ }
       }
     }
+    // eslint-disable-next-line no-console
+    console.log(`[SuiviTess sync] body-fetch loop terminée — ok:${emails.filter(x=>x.status==='ok').length} / empty:${emails.filter(x=>x.status==='empty').length} / failed:${emails.filter(x=>x.status==='failed').length}`);
 
     await dbgDetach();
 
@@ -688,7 +729,29 @@
     // Persist the final state so reloading the dashboard surfaces
     // the last sync without having to re-run everything.
     await persistSnapshot();
-  })();
+  }
+
+  // Wire the "🔄 Relancer la sync" button + auto-launch on page load.
+  const refreshBtn = $('refresh-btn');
+  async function triggerSync() {
+    if (syncRunning) return;
+    syncRunning = true;
+    if (refreshBtn) refreshBtn.disabled = true;
+    try {
+      await runSync();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[SuiviTess sync] runSync threw', err);
+      progressText.textContent = `⚠ Sync interrompue : ${err?.message || err}`;
+    } finally {
+      syncRunning = false;
+      if (refreshBtn) refreshBtn.disabled = false;
+    }
+  }
+  refreshBtn?.addEventListener('click', () => { triggerSync(); });
+
+  // Auto-launch on first load (preserves the previous behaviour).
+  triggerSync();
 
   // Detach the debugger if the dashboard tab is closed mid-sync.
   window.addEventListener('beforeunload', () => {

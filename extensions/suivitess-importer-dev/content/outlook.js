@@ -182,6 +182,24 @@
       const convId = item.getAttribute('data-convid') || item.getAttribute('id') || `mail-${Date.now()}-${Math.random()}`;
       const threadCount = detectThreadCount(item);
 
+      // Record the row's ABSOLUTE Y position inside the scroll
+      // container's canvas (virtuoso's content area). Stable across
+      // scrolls — only changes when rows are added/removed above it.
+      // Used by the body-fetch loop to scroll the target back into
+      // view via `scrollTop = canvasY - margin`. Naively recording
+      // the container's scrollTop at capture-time was wrong because
+      // it depended on WHERE virtuoso was when we picked up the row,
+      // not on the row's own coordinate.
+      const root = getMailListRoot();
+      let canvasY = 0;
+      try {
+        if (root && root !== document) {
+          const rowRect = item.getBoundingClientRect();
+          const rootRect = root.getBoundingClientRect();
+          canvasY = Math.max(0, (rowRect.top - rootRect.top) + (root.scrollTop || 0));
+        }
+      } catch { /* noop */ }
+
       emails.push({
         id: convId,
         subject,
@@ -189,6 +207,7 @@
         date: dateText,
         preview: preview.slice(0, 500),
         threadCount,
+        scrollTopAtCapture: canvasY,
       });
     }
 
@@ -262,11 +281,12 @@
       return result;
     }
 
-    const SCROLL_STEP = 600;
-    const MAX_SCROLLS = 100;
-    const STALE_TOLERANCE = 16;
+    const SCROLL_STEP = 800;
+    const MAX_SCROLLS = 250;          // ~250 × 400ms = up to 100s on a busy mailbox
+    const STALE_TOLERANCE = 40;       // virtuoso can be slow to lazy-load; give it 40 idle passes
     let consecutiveStale = 0;
     let lastScrollTop = container.scrollTop;
+    let lastScrollHeight = container.scrollHeight;
     let exitReason = 'max-scrolls';
 
     for (let i = 0; i < MAX_SCROLLS; i++) {
@@ -284,18 +304,33 @@
       }
       const fresh = accumulated.size - beforeSize;
 
-      // If scrollTop didn't actually move AND no new mails appeared,
-      // count it as stale ; otherwise keep scrolling.
+      // Three "I'm making progress" signals — ANY of them resets the
+      // stale counter : new fresh mails accumulated, scrollTop moved,
+      // OR scrollHeight grew (virtuoso lazy-loaded more rows below).
+      // Without the height-growth signal we'd bail prematurely on
+      // mailboxes where the next page of rows hasn't lazily rendered
+      // yet but is about to.
       const moved = container.scrollTop !== lastScrollTop;
-      if (fresh === 0 && !moved) consecutiveStale++; else consecutiveStale = 0;
+      const heightGrew = container.scrollHeight > lastScrollHeight;
+      if (fresh === 0 && !moved && !heightGrew) consecutiveStale++; else consecutiveStale = 0;
       lastScrollTop = container.scrollTop;
+      lastScrollHeight = container.scrollHeight;
 
-      scrollDiag.push({ i, scrollTop: container.scrollTop, fresh, totalAccum: accumulated.size, moved });
+      scrollDiag.push({ i, scrollTop: container.scrollTop, fresh, totalAccum: accumulated.size, moved, heightGrew });
 
       if (consecutiveStale >= STALE_TOLERANCE) { exitReason = 'stale'; break; }
-      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) {
-        exitReason = 'bottom-reached';
-        break;
+      // Bottom check — only breaks when scrollHeight has been stable
+      // for a few iterations AND we're at the literal end. Otherwise
+      // virtuoso may grow scrollHeight on the next tick.
+      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10
+          && !heightGrew) {
+        // Give virtuoso one more shot to grow before declaring done.
+        await new Promise(r => setTimeout(r, 600));
+        if (container.scrollHeight <= lastScrollHeight) {
+          exitReason = 'bottom-reached';
+          break;
+        }
+        lastScrollHeight = container.scrollHeight;
       }
     }
 
@@ -846,6 +881,49 @@
         sendResponse({ success: false, error: err.message });
       }
       return true; // async
+    }
+
+    // Returns the Focused/Other (Prioritaire/Autres) inbox-filter
+    // tabs found on the page, with their screen-space coordinates so
+    // the dashboard can dispatch a TRUSTED click via chrome.debugger
+    // (synthetic clicks on these tabs are ignored by Outlook, just
+    // like row clicks are). The dashboard uses this to harvest mails
+    // from BOTH tabs sequentially — otherwise the scraper only sees
+    // the active tab and misses everything in the other one.
+    if (message.action === 'getMailFilterTabs') {
+      try {
+        const spans = Array.from(document.querySelectorAll('span.fui-Tab__content'));
+        const tabs = [];
+        for (const span of spans) {
+          const label = (span.textContent || '').trim();
+          if (label !== 'Prioritaire' && label !== 'Autres'
+              && label !== 'Important' && label !== 'Other'
+              && label !== 'Focused' && label !== 'Otros') continue;
+          // Walk up to the actual tab button.
+          let btn = span;
+          while (btn && btn.getAttribute('role') !== 'tab' && btn.tagName !== 'BUTTON') {
+            btn = btn.parentElement;
+          }
+          if (!btn) continue;
+          const r = btn.getBoundingClientRect();
+          // Drop the "reserved-space" ghost copies that share the
+          // exact rect with the visible label — keep only the first
+          // hit per label.
+          if (tabs.find(t => t.label === label)) continue;
+          tabs.push({
+            label,
+            selected: btn.getAttribute('aria-selected') === 'true',
+            rect: {
+              x: Math.round(r.left + r.width / 2),
+              y: Math.round(r.top + r.height / 2),
+            },
+          });
+        }
+        sendResponse({ success: true, tabs });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+      return false;
     }
 
     // Best-effort thread expand inside the currently-open mail.
