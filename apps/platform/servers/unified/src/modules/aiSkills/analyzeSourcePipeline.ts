@@ -120,11 +120,20 @@ export interface ReviewContext {
   sections: Array<{
     id: string;
     name: string;
+    /** Number of subjects of this section that were dropped from the
+     *  payload because the per-review budget was exhausted. The skill
+     *  surfaces this in `reason` so the user knows the matching only
+     *  saw the N most-recent subjects, not the full history. */
+    subjectsTruncated?: number;
     subjects: Array<{
       id: string;
       title: string;
       situationExcerpt: string;
-      status: string;
+      status: string | null;
+      /** Owner / responsible mentioned on the subject — strong signal for
+       *  team-based routing (T2 step 2 "review compatible"). Propagated
+       *  from `suivitess_subjects.responsibility`. */
+      responsibility: string | null;
     }>;
   }>;
 }

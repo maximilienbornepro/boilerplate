@@ -9,10 +9,15 @@
   vers **plusieurs** reviews de son portefeuille.
 - **Input** : deux structures JSON
   1. `subjects[]` — issus du tier 1, chacun avec `index`, `title`, `rawQuotes`,
-     `participants`, `entities`, `statusHint`, `responsibilityHint`.
-  2. `reviews[]` — toutes les reviews de l'utilisateur : `[{ id, title,
-     description, sections: [{id, name, subjects: [{id, title, situationExcerpt,
-     status}]}] }]`.
+     `participants`, `entities`, `statusHint`, `responsibilityHint`. Peut
+     aussi contenir `mappedToExistingSubjectId` (uuid) — voir Étape 1bis.
+  2. `reviews[]` — l'**intégralité** du portefeuille de reviews actives de
+     l'utilisateur, classés par review : `[{ id, title, description,
+     sections: [{ id, name, subjectsTruncated?, subjects: [{ id, title,
+     situationExcerpt, status, responsibility }] }] }]`. Le payload contient
+     les sujets **les plus récents** (par `updated_at`) jusqu'à concurrence
+     d'un budget par review. Si `subjectsTruncated > 0`, ça veut dire que
+     la section a plus de sujets en DB que ceux affichés ici.
 - **Output JSON** : tableau de **décisions de routage**, une par sujet. Tu
   décides la review cible, la section cible, et si ça crée un nouveau sujet ou
   met à jour un existant. Tu ne rédiges pas la `situation`, c'est le tier 3.
@@ -78,13 +83,21 @@ n'a pas été épuisée.
 
 ### Étape 1 — Matching SUR un sujet existant (priorité 1)
 
+**Tu DOIS scanner TOUTES les reviews et TOUTES leurs sections avant de
+conclure qu'il n'y a pas de doublon.** Le payload `reviews[]` contient
+l'intégralité du portefeuille de sujets actifs de l'utilisateur,
+classés par review — utilise-le. Ne te contente pas de regarder la
+review qui semble "évidente" ; un sujet OAuth peut très bien être déjà
+ouvert dans une review d'une autre équipe.
+
 Parcours tous les sujets de toutes les reviews et cherche un **doublon** du
 sujet en cours. Un sujet est un doublon si **au moins deux** des critères
 suivants sont vrais :
 
 - Même entité / feature / projet (ex : « OAuth », « migration DB v16 »,
   « écran login »).
-- Même personne responsable citée dans les deux.
+- Même personne responsable citée dans les deux (compare avec le champ
+  `responsibility` du sujet existant).
 - Titre très proche (≥ 60 % de mots-clés significatifs en commun, hors
   stop-words).
 - Référence explicite dans les `rawQuotes` (« on en a déjà parlé »,
@@ -92,6 +105,23 @@ suivants sont vrais :
 
 Si doublon trouvé → `subjectAction: "update-existing-subject"` + `reviewId`
 + `sectionId` + `targetSubjectId` du sujet cible.
+
+**Si tu cibles une section avec `subjectsTruncated > 0`** : indique-le
+dans `reason` (ex : *"section 'Backend API' — 12 sujets affichés sur 18
+en DB, matching sur les 12 plus récents"*) pour que l'utilisateur puisse
+valider en connaissance de cause.
+
+#### Étape 1bis — Hint du Tier 1 (`mappedToExistingSubjectId`)
+
+Si un sujet reçu contient `mappedToExistingSubjectId: "<uuid>"` (champ
+non-null), c'est que le tier 1 a déjà identifié un sujet existant qui
+correspond. Tu DOIS faire un `update-existing-subject` sur ce
+`targetSubjectId`, sauf preuve manifeste du contraire dans les
+`rawQuotes` (ex : nouvelle release, bascule d'équipe). Le hint a la
+priorité sur la procédure de matching ci-dessus parce qu'il a été
+calculé avec le contexte complet de la source. *(Ce champ est dormant
+sur les flows multi-review tant que la Phase B du plan n'est pas
+livrée — ignore-le si toujours `null`.)*
 
 ### Étape 2 — Matching SUR une review existante (priorité 2)
 

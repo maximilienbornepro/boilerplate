@@ -2625,51 +2625,30 @@ ${filteredContent.slice(0, 30000)}`,
     }
 
     // 3) Build the reviews-with-sections snapshot the AI needs.
-    const existingDocs = await db.getAllDocuments(userId, req.user!.isAdmin);
-    const reviews: Array<{
-      id: string;
-      title: string;
-      description: string | null;
-      sections: Array<{
-        id: string;
-        name: string;
-        subjects: Array<{ id: string; title: string; status: string | null; situationExcerpt: string; responsibility: string | null }>;
-      }>;
-    }> = [];
-
-    for (const d of existingDocs.slice(0, 40)) {
-      try {
-        const doc = await db.getDocumentWithSections(d.id);
-        if (!doc) continue;
-        reviews.push({
-          id: doc.id,
-          title: doc.title,
-          description: (d as { description?: string | null }).description ?? null,
-          sections: (doc.sections || []).map(s => ({
-            id: s.id,
-            name: s.name,
-            subjects: (s.subjects || []).slice(0, 20).map(sub => ({
-              id: sub.id,
-              title: sub.title,
-              status: sub.status ?? null,
-              situationExcerpt: (sub.situation || '').slice(0, 200),
-              responsibility: sub.responsibility ?? null,
-            })),
-          })),
-        });
-      } catch {
-        /* best effort */
-      }
-    }
+    //    See reviewSnapshotBuilder.ts — all 4 endpoints share the same
+    //    builder so the T2 input shape stays consistent.
+    const { buildReviewsSnapshotForAI } = await import('./reviewSnapshotBuilder.js');
+    const reviews = await buildReviewsSnapshotForAI({
+      userId,
+      isAdmin: req.user!.isAdmin,
+      db,
+    });
 
     // 4) Run AI — modular 3-tier pipeline (always active).
+    //    `availableReviewsPayload` is what the frontend receives (NOT
+    //    the AI input — that's `reviews` itself). Keep the historical
+    //    shape so the bulk-import modal doesn't break : we expose only
+    //    `id/title/status/situation` per subject, where `situation` is
+    //    the bounded excerpt (legacy emitted `null` because of a typo
+    //    on `sub.situation` vs `sub.situationExcerpt` ; we now emit
+    //    the excerpt, which is what the frontend actually wanted).
     const availableReviewsPayload = reviews.map(r => ({
       id: r.id,
       title: r.title,
       sections: r.sections.map(s => ({
         id: s.id,
         name: s.name,
-        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
+        subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situationExcerpt || null })),
       })),
     }));
 
@@ -2775,37 +2754,9 @@ ${filteredContent.slice(0, 30000)}`,
           throw e;
         }
 
-        // 3) Build reviews snapshot.
-        const existingDocs = await db.getAllDocuments(userId, isAdmin);
-        const reviewsSnap: Array<{
-          id: string; title: string; description: string | null;
-          sections: Array<{
-            id: string; name: string;
-            subjects: Array<{ id: string; title: string; status: string | null; situationExcerpt: string; responsibility: string | null }>;
-          }>;
-        }> = [];
-        for (const d of existingDocs.slice(0, 40)) {
-          try {
-            const doc = await db.getDocumentWithSections(d.id);
-            if (!doc) continue;
-            reviewsSnap.push({
-              id: doc.id,
-              title: doc.title,
-              description: (d as { description?: string | null }).description ?? null,
-              sections: (doc.sections || []).map(s => ({
-                id: s.id,
-                name: s.name,
-                subjects: (s.subjects || []).slice(0, 20).map(sub => ({
-                  id: sub.id,
-                  title: sub.title,
-                  status: sub.status ?? null,
-                  situationExcerpt: (sub.situation || '').slice(0, 200),
-                  responsibility: sub.responsibility ?? null,
-                })),
-              })),
-            });
-          } catch { /* best effort */ }
-        }
+        // 3) Build reviews snapshot via the shared builder.
+        const { buildReviewsSnapshotForAI } = await import('./reviewSnapshotBuilder.js');
+        const reviewsSnap = await buildReviewsSnapshotForAI({ userId, isAdmin, db });
 
         // 4) Run pipeline with progress callbacks.
         const { analyzeSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
@@ -2829,7 +2780,7 @@ ${filteredContent.slice(0, 30000)}`,
             sections: r.sections.map(s => ({
               id: s.id,
               name: s.name,
-              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
+              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situationExcerpt || null })),
             })),
           })),
         });
@@ -2944,37 +2895,9 @@ ${filteredContent.slice(0, 30000)}`,
           throw e;
         }
 
-        // 3) Build reviews snapshot (identical to single-source endpoint).
-        const existingDocs = await db.getAllDocuments(userId, isAdmin);
-        const reviewsSnap: Array<{
-          id: string; title: string; description: string | null;
-          sections: Array<{
-            id: string; name: string;
-            subjects: Array<{ id: string; title: string; status: string | null; situationExcerpt: string; responsibility: string | null }>;
-          }>;
-        }> = [];
-        for (const d of existingDocs.slice(0, 40)) {
-          try {
-            const doc = await db.getDocumentWithSections(d.id);
-            if (!doc) continue;
-            reviewsSnap.push({
-              id: doc.id,
-              title: doc.title,
-              description: (d as { description?: string | null }).description ?? null,
-              sections: (doc.sections || []).map(s => ({
-                id: s.id,
-                name: s.name,
-                subjects: (s.subjects || []).slice(0, 20).map(sub => ({
-                  id: sub.id,
-                  title: sub.title,
-                  status: sub.status ?? null,
-                  situationExcerpt: (sub.situation || '').slice(0, 200),
-                  responsibility: sub.responsibility ?? null,
-                })),
-              })),
-            });
-          } catch { /* best effort */ }
-        }
+        // 3) Build reviews snapshot via the shared builder.
+        const { buildReviewsSnapshotForAI } = await import('./reviewSnapshotBuilder.js');
+        const reviewsSnap = await buildReviewsSnapshotForAI({ userId, isAdmin, db });
 
         // 4) Run multi-source pipeline.
         const { analyzeMultiSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
@@ -3000,7 +2923,7 @@ ${filteredContent.slice(0, 30000)}`,
             sections: r.sections.map(s => ({
               id: s.id,
               name: s.name,
-              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situation ?? null })),
+              subjects: s.subjects.map(sub => ({ id: sub.id, title: sub.title, status: sub.status, situation: sub.situationExcerpt || null })),
             })),
           })),
         });
@@ -3097,31 +3020,13 @@ ${filteredContent.slice(0, 30000)}`,
       throw e;
     }
 
-    // Build the reviews snapshot.
-    const existingDocs = await db.getAllDocuments(userId, req.user!.isAdmin);
-    const reviews = [];
-    for (const d of existingDocs.slice(0, 40)) {
-      try {
-        const doc = await db.getDocumentWithSections(d.id);
-        if (!doc) continue;
-        reviews.push({
-          id: doc.id,
-          title: doc.title,
-          description: (d as { description?: string | null }).description ?? null,
-          sections: (doc.sections || []).map(s => ({
-            id: s.id,
-            name: s.name,
-            subjects: (s.subjects || []).slice(0, 20).map(sub => ({
-              id: sub.id,
-              title: sub.title,
-              status: sub.status ?? null,
-              situationExcerpt: (sub.situation || '').slice(0, 200),
-              responsibility: sub.responsibility ?? null,
-            })),
-          })),
-        });
-      } catch { /* skip this review */ }
-    }
+    // Build the reviews snapshot via the shared builder.
+    const { buildReviewsSnapshotForAI } = await import('./reviewSnapshotBuilder.js');
+    const reviews = await buildReviewsSnapshotForAI({
+      userId,
+      isAdmin: req.user!.isAdmin,
+      db,
+    });
 
     const { streamRouting } = await import('./streamingRoutingService.js');
     await streamRouting(res, {
