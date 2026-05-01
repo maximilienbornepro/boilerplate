@@ -155,9 +155,26 @@ en W".
 ### 3. `canonicalTitle`
 
 - Source unique → recopie le titre de la source.
-- Multi-sources → choisis le titre **le plus récent et le plus
-  actionnable**. Si la source la plus récente propose une reformulation
-  (ex: après contradiction), elle prime.
+- Multi-sources → choisis le titre **le plus court et le plus
+  synthétique** parmi les titres sources. Si tous sont longs, reformule
+  en groupe nominal de 3 à 8 mots.
+- **Toujours nettoyer** avant d'écrire `canonicalTitle` :
+  - Retire les numéros de ticket (`TVSMART-2089`, `#1234`),
+    versions (`v1.24.1`), dates (`04/05/2026`, `samedi soir`),
+    timestamps (`14h12`), URLs.
+  - Retire les préfixes email (`Re:`, `Fwd:`).
+  - Retire les verbes d'état (« corrigé », « validé », « annulé ») —
+    l'état part dans `evidence[].summary` / `reconciliationNote`,
+    pas dans le titre.
+- Si la source la plus récente propose une reformulation après
+  contradiction, conserve son **thème** mais applique les mêmes
+  règles de nettoyage.
+
+**Exemples** :
+- Sources « Bug TVSMART-2181 — slider âge 6 ans corrigé » + « Slider 6 ans »
+  → `canonicalTitle` = **« Slider âge 6 ans »**
+- Sources « Re: Fwd: PO-2026-0451 validation budget Q3 par direction » + « Budget Q3 »
+  → `canonicalTitle` = **« Validation budget Q3 »**
 
 ### 4. `reconciliationNote`
 

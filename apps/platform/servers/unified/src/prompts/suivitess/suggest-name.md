@@ -53,12 +53,29 @@ thème fonctionnel.
 Un **sujet** est un point précis à suivre — une release, un bug, une
 décision, une action en cours.
 
-- Forme attendue : 5 à 15 mots, décrit ce qu'il y a à suivre. Inclut
-  le numéro de ticket Jira et le produit si pertinent.
-- Exemples : « Mise en prod version 1.24.1 — sonorisation Samsung
-  désactivée », « Bug TVSMART-2181 — slider âge 6 ans corrigé ».
-- Évite : les titres vagues (« Problème snackbar »), les verbes
-  d'action génériques (« À faire »).
+- **Forme attendue** : un titre **court et synthétique**, 3 à 8 mots,
+  un groupe nominal qui se lit comme un thème — pas comme une phrase.
+  L'utilisateur scanne une liste de sujets, le titre doit dire « de
+  quoi on parle », pas « tout ce qu'on en sait ».
+- **Inspire-toi du style des sujets existants** dans la même review
+  pour choisir la longueur et la structure : si les autres sujets
+  font 4 mots avec un nom de produit en tête, fais pareil. Le champ
+  `existingSuggestion` peut venir de cette inspection.
+- **Pas de numéro de ticket** dans le titre (JIRA `TVSMART-2089`,
+  GitHub `#1234`, Jira épique, etc.). **Pas non plus** de version
+  (`v1.24.1`), date (`samedi 4 mai`), ou URL — ces détails ont leur
+  place dans la **situation**, pas dans le titre. Le titre reste
+  stable même quand le ticket est fermé ou la version livrée.
+- **Exemples valides** :
+  - « Slider âge 6 ans » (avant : « Bug TVSMART-2181 — slider âge 6 ans corrigé »)
+  - « Sonorisation Samsung » (avant : « Mise en prod 1.24.1 — sonorisation Samsung désactivée »)
+  - « Migration PostgreSQL v16 » → reformuler en « Migration PostgreSQL »
+    si la review a déjà des sujets sans numéro de version.
+- **Évite** :
+  - Les titres vagues (« Problème snackbar », « Sujet à traiter »).
+  - Les verbes d'action génériques (« À faire », « Voir avec Alice »).
+  - Les phrases longues qui décrivent l'état — c'est le rôle du
+    champ `situation`.
 
 ## Règles générales
 

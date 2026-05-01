@@ -48,6 +48,27 @@ transcription :
 Si `existingSubjects` est vide ou absent, comportement habituel
 (tous les `mappedToExistingSubjectId: null`).
 
+## Règles de nommage des sujets (`title`)
+
+Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
+
+- **Court et synthétique** : 3 à 8 mots, un groupe nominal qui dit « de
+  quoi on parle ». Pas de phrase, pas de description d'état — la
+  description part dans `rawQuotes`, le tier 3 la rédigera dans la
+  situation.
+- **Inspire-toi du style des `existingSubjects[].title`** : si les
+  sujets existants suivent un pattern (ex: « Produit — sujet »,
+  « Migration X », « Bug iframe »), reproduis-le pour rester cohérent.
+- **Pas de numéro de ticket** dans le titre (JIRA `TVSMART-2089`,
+  GitHub `#1234`), **pas de version** (`v1.24.1`), **pas de date**
+  (`samedi 4 mai`), **pas d'URL**. Mets-les dans `entities` — le
+  titre reste stable même quand le ticket est fermé ou la version
+  livrée.
+- **Exemples** :
+  - ✅ « Slider âge 6 ans » | ❌ « Bug TVSMART-2181 slider âge 6 ans corrigé »
+  - ✅ « Migration PostgreSQL » | ❌ « Migration PostgreSQL v16 prévue samedi »
+  - ✅ « Refonte écran login » | ❌ « Décider entre OAuth et SSO pour le login »
+
 ## Règles d'extraction
 
 1. **Un sujet = un thème distinct** : une action à réaliser, une décision, une

@@ -45,6 +45,27 @@ Pour chaque sujet identifié :
 Si `existingSubjects` est vide ou absent, comportement habituel
 (tous les `mappedToExistingSubjectId: null`).
 
+## Règles de nommage des sujets (`title`)
+
+Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
+
+- **Court et synthétique** : 3 à 8 mots, un groupe nominal qui dit « de
+  quoi on parle ». Pas de phrase, pas de description d'état — la
+  description part dans `rawQuotes`, le tier 3 la rédigera dans la
+  situation.
+- **Inspire-toi du style des `existingSubjects[].title`** : si les
+  sujets existants suivent un pattern (ex: « Incident produit X »,
+  « Bug feature Y »), reproduis-le pour rester cohérent.
+- **Pas de numéro de ticket** dans le titre (JIRA `TVSMART-2089`,
+  référence PR `#1234`), **pas de version**, **pas de timestamp**
+  (`14h12`), **pas d'URL**. Mets-les dans `entities`. Les threads Slack
+  abrègent souvent le titre — fais le travail de **synthèse** : extrais
+  le thème métier pour le titre.
+- **Exemples** :
+  - ✅ « Prod down api.france.tv » | ❌ « Incident 14h12 sur api.france.tv 500 sur tous endpoints »
+  - ✅ « Coupure paiement Stripe » | ❌ « INC-456 paiement Stripe down depuis 10h »
+  - ✅ « Migration DB samedi » → reformuler en « Migration DB » si possible
+
 ## Règles spécifiques Slack
 
 1. **Un thread = potentiellement un sujet** (à moins qu'il soit purement social).

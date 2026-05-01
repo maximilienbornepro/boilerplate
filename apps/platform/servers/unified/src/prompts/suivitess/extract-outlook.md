@@ -46,6 +46,27 @@ Pour chaque sujet identifié dans la chaîne d'emails :
 Si `existingSubjects` est vide ou absent, comportement habituel
 (tous les `mappedToExistingSubjectId: null`).
 
+## Règles de nommage des sujets (`title`)
+
+Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
+
+- **Court et synthétique** : 3 à 8 mots, un groupe nominal qui dit « de
+  quoi on parle ». Pas de phrase, pas de description d'état — la
+  description part dans `rawQuotes`, le tier 3 la rédigera dans la
+  situation.
+- **Inspire-toi du style des `existingSubjects[].title`** : si les
+  sujets existants suivent un pattern (ex: « Produit — sujet »,
+  « Validation budget Qx »), reproduis-le pour rester cohérent.
+- **Pas de numéro de ticket** dans le titre (JIRA `TVSMART-2089`,
+  référence PO, n° de facture), **pas de version**, **pas de date**,
+  **pas d'URL**. Mets-les dans `entities`. Les emails citent souvent
+  des références dans l'objet — extrais le **thème métier** pour le
+  titre, garde la référence dans `entities`.
+- **Exemples** :
+  - ✅ « Validation budget Q3 » | ❌ « PO-2026-0451 — validation budget Q3 par direction »
+  - ✅ « Bug OAuth iframe » | ❌ « Re: Re: Fwd: TVSMART-2089 problème iframe SFR »
+  - ✅ « Annulation mission Septembre » | ❌ « Mission septembre annulée 04/05/2026 »
+
 ## Règles spécifiques email
 
 1. **Chaîne = potentiellement plusieurs sujets** : un mail peut aborder plusieurs
