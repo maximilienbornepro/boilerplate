@@ -72,9 +72,38 @@ jamais en retirer. Voici les règles détaillées :
 - Place le nouveau sujet dans la section la plus pertinente (via `sectionId`).
 - Vérifie que le sujet n'existe pas déjà sous un titre similaire dans la même section — si oui,
   propose un `enrich` plutôt qu'un `create_subject`.
-- `situation` : résumé factuel de ce qui a été dit. **Utilise des retours à la ligne (`\n`) pour
-  séparer chaque point distinct.** Si plusieurs informations, chaque fait = une ligne. Utilise
-  des bullet points (`• `) si pertinent. Ne mets jamais tout sur une seule ligne.
+
+### Nommage du `title` (très important)
+
+- **Court et synthétique** : 3 à 8 mots, un groupe nominal qui dit « de
+  quoi on parle ». Pas une phrase, pas une description d'état — l'état
+  va dans `situation`.
+- **Inspire-toi du style des sujets existants** dans la même section /
+  dans les autres sections du document. Si les autres titres font 4 mots
+  avec un nom de produit en tête, fais pareil. La cohérence du document
+  prime sur le style générique.
+- **Pas de numéro de ticket** (JIRA `TVSMART-2089`, GitHub `#1234`,
+  référence PO), **pas de version** (`v1.24.1`), **pas de date**
+  (`samedi 4 mai`), **pas d'URL**, **pas de préfixe email** (`Re:`,
+  `Fwd:`) dans le `title`. Ces détails ont leur place dans `situation`,
+  pas dans le titre. Le titre reste stable même quand le ticket est
+  fermé ou la version livrée.
+- **Pas de verbe d'état** dans le titre (« corrigé », « validé »,
+  « annulé ») — l'état est dans le champ `status` et la timeline dans
+  la `situation`.
+- **Exemples** :
+  - ✅ « Slider âge 6 ans » | ❌ « Bug TVSMART-2181 slider âge 6 ans corrigé »
+  - ✅ « Migration PostgreSQL » | ❌ « Migration PostgreSQL v16 prévue samedi »
+  - ✅ « Validation budget Q3 » | ❌ « Re: Re: Fwd: PO-2026-0451 budget Q3 validé par direction »
+
+### Champs du sujet
+
+- `situation` : résumé factuel de ce qui a été dit, **avec tous les
+  détails** (numéros de ticket, versions, dates, références) qui
+  n'ont pas leur place dans le titre. **Utilise des retours à la ligne
+  (`\n`) pour séparer chaque point distinct.** Si plusieurs
+  informations, chaque fait = une ligne. Utilise des bullet points
+  (`• `) si pertinent. Ne mets jamais tout sur une seule ligne.
 - **Indentation : uniquement des tabulations `\t` (vrais caractères tab), JAMAIS d'espaces.**
   SuiviTess gère `Tab` / `Maj+Tab` pour indenter / désindenter. Un niveau = un tab.
 - `status` : l'un de `"🔴 à faire"`, `"🟡 en cours"`, `"🟢 terminé"`, `"🟣 bloqué"`.
@@ -123,11 +152,11 @@ Ils doivent être ignorés dans l'analyse :
     "action": "create_subject",
     "sectionId": "uuid-de-la-section",
     "sectionName": "nom de la section (pour affichage)",
-    "title": "Titre du nouveau sujet",
-    "situation": "Description factuelle...",
+    "title": "Slider âge 6 ans",
+    "situation": "Bug TVSMART-2181 sur le slider âge 6 ans signalé en prod le 04/05.\n• Reproduit sur Samsung 2024.\n• Fix prévu en v1.24.2.",
     "responsibility": "Alice",
-    "status": "🔴 à faire",
-    "reason": "Sujet non couvert dans le document actuel."
+    "status": "🟡 en cours",
+    "reason": "Sujet non couvert dans le document actuel — détails (ticket, version, date) dans la situation."
   },
   {
     "action": "create_section",

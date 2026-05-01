@@ -80,7 +80,19 @@ Si le sujet n'est pas un doublon :
    section** → utilise le **même `suggestedNewSectionName`** pour tous. Le
    backend ne créera la section qu'une seule fois.
 3. **Aucune section ne colle** → `action: "create_section"` avec
-   `suggestedNewSectionName` explicite (ex : `"Call Amazon — 15 avril"`).
+   `suggestedNewSectionName` explicite, **court** (1 à 3 mots, type
+   « Releases », « Bugs SmartTV ») et inspiré du style des autres
+   sections du document. Évite les noms trop longs ou datés type
+   « Call Amazon — 15 avril » : préfère « Partenaires Amazon » et
+   laisse la date dans la situation des sujets.
+
+### Rappel sur les titres de sujets (transmis par le tier 1)
+
+Les titres viennent déjà nettoyés du tier 1 — courts, synthétiques,
+sans numéro de ticket / version / date. **Ne les reformule pas** dans
+ta sortie : tu travailles uniquement sur les décisions de placement.
+Si tu dois citer un titre dans `targetSubjectTitle` (action `enrich`),
+recopie le `title` du sujet existant tel qu'il est dans le document.
 
 ## Règles absolues
 
@@ -103,10 +115,10 @@ Si le sujet n'est pas un doublon :
     "subjectIndex": 0,
     "action": "enrich",
     "targetSubjectId": "uuid-sujet-existant",
-    "targetSubjectTitle": "Migration PostgreSQL v16",
+    "targetSubjectTitle": "Migration PostgreSQL",
     "sectionId": "uuid-section",
     "sectionName": "Infra",
-    "reason": "Titre identique + mêmes entités (PostgreSQL, migration)."
+    "reason": "Mêmes entités (PostgreSQL, migration), même responsable."
   },
   {
     "subjectIndex": 1,
@@ -118,7 +130,7 @@ Si le sujet n'est pas un doublon :
   {
     "subjectIndex": 2,
     "action": "create_section",
-    "suggestedNewSectionName": "Call Amazon — 15 avril",
+    "suggestedNewSectionName": "Partenaires Amazon",
     "reason": "Aucune section existante ne couvre ce partenaire."
   }
 ]

@@ -149,10 +149,21 @@ Ils doivent être ignorés dans l'analyse :
 
 Chaque sujet extrait doit porter :
 
-- `title` (≤ 100 caractères) : titre actionnable, clair.
-- `situation` : résumé factuel de ce qui a été dit. **Utilise des retours à la ligne (`\n`) pour
-  séparer chaque point distinct.** Si plusieurs informations sont extraites, chaque fait = une
-  ligne. Utilise des bullet points (`• `) si pertinent. Ne mets jamais tout sur une seule ligne.
+- `title` : **court et synthétique**, 3 à 8 mots, un groupe nominal qui
+  dit « de quoi on parle ». Inspire-toi du style des sujets existants
+  dans la review choisie pour rester cohérent. **Pas de numéro de
+  ticket** (JIRA `TVSMART-2089`, GitHub `#1234`), **pas de version**
+  (`v1.24.1`), **pas de date**, **pas d'URL**, **pas de préfixe email**
+  (`Re:`, `Fwd:`), **pas de verbe d'état** (« corrigé », « validé ») —
+  ces détails partent dans `situation`. Le titre reste stable même
+  quand le ticket est fermé. Exemples : ✅ « Slider âge 6 ans »,
+  ✅ « Migration PostgreSQL », ❌ « Bug TVSMART-2181 slider 6 ans corrigé ».
+- `situation` : résumé factuel de ce qui a été dit, **avec tous les
+  détails** (numéros de ticket, versions, dates, références) qui n'ont
+  pas leur place dans le titre. **Utilise des retours à la ligne (`\n`)
+  pour séparer chaque point distinct.** Si plusieurs informations sont
+  extraites, chaque fait = une ligne. Utilise des bullet points (`• `)
+  si pertinent. Ne mets jamais tout sur une seule ligne.
 - **Indentation : uniquement des tabulations `\t` (vrais caractères tab), JAMAIS d'espaces.**
   SuiviTess gère `Tab` / `Maj+Tab` pour indenter / désindenter. Un niveau = un tab.
 - `status` : l'un de `"🔴 à faire"`, `"🟡 en cours"`, `"🟢 terminé"`, `"🟣 bloqué"`.
@@ -165,8 +176,8 @@ Chaque sujet extrait doit porter :
   "summary": "1 phrase : ce que tu as compris de la transcription (ex: 'Point hebdo tech — 4 sujets extraits : 2 mises à jour de sujets existants, 2 nouveaux sujets dans la review Hebdo Tech').",
   "subjects": [
     {
-      "title": "Migration PostgreSQL v16",
-      "situation": "Mise à jour du 15/03 : tests staging terminés, prod prévue mercredi.",
+      "title": "Migration PostgreSQL",
+      "situation": "Mise à jour du 15/03 : tests staging v16 terminés, prod prévue mercredi.",
       "status": "🟡 en cours",
       "responsibility": "Alice",
       "action": "existing-review",
@@ -177,11 +188,11 @@ Chaque sujet extrait doit porter :
       "suggestedNewSectionName": null,
       "subjectAction": "update-existing-subject",
       "targetSubjectId": "uuid-du-sujet-déjà-suivi",
-      "updatedSituation": "Mise à jour du 15/03 : tests staging terminés, prod prévue mercredi.",
+      "updatedSituation": "Mise à jour du 15/03 : tests staging v16 terminés, prod prévue mercredi.",
       "updatedStatus": "🟡 en cours",
       "updatedResponsibility": "Alice",
       "confidence": "high",
-      "reasoning": "Sujet 'Migration DB' déjà suivi en section Backend — passage de 🔴 à 🟡 après validation staging."
+      "reasoning": "Sujet 'Migration PostgreSQL' déjà suivi en section Backend — passage de 🔴 à 🟡 après validation staging."
     },
     {
       "title": "Recueil besoins UX",
