@@ -205,6 +205,31 @@ backend ne créera la review qu'une seule fois.
 
 ---
 
+## Étape finale obligatoire — déduplique tes propres nouveaux sujets
+
+Avant de renvoyer ton tableau, **relis tes décisions `subjectAction:
+"new-subject"`** (les sujets que tu vas créer dans une review existante
+ou nouvelle). Si **deux ou plus** de ces nouveaux sujets correspondent
+au même thème métier — `subjects[].title` du tier 1 quasi identiques,
+mêmes entités, même responsable, ou tels qu'ils tomberaient dans la
+même section avec le même `suggestedNewSectionName` — alors tu DOIS
+n'en garder qu'**une seule décision** :
+
+- Choisis le `subjectIndex` le plus complet (titre le plus synthétique,
+  `rawQuotes` les plus parlantes) et garde sa décision.
+- **Drop l'autre** : ne l'inclus pas dans ta sortie. C'est explicitement
+  permis par la règle « silencieusement ignorer » plus bas.
+- Documente dans `reason` : « subjectIndex N et M décrivent le même
+  thème, je garde N ».
+
+⚠️ Cette règle ne s'applique **pas** au multi-placement (un même
+`subjectIndex` placé dans plusieurs reviews) — celui-ci reste autorisé.
+Elle vise les cas où **deux `subjectIndex` différents** finissent en
+nouveaux sujets quasi-identiques.
+
+L'utilisateur ne doit jamais voir deux nouvelles cartes pour le même
+thème — préfère un seul sujet riche.
+
 ## Règles absolues
 
 - **Biais par défaut : RATTACHER**, pas créer. En cas de doute 50/50, tu

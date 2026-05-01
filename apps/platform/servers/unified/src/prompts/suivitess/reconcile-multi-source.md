@@ -197,6 +197,25 @@ Chaque `subjectIndex` de chaque source doit apparaître **exactement une
 fois** dans la sortie (dans un consolidé ou en pass-through). Ne perds
 aucun sujet.
 
+### 7. Étape finale — relecture anti-doublons sur tes consolidés
+
+Une fois ta liste consolidée prête, **relis tous les `canonicalTitle`**
+(consolidés + pass-through) et vérifie qu'aucun couple ne décrit le même
+thème métier. Si tu trouves deux entrées avec :
+
+- des `canonicalTitle` quasi identiques (mêmes mots-clés, reformulation
+  superficielle), OU
+- des `entities` qui se recoupent largement **et** des participants en
+  commun,
+
+c'est que tu as raté une fusion à l'étape 1. **Refusionne-les** :
+combine leurs `evidence[]` (toutes les sources gardent leur place,
+triées par `ts`), choisis le `canonicalTitle` le plus synthétique, et
+adapte `chronology` / `reconciliationNote` au nouveau périmètre.
+
+L'utilisateur ne doit jamais voir deux nouvelles cartes pour le même
+sujet — c'est le rôle principal de ce skill.
+
 ---
 
 ## Exemples

@@ -135,6 +135,26 @@ Ils doivent être ignorés dans l'analyse :
   transcription apporte une info fondamentalement nouvelle qui justifie un nouveau sujet.
 - **Les conserver** tels quels dans la situation existante (ne pas les supprimer du texte).
 
+## Étape finale obligatoire — déduplique tes propres nouveaux sujets
+
+Avant de renvoyer ta sortie, **relis tous les éléments où
+`subjectAction: "new-subject"`** (les sujets que tu vas créer, qu'ils
+aillent dans une review existante ou nouvelle). Si **deux ou plus** de
+ces nouveaux sujets correspondent au même thème métier — titres quasi
+identiques, mêmes entités, même responsable, ou décrivant manifestement
+le même fait — alors tu DOIS n'en garder qu'**un seul** :
+
+- Choisis le titre le plus synthétique (cf. règles de nommage).
+- Combine les `situation` en une seule (chaque fait sur sa propre ligne,
+  pas de redite).
+- Garde le `responsibility` non-null s'il y en a un.
+- Garde le `status` le plus à jour.
+- **Drop les autres** : ne les inclus pas dans `subjects[]`.
+- Documente dans `reasoning` (« 2 mentions du même sujet — fusionné »).
+
+L'utilisateur ne doit jamais voir deux cartes « nouveau sujet » qui
+décrivent le même thème.
+
 ## Règles absolues
 
 - Ne supprime jamais de review ou de section existante.

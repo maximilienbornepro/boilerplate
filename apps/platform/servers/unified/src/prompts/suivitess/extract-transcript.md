@@ -93,6 +93,29 @@ Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
      `"medium"` si le contour est flou, `"low"` si c'est juste une mention
      passagère qui pourrait ne pas mériter un suivi.
 
+## Étape finale obligatoire — déduplique tes propres nouveaux sujets
+
+Avant de renvoyer ton tableau, **relis la liste des sujets que tu as
+créés** (`mappedToExistingSubjectId: null`). Si **deux ou plus** d'entre
+eux ont :
+
+- des titres quasi identiques (mêmes mots-clés, reformulation
+  superficielle — ex : « Bug paiement Stripe » et « Incident paiement
+  Stripe » sont le même sujet), OU
+- les mêmes `entities` principales **ET** le même `responsibilityHint`, OU
+- des `rawQuotes` qui décrivent manifestement le même fait sous deux
+  angles (la même décision racontée deux fois dans le call),
+
+alors **fusionne-les en une seule entrée** avant de renvoyer :
+
+- Garde le titre **le plus synthétique** (cf. règles de nommage).
+- Combine les `rawQuotes` (max 3 au total, en gardant les plus
+  parlantes) et les `participants` / `entities` (déduplique).
+- Réindexe : la sortie a des `index` consécutifs à partir de 0.
+
+Le but : l'utilisateur ne doit jamais voir deux nouvelles cartes qui
+décrivent le même thème. Mieux vaut un sujet riche qu'un doublon.
+
 ## Règles absolues
 
 - **Jamais inventer** de fait, de chiffre, de nom absent des `rawQuotes`.

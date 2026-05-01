@@ -130,6 +130,28 @@ Ils doivent être ignorés dans l'analyse :
   transcription apporte une info fondamentalement nouvelle qui justifie un nouveau `appendText`.
 - **Les conserver** tels quels dans la situation existante (ne pas les supprimer du texte).
 
+## Étape finale obligatoire — déduplique tes propres nouveaux sujets
+
+Avant de renvoyer ton tableau, **relis toutes tes propositions
+`create_subject` et `create_section` → `subjects[]`** (les sujets que tu
+vas créer). Si **deux ou plus** de ces nouveaux sujets correspondent au
+même thème métier — titres quasi identiques, mêmes entités, même
+responsable, ou décrivant manifestement le même fait — alors tu DOIS
+n'en garder qu'**un seul** :
+
+- Choisis le titre le plus synthétique (cf. règles de nommage).
+- Combine les `situation` en une seule (chaque fait sur sa propre
+  ligne, pas de redite).
+- Garde le `responsibility` non-null s'il y en a un.
+- Garde le `status` le plus à jour (🟢 > 🟡 > 🔴 > 🟣 si plusieurs
+  signaux — préfère le statut explicitement énoncé en dernier).
+- **Drop les autres propositions** : ne les inclus pas dans la sortie.
+- Documente dans `reason` que tu as fusionné (« 2 mentions du même
+  sujet dans la source — fusionné en un seul »).
+
+L'utilisateur ne doit jamais voir deux cartes « nouveau sujet » qui
+décrivent le même thème — préfère un seul sujet riche.
+
 ## Règles générales
 
 - Ignore les sujets triviaux, le bavardage, les salutations, les hors-sujets.

@@ -94,6 +94,25 @@ ta sortie : tu travailles uniquement sur les décisions de placement.
 Si tu dois citer un titre dans `targetSubjectTitle` (action `enrich`),
 recopie le `title` du sujet existant tel qu'il est dans le document.
 
+## Étape finale obligatoire — déduplique tes propres nouveaux sujets
+
+Avant de renvoyer ton tableau, **relis tes décisions `create_subject`**
+(les sujets que tu vas créer). Si **deux ou plus** de ces nouveaux
+sujets correspondent au même thème — titres `subjects[].title` du tier 1
+quasi identiques, mêmes entités, même responsable — alors tu DOIS
+n'en garder qu'**un seul** :
+
+- Choisis l'entrée la plus complète (titre le plus synthétique,
+  `rawQuotes` les plus parlantes — tu n'écris pas mais le tier 3 les
+  consommera) et garde sa décision `create_subject`.
+- **Drop l'autre** : ne l'inclus pas dans ta sortie. C'est explicitement
+  permis par la règle « silencieusement ignorer » ci-dessous.
+- Documente dans `reason` que tu as fusionné : « subjectIndex N et M
+  décrivent le même thème, je garde N ».
+
+L'utilisateur ne doit jamais voir deux cartes « nouveau sujet » qui
+décrivent le même thème — préfère un seul sujet riche.
+
 ## Règles absolues
 
 - **Ne rédige pas** `appendText` ni `situation`. Tu ne produis que des décisions.

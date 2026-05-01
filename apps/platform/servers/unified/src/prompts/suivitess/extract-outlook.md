@@ -97,6 +97,31 @@ Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
 10. **Indices** (`statusHint`, `responsibilityHint`, `confidence`) si clair,
     sinon `null`.
 
+## Étape finale obligatoire — déduplique tes propres nouveaux sujets
+
+Avant de renvoyer ton tableau, **relis la liste des sujets que tu as
+créés** (`mappedToExistingSubjectId: null`). Une chaîne d'emails revient
+souvent sur le même point (réponse, relance, transfert) — tu ne dois
+sortir qu'**une seule entrée** par thème métier.
+
+Fusionne deux nouveaux sujets si :
+
+- les titres sont quasi identiques (mêmes mots-clés, reformulation
+  superficielle), OU
+- les mêmes `entities` principales **ET** le même `responsibilityHint`, OU
+- les `rawQuotes` décrivent manifestement la même décision / le même
+  blocage, juste à des moments différents de l'échange.
+
+Pour la fusion :
+
+- Garde le titre **le plus synthétique** (cf. règles de nommage).
+- Combine les `rawQuotes` (max 3 au total) — privilégie la plus
+  récente et la plus complète. Préfixe par auteur si plusieurs.
+- Déduplique `participants` et `entities`.
+- Réindexe : `index` consécutifs à partir de 0.
+
+L'utilisateur ne doit jamais voir deux cartes pour le même thème.
+
 ## Règles absolues
 
 - **Jamais inventer** de fait, de chiffre, de nom absent des `rawQuotes`.
