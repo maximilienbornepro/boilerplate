@@ -655,6 +655,37 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
         };
       });
 
+      // Merge freshly-created reviews + sections into the local
+      // `availableReviews` snapshot so subsequent rows targeting the
+      // same review/section see them as already-existing. Without
+      // this, the AI's "+ Créer X" decision card stayed visible on
+      // row N+1 even after row N's import had created X — the
+      // backend dedup-by-name still routed correctly, but the UI was
+      // confusing.
+      if (res.reviewsCreated.length > 0 || res.sectionsCreated.length > 0) {
+        setAvailableReviews(prev => {
+          const next = [...prev];
+          // Add freshly-created reviews (no sections yet — they're added below).
+          for (const rv of res.reviewsCreated) {
+            if (!next.some(r => r.id === rv.id)) {
+              next.push({ id: rv.id, title: rv.title, sections: [] });
+            }
+          }
+          // Append sections to their parent review.
+          for (const sec of res.sectionsCreated) {
+            const idx = next.findIndex(r => r.id === sec.reviewId);
+            if (idx === -1) continue;
+            const review = next[idx];
+            if (review.sections.some(s => s.id === sec.id)) continue;
+            next[idx] = {
+              ...review,
+              sections: [...review.sections, { id: sec.id, name: sec.name, subjects: [] }],
+            };
+          }
+          return next;
+        });
+      }
+
       // Remove the committed row from the list so the user sees exactly
       // what's left to process.
       setRows(prev => prev.filter(r => r.key !== rowKey));
@@ -1180,17 +1211,11 @@ function SubjectRow({
   const { subject, reviewId, newReviewTitle, sectionId, newSectionName, subjectAction, targetSubjectId, skipped, mode, sectionMode } = row;
   // Only show inline "required field" error after the user attempted to confirm.
   const [showValidation, setShowValidation] = useState(false);
-  /** Progressive-disclosure wizard step. `null` means the form is
-   *  collapsed — the user only sees the AI decision card + the big
-   *  "Importer" / "Je ne suis pas d'accord" CTAs. Once they disagree,
-   *  we walk them through review → section → subject one field at a
-   *  time, each step pre-selecting the AI's choice + letting them
-   *  change it. This avoids overwhelming the user with a 3-field form
-   *  they often don't need to touch. */
-  const [editStep, setEditStep] = useState<null | 'review' | 'section' | 'subject'>(null);
-  // When a fresh tile is mounted we always want the form collapsed —
-  // the AI's proposal is the default. The parent drives this via
-  // re-mounting on row change (currentKey change).
+  // The wizard (review → section → subject step-by-step form) was
+  // removed entirely : the user accepts the AI proposal as-is via
+  // "Importer" or skips it via "Ignorer", and edits inline in the
+  // SuiviTess UI after import. Validation failures still highlight
+  // missing fields via showValidation.
 
   /** Loading state while the append-situation skill is running on the
    *  backend. Blocks the CTAs so the user can't import a half-baked
@@ -1828,392 +1853,6 @@ function SubjectRow({
         );
       })()}
 
-      {/* ── Progressive-disclosure wizard ──
-          By default the form is hidden and the user sees only the AI
-          decision card + the big CTAs below. Clicking "Je ne suis pas
-          d'accord" opens the wizard at step 1 (review). Each step
-          pre-selects the AI's proposal and lets the user override, then
-          "Valider l'étape" advances to the next one. On the final step,
-          the primary button triggers the immediate-add. */}
-      {editStep !== null && (() => {
-        // All 3 steps are always part of the wizard now — the subject
-        // step lets the user pick an existing subject to append to even
-        // when the AI proposed a fresh one, and it also surfaces the
-        // "aucun sujet existant" case explicitly so the user always
-        // sees what will happen.
-        // Review step is dropped when the destination is fixed by the
-        // parent (per-suivitess import). User only chooses section + subject.
-        const steps: Array<'review' | 'section' | 'subject'> = reviewLocked
-          ? ['section', 'subject']
-          : ['review', 'section', 'subject'];
-        const stepIdx = steps.indexOf(editStep);
-        const stepNumber = stepIdx + 1;
-        const stepLabel = editStep === 'review' ? 'Review' : editStep === 'section' ? 'Section' : 'Sujet';
-        return (
-          <div className={styles.wizardBreadcrumb}>
-            <span className={styles.wizardStepBadge}>
-              Étape {stepNumber} sur {steps.length}
-            </span>
-            <span className={styles.wizardStepLabel}>{stepLabel}</span>
-            <button
-              type="button"
-              className={styles.wizardCancelBtn}
-              onClick={() => { setEditStep(null); setShowValidation(false); }}
-              title="Revenir à la proposition IA (abandonner les modifications en cours)"
-            >
-              Annuler mes modifications
-            </button>
-          </div>
-        );
-      })()}
-
-      {/* Locked summary : when we're past review/section step, show the
-          previously-chosen values as read-only info at the top of the
-          form so the user stays oriented. The "Modifier" back-button
-          was removed — the user can edit any field directly via the
-          inline dropdowns in the SuiviTess UI after import, no need
-          for an in-wizard back-step. */}
-      {editStep === 'section' && (
-        <div className={styles.wizardLockedInfo}>
-          <span className={styles.wizardLockedLabel}>Review choisie :</span>
-          <strong>{mode === 'create' ? (newReviewTitle || 'Nouvelle review (sans titre)') : (reviews.find(r => r.id === reviewId)?.title ?? '—')}</strong>
-        </div>
-      )}
-      {editStep === 'subject' && (
-        <div className={styles.wizardLockedInfo}>
-          <span className={styles.wizardLockedLabel}>Review :</span>
-          <strong>{mode === 'create' ? (newReviewTitle || 'Nouvelle review (sans titre)') : (reviews.find(r => r.id === reviewId)?.title ?? '—')}</strong>
-          <span className={styles.wizardLockedSep}>›</span>
-          <span className={styles.wizardLockedLabel}>Section :</span>
-          <strong>{sectionMode === 'new' ? (newSectionName || 'Nouvelle section (sans nom)') : (currentSection?.name ?? '—')}</strong>
-        </div>
-      )}
-
-      <div className={styles.routing} style={{ display: editStep === null ? 'none' : undefined }}>
-        {/* ── REVIEW STEP ──
-            Single unified dropdown : "+ Créer une nouvelle review" is
-            the first option, followed by existing reviews. Picking
-            "+ Créer…" switches the row to create-mode and surfaces an
-            inline text input for the new title. No more segmented
-            toggle — one decision, one dropdown. */}
-        {editStep === 'review' && (
-        <div className={styles.routingField}>
-          <div className={styles.routingLabelRow}>
-            <label>
-              Review de destination
-              <span className={styles.requiredMark}>*</span>
-            </label>
-            {mode === 'create' && subject.suggestedNewReviewTitle && (
-              <span className={styles.aiHint}>Suggestion IA</span>
-            )}
-          </div>
-          <CustomDropdown
-            value={mode === 'create' ? '__new__' : (reviewId ?? '')}
-            displayLabel={
-              mode === 'create'
-                ? <span className={styles.dropdownNewOption}>+ Créer « {newReviewTitle || subject.suggestedNewReviewTitle || 'nouvelle review'} »</span>
-                : reviewId ? (reviews.find(r => r.id === reviewId)?.title ?? '—') : 'Sélectionner une review…'
-            }
-            disabled={skipped}
-            className={showValidation && !reviewId && !newReviewTitle.trim() ? styles.dropdownError : ''}
-            options={[
-              {
-                value: '__new__',
-                label: (
-                  <span className={styles.dropdownNewOption}>
-                    + Créer une nouvelle review{subject.suggestedNewReviewTitle && <em className={styles.dropdownNewHint}> « {subject.suggestedNewReviewTitle} »</em>}
-                  </span>
-                ),
-              },
-              ...(reviews.length > 0 ? [{ value: '__sep__', label: 'Reviews existantes' }] : []),
-              ...reviews.map(r => ({ value: r.id, label: r.title })),
-            ]}
-            onChange={(val) => {
-              if (val === '__new__') {
-                // Already in create-mode → no-op so we don't wipe an
-                // edited `newReviewTitle` or a just-chosen sectionMode.
-                if (mode === 'create') return;
-                onUpdate({
-                  mode: 'create',
-                  reviewId: null,
-                  sectionId: null,
-                  sectionMode: 'new',
-                  newReviewTitle: newReviewTitle || subject.suggestedNewReviewTitle || 'Nouvelle review',
-                });
-              } else {
-                // Re-picking the SAME review → no-op, otherwise we'd
-                // wipe the AI-picked sectionId and force the user to
-                // re-choose a section they never wanted to change.
-                if (mode === 'existing' && reviewId === val) return;
-                onUpdate({ mode: 'existing', reviewId: val, sectionId: null, sectionMode: 'existing' });
-              }
-            }}
-          />
-        </div>
-        )}
-
-        {/* ── SECTION STEP ──
-            Single dropdown : "+ Créer une nouvelle section (nom suggéré)"
-            at top, then existing sections of the chosen review. When
-            the review is itself new, only the "+ Créer" option shows
-            (no existing sections to pick from yet). Same UX as the
-            review step — no more segmented toggle. */}
-        {editStep === 'section' && (() => {
-          const hasExistingSections = mode === 'existing' && !!currentReview && currentReview.sections.length > 0;
-          const suggestedSectionName = newSectionName || subject.suggestedNewSectionName || 'nouvelle section';
-          return (
-            <div className={styles.routingField}>
-              <div className={styles.routingLabelRow}>
-                <label>
-                  Section
-                  <span className={styles.requiredMark}>*</span>
-                </label>
-                {sectionMode === 'new' && subject.suggestedNewSectionName && (
-                  <span className={styles.aiHint}>Suggestion IA</span>
-                )}
-                {sameNewSectionCount >= 2 && sectionMode === 'new' && newSectionName.trim() && (
-                  <span
-                    className={styles.clusterHint}
-                    title={`${sameNewSectionCount} sujets seront regroupés dans la même nouvelle section "${newSectionName.trim()}" (dédupliqué au moment de l'import).`}
-                  >
-                    {sameNewSectionCount} sujets regroupés
-                  </span>
-                )}
-              </div>
-              <CustomDropdown
-                value={
-                  sectionMode === 'new'
-                    // Sibling-pending : the row's newSectionName matches one
-                    // of the pending names → expose the value as
-                    // `__pending::<name>` so the user sees the cluster
-                    // it'll join (instead of "+ Créer …" which suggested
-                    // a fresh creation).
-                    ? (newSectionName.trim() && pendingNewSectionNames.includes(newSectionName.trim())
-                        ? `__pending::${newSectionName.trim()}`
-                        : '__new__')
-                    : (sectionId ?? '')
-                }
-                displayLabel={
-                  sectionMode === 'new'
-                    ? (newSectionName.trim() && pendingNewSectionNames.includes(newSectionName.trim())
-                        ? <span className={styles.dropdownNewOption}>↳ Réutiliser « {newSectionName.trim()} » (en cours dans cet import)</span>
-                        : <span className={styles.dropdownNewOption}>+ Créer « {suggestedSectionName} »</span>)
-                    : sectionId
-                      ? (currentReview?.sections.find(s => s.id === sectionId)?.name ?? '—')
-                      : 'Sélectionner une section…'
-                }
-                disabled={skipped}
-                className={showValidation && !sectionId && !newSectionName.trim() ? styles.dropdownError : ''}
-                options={[
-                  {
-                    value: '__new__',
-                    label: (
-                      <span className={styles.dropdownNewOption}>
-                        + Créer une nouvelle section{subject.suggestedNewSectionName && <em className={styles.dropdownNewHint}> « {subject.suggestedNewSectionName} »</em>}
-                      </span>
-                    ),
-                  },
-                  // Sections proposed by SIBLING rows in the same batch.
-                  // Picking one routes the current subject into that
-                  // pending cluster (backend dedups by name on apply).
-                  ...(pendingNewSectionNames.length > 0
-                    ? [{ value: '__pending-sep__', label: 'Nouvelles sections en cours dans cet import' }]
-                    : []),
-                  ...pendingNewSectionNames.map(name => ({
-                    value: `__pending::${name}`,
-                    label: <span>↳ {name}</span>,
-                  })),
-                  ...(hasExistingSections ? [{ value: '__sep__', label: 'Sections existantes' }] : []),
-                  ...(hasExistingSections ? currentReview!.sections.map(s => ({ value: s.id, label: s.name })) : []),
-                ]}
-                onChange={(val) => {
-                  if (val === '__new__') {
-                    onUpdate({
-                      sectionMode: 'new',
-                      sectionId: null,
-                      subjectAction: 'create',
-                      targetSubjectId: null,
-                    });
-                    if (!newSectionName.trim() && subject.suggestedNewSectionName) {
-                      onRenameNewSection(subject.suggestedNewSectionName);
-                    }
-                  } else if (typeof val === 'string' && val.startsWith('__pending::')) {
-                    // Join an in-flight section cluster proposed by another
-                    // row of this same import. The backend dedups by name
-                    // on apply, so all rows pointing at the same name end
-                    // up in a single newly-created section.
-                    const pendingName = val.slice('__pending::'.length);
-                    onUpdate({
-                      sectionMode: 'new',
-                      sectionId: null,
-                      subjectAction: 'create',
-                      targetSubjectId: null,
-                    });
-                    onRenameNewSection(pendingName);
-                  } else {
-                    onUpdate({ sectionMode: 'existing', sectionId: val, subjectAction: 'create', targetSubjectId: null });
-                  }
-                }}
-              />
-            </div>
-          );
-        })()}
-
-        {/* ── SUBJECT STEP ──
-            Always rendered. Single dropdown with "+ Créer un nouveau
-            sujet" at top, then existing subjects of the chosen section
-            shown as "Ajouter comme état de situation à : <titre>" — the
-            user can ALWAYS choose to attach the new content to an
-            existing subject even when the AI proposed a fresh one. */}
-        {editStep === 'subject' && (
-          <div className={`${styles.routingField} ${styles.routingFieldFull}`}>
-            <label>
-              Action sur le sujet
-              <span className={styles.requiredMark}>*</span>
-            </label>
-            <CustomDropdown
-              value={subjectAction === 'update' ? (targetSubjectId ?? '') : '__new__'}
-              displayLabel={
-                subjectAction === 'update' && targetSubjectId
-                  ? <>Ajouter comme état de situation à : <strong>{currentSection?.subjects.find(s => s.id === targetSubjectId)?.title ?? '—'}</strong></>
-                  : <span className={styles.dropdownNewOption}>+ Créer un nouveau sujet « {subject.title} »</span>
-              }
-              disabled={skipped}
-              className={showValidation && subjectAction === 'update' && !targetSubjectId ? styles.dropdownError : ''}
-              options={[
-                {
-                  value: '__new__',
-                  label: (
-                    <span className={styles.dropdownNewOption}>
-                      + Créer un nouveau sujet <em className={styles.dropdownNewHint}>« {subject.title} »</em>
-                    </span>
-                  ),
-                },
-                ...(currentSection && currentSection.subjects.length > 0
-                  ? [{ value: '__sep__', label: 'Ou ajouter comme état de situation à un sujet existant' }]
-                  : []),
-                ...(currentSection?.subjects.map(s => ({ value: s.id, label: s.title })) ?? []),
-              ]}
-              onChange={(val) => {
-                if (val === '__new__') {
-                  onUpdate({ subjectAction: 'create', targetSubjectId: null });
-                } else {
-                  onUpdate({ subjectAction: 'update', targetSubjectId: val });
-                }
-              }}
-            />
-            {(!currentSection || currentSection.subjects.length === 0) && (
-              <span className={styles.hint}>
-                Aucun sujet existant dans cette section — le sujet sera créé comme nouveau.
-              </span>
-            )}
-
-            {/* Preview for the "create new subject" path : shows the
-                état de situation that will become the subject's initial
-                `situation` on import. Falls back to the on-demand
-                composed text when the IA didn't provide one
-                (user-overridden update → create path). */}
-            {subjectAction === 'create' && (() => {
-              const effectiveSituation = row.overrideSituation ?? subject.situation ?? '';
-              if (!effectiveSituation.trim() && !generatingAppend) return null;
-              const lines = effectiveSituation.split('\n').filter(l => l.trim().length > 0);
-              const renderLine = (text: string) => {
-                const parts = text.split(/(~~[^~]+~~)/g);
-                return parts.map((p, i) => p.startsWith('~~') && p.endsWith('~~')
-                  ? <s key={i} className={styles.situationPreviewStrike}>{p.slice(2, -2)}</s>
-                  : <span key={i}>{p}</span>);
-              };
-              return (
-                <div className={styles.situationPreview}>
-                  <div className={styles.situationPreviewLabel}>
-                    Aperçu du nouveau sujet qui sera créé
-                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · IA en cours…</span>}
-                  </div>
-                  <div className={styles.situationPreviewBody}>
-                    <div className={styles.situationPreviewNewSubjectTitle}>
-                      <strong>« {subject.title} »</strong>
-                      <span className={styles.situationPreviewNewSubjectStatus}>
-                        {' · '}
-                        <StatusTag label={getStatusOption(subject.status).label} color={getStatusOption(subject.status).color} />
-                      </span>
-                      {subject.responsibility && (
-                        <span className={styles.situationPreviewNewSubjectResp}>
-                          {' · '}
-                          <span className={styles.responsibilityBadge}>{subject.responsibility}</span>
-                        </span>
-                      )}
-                    </div>
-                    <div className={styles.situationPreviewSep}>───── état de situation ─────</div>
-                    {generatingAppend && lines.length === 0 ? (
-                      <div className={styles.situationPreviewGeneratingBlock}>
-                        L'IA compose l'état de situation à partir des extraits sources…
-                      </div>
-                    ) : lines.map((l, i) => (
-                      <div key={`cs-${i}`} className={styles.situationPreviewNew}>{renderLine(l)}</div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Wizard preview of the full situation after import. Only
-                rendered when there's actually an append to preview
-                (newLines.length > 0) OR the IA is currently generating
-                one — otherwise the block would just echo the existing
-                situation which is pointless (the decision card above
-                already shows it). */}
-            {subjectAction === 'update' && targetSubjectId && currentSection && (() => {
-              const target = currentSection.subjects.find(s => s.id === targetSubjectId);
-              if (!target) return null;
-              // Prefer the frontend-regenerated append when available.
-              const appendSource = row.overrideUpdatedSituation
-                ?? subject.updatedSituation
-                ?? '';
-              const newLines = appendSource.split('\n').filter(l => l.trim().length > 0);
-              // Nothing new AND not currently generating → skip the
-              // whole block. Showing "existing lines then (aucun nouveau
-              // contenu)" was noise.
-              if (newLines.length === 0 && !generatingAppend) return null;
-              const existing = (target.situation ?? '').split('\n').filter(l => l.trim().length > 0);
-              const lastLines = existing.slice(-4);
-              const renderLine = (text: string) => {
-                const parts = text.split(/(~~[^~]+~~)/g);
-                return parts.map((p, i) => p.startsWith('~~') && p.endsWith('~~')
-                  ? <s key={i} className={styles.situationPreviewStrike}>{p.slice(2, -2)}</s>
-                  : <span key={i}>{p}</span>);
-              };
-              return (
-                <div className={styles.situationPreview}>
-                  <div className={styles.situationPreviewLabel}>
-                    Aperçu de la situation après import
-                    {generatingAppend && <span className={styles.situationPreviewGenerating}> · IA en cours…</span>}
-                  </div>
-                  <div className={styles.situationPreviewBody}>
-                    {existing.length > 4 && (
-                      <div className={styles.situationPreviewEllipsis}>
-                        … ({existing.length - 4} ligne{existing.length - 4 > 1 ? 's' : ''} plus haut)
-                      </div>
-                    )}
-                    {lastLines.length > 0 ? lastLines.map((l, i) => (
-                      <div key={`ex-${i}`} className={styles.situationPreviewExisting}>{renderLine(l)}</div>
-                    )) : (
-                      <div className={styles.situationPreviewEmpty}>(situation actuelle vide)</div>
-                    )}
-                    <div className={styles.situationPreviewSep}>───── ajout ci-dessous ─────</div>
-                    {generatingAppend ? (
-                      <div className={styles.situationPreviewGeneratingBlock}>
-                        L'IA analyse le sujet existant et adapte le texte d'ajout…
-                      </div>
-                    ) : newLines.map((l, i) => (
-                      <div key={`new-${i}`} className={styles.situationPreviewNew}>{renderLine(l)}</div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-      </div>
 
       <div className={styles.rowActions}>
         {showValidation && !canConfirm && !skipped && (
@@ -2222,154 +1861,87 @@ function SubjectRow({
           </span>
         )}
 
-        {editStep === null ? (
-          // ── COLLAPSED VIEW ── Default state : user hasn't opened
-          // the wizard. Big CTAs accept the AI proposal as-is, skip
-          // the subject, or open the wizard to edit. Duplicate-to-
-          // another-review has been moved into the wizard's review
-          // step (via the "+ Créer" dropdown option); it's no longer
-          // a top-level button.
-          <>
-            {onRemove && (
-              <button
-                type="button"
-                className={styles.rowActionBtn}
-                onClick={onRemove}
-                title="Supprimer cette copie"
-              >
-                Supprimer
-              </button>
-            )}
-            <button
-              type="button"
-              className={styles.rowActionBtn}
-              disabled={isAdding || addDisabled || generatingAppend}
-              onClick={() => { setShowValidation(false); onSkip(); }}
-              title="Passer ce sujet sans l'importer"
-            >
-              Ignorer
-            </button>
-            <button
-              type="button"
-              className={`${styles.rowActionBtn} ${styles.rowActionBtnPrimary}`}
-              disabled={isAdding || addDisabled || skipped || generatingAppend}
-              onClick={() => {
-                if (!canConfirm) {
-                  // Open the wizard at the FIRST step that actually
-                  // needs fixing — no sense forcing the user to re-
-                  // confirm a valid review just because the section
-                  // is broken. Computed from the same rules as
-                  // `missingFields` for consistency.
-                  const reviewBroken =
-                    (mode === 'create' && !newReviewTitle.trim())
-                    || (mode === 'existing' && (!reviewId || !currentReview));
-                  const sectionBroken =
-                    (sectionMode === 'new' && !newSectionName.trim())
-                    || (sectionMode === 'existing' && (!sectionId || (mode === 'existing' && !currentSection)));
-                  // When reviewLocked, skip review entirely — either
-                  // section or subject is broken.
-                  const firstBrokenStep: 'review' | 'section' | 'subject' =
-                    (!reviewLocked && reviewBroken) ? 'review'
-                    : sectionBroken ? 'section'
-                    : 'subject';
-                  setEditStep(firstBrokenStep);
-                  setShowValidation(true);
-                  return;
-                }
-                onImmediateAdd();
-              }}
-              title={
-                generatingAppend
-                  ? 'L\'IA analyse le sujet existant et adapte le texte d\'ajout…'
-                  : canConfirm
-                    ? 'Importer ce sujet en base avec la proposition de l\'IA'
-                    : 'Compléter les champs requis avant d\'importer'
+        {/* Only the simple Importer / Ignorer / Supprimer CTAs remain.
+            The wizard's "Précédent / Suivant / Annuler mes modifications"
+            buttons are gone with the rest of the form — the AI proposal
+            is accepted as-is, edits happen inline in the SuiviTess UI. */}
+        {onRemove && (
+          <button
+            type="button"
+            className={styles.rowActionBtn}
+            onClick={onRemove}
+            title="Supprimer cette copie"
+          >
+            Supprimer
+          </button>
+        )}
+        <button
+          type="button"
+          className={styles.rowActionBtn}
+          disabled={isAdding || addDisabled || generatingAppend}
+          onClick={() => { setShowValidation(false); onSkip(); }}
+          title="Passer ce sujet sans l'importer"
+        >
+          Ignorer
+        </button>
+        <button
+          type="button"
+          className={`${styles.rowActionBtn} ${styles.rowActionBtnPrimary}`}
+          disabled={isAdding || addDisabled || skipped || generatingAppend}
+          onClick={() => {
+            // Auto-fix incomplete AI proposals from the suggestion
+            // fields the model also emits. With the wizard gone, the
+            // user can't manually fill in missing fields — so we
+            // recover from the AI's omissions before submitting.
+            if (!canConfirm) {
+              const patch: Partial<Row> = {};
+              if (mode === 'create' && !newReviewTitle.trim()) {
+                patch.newReviewTitle = subject.suggestedNewReviewTitle?.trim()
+                  || subject.title.trim()
+                  || 'Nouvelle review';
               }
-            >
-              {generatingAppend
-                ? 'IA en train d\'adapter l\'ajout…'
-                : isAdding
-                  ? 'Import en cours…'
-                  : 'Importer et passer au suivant'}
-            </button>
-          </>
-        ) : (
-          // ── WIZARD VIEW ── User is stepping through review → section
-          // → subject. Each step validates its own field(s) before
-          // advancing. Final step imports.
-          (() => {
-            // Subject step is always present now — even without any
-            // existing subjects, the user needs an explicit
-            // confirmation that a new subject will be created.
-            const isLastStep = editStep === 'subject';
-            // Per-step validation : block "Valider" until the current
-            // step's fields are filled in.
-            const reviewStepValid = mode === 'create' ? !!newReviewTitle.trim() : !!reviewId;
-            const sectionStepValid = sectionMode === 'new'
-              ? !!newSectionName.trim()
-              : !!sectionId;
-            const subjectStepValid = subjectAction !== 'update' || !!targetSubjectId;
-            const currentStepValid =
-              editStep === 'review' ? reviewStepValid
-              : editStep === 'section' ? sectionStepValid
-              : subjectStepValid;
-            const goPrev = () => {
-              setShowValidation(false);
-              // When the review step is disabled (doc-scoped flow),
-              // "Précédent" on the section step closes the wizard
-              // instead of going to a non-existent review step.
-              if (editStep === 'section') setEditStep(reviewLocked ? null : 'review');
-              else if (editStep === 'subject') setEditStep('section');
-              else { setEditStep(null); }
-            };
-            const goNext = () => {
-              if (!currentStepValid) { setShowValidation(true); return; }
-              setShowValidation(false);
-              if (isLastStep) {
-                // Final validation covers EVERY field (not just the
-                // current one) to be safe before persisting.
-                if (!canConfirm) { setShowValidation(true); return; }
-                onImmediateAdd();
+              if (sectionMode === 'new' && !newSectionName.trim()) {
+                patch.newSectionName = subject.suggestedNewSectionName?.trim()
+                  || subject.title.split(' ').slice(0, 4).join(' ')
+                  || 'Nouveau point';
+              }
+              // If the AI flagged update-existing-subject without a
+              // concrete target id, fall back to creating a new one
+              // rather than blocking the import.
+              if (subjectAction === 'update' && !targetSubjectId) {
+                patch.subjectAction = 'create';
+                patch.targetSubjectId = null;
+              }
+              if (Object.keys(patch).length > 0) {
+                onUpdate(patch);
+                // Defer the actual import to the next tick so the row
+                // state reflects the auto-fix before validation runs.
+                setShowValidation(false);
+                setTimeout(() => onImmediateAdd(), 0);
                 return;
               }
-              if (editStep === 'review') setEditStep('section');
-              else if (editStep === 'section') setEditStep('subject');
-            };
-            return (
-              <>
-                <button
-                  type="button"
-                  className={styles.rowActionBtn}
-                  onClick={goPrev}
-                  title={editStep === 'review' ? 'Fermer le formulaire et revenir à la proposition IA' : 'Revenir à l\'étape précédente'}
-                >
-                  ← {editStep === 'review' ? 'Annuler' : 'Précédent'}
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.rowActionBtn} ${styles.rowActionBtnPrimary}`}
-                  disabled={isAdding || addDisabled || skipped || generatingAppend}
-                  onClick={goNext}
-                  title={
-                    generatingAppend
-                      ? 'L\'IA adapte le texte d\'ajout au sujet existant — patiente une seconde…'
-                      : isLastStep
-                        ? 'Importer ce sujet avec tes choix'
-                        : 'Valider ce choix et passer à l\'étape suivante'
-                  }
-                >
-                  {generatingAppend
-                    ? 'IA en train d\'adapter l\'ajout…'
-                    : isAdding
-                      ? 'Import en cours…'
-                      : isLastStep
-                        ? 'Valider et importer'
-                        : `Valider et continuer →`}
-                </button>
-              </>
-            );
-          })()
-        )}
+              // Genuinely uncoverable problem (e.g. picked an
+              // existing review whose id is no longer in the snapshot).
+              // Surface the inline error so the user can use Ignorer.
+              setShowValidation(true);
+              return;
+            }
+            onImmediateAdd();
+          }}
+          title={
+            generatingAppend
+              ? 'L\'IA analyse le sujet existant et adapte le texte d\'ajout…'
+              : canConfirm
+                ? 'Importer ce sujet en base avec la proposition de l\'IA'
+                : 'L\'import s\'auto-corrigera depuis les suggestions de l\'IA'
+          }
+        >
+          {generatingAppend
+            ? 'IA en train d\'adapter l\'ajout…'
+            : isAdding
+              ? 'Import en cours…'
+              : 'Importer et passer au suivant'}
+        </button>
       </div>
     </div>
   );
