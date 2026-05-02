@@ -59,11 +59,12 @@ Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
 - **Inspire-toi du style des `existingSubjects[].title`** : si les
   sujets existants suivent un pattern (ex: « Produit — sujet »,
   « Migration X », « Bug iframe »), reproduis-le pour rester cohérent.
-- **Pas de numéro de ticket** dans le titre (JIRA `TVSMART-2089`,
-  GitHub `#1234`), **pas de version** (`v1.24.1`), **pas de date**
-  (`samedi 4 mai`), **pas d'URL**. Mets-les dans `entities` — le
-  titre reste stable même quand le ticket est fermé ou la version
-  livrée.
+- **Principe** : le titre doit être un **thème durable**, pas la
+  recopie d'un objet de mail / d'un nom de ticket / d'un en-tête de
+  thread. Les références, identifiants, versions, dates, préfixes
+  type « Tracking », « Suivi », « Re: », « Fwd: » appartiennent à la
+  `situation` ou aux `entities`, jamais au titre.
+- ❌ « Tracking TVFREE-2062 : spec smart TV » → ✅ « Spec smart TV »
 - **Exemples** :
   - ✅ « Slider âge 6 ans » | ❌ « Bug TVSMART-2181 slider âge 6 ans corrigé »
   - ✅ « Migration PostgreSQL » | ❌ « Migration PostgreSQL v16 prévue samedi »

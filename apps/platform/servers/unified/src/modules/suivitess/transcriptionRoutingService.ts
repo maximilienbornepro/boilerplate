@@ -13,6 +13,7 @@ import { loadSkill as loadAiSkill } from '../aiSkills/skillLoader.js';
 import { logAnalysis } from '../aiSkills/analysisLogsService.js';
 import { ensureSkillVersion } from '../aiSkills/skillVersionService.js';
 import { computeCostUsd } from '../aiSkills/pricing.js';
+import { sanitizeProposedTitle } from './titleSanitizer.js';
 
 const SKILL_SLUG = 'suivitess-route-source-to-review';
 
@@ -165,7 +166,10 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
   const subjects: AnalyzedSubject[] = [];
 
   for (const raw of (parsed.subjects || []) as Array<Record<string, unknown>>) {
-    const title = String(raw.title || '').slice(0, 100).trim();
+    // Defensive sanitization on AI-proposed titles — strips leftover
+    // ticket refs / "Tracking ABC-1234 :" prefixes / Re:/Fwd: stacks
+    // that the prompt forbids but the model occasionally regresses on.
+    const title = sanitizeProposedTitle(String(raw.title || '')).slice(0, 100).trim();
     if (!title) continue;
 
     const situation = String(raw.situation || '').slice(0, 500);
@@ -186,12 +190,12 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
         reviewId = candidate;
       } else {
         action = 'new-review';
-        suggestedNewReviewTitle = String(raw.suggestedNewReviewTitle || '').slice(0, 80)
+        suggestedNewReviewTitle = sanitizeProposedTitle(String(raw.suggestedNewReviewTitle || '')).slice(0, 80)
           || callMeta.title.slice(0, 80)
           || 'Nouvelle review';
       }
     } else {
-      suggestedNewReviewTitle = String(raw.suggestedNewReviewTitle || '').slice(0, 80)
+      suggestedNewReviewTitle = sanitizeProposedTitle(String(raw.suggestedNewReviewTitle || '')).slice(0, 80)
         || callMeta.title.slice(0, 80)
         || 'Nouvelle review';
     }
@@ -204,7 +208,7 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
     if (action === 'new-review') {
       // Can't reference sections of a review that does not exist yet.
       sectionAction = 'new-section';
-      suggestedNewSectionName = String(raw.suggestedNewSectionName || '').slice(0, 80)
+      suggestedNewSectionName = sanitizeProposedTitle(String(raw.suggestedNewSectionName || '')).slice(0, 80)
         || callMeta.title.slice(0, 80)
         || 'Nouveau point';
     } else {
@@ -214,12 +218,12 @@ Applique les règles ci-dessus et réponds uniquement en JSON.`;
           sectionId = candidate;
         } else {
           sectionAction = 'new-section';
-          suggestedNewSectionName = String(raw.suggestedNewSectionName || '').slice(0, 80)
+          suggestedNewSectionName = sanitizeProposedTitle(String(raw.suggestedNewSectionName || '')).slice(0, 80)
             || callMeta.title.slice(0, 80)
             || 'Nouveau point';
         }
       } else {
-        suggestedNewSectionName = String(raw.suggestedNewSectionName || '').slice(0, 80)
+        suggestedNewSectionName = sanitizeProposedTitle(String(raw.suggestedNewSectionName || '')).slice(0, 80)
           || callMeta.title.slice(0, 80)
           || 'Nouveau point';
       }

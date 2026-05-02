@@ -16,6 +16,7 @@ import { ensureSkillVersion } from '../aiSkills/skillVersionService.js';
 import { computeCostUsd } from '../aiSkills/pricing.js';
 import { JournalStreamer, extractResultJson } from './journalStreamer.js';
 import type { DocumentWithSections } from './dbService.js';
+import { sanitizeProposedTitle } from './titleSanitizer.js';
 
 const SKILL_SLUG = 'suivitess-import-source-into-document';
 
@@ -44,11 +45,37 @@ function sendEvent(res: Response, event: StreamEvent): void {
 
 function extractProposals(fullText: string): Array<Record<string, unknown>> {
   const parsed = extractResultJson(fullText);
-  if (Array.isArray(parsed)) return parsed as Array<Record<string, unknown>>;
-  if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { proposals?: unknown }).proposals)) {
-    return (parsed as { proposals: Array<Record<string, unknown>> }).proposals;
+  let list: Array<Record<string, unknown>>;
+  if (Array.isArray(parsed)) list = parsed as Array<Record<string, unknown>>;
+  else if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { proposals?: unknown }).proposals)) {
+    list = (parsed as { proposals: Array<Record<string, unknown>> }).proposals;
+  } else {
+    list = [];
   }
-  return [];
+  // Defensive cleanup on AI-proposed titles. We only touch fields that
+  // the LLM authored : `title` (create_subject + nested in create_section)
+  // and `sectionName` ONLY when paired with `action: "create_section"`
+  // (i.e. a freshly-proposed section name, not a reference to an existing
+  // one). For `action: "enrich"`, `subjectTitle` and `sectionName` echo
+  // the document's existing values and must not be reformatted.
+  return list.map(p => {
+    const cleaned: Record<string, unknown> = { ...p };
+    if (p.action === 'create_subject' && typeof p.title === 'string') {
+      cleaned.title = sanitizeProposedTitle(p.title);
+    }
+    if (p.action === 'create_section') {
+      if (typeof p.sectionName === 'string') {
+        cleaned.sectionName = sanitizeProposedTitle(p.sectionName);
+      }
+      if (Array.isArray(p.subjects)) {
+        cleaned.subjects = (p.subjects as Array<Record<string, unknown>>).map(s => ({
+          ...s,
+          title: typeof s.title === 'string' ? sanitizeProposedTitle(s.title) : s.title,
+        }));
+      }
+    }
+    return cleaned;
+  });
 }
 
 export async function streamAnalysis(res: Response, params: StreamParams): Promise<void> {

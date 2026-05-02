@@ -21,6 +21,10 @@
 
 import { runSkill } from './runSkill.js';
 import { updateLogError, attachProposalsToLog } from './analysisLogsService.js';
+import {
+  sanitizeProposedTitle,
+  sanitizeProposedTitleNullable,
+} from '../suivitess/titleSanitizer.js';
 
 // ── Progress callback — optional, used by the async-job variants to
 //    report real phase transitions to the frontend (replaces the fake
@@ -377,7 +381,16 @@ async function tier1Extract(base: TierBase & {
   });
   const raw = extractJson<ExtractedSubject[]>(run.outputText);
   const subjects = Array.isArray(raw)
-    ? raw.map((s, i) => ({ ...s, index: i })) // re-index to be safe
+    ? raw.map((s, i) => ({
+        ...s,
+        index: i, // re-index to be safe
+        // Defensive cleanup : the prompt forbids ticket refs / email
+        // prefixes / "Tracking" labels in titles, but the model
+        // occasionally regresses when the source strongly anchors the
+        // pattern. Sanitizer is regex-based and conservative — see
+        // titleSanitizer.ts for the rule set.
+        title: sanitizeProposedTitle(s.title),
+      }))
     : [];
   const durationMs = Date.now() - t0;
   // eslint-disable-next-line no-console -- visible for pipeline debugging
@@ -425,7 +438,16 @@ async function tier2PlaceDocument(base: TierBase & {
     maxTokens: 4000,
   });
   const raw = extractJson<DocumentPlacement[]>(run.outputText);
-  const placements = Array.isArray(raw) ? raw : [];
+  // Defensive cleanup on AI-proposed section names — the prompt rule is
+  // explicit but the safety net catches regressions.
+  const placements = Array.isArray(raw)
+    ? raw.map(p => ({
+        ...p,
+        suggestedNewSectionName: p.suggestedNewSectionName != null
+          ? sanitizeProposedTitle(p.suggestedNewSectionName)
+          : p.suggestedNewSectionName,
+      }))
+    : [];
   const durationMs = Date.now() - t0;
   // eslint-disable-next-line no-console -- visible for pipeline debugging
   console.log(`[pipeline] tier2 place-in-document → ${placements.length} placements · ${fmtDur(durationMs)} · logId=${run.logId}`);
@@ -529,7 +551,14 @@ ${learnedExamplesBlock}
     maxTokens: 4500,
   });
   const raw = extractJson<ReviewPlacement[]>(run.outputText);
-  const placements = Array.isArray(raw) ? raw : [];
+  // Defensive cleanup on AI-proposed section + review names.
+  const placements = Array.isArray(raw)
+    ? raw.map(p => ({
+        ...p,
+        suggestedNewSectionName: sanitizeProposedTitleNullable(p.suggestedNewSectionName ?? null) ?? undefined,
+        suggestedNewReviewTitle: sanitizeProposedTitleNullable(p.suggestedNewReviewTitle ?? null) ?? undefined,
+      }))
+    : [];
   const durationMs = Date.now() - t0;
   // eslint-disable-next-line no-console -- visible for pipeline debugging
   console.log(`[pipeline] tier2 place-in-reviews → ${placements.length} placements · ${fmtDur(durationMs)} · logId=${run.logId}`);
@@ -1329,7 +1358,13 @@ async function tier15Reconcile(params: {
     // Enrich each consolidated subject with merged* fields reconstructed
     // from evidence[]. We asked the LLM to STOP producing these (wastes
     // tokens) so we compute them here. This is deterministic and cheap.
-    consolidated = raw.map(c => enrichConsolidated(c, params.extractions));
+    // Also sanitize canonicalTitle here — the reconciler may produce a
+    // fresh title and the regex-based safety net catches ticket refs
+    // that slipped through the prompt.
+    consolidated = raw.map(c => enrichConsolidated({
+      ...c,
+      canonicalTitle: sanitizeProposedTitle(c.canonicalTitle),
+    }, params.extractions));
   } else {
     // Fallback — pass-through : each extracted subject becomes its own
     // consolidated entry. Preserves zero-loss guarantee even if the

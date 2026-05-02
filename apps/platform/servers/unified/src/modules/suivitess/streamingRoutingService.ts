@@ -11,6 +11,7 @@ import { ensureSkillVersion } from '../aiSkills/skillVersionService.js';
 import { computeCostUsd } from '../aiSkills/pricing.js';
 import { logAnthropicUsage } from '../connectors/aiProvider.js';
 import { JournalStreamer, extractResultJson } from './journalStreamer.js';
+import { sanitizeProposedTitle } from './titleSanitizer.js';
 import type {
   ReviewWithSections,
   AnalysisResult,
@@ -163,7 +164,9 @@ puis un <result>…</result> contenant l'objet JSON { "summary", "subjects" }.`;
 
     const subjects: AnalyzedSubject[] = [];
     for (const rawSubj of ((raw?.subjects ?? []) as Array<Record<string, unknown>>)) {
-      const title = String(rawSubj.title || '').slice(0, 100).trim();
+      // Defensive sanitization on the AI-proposed title — kills leftover
+      // ticket refs / "Tracking ABC-1234 :" prefixes / Re:/Fwd: stacks.
+      const title = sanitizeProposedTitle(String(rawSubj.title || '')).slice(0, 100).trim();
       if (!title) continue;
       const situation = String(rawSubj.situation || '').slice(0, 500);
       const status = normalizeStatus(String(rawSubj.status || ''));
@@ -180,10 +183,10 @@ puis un <result>…</result> contenant l'objet JSON { "summary", "subjects" }.`;
         if (reviewsById.has(candidate)) reviewId = candidate;
         else {
           action = 'new-review';
-          suggestedNewReviewTitle = String(rawSubj.suggestedNewReviewTitle || '').slice(0, 80) || params.callMeta.title.slice(0, 80) || 'Nouvelle review';
+          suggestedNewReviewTitle = sanitizeProposedTitle(String(rawSubj.suggestedNewReviewTitle || '')).slice(0, 80) || sanitizeProposedTitle(params.callMeta.title).slice(0, 80) || 'Nouvelle review';
         }
       } else {
-        suggestedNewReviewTitle = String(rawSubj.suggestedNewReviewTitle || '').slice(0, 80) || params.callMeta.title.slice(0, 80) || 'Nouvelle review';
+        suggestedNewReviewTitle = sanitizeProposedTitle(String(rawSubj.suggestedNewReviewTitle || '')).slice(0, 80) || sanitizeProposedTitle(params.callMeta.title).slice(0, 80) || 'Nouvelle review';
       }
 
       let sectionAction: SectionAction = rawSubj.sectionAction === 'new-section' ? 'new-section' : 'existing-section';
@@ -191,16 +194,16 @@ puis un <result>…</result> contenant l'objet JSON { "summary", "subjects" }.`;
       let suggestedNewSectionName: string | null = null;
       if (action === 'new-review') {
         sectionAction = 'new-section';
-        suggestedNewSectionName = String(rawSubj.suggestedNewSectionName || '').slice(0, 80) || params.callMeta.title.slice(0, 80) || 'Nouveau point';
+        suggestedNewSectionName = sanitizeProposedTitle(String(rawSubj.suggestedNewSectionName || '')).slice(0, 80) || sanitizeProposedTitle(params.callMeta.title).slice(0, 80) || 'Nouveau point';
       } else if (sectionAction === 'existing-section') {
         const candidate = String(rawSubj.sectionId || '');
         if (reviewId && sectionsByReview.get(reviewId)?.has(candidate)) sectionId = candidate;
         else {
           sectionAction = 'new-section';
-          suggestedNewSectionName = String(rawSubj.suggestedNewSectionName || '').slice(0, 80) || params.callMeta.title.slice(0, 80) || 'Nouveau point';
+          suggestedNewSectionName = sanitizeProposedTitle(String(rawSubj.suggestedNewSectionName || '')).slice(0, 80) || sanitizeProposedTitle(params.callMeta.title).slice(0, 80) || 'Nouveau point';
         }
       } else {
-        suggestedNewSectionName = String(rawSubj.suggestedNewSectionName || '').slice(0, 80) || params.callMeta.title.slice(0, 80) || 'Nouveau point';
+        suggestedNewSectionName = sanitizeProposedTitle(String(rawSubj.suggestedNewSectionName || '')).slice(0, 80) || sanitizeProposedTitle(params.callMeta.title).slice(0, 80) || 'Nouveau point';
       }
 
       let subjectAction: SubjectAction = rawSubj.subjectAction === 'update-existing-subject' ? 'update-existing-subject' : 'new-subject';

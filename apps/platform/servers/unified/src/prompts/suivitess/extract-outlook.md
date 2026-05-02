@@ -57,11 +57,11 @@ Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
 - **Inspire-toi du style des `existingSubjects[].title`** : si les
   sujets existants suivent un pattern (ex: « Produit — sujet »,
   « Validation budget Qx »), reproduis-le pour rester cohérent.
-- **Pas de numéro de ticket** dans le titre (JIRA `TVSMART-2089`,
-  référence PO, n° de facture), **pas de version**, **pas de date**,
-  **pas d'URL**. Mets-les dans `entities`. Les emails citent souvent
-  des références dans l'objet — extrais le **thème métier** pour le
-  titre, garde la référence dans `entities`.
+- **Principe** : le titre doit être un **thème durable**, pas la
+  recopie de l'objet du mail. Les références (tickets, n° de PO),
+  versions, dates, préfixes (`Re:`, `Fwd:`, `Tracking`, `Suivi`)
+  appartiennent à la `situation` ou aux `entities`, jamais au titre.
+- ❌ « Re: Fwd: TVFREE-2062 spec smart TV » → ✅ « Spec smart TV »
 - **Exemples** :
   - ✅ « Validation budget Q3 » | ❌ « PO-2026-0451 — validation budget Q3 par direction »
   - ✅ « Bug OAuth iframe » | ❌ « Re: Re: Fwd: TVSMART-2089 problème iframe SFR »

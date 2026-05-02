@@ -56,11 +56,11 @@ Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
 - **Inspire-toi du style des `existingSubjects[].title`** : si les
   sujets existants suivent un pattern (ex: « Incident produit X »,
   « Bug feature Y »), reproduis-le pour rester cohérent.
-- **Pas de numéro de ticket** dans le titre (JIRA `TVSMART-2089`,
-  référence PR `#1234`), **pas de version**, **pas de timestamp**
-  (`14h12`), **pas d'URL**. Mets-les dans `entities`. Les threads Slack
-  abrègent souvent le titre — fais le travail de **synthèse** : extrais
-  le thème métier pour le titre.
+- **Principe** : le titre doit être un **thème durable**, pas la
+  recopie d'un message Slack. Les références (tickets, n° d'incident),
+  versions, timestamps, préfixes (`Tracking`, `Suivi`) appartiennent à
+  la `situation` ou aux `entities`, jamais au titre.
+- ❌ « Tracking TVFREE-2062 : spec smart TV » → ✅ « Spec smart TV »
 - **Exemples** :
   - ✅ « Prod down api.france.tv » | ❌ « Incident 14h12 sur api.france.tv 500 sur tous endpoints »
   - ✅ « Coupure paiement Stripe » | ❌ « INC-456 paiement Stripe down depuis 10h »

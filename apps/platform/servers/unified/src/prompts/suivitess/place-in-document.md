@@ -81,10 +81,12 @@ Si le sujet n'est pas un doublon :
    backend ne créera la section qu'une seule fois.
 3. **Aucune section ne colle** → `action: "create_section"` avec
    `suggestedNewSectionName` explicite, **court** (1 à 3 mots, type
-   « Releases », « Bugs SmartTV ») et inspiré du style des autres
-   sections du document. Évite les noms trop longs ou datés type
-   « Call Amazon — 15 avril » : préfère « Partenaires Amazon » et
-   laisse la date dans la situation des sujets.
+   « Releases », « Bugs SmartTV »), inspiré du style des autres
+   sections du document. **Principe** : un nom de section désigne
+   un thème durable — pas une référence (ticket, version), une date,
+   ni un préfixe de mail / thread.
+   ❌ « Tracking TVFREE-2062 : spec smart TV » → ✅ « Smart TV »
+   ❌ « Call Amazon — 15 avril » → ✅ « Partenaires Amazon »
 
 ### Rappel sur les titres de sujets (transmis par le tier 1)
 
