@@ -25,6 +25,7 @@ import {
   sanitizeProposedTitle,
   sanitizeProposedTitleNullable,
 } from '../suivitess/titleSanitizer.js';
+import { dedupNearDuplicateDocumentProposals } from '../suivitess/proposalDedup.js';
 
 // ── Progress callback — optional, used by the async-job variants to
 //    report real phase transitions to the frontend (replaces the fake
@@ -805,6 +806,15 @@ export async function analyzeSourceForDocument(
   }));
 
   const final = proposals.filter((p): p is FinalDocumentProposal => p !== null);
+  // Code-level dedup safety net — collapses near-duplicate
+  // create_subject / create_section proposals that the prompt rule was
+  // supposed to merge but the model occasionally still emits twice.
+  // See proposalDedup.ts for the normalization rules.
+  const { deduped, mergedCount } = dedupNearDuplicateDocumentProposals(final);
+  if (mergedCount > 0) {
+    // eslint-disable-next-line no-console
+    console.log(`[pipeline] document dedup → merged ${mergedCount} near-duplicate proposal(s)`);
+  }
   const tier3WallMs = Date.now() - tier3Start;
   onProgress({ kind: 't3-end', durationMs: tier3WallMs });
   const totalMs = Date.now() - wallStart;
@@ -814,9 +824,10 @@ export async function analyzeSourceForDocument(
     `[pipeline:summary] (document) ` +
     `T1=${fmtDur(ex.durationMs)} · T2=${fmtDur(pl.durationMs)} · ` +
     `T3=${fmtDur(tier3WallMs)} (${pl.placements.length} writers in //) · ` +
-    `TOTAL=${fmtDur(totalMs)} · final=${final.length}/${pl.placements.length} proposals`,
+    `TOTAL=${fmtDur(totalMs)} · final=${deduped.length}/${pl.placements.length} proposals` +
+    (mergedCount > 0 ? ` (deduped ${mergedCount})` : ''),
   );
-  return { proposals: final, rootLogId: ex.logId };
+  return { proposals: deduped, rootLogId: ex.logId };
 }
 
 // ── Multi-source pipeline for a SINGLE locked document ────────────────
@@ -1036,6 +1047,20 @@ export async function analyzeMultiSourceForDocument(
   }));
 
   const kept = results.filter((r): r is ProposalWithConsolidation => r !== null);
+  // Code-level dedup (multi-source single-doc) — same safety net as the
+  // single-source path. The dedup helper exposes survivorOriginalIndices
+  // so we can keep the parallel `consolidationByProposal` array aligned
+  // (each survivor inherits its own consolidation; the consolidations of
+  // proposals that got merged in are dropped along with the proposal).
+  const proposalsArr = kept.map(k => k.proposal);
+  const { deduped: dedupedProposals, survivorOriginalIndices, mergedCount } =
+    dedupNearDuplicateDocumentProposals(proposalsArr);
+  if (mergedCount > 0) {
+    // eslint-disable-next-line no-console
+    console.log(`[pipeline-multi-doc] dedup → merged ${mergedCount} near-duplicate proposal(s)`);
+  }
+  const dedupedConsolidations = survivorOriginalIndices.map(i => kept[i].consolidation);
+
   const tier3WallMs = Date.now() - tier3Start;
   onProgress({ kind: 't3-end', durationMs: tier3WallMs });
   const totalMs = Date.now() - wallStart;
@@ -1045,13 +1070,14 @@ export async function analyzeMultiSourceForDocument(
     `[pipeline-multi-doc:summary] (${sources.length} sources, document=${document.id}) ` +
     `T1=${fmtDur(t1WallMs)} · T1.5=${fmtDur(rec.durationMs)} · ` +
     `T2=${fmtDur(pl.durationMs)} · T3=${fmtDur(tier3WallMs)} · ` +
-    `TOTAL=${fmtDur(totalMs)} · final=${kept.length}/${pl.placements.length} proposals · ` +
-    `consolidated=${rec.consolidated.length} (from ${totalExtracted} extracted)`,
+    `TOTAL=${fmtDur(totalMs)} · final=${dedupedProposals.length}/${pl.placements.length} proposals · ` +
+    `consolidated=${rec.consolidated.length} (from ${totalExtracted} extracted)` +
+    (mergedCount > 0 ? ` · deduped ${mergedCount}` : ''),
   );
 
   return {
-    proposals: kept.map(k => k.proposal),
-    consolidationByProposal: kept.map(k => k.consolidation),
+    proposals: dedupedProposals,
+    consolidationByProposal: dedupedConsolidations,
     rootLogId: firstLogId,
   };
 }
