@@ -1018,6 +1018,26 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                         `${x.reviewId ?? x.newReviewTitle ?? ''}::${x.newSectionName.trim()}` === sectionClusterKey
                       ).length
                     : 0;
+                  // Sibling rows that target the same review (existing or
+                  // pending) AND already proposed a new section name. We
+                  // surface these as selectable options in the current
+                  // row's section dropdown so a section created upstream
+                  // can be re-used downstream — fixes "section disappears
+                  // on subject 2".
+                  const reviewKey = r.mode === 'existing'
+                    ? `existing::${r.reviewId ?? ''}`
+                    : `new::${(r.newReviewTitle ?? '').trim().toLowerCase()}`;
+                  const pendingNewSectionNames = Array.from(new Set(
+                    rows
+                      .filter(x => x.key !== r.key && !x.skipped && x.sectionMode === 'new' && x.newSectionName.trim().length > 0)
+                      .filter(x => {
+                        const sib = x.mode === 'existing'
+                          ? `existing::${x.reviewId ?? ''}`
+                          : `new::${(x.newReviewTitle ?? '').trim().toLowerCase()}`;
+                        return sib === reviewKey;
+                      })
+                      .map(x => x.newSectionName.trim()),
+                  ));
                   return (
                     <div className={styles.subjectsList}>
                       <SubjectRow
@@ -1038,6 +1058,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                         addDisabled={!!addingRowKey && addingRowKey !== r.key}
                         isMultiPlacement={sameTitleCount >= 2}
                         sameNewSectionCount={sameSectionCount}
+                        pendingNewSectionNames={pendingNewSectionNames}
                         nextRowKey={null}
                       />
                     </div>
@@ -1097,7 +1118,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
 function SubjectRow({
   row, consolidation, reviews, onUpdate, onRenameNewSection, id, nextRowKey,
   onDuplicate, onRemove, onImmediateAdd, onSkip, onDisagree, isAdding, addDisabled,
-  isMultiPlacement, sameNewSectionCount, reviewLocked,
+  isMultiPlacement, sameNewSectionCount, pendingNewSectionNames, reviewLocked,
 }: {
   row: Row;
   consolidation: api.ConsolidationMeta | null;
@@ -1144,6 +1165,13 @@ function SubjectRow({
    *  section (same review + same newSectionName). ≥2 → surfaces a
    *  "N sujets regroupés ici" hint so the user sees the dedup upfront. */
   sameNewSectionCount: number;
+  /** Section names that other rows of this same import batch already
+   *  proposed to CREATE (and that target the same review as the
+   *  current row). Surfaced in the section dropdown so a section
+   *  introduced by an earlier subject can be re-used by a later one
+   *  — without that, the user couldn't group two subjects under the
+   *  same brand-new section. */
+  pendingNewSectionNames: string[];
   /** When true (document-scoped flow), the review pill becomes a
    *  static label instead of an editable dropdown — the destination
    *  review/document is fixed by the parent page context. */
@@ -1841,18 +1869,14 @@ function SubjectRow({
 
       {/* Locked summary : when we're past review/section step, show the
           previously-chosen values as read-only info at the top of the
-          form so the user stays oriented. */}
+          form so the user stays oriented. The "Modifier" back-button
+          was removed — the user can edit any field directly via the
+          inline dropdowns in the SuiviTess UI after import, no need
+          for an in-wizard back-step. */}
       {editStep === 'section' && (
         <div className={styles.wizardLockedInfo}>
           <span className={styles.wizardLockedLabel}>Review choisie :</span>
           <strong>{mode === 'create' ? (newReviewTitle || 'Nouvelle review (sans titre)') : (reviews.find(r => r.id === reviewId)?.title ?? '—')}</strong>
-          <button
-            type="button"
-            className={styles.wizardLockedBack}
-            onClick={() => setEditStep('review')}
-          >
-            Modifier
-          </button>
         </div>
       )}
       {editStep === 'subject' && (
@@ -1862,13 +1886,6 @@ function SubjectRow({
           <span className={styles.wizardLockedSep}>›</span>
           <span className={styles.wizardLockedLabel}>Section :</span>
           <strong>{sectionMode === 'new' ? (newSectionName || 'Nouvelle section (sans nom)') : (currentSection?.name ?? '—')}</strong>
-          <button
-            type="button"
-            className={styles.wizardLockedBack}
-            onClick={() => setEditStep('section')}
-          >
-            Modifier
-          </button>
         </div>
       )}
 
@@ -1964,10 +1981,23 @@ function SubjectRow({
                 )}
               </div>
               <CustomDropdown
-                value={sectionMode === 'new' ? '__new__' : (sectionId ?? '')}
+                value={
+                  sectionMode === 'new'
+                    // Sibling-pending : the row's newSectionName matches one
+                    // of the pending names → expose the value as
+                    // `__pending::<name>` so the user sees the cluster
+                    // it'll join (instead of "+ Créer …" which suggested
+                    // a fresh creation).
+                    ? (newSectionName.trim() && pendingNewSectionNames.includes(newSectionName.trim())
+                        ? `__pending::${newSectionName.trim()}`
+                        : '__new__')
+                    : (sectionId ?? '')
+                }
                 displayLabel={
                   sectionMode === 'new'
-                    ? <span className={styles.dropdownNewOption}>+ Créer « {suggestedSectionName} »</span>
+                    ? (newSectionName.trim() && pendingNewSectionNames.includes(newSectionName.trim())
+                        ? <span className={styles.dropdownNewOption}>↳ Réutiliser « {newSectionName.trim()} » (en cours dans cet import)</span>
+                        : <span className={styles.dropdownNewOption}>+ Créer « {suggestedSectionName} »</span>)
                     : sectionId
                       ? (currentReview?.sections.find(s => s.id === sectionId)?.name ?? '—')
                       : 'Sélectionner une section…'
@@ -1983,6 +2013,16 @@ function SubjectRow({
                       </span>
                     ),
                   },
+                  // Sections proposed by SIBLING rows in the same batch.
+                  // Picking one routes the current subject into that
+                  // pending cluster (backend dedups by name on apply).
+                  ...(pendingNewSectionNames.length > 0
+                    ? [{ value: '__pending-sep__', label: 'Nouvelles sections en cours dans cet import' }]
+                    : []),
+                  ...pendingNewSectionNames.map(name => ({
+                    value: `__pending::${name}`,
+                    label: <span>↳ {name}</span>,
+                  })),
                   ...(hasExistingSections ? [{ value: '__sep__', label: 'Sections existantes' }] : []),
                   ...(hasExistingSections ? currentReview!.sections.map(s => ({ value: s.id, label: s.name })) : []),
                 ]}
@@ -1997,6 +2037,19 @@ function SubjectRow({
                     if (!newSectionName.trim() && subject.suggestedNewSectionName) {
                       onRenameNewSection(subject.suggestedNewSectionName);
                     }
+                  } else if (typeof val === 'string' && val.startsWith('__pending::')) {
+                    // Join an in-flight section cluster proposed by another
+                    // row of this same import. The backend dedups by name
+                    // on apply, so all rows pointing at the same name end
+                    // up in a single newly-created section.
+                    const pendingName = val.slice('__pending::'.length);
+                    onUpdate({
+                      sectionMode: 'new',
+                      sectionId: null,
+                      subjectAction: 'create',
+                      targetSubjectId: null,
+                    });
+                    onRenameNewSection(pendingName);
                   } else {
                     onUpdate({ sectionMode: 'existing', sectionId: val, subjectAction: 'create', targetSubjectId: null });
                   }
@@ -2195,24 +2248,6 @@ function SubjectRow({
               title="Passer ce sujet sans l'importer"
             >
               Ignorer
-            </button>
-            <button
-              type="button"
-              className={`${styles.rowActionBtn} ${styles.rowActionBtnDisagree}`}
-              disabled={generatingAppend}
-              onClick={() => {
-                // Flag the underlying analysis log so it surfaces as
-                // orange on /ai-logs before opening the routing wizard.
-                // Fire-and-forget — never blocks the user's flow. Pass
-                // the proposition title so the backend score's rationale
-                // carries context (user can see on /ai-logs which
-                // propositions within a multi-proposal log got flagged).
-                onDisagree?.(subject.title);
-                setEditStep(reviewLocked ? 'section' : 'review');
-              }}
-              title="Ajuster la section / le sujet avant d'importer"
-            >
-              Je ne suis pas d'accord
             </button>
             <button
               type="button"
