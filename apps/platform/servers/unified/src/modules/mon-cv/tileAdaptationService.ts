@@ -49,7 +49,7 @@ export async function extractAtomicSubjects(
   cvData: CVData,
   userId: number,
   userEmail: string | null = null,
-): Promise<{ subjects: AtomicSubject[]; logId: number | null }> {
+): Promise<{ subjects: AtomicSubject[]; logId: number | null; rawOutput: string }> {
   const cvJson = JSON.stringify(cvData, null, 2);
   // Hard cap to keep the prompt under a reasonable budget : 30k chars
   // covers a packed CV (~50 missions + 20 projects) without truncation.
@@ -63,11 +63,25 @@ export async function extractAtomicSubjects(
     inputContent: cvJsonClipped,
     sourceKind: 'cv',
     sourceTitle: cvData.name || cvData.title || 'CV',
-    maxTokens: 8000,
+    // 16k tokens : a packed CV (50 missions × 6 lines of JSON each
+    // + skills + projects + formations + …) easily produces 12k+
+    // tokens of output. The previous 8k cap silently truncated the
+    // last items mid-string, which made parseJsonArray fail and
+    // surfaced as "Aucun sujet atomique extrait du CV".
+    maxTokens: 16000,
   });
 
   const subjects = parseJsonArray<AtomicSubject>(run.outputText);
-  return { subjects: subjects ?? [], logId: run.logId };
+  if (!subjects || subjects.length === 0) {
+    // Server-side trace so we can debug from container logs even if
+    // the user can't open /ai-logs. Truncated to 2000 chars to keep
+    // logs readable.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[mon-cv extract] skill A returned empty/unparseable output (logId=${run.logId}). Raw (first 2k chars):\n${run.outputText.slice(0, 2000)}`,
+    );
+  }
+  return { subjects: subjects ?? [], logId: run.logId, rawOutput: run.outputText };
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -94,10 +108,18 @@ export async function adaptAllAtomics(
     inputContent: clipped,
     sourceKind: 'cv',
     sourceTitle: 'Adaptation batch',
-    maxTokens: 8000,
+    // Same 16k cap as skill A : N atomics × ~150 tokens of JSON
+    // per proposal saturates 8k for any CV with > ~50 atomics.
+    maxTokens: 16000,
   });
 
   const proposals = parseJsonArray<AdaptedAtomic>(run.outputText) ?? [];
+  if (proposals.length === 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[mon-cv adapt batch] skill B returned empty/unparseable output (logId=${run.logId}). Raw (first 2k):\n${run.outputText.slice(0, 2000)}`,
+    );
+  }
   return { proposals, logId: run.logId };
 }
 
@@ -203,28 +225,80 @@ function parsePath(path: string): Segment[] {
 // Tolerant JSON parsing (skill outputs sometimes wrap in markdown).
 // ────────────────────────────────────────────────────────────────────
 
+/** Tolerant JSON-array parser. Tries, in order :
+ *   1. JSON.parse on the trimmed input (happy path).
+ *   2. Strip a leading/trailing ```json fence + retry.
+ *   3. Find the first ```json…``` block ANYWHERE in the output.
+ *   4. Largest [...] substring fallback.
+ *   5. **Truncation recovery** : if the model hit max_tokens
+ *      mid-string, keep every COMPLETE `{…}` item up to the last
+ *      one, then close the array — same idea as the suivitess
+ *      pipeline's `extractJson()`. Lets us salvage 90% of the work
+ *      when the cap is reached.
+ *  Returns null if every attempt fails — the caller logs the raw
+ *  output so /ai-logs can show what the skill produced. */
 function parseJsonArray<T>(raw: string): T[] | null {
-  try {
-    const cleaned = stripMarkdownFences(raw);
-    const parsed = JSON.parse(cleaned);
-    return Array.isArray(parsed) ? parsed as T[] : null;
-  } catch {
-    // Last-resort : extract the first [..] block.
-    const match = raw.match(/\[[\s\S]*\]/);
-    if (!match) return null;
-    try { return JSON.parse(match[0]) as T[]; } catch { return null; }
+  const candidates: string[] = [];
+  candidates.push(raw.trim());
+  candidates.push(stripMarkdownFences(raw));
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) candidates.push(fence[1].trim());
+  const arrMatch = raw.match(/\[[\s\S]*\]/);
+  if (arrMatch) candidates.push(arrMatch[0]);
+  for (const c of candidates) {
+    if (!c) continue;
+    try {
+      const parsed = JSON.parse(c);
+      if (Array.isArray(parsed)) return parsed as T[];
+      // Some models wrap the array in `{ "subjects": [...] }`.
+      if (parsed && typeof parsed === 'object') {
+        for (const v of Object.values(parsed)) {
+          if (Array.isArray(v)) return v as T[];
+        }
+      }
+    } catch { /* try next */ }
   }
+  // ── Truncation recovery ────────────────────────────────────────
+  // Find the open bracket, then the last complete object before the
+  // cut-off. Close the array around it. This rescues the items that
+  // DID make it through when max_tokens was reached mid-emission.
+  const openArr = raw.indexOf('[');
+  if (openArr >= 0) {
+    const body = raw.slice(openArr);
+    const lastClose = Math.max(body.lastIndexOf('},'), body.lastIndexOf('}\n'), body.lastIndexOf('} '));
+    if (lastClose > 0) {
+      const truncated = body.slice(0, lastClose + 1) + ']';
+      try {
+        const parsed = JSON.parse(truncated);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as T[];
+      } catch { /* fall through */ }
+    }
+    // One last shot : a lone complete object at the end.
+    const lastBrace = body.lastIndexOf('}');
+    if (lastBrace > 0) {
+      const truncated = body.slice(0, lastBrace + 1) + ']';
+      try {
+        const parsed = JSON.parse(truncated);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as T[];
+      } catch { /* give up */ }
+    }
+  }
+  return null;
 }
 
 function parseJsonObject<T>(raw: string): T | null {
-  try {
-    const cleaned = stripMarkdownFences(raw);
-    return JSON.parse(cleaned) as T;
-  } catch {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    try { return JSON.parse(match[0]) as T; } catch { return null; }
+  const candidates: string[] = [];
+  candidates.push(raw.trim());
+  candidates.push(stripMarkdownFences(raw));
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) candidates.push(fence[1].trim());
+  const objMatch = raw.match(/\{[\s\S]*\}/);
+  if (objMatch) candidates.push(objMatch[0]);
+  for (const c of candidates) {
+    if (!c) continue;
+    try { return JSON.parse(c) as T; } catch { /* try next */ }
   }
+  return null;
 }
 
 function stripMarkdownFences(raw: string): string {

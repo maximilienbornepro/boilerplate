@@ -749,9 +749,13 @@ export function createMonCvRoutes(): Router {
       await import('./tileAdaptationService.js');
 
     // Skill A
-    const { subjects } = await extractAtomicSubjects(cv.cvData, userId, userEmail);
+    const { subjects, logId: extractLogId } = await extractAtomicSubjects(cv.cvData, userId, userEmail);
     if (subjects.length === 0) {
-      return res.status(400).json({ error: 'Aucun sujet atomique extrait du CV. Le CV est peut-être vide.' });
+      return res.status(400).json({
+        error: 'Aucun sujet atomique extrait du CV. Vérifie le contenu du CV ou ouvre le log AI.',
+        logId: extractLogId,
+        logUrl: extractLogId ? `/ai-logs/${extractLogId}` : null,
+      });
     }
 
     // Skill B (batch)
