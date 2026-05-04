@@ -1592,6 +1592,7 @@ export function createDeliveryRoutes(): Router {
     const {
       parseExternalKey, computeTodayCol, categorizeVersions, categoryOf,
     } = await import('./deliveryAISanityService.js');
+    const { statusCategory, isAbandonedStatus } = await import('./deliveryLayoutEngine.js');
     const { analyzeRepositionDeterministic } = await import('./reorganizeBoardPipeline.js');
 
     // Fetch Jira fix versions so the layout engine knows which release
@@ -1599,8 +1600,8 @@ export function createDeliveryRoutes(): Router {
     // data — DB metadata + version dates are enough for placement.
     const rawVersions: Array<{ name: string; releaseDate: string | null }> = [];
     const ctx = await getJiraContext(req.user!.id);
+    const projectKeys = new Set<string>();
     if (ctx) {
-      const projectKeys = new Set<string>();
       for (const t of externalTasks) {
         if (t.source !== 'jira') continue;
         const k = parseExternalKey(t.title);
@@ -1620,9 +1621,109 @@ export function createDeliveryRoutes(): Router {
         } catch { /* best effort */ }
       }
     }
+
+    // Fetch the in-progress tickets of each project's active sprint and
+    // surface those that aren't on the board yet — they belong on
+    // today's column. Filtered to `statusCategory(status) === 'in_progress'`
+    // (Jira "In Progress", "Doing", "QA", "Review", … per layout-rules
+    // §3) so we don't pull every backlog/todo card the sprint contains.
+    // Done & abandoned tickets are excluded outright.
+    const boardJiraKeys = new Set(
+      externalTasks
+        .map(t => parseExternalKey(t.title))
+        .filter((k): k is string => !!k),
+    );
+    type Missing = {
+      externalKey: string;
+      source: string;
+      summary: string;
+      status: string;
+      storyPoints: number | null;
+      estimatedDays: number | null;
+      hasEstimation: boolean;
+      hasDescription: boolean;
+      assignee: string | null;
+      releaseTag: string | null;
+      iterationName: string | null;
+    };
+    const missingInProgress: Missing[] = [];
+    if (ctx && projectKeys.size > 0) {
+      for (const projectKey of projectKeys) {
+        try {
+          const jql = `project = "${projectKey}" AND sprint in openSprints()`;
+          const params = new URLSearchParams({
+            jql,
+            maxResults: '100',
+            fields: 'summary,status,assignee,customfield_10016,customfield_10020,timetracking,description,fixVersions',
+          });
+          const resp = await fetch(`${ctx.baseUrl}/rest/api/3/search/jql?${params}`, {
+            headers: ctx.headers,
+          });
+          if (!resp.ok) continue;
+          const data = await resp.json() as { issues?: Array<{
+            key: string;
+            fields: {
+              summary?: string;
+              status?: { name: string };
+              assignee?: { displayName: string };
+              customfield_10016?: number;
+              customfield_10020?: Array<{ name: string; state: string }>;
+              timetracking?: { originalEstimateSeconds?: number };
+              description?: unknown;
+              fixVersions?: Array<{ name: string; releaseDate?: string }>;
+            };
+          }> };
+          for (const issue of data.issues || []) {
+            if (boardJiraKeys.has(issue.key)) continue; // already on board
+            const f = issue.fields;
+            const statusName = f.status?.name || '';
+            if (isAbandonedStatus(statusName)) continue;
+            // User asked specifically for "tickets en cours" → restrict
+            // to in_progress. Done / todo tickets are handled by the
+            // existing AI-variant flow ; this deterministic path only
+            // pulls live work that needs a slot today.
+            if (statusCategory(statusName) !== 'in_progress') continue;
+            const activeSprint = f.customfield_10020?.find(s => s.state === 'active');
+            const estDays = f.timetracking?.originalEstimateSeconds
+              ? Math.round((f.timetracking.originalEstimateSeconds / (8 * 60 * 60)) * 10) / 10
+              : null;
+            const hasDesc = typeof f.description === 'string'
+              ? f.description.trim().length > 0
+              : !!f.description;
+            const firstVersion = f.fixVersions?.[0];
+            if (firstVersion) {
+              rawVersions.push({ name: firstVersion.name, releaseDate: firstVersion.releaseDate ?? null });
+            }
+            missingInProgress.push({
+              externalKey: issue.key,
+              source: 'jira',
+              summary: f.summary || issue.key,
+              status: statusName || 'In Progress',
+              storyPoints: f.customfield_10016 ?? null,
+              estimatedDays: estDays,
+              hasEstimation: f.customfield_10016 !== undefined || estDays !== null,
+              hasDescription: hasDesc,
+              assignee: f.assignee?.displayName || null,
+              releaseTag: firstVersion?.name ?? null,
+              iterationName: activeSprint?.name ?? null,
+            });
+          }
+        } catch { /* best effort */ }
+      }
+    }
+
     const classifiedVersions = categorizeVersions(
       Array.from(new Map(rawVersions.map(v => [v.name, v])).values()),
     );
+
+    // Enrich missing-in-progress entries with a version category so the
+    // layout engine's "parking lot" rule can fall back to it if the
+    // ticket has no version assigned.
+    const MAX_MISSING = 30;
+    const missingEnriched = missingInProgress.map(m => ({
+      ...m,
+      versionCategory: categoryOf(m.releaseTag, classifiedVersions),
+    })).slice(0, MAX_MISSING);
 
     const positions = await db.getPositionsForBoard(boardId);
     const positionByTaskId = new Map(positions.map(p => [p.taskId, p]));
@@ -1670,7 +1771,10 @@ export function createDeliveryRoutes(): Router {
       todayCol,
       tasks: snapshotTasks.slice(0, MAX_TASKS),
       versions: classifiedVersions,
-      missingFromBoard: [],
+      // In-progress JIRA tickets of the active sprint that aren't on
+      // the board yet — the layout engine drops them on todayCol via
+      // chooseStartCol's in_progress branch (rule 2 of layout-rules).
+      missingFromBoard: missingEnriched,
     });
     res.json(result);
   }));

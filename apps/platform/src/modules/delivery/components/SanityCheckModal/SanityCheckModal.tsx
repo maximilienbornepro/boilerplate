@@ -14,7 +14,9 @@ interface Props {
   onApplied: () => void;
   onToast?: (toast: { type: 'success' | 'error' | 'warning'; message: string }) => void;
   /** `'ai'` (défaut) → pipeline complet avec assessment + reasoning LLM.
-   *  `'deterministic'` → bypass IA, layout engine seul, pas d'additions. */
+   *  `'deterministic'` → bypass IA, layout engine seul. Récupère aussi
+   *  les tickets JIRA "en cours" du sprint actif qui ne sont pas encore
+   *  sur le board, et les positionne sur aujourd'hui. */
   mode?: 'ai' | 'deterministic';
 }
 

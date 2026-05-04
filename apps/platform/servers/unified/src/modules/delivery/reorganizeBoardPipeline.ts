@@ -325,9 +325,11 @@ export async function analyzeSanityCheckPipeline(
  *  without paying tokens or waiting for an AI response — e.g. after
  *  a bulk Jira import that scattered tickets across the board.
  *
- *  Doesn't touch additions from the sprint (caller passes
- *  `missingFromBoard: []`) — this entry point is strictly
- *  re-positioning of existing board tickets. */
+ *  Now ALSO supports additions : when the caller passes a non-empty
+ *  `missingFromBoard`, those tickets are positioned by the layout
+ *  engine and emitted as `additions[]` in the result. The HTTP route
+ *  uses this to surface in-progress sprint tickets that aren't on
+ *  the board yet — see /reposition-deterministic in routes.ts. */
 export async function analyzeRepositionDeterministic(
   snapshot: BoardSnapshot,
 ): Promise<SanityCheckResult> {
