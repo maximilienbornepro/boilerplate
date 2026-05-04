@@ -28,7 +28,7 @@ export interface SkillDefinition {
   /** Where and when it runs — helps admins understand the impact of an edit. */
   usage: {
     /** Which module owns it. */
-    module: 'suivitess' | 'delivery';
+    module: 'suivitess' | 'delivery' | 'mon-cv';
     /** Backend endpoint that invokes it. */
     endpoint: string;
     /** User action that triggers it. */
@@ -241,6 +241,30 @@ export const SKILLS: readonly SkillDefinition[] = [
       trigger: 'Bouton « Analyser » de l\'import multi-source — après T1, avant T2',
     },
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/reconcile-multi-source.md'),
+  },
+  {
+    slug: 'mon-cv-extract-atomic-subjects',
+    name: 'Mon-CV — Extraire les sujets atomiques d\'un CV',
+    description:
+      'Tier 1 de l\'adaptation tuile-par-tuile. Reçoit un CV structuré (CVData) et produit la liste plate de tous les sujets atomiques (intro, chaque compétence, chaque expérience/mission/projet, formations, awards, side projects) avec un id stable + un path JSONPath-ish pour chacun. Sortie consommée par skill B et la modale de validation.',
+    usage: {
+      module: 'mon-cv',
+      endpoint: 'Interne — tileAdaptationService.extractAtomicSubjects()',
+      trigger: 'Bouton « Valider » sur AdaptCVPage après collage de l\'offre',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/extract-atomic-subjects.md'),
+  },
+  {
+    slug: 'mon-cv-adapt-atomic-to-offer',
+    name: 'Mon-CV — Adapter un sujet atomique à une offre',
+    description:
+      'Tier 2 de l\'adaptation tuile-par-tuile. Reçoit l\'offre + un sujet atomique (mode single) ou la liste complète (mode batch) et produit pour chacun une proposition de texte adaptée à l\'offre — minimale, sans inventer de fait. Réutilisé en single-mode quand l\'utilisateur clique « Régénérer » sur une tuile.',
+    usage: {
+      module: 'mon-cv',
+      endpoint: 'POST /mon-cv-api/cvs/:id/tile-adaptations + POST /tile-adaptations/:id/tiles/:tileId/regenerate',
+      trigger: 'Validation initiale (batch) puis clic « Régénérer » sur une tuile (single)',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/adapt-atomic-to-offer.md'),
   },
 ] as const;
 

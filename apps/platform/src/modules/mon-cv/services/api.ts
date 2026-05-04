@@ -482,3 +482,61 @@ export async function applyActions(
   });
   return handleResponse(response);
 }
+
+// ============ Tile-by-tile adaptation API ============
+
+/** Start a tile-by-tile adaptation : skill A extracts atomics from
+ *  the chosen CV, skill B proposes adapted text for each one, the
+ *  result is persisted in `cv_adaptations` + `cv_adaptation_tiles`.
+ *  Returns the adaptation id + the initial tile list for the modal. */
+export async function startTileAdaptation(
+  cvId: number,
+  jobOffer: string,
+): Promise<import('../types').TileAdaptationStartResponse> {
+  const res = await fetch(`${API_BASE}/cvs/${cvId}/tile-adaptations`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jobOffer }),
+  });
+  return handleResponse(res);
+}
+
+export async function fetchTilesForAdaptation(
+  adaptationId: number,
+): Promise<import('../types').CVAdaptationTile[]> {
+  const res = await fetch(`${API_BASE}/tile-adaptations/${adaptationId}/tiles`, {
+    credentials: 'include',
+  });
+  return handleResponse(res);
+}
+
+/** Mark a tile as accepted / skipped / edited / pending. When status
+ *  is accepted/edited, the resolved final text is merged back into
+ *  the adaptation's `adapted_cv` server-side at the tile's `path`. */
+export async function updateTile(
+  adaptationId: number,
+  tileRowId: string,
+  patch: { status: 'accepted' | 'skipped' | 'edited' | 'pending'; userEditedText?: string | null },
+): Promise<import('../types').CVAdaptationTile> {
+  const res = await fetch(`${API_BASE}/tile-adaptations/${adaptationId}/tiles/${tileRowId}`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  return handleResponse(res);
+}
+
+/** Re-run skill B on a single tile. Replaces `proposedText` and
+ *  resets the user edit + status. */
+export async function regenerateTile(
+  adaptationId: number,
+  tileRowId: string,
+): Promise<import('../types').CVAdaptationTile> {
+  const res = await fetch(`${API_BASE}/tile-adaptations/${adaptationId}/tiles/${tileRowId}/regenerate`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse(res);
+}

@@ -1,0 +1,149 @@
+/* AdaptCVTilesModal — tile-by-tile CV adaptation UI.
+   Forks the layout patterns of the suivitess BulkTranscriptionImportModal
+   but stays scoped to the CV use case. */
+
+.adapt-cv-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  font-family: var(--font-mono);
+  min-width: 600px;
+  max-width: 800px;
+}
+
+.adapt-cv-tiles__error {
+  padding: var(--spacing-sm);
+  border: 1px solid var(--error);
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--error);
+  font-size: 12px;
+}
+
+.adapt-cv-tiles__error-msg {
+  color: var(--error);
+}
+
+.adapt-cv-tiles__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xl) var(--spacing-md);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.adapt-cv-tiles__loading p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.adapt-cv-tiles__progress {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-color);
+}
+.adapt-cv-tiles__progress code {
+  background: var(--bg-primary);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.adapt-cv-tiles__tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.adapt-cv-tiles__tile section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.adapt-cv-tiles__tile h4 {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.adapt-cv-tiles__hint {
+  font-size: 10px;
+  font-weight: normal;
+  text-transform: none;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.adapt-cv-tiles__text {
+  margin: 0;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--border-color);
+}
+
+.adapt-cv-tiles__text--original {
+  background: var(--bg-primary);
+  color: var(--text-muted);
+}
+
+.adapt-cv-tiles__text--proposed {
+  background: rgba(96, 165, 250, 0.05);
+  color: var(--text-primary);
+  border-color: rgba(96, 165, 250, 0.3);
+}
+
+.adapt-cv-tiles__edit {
+  width: 100%;
+  padding: var(--spacing-sm);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent-primary, #60a5fa);
+  border-radius: var(--radius-sm);
+  resize: vertical;
+}
+
+.adapt-cv-tiles__actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--spacing-sm);
+}
+
+.adapt-cv-tiles__done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  align-items: stretch;
+  text-align: center;
+  padding: var(--spacing-md);
+}
+
+.adapt-cv-tiles__done p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.adapt-cv-tiles__done-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: center;
+}

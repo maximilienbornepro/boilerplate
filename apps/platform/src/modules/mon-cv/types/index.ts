@@ -289,6 +289,33 @@ export interface PipelineLogEvent {
   data?: any;
 }
 
+// ============ Tile-by-tile adaptation ============
+
+/** A single CV element awaiting validation in the adaptation modal.
+ *  Mirrors the backend `cv_adaptation_tiles` row, with the tile's
+ *  `path` JSONPath-ish location inside CVData so the apply step can
+ *  merge the chosen text back at the right spot. */
+export interface CVAdaptationTile {
+  id: string;            // db row UUID
+  adaptationId: number;
+  tileId: string;        // stable hash used in URLs
+  path: string;
+  kind: string;
+  originalText: string;
+  proposedText: string;
+  userEditedText: string | null;
+  status: 'pending' | 'accepted' | 'skipped' | 'edited';
+  regenerateCount: number;
+  aiLogId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TileAdaptationStartResponse {
+  adaptationId: number;
+  tiles: CVAdaptationTile[];
+}
+
 // ============ Adaptation History Types ============
 
 // Full adaptation record (for detail view)

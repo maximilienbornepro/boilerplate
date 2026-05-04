@@ -7,8 +7,14 @@ import { createEmptyCV } from './types.js';
 import type { CVData, MergeRequest } from './types.js';
 import { parseCV, parseCVWithVision } from './parseService.js';
 import { processImage } from './imageService.js';
-import { adaptCVPipeline, adaptCVPipelineStream, modifyCV, recommendImprovements, applyImprovements, analyzeCVStream, applySelectedActions } from './adaptService.js';
-import type { PipelineLogEvent, AnalysisResult } from './adaptService.js';
+// Adaptation now goes through the tile-by-tile flow at the bottom
+// of this file. The legacy all-at-once / streaming pipelines were
+// removed — see tileAdaptationService.ts. `recommendImprovements`
+// is the only legacy adapt-* function still kept : it powers the
+// "Recommandations ATS" panel on AdaptationDetailPage which the
+// user opens AFTER the adaptation is done. No call site for the
+// other legacy functions.
+import { recommendImprovements } from './adaptService.js';
 import {
   createAdaptation,
   getAdaptationsByCV,
@@ -513,178 +519,32 @@ export function createMonCvRoutes(): Router {
   }));
 
   // ============ CV Adaptation ============
-
-  // POST /analyze-stream — SSE: analyze CV vs offer without modifying
-  router.post('/analyze-stream', asyncHandler(async (req, res) => {
-    const { cvData, jobOffer } = req.body;
-    if (!jobOffer || typeof jobOffer !== 'string' || jobOffer.trim() === '') {
-      res.status(400).json({ error: 'Job offer text is required' });
-      return;
-    }
-    if (!cvData) {
-      res.status(400).json({ error: 'CV data is required' });
-      return;
-    }
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders();
-
-    try {
-      const stream = analyzeCVStream(cvData, jobOffer);
-      for await (const event of stream) {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-      }
-    } catch (err: any) {
-      console.error('[Mon-CV] Analysis stream error:', err);
-      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message || 'Erreur analyse' })}\n\n`);
-    }
-    res.write('data: [DONE]\n\n');
-    res.end();
-  }));
-
-  // POST /apply-actions — Apply selected adaptation actions to CV
-  router.post('/apply-actions', asyncHandler(async (req, res) => {
-    const { cvData, actions, jobAnalysis } = req.body;
-    if (!cvData || !actions || !jobAnalysis) {
-      res.status(400).json({ error: 'Missing required fields' });
-      return;
-    }
-    try {
-      const result = await applySelectedActions(cvData, actions, jobAnalysis);
-      res.json(result);
-    } catch (err: any) {
-      console.error('[Mon-CV] Apply actions error:', err);
-      res.status(500).json({ error: err.message || 'Erreur lors de l\'application' });
-    }
-  }));
-
-  // POST /recommend - Get ATS improvement recommendations (no generation, analysis only)
+  //
+  // Old endpoints (`/adapt`, `/adapt-stream`, `/improve`, `/modify`,
+  // `/apply-actions`, `/analyze-stream`) were removed in favour of
+  // the tile-by-tile flow at the bottom of this file
+  // (POST /cvs/:id/tile-adaptations + GET/PUT/POST on
+  // /tile-adaptations/:id/tiles). See migration 28 +
+  // tileAdaptationService.ts for the new pipeline.
+  //
+  // `/recommend` is kept : it's still used by AdaptationDetailPage's
+  // "Recommandations ATS" panel — independent of the tile flow.
   router.post('/recommend', asyncHandler(async (req, res) => {
     const { cvData, jobOffer } = req.body;
-
     if (!jobOffer || typeof jobOffer !== 'string' || jobOffer.trim() === '') {
       res.status(400).json({ error: 'Job offer text is required' });
       return;
     }
-
     if (!cvData) {
       res.status(400).json({ error: 'CV data is required' });
       return;
     }
-
     try {
       const result = await recommendImprovements(cvData, jobOffer);
       res.json(result);
     } catch (err: any) {
       console.error('[Mon-CV] Recommend error:', err);
       res.status(500).json({ error: err.message || 'Erreur lors de la génération des recommandations' });
-    }
-  }));
-
-  // POST /improve - Apply targeted improvements to an already-adapted CV
-  router.post('/improve', asyncHandler(async (req, res) => {
-    const { cvData, jobOffer } = req.body;
-
-    if (!jobOffer || typeof jobOffer !== 'string' || jobOffer.trim() === '') {
-      res.status(400).json({ error: 'Job offer text is required' });
-      return;
-    }
-
-    if (!cvData) {
-      res.status(400).json({ error: 'CV data is required' });
-      return;
-    }
-
-    try {
-      const result = await applyImprovements(cvData, jobOffer);
-      res.json(result);
-    } catch (err: any) {
-      console.error('[Mon-CV] Improve error:', err);
-      res.status(500).json({ error: err.message || 'Erreur lors de l\'amélioration du CV' });
-    }
-  }));
-
-  // POST /adapt-stream - SSE endpoint for pipeline with logs
-  router.post('/adapt-stream', asyncHandler(async (req, res) => {
-    const { cvData, jobOffer, customInstructions } = req.body;
-
-    if (!jobOffer || typeof jobOffer !== 'string' || jobOffer.trim() === '') {
-      res.status(400).json({ error: 'Job offer text is required' });
-      return;
-    }
-    if (!cvData) {
-      res.status(400).json({ error: 'CV data is required' });
-      return;
-    }
-
-    // Set SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders();
-
-    try {
-      const pipeline = adaptCVPipelineStream({ cvData, jobOffer, customInstructions });
-
-      for await (const event of pipeline) {
-        res.write(`data: ${JSON.stringify(event)}\n\n`);
-      }
-    } catch (err: any) {
-      console.error('[Mon-CV] Pipeline stream error:', err);
-      res.write(`data: ${JSON.stringify({ type: 'error', message: err.message || 'Erreur pipeline' })}\n\n`);
-    }
-
-    res.write('data: [DONE]\n\n');
-    res.end();
-  }));
-
-  // POST /adapt - Adapt CV to job offer
-  router.post('/adapt', asyncHandler(async (req, res) => {
-    const { cvData, jobOffer, customInstructions } = req.body;
-
-    if (!jobOffer || typeof jobOffer !== 'string' || jobOffer.trim() === '') {
-      res.status(400).json({ error: 'Job offer text is required' });
-      return;
-    }
-
-    if (!cvData) {
-      res.status(400).json({ error: 'CV data is required' });
-      return;
-    }
-
-    try {
-      const result = await adaptCVPipeline({ cvData, jobOffer, customInstructions });
-      res.json(result);
-    } catch (err: any) {
-      console.error('[Mon-CV] Adaptation error:', err);
-      res.status(500).json({ error: err.message || 'Erreur lors de l\'adaptation du CV' });
-    }
-  }));
-
-  // POST /modify - Modify CV with custom request
-  router.post('/modify', asyncHandler(async (req, res) => {
-    const { cvData, modificationRequest } = req.body;
-
-    if (!modificationRequest || typeof modificationRequest !== 'string' || modificationRequest.trim() === '') {
-      res.status(400).json({ error: 'Modification request is required' });
-      return;
-    }
-
-    if (!cvData) {
-      res.status(400).json({ error: 'CV data is required' });
-      return;
-    }
-
-    try {
-      const result = await modifyCV({ cvData, modificationRequest });
-      res.json(result);
-    } catch (err: any) {
-      console.error('[Mon-CV] Modification error:', err);
-      res.status(500).json({ error: err.message || 'Erreur lors de la modification du CV' });
     }
   }));
 
@@ -856,6 +716,149 @@ export function createMonCvRoutes(): Router {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="CV_adapte.pdf"`);
     res.send(pdfBuffer);
+  }));
+
+  // ==================== Tile-by-tile adaptation ====================
+  //
+  // Replaces the legacy `/adapt`, `/adapt-stream`, `/improve`,
+  // `/recommend`, `/modify`, `/apply-actions`, `/analyze-stream`
+  // pipeline. The user pastes a job offer, validates, and walks
+  // through each AI proposal one tile at a time. Each tile carries
+  // an originalText + proposedText + optional userEditedText. Edits
+  // are merged into the adaptation's `adapted_cv` JSONB by walking
+  // the tile's `path`.
+
+  // POST /cvs/:id/tile-adaptations — body { jobOffer }
+  // Pipeline : skill A (extract atomics) → skill B (adapt batch) →
+  // create cv_adaptations row with adapted_cv = original cvData →
+  // persist tiles. Returns { adaptationId, tiles[] }.
+  router.post('/cvs/:id/tile-adaptations', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const userEmail = (req as any).user?.email ?? null;
+    const cvId = parseInt(req.params.id, 10);
+    if (isNaN(cvId)) return res.status(400).json({ error: 'Invalid CV id' });
+    const { jobOffer } = (req.body || {}) as { jobOffer?: string };
+    if (!jobOffer || !jobOffer.trim()) {
+      return res.status(400).json({ error: 'jobOffer requis' });
+    }
+
+    const cv = await db.getCVById(cvId, userId);
+    if (!cv) return res.status(404).json({ error: 'CV non trouvé' });
+
+    const { extractAtomicSubjects, adaptAllAtomics, persistTilesForAdaptation } =
+      await import('./tileAdaptationService.js');
+
+    // Skill A
+    const { subjects } = await extractAtomicSubjects(cv.cvData, userId, userEmail);
+    if (subjects.length === 0) {
+      return res.status(400).json({ error: 'Aucun sujet atomique extrait du CV. Le CV est peut-être vide.' });
+    }
+
+    // Skill B (batch)
+    const { proposals } = await adaptAllAtomics(subjects, jobOffer, userId, userEmail);
+
+    // Create the adaptation row up-front so tiles can reference it.
+    // adapted_cv = original at this point ; gets merged tile by tile.
+    const emptyAtsScore = { overall: 0, keywordMatch: 0, sectionCoverage: 0, titleMatch: false, breakdown: { requiredFound: [], requiredMissing: [], multiSectionKeywords: [], singleSectionKeywords: [] } };
+    const adaptation = await createAdaptation(cvId, userId, {
+      jobOffer,
+      adaptedCv: cv.cvData,
+      changes: { newMissions: [], addedSkills: {} } as any,
+      atsBefore: emptyAtsScore as any,
+      atsAfter: emptyAtsScore as any,
+      jobAnalysis: { requiredKeywords: [], preferredKeywords: [], exactJobTitle: '', technologies: [], keyResponsibilities: [], domain: '', atsHint: 'unknown' } as any,
+    });
+
+    const tiles = await persistTilesForAdaptation(adaptation.id, subjects, proposals);
+    res.json({ adaptationId: adaptation.id, tiles });
+  }));
+
+  // GET /tile-adaptations/:id/tiles — list tiles for an adaptation.
+  router.get('/tile-adaptations/:id/tiles', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const adaptationId = parseInt(req.params.id, 10);
+    if (isNaN(adaptationId)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const { getTilesByAdaptation } = await import('./adaptationDbService.js');
+    const tiles = await getTilesByAdaptation(adaptationId, userId);
+    res.json(tiles);
+  }));
+
+  // PUT /tile-adaptations/:id/tiles/:tileId — accept / skip / edit
+  // body : { status: 'accepted'|'skipped'|'edited'|'pending', userEditedText? }
+  // When status is accepted/edited, the resolved final text is merged
+  // into the adaptation's adapted_cv at the tile's `path`.
+  router.put('/tile-adaptations/:id/tiles/:tileId', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const adaptationId = parseInt(req.params.id, 10);
+    if (isNaN(adaptationId)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const { tileId } = req.params;
+    const { status, userEditedText } = (req.body || {}) as {
+      status?: 'accepted' | 'skipped' | 'edited' | 'pending';
+      userEditedText?: string | null;
+    };
+    if (!status || !['accepted', 'skipped', 'edited', 'pending'].includes(status)) {
+      return res.status(400).json({ error: 'status invalide' });
+    }
+
+    const { getTileById, updateTileStatus } = await import('./adaptationDbService.js');
+    const existing = await getTileById(tileId, userId);
+    if (!existing || existing.adaptationId !== adaptationId) {
+      return res.status(404).json({ error: 'Tuile non trouvée' });
+    }
+
+    const updated = await updateTileStatus(tileId, userId, {
+      status,
+      userEditedText: userEditedText ?? null,
+    });
+    if (!updated) return res.status(404).json({ error: 'Tuile non trouvée' });
+
+    // Merge into adapted_cv when the user accepts or edits.
+    if (status === 'accepted' || status === 'edited') {
+      const finalText = (status === 'edited' && updated.userEditedText)
+        ? updated.userEditedText
+        : updated.proposedText;
+      const adaptation = await getAdaptation(adaptationId, userId);
+      if (adaptation) {
+        const { applyTextAtPath } = await import('./tileAdaptationService.js');
+        const newCv = applyTextAtPath(adaptation.adaptedCv, updated.path, finalText);
+        await updateAdaptation(adaptationId, userId, { adaptedCv: newCv });
+      }
+    }
+    res.json(updated);
+  }));
+
+  // POST /tile-adaptations/:id/tiles/:tileId/regenerate — re-run skill B
+  // on this single tile. Replaces proposed_text + resets user_edited_text
+  // + sets status back to 'pending' so the user re-validates.
+  router.post('/tile-adaptations/:id/tiles/:tileId/regenerate', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const userEmail = (req as any).user?.email ?? null;
+    const adaptationId = parseInt(req.params.id, 10);
+    if (isNaN(adaptationId)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const { tileId } = req.params;
+
+    const { getTileById, updateTileProposal } = await import('./adaptationDbService.js');
+    const tile = await getTileById(tileId, userId);
+    if (!tile || tile.adaptationId !== adaptationId) {
+      return res.status(404).json({ error: 'Tuile non trouvée' });
+    }
+
+    const adaptation = await getAdaptation(adaptationId, userId);
+    if (!adaptation) return res.status(404).json({ error: 'Adaptation non trouvée' });
+
+    const { adaptOneAtomic } = await import('./tileAdaptationService.js');
+    const { proposal, logId } = await adaptOneAtomic(
+      { id: tile.tileId, path: tile.path, kind: tile.kind, originalText: tile.originalText, label: tile.path },
+      adaptation.jobOffer,
+      userId,
+      userEmail,
+    );
+    const newText = proposal?.proposedText && proposal.proposedText.trim().length > 0
+      ? proposal.proposedText
+      : tile.originalText;
+    const updated = await updateTileProposal(tileId, userId, newText, logId);
+    if (!updated) return res.status(404).json({ error: 'Tuile non trouvée' });
+    res.json(updated);
   }));
 
   return router;

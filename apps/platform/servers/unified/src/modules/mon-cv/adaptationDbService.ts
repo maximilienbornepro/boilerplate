@@ -65,6 +65,169 @@ async function ensureTable() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_cv_adaptations_user_id ON cv_adaptations(user_id)
   `);
+
+  // Tile-by-tile adaptation table — see migration 28. One row per
+  // atomic CV element that the AI proposes to adjust to a specific
+  // job offer. Cascade-deleted with the parent adaptation.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cv_adaptation_tiles (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      adaptation_id     INTEGER NOT NULL REFERENCES cv_adaptations(id) ON DELETE CASCADE,
+      tile_id           TEXT NOT NULL,
+      path              TEXT NOT NULL,
+      kind              TEXT NOT NULL,
+      original_text     TEXT NOT NULL,
+      proposed_text     TEXT NOT NULL,
+      user_edited_text  TEXT,
+      status            TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'accepted', 'skipped', 'edited')),
+      regenerate_count  INTEGER NOT NULL DEFAULT 0,
+      ai_log_id         INTEGER REFERENCES ai_analysis_logs(id) ON DELETE SET NULL,
+      created_at        TIMESTAMPTZ DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(adaptation_id, tile_id)
+    )
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_cv_tiles_adaptation ON cv_adaptation_tiles(adaptation_id)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_cv_tiles_status ON cv_adaptation_tiles(adaptation_id, status)');
+}
+
+// ============================================================
+// Tile CRUD — used by tileAdaptationService.ts
+// ============================================================
+
+export interface CVAdaptationTile {
+  id: string;
+  adaptationId: number;
+  tileId: string;
+  path: string;
+  kind: string;
+  originalText: string;
+  proposedText: string;
+  userEditedText: string | null;
+  status: 'pending' | 'accepted' | 'skipped' | 'edited';
+  regenerateCount: number;
+  aiLogId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapTileRow(row: any): CVAdaptationTile {
+  return {
+    id: row.id,
+    adaptationId: row.adaptation_id,
+    tileId: row.tile_id,
+    path: row.path,
+    kind: row.kind,
+    originalText: row.original_text,
+    proposedText: row.proposed_text,
+    userEditedText: row.user_edited_text ?? null,
+    status: row.status,
+    regenerateCount: row.regenerate_count ?? 0,
+    aiLogId: row.ai_log_id ?? null,
+    createdAt: row.created_at?.toISOString() || new Date().toISOString(),
+    updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
+  };
+}
+
+/** Bulk-insert all tiles for a fresh adaptation. ON CONFLICT keeps
+ *  existing rows untouched — re-running skill A doesn't wipe what
+ *  the user already edited. */
+export async function insertTilesForAdaptation(
+  adaptationId: number,
+  tiles: Array<Omit<CVAdaptationTile, 'id' | 'adaptationId' | 'createdAt' | 'updatedAt' | 'regenerateCount' | 'aiLogId' | 'status' | 'userEditedText'>>,
+): Promise<CVAdaptationTile[]> {
+  if (tiles.length === 0) return [];
+  const values: string[] = [];
+  const params: any[] = [];
+  let i = 1;
+  for (const t of tiles) {
+    values.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+    params.push(adaptationId, t.tileId, t.path, t.kind, t.originalText, t.proposedText);
+  }
+  const result = await pool.query(
+    `INSERT INTO cv_adaptation_tiles
+       (adaptation_id, tile_id, path, kind, original_text, proposed_text)
+     VALUES ${values.join(', ')}
+     ON CONFLICT (adaptation_id, tile_id) DO NOTHING
+     RETURNING *`,
+    params,
+  );
+  return result.rows.map(mapTileRow);
+}
+
+export async function getTilesByAdaptation(
+  adaptationId: number,
+  userId: number,
+): Promise<CVAdaptationTile[]> {
+  // Join via adaptation to enforce ownership.
+  const result = await pool.query(
+    `SELECT t.* FROM cv_adaptation_tiles t
+     JOIN cv_adaptations a ON a.id = t.adaptation_id
+     WHERE t.adaptation_id = $1 AND a.user_id = $2
+     ORDER BY t.created_at`,
+    [adaptationId, userId],
+  );
+  return result.rows.map(mapTileRow);
+}
+
+export async function getTileById(
+  tileRowId: string,
+  userId: number,
+): Promise<CVAdaptationTile | null> {
+  const result = await pool.query(
+    `SELECT t.* FROM cv_adaptation_tiles t
+     JOIN cv_adaptations a ON a.id = t.adaptation_id
+     WHERE t.id = $1 AND a.user_id = $2`,
+    [tileRowId, userId],
+  );
+  return result.rows[0] ? mapTileRow(result.rows[0]) : null;
+}
+
+export async function updateTileStatus(
+  tileRowId: string,
+  userId: number,
+  patch: { status: 'accepted' | 'skipped' | 'edited' | 'pending'; userEditedText?: string | null },
+): Promise<CVAdaptationTile | null> {
+  // Two-step update so we can enforce ownership through the join.
+  const owned = await getTileById(tileRowId, userId);
+  if (!owned) return null;
+  const result = await pool.query(
+    `UPDATE cv_adaptation_tiles
+        SET status = $2,
+            user_edited_text = $3,
+            updated_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [tileRowId, patch.status, patch.userEditedText ?? null],
+  );
+  return result.rows[0] ? mapTileRow(result.rows[0]) : null;
+}
+
+/** Replace the proposal text after a successful regenerate. Resets
+ *  user_edited_text + status so the user re-validates the new
+ *  proposal explicitly. */
+export async function updateTileProposal(
+  tileRowId: string,
+  userId: number,
+  proposedText: string,
+  aiLogId: number | null,
+): Promise<CVAdaptationTile | null> {
+  const owned = await getTileById(tileRowId, userId);
+  if (!owned) return null;
+  const result = await pool.query(
+    `UPDATE cv_adaptation_tiles
+        SET proposed_text = $2,
+            user_edited_text = NULL,
+            status = 'pending',
+            regenerate_count = regenerate_count + 1,
+            ai_log_id = COALESCE($3, ai_log_id),
+            updated_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [tileRowId, proposedText, aiLogId],
+  );
+  return result.rows[0] ? mapTileRow(result.rows[0]) : null;
 }
 
 function mapRow(row: any): CVAdaptation {
