@@ -36,6 +36,17 @@
     </select>
     <button id="refresh-btn" class="btn-primary" title="Relance la sync depuis l'onglet Outlook (active l'onglet, re-scrape la liste, traite les nouveaux mails)">🔄 Relancer la sync</button>
     <button id="retry-failed" class="btn-secondary" disabled>↻ Rejouer les échecs</button>
+    <!-- Cross-domain push : take the emails already scraped (with
+         their bodies extracted) and ship them to a different
+         backend without re-running the Outlook scrape. The dropdown
+         lists known targets ; "autre…" prompts for any URL. -->
+    <select id="push-target" class="push-target-select" title="Choisis le domaine cible pour la sync">
+      <option value="__current__">Pousser vers : domaine courant</option>
+      <option value="https://francetv.vitess.tech">Pousser vers : prod (francetv.vitess.tech)</option>
+      <option value="https://studio.vitess.tech">Pousser vers : staging (studio.vitess.tech)</option>
+      <option value="__custom__">Pousser vers : autre…</option>
+    </select>
+    <button id="push-other-btn" class="btn-secondary" title="Envoie la batch déjà scrapée vers le domaine choisi (sans re-indexer Outlook)">📤 Pousser</button>
     <button id="clear-all-btn" class="btn-danger" title="Supprime toutes les données stockées (locale + serveur) — repart sur une indexation 7 jours fraîche">🗑 Tout effacer</button>
     <button id="close-btn" class="btn-secondary">Fermer</button>
   </div>

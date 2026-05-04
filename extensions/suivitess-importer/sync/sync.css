@@ -118,6 +118,9 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 }
 .filter-bar input { flex: 1; }
 .filter-bar select { min-width: 140px; }
+/* The cross-domain push selector is wider — needs to fit the
+   "Pousser vers : prod (francetv.vitess.tech)" label. */
+.filter-bar .push-target-select { min-width: 280px; }
 .btn-secondary {
   background: var(--bg-row);
   border: 1px solid var(--border);

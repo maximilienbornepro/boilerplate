@@ -144,6 +144,99 @@
     });
   }
 
+  // ── Cross-domain push ──────────────────────────────────────────────────
+  // Reuses the in-memory `emails` array (already scraped, with bodies)
+  // and ships it to a target backend chosen from the dropdown — useful
+  // to push a batch indexed locally to prod without re-running the
+  // 7-day Outlook scrape on the prod tab.
+  const pushOtherBtn = $('push-other-btn');
+  const pushTargetSelect = $('push-target');
+  if (pushOtherBtn && pushTargetSelect) {
+    pushOtherBtn.addEventListener('click', async () => {
+      let target = pushTargetSelect.value;
+      if (target === '__current__') target = serverUrl;
+      if (target === '__custom__') {
+        target = window.prompt(
+          'URL du backend cible (ex : https://francetv.vitess.tech)',
+          'https://',
+        ) || '';
+        target = target.trim();
+        if (!target) return;
+      }
+      try { new URL(target); } catch {
+        progressText.textContent = `⚠ URL cible invalide : ${target}`;
+        return;
+      }
+      const targetDomain = (() => { try { return new URL(target).host; } catch { return target; } })();
+      // Only ship rows that actually have a body — pushing rows with
+      // status 'failed' / 'empty' is harmless but pollutes the target
+      // with empty messages. Keep it tight by default.
+      const ready = emails.filter(e => e.body && e.body.trim().length > 0);
+      if (ready.length === 0) {
+        progressText.textContent = '⚠ Aucun mail avec corps disponible — relance la sync d\'abord.';
+        return;
+      }
+      const skipped = emails.length - ready.length;
+      const confirmed = window.confirm(
+        `Pousser ${ready.length} mail(s) déjà extrait(s) vers ${targetDomain} ?\n\n` +
+        (skipped > 0 ? `(${skipped} mail(s) sans corps seront ignorés)\n\n` : '') +
+        `L'extension Outlook ne sera PAS sollicitée — c'est juste un envoi des données déjà en mémoire.\n\n` +
+        `Tu dois être connecté(e) à ${targetDomain} dans un autre onglet (auth cookie requis).`,
+      );
+      if (!confirmed) return;
+
+      pushOtherBtn.disabled = true;
+      pushTargetSelect.disabled = true;
+      const restoreUI = () => { pushOtherBtn.disabled = false; pushTargetSelect.disabled = false; };
+
+      // Chunk into batches of 25 to keep individual POST payloads
+      // under a reasonable size (~5 MB worst case with 20k-char
+      // bodies). Failures on one chunk don't roll back the previous
+      // chunks — backend already dedup-by-message-id on the upsert.
+      const BATCH_SIZE = 25;
+      const chunks = [];
+      for (let i = 0; i < ready.length; i += BATCH_SIZE) {
+        chunks.push(ready.slice(i, i + BATCH_SIZE));
+      }
+      let totalPushed = 0;
+      const errors = [];
+      progressFill.style.width = '0%';
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        progressText.textContent = `📤 Push vers ${targetDomain} — batch ${i + 1}/${chunks.length} (${chunk.length} mail(s))…`;
+        try {
+          const lean = chunk.map(e => ({
+            id: e.id,
+            subject: e.subject,
+            sender: e.sender,
+            date: e.date,
+            preview: e.preview,
+            threadCount: e.threadCount,
+            body: e.body,
+            bodyChars: e.bodyChars || (e.body?.length || 0),
+            syncedAt: e.syncedAt || new Date().toISOString(),
+          }));
+          await pushToBackend(lean, target);
+          totalPushed += chunk.length;
+        } catch (err) {
+          errors.push(`batch ${i + 1}: ${err.message}`);
+          // eslint-disable-next-line no-console
+          console.warn('[SuiviTess sync] cross-domain push batch failed:', err);
+        }
+        progressFill.style.width = `${Math.round(((i + 1) / chunks.length) * 100)}%`;
+      }
+
+      if (errors.length === 0) {
+        progressText.textContent = `✓ ${totalPushed} mail(s) poussés vers ${targetDomain}.`;
+        barSub.textContent = `Push réussi vers ${targetDomain} · ${totalPushed} mail(s) · ${new Date().toLocaleTimeString()}`;
+      } else {
+        progressText.textContent = `⚠ Push partiel : ${totalPushed}/${ready.length} mail(s) poussés. ${errors.length} échec(s) de batch — voir la console.`;
+        barSub.textContent = `Push partiel vers ${targetDomain}`;
+      }
+      restoreUI();
+    });
+  }
+
   // ── Bridge helpers ─────────────────────────────────────────────────────
   function callOutlookTab(action, extra = {}) {
     return new Promise((resolve, reject) => {
@@ -161,12 +254,15 @@
     });
   }
 
-  /** Read auth_token cookie via chrome.cookies (extension tabs can't
-   *  rely on credentials:'include' to inherit the user's session). */
-  async function getAuthToken() {
-    const candidates = [serverUrl];
+  /** Read auth_token cookie via chrome.cookies for a specific target
+   *  URL (extension tabs can't rely on credentials:'include' to
+   *  inherit the user's session). Defaults to the current dashboard's
+   *  serverUrl ; pass another origin for cross-domain push. */
+  async function getAuthTokenFor(targetUrl) {
+    const target = targetUrl || serverUrl;
+    const candidates = [target];
     try {
-      const u = new URL(serverUrl);
+      const u = new URL(target);
       if (u.hostname === 'localhost') {
         if (u.port !== '3010') candidates.push(`${u.protocol}//${u.hostname}:3010`);
         if (u.port !== '5170') candidates.push(`${u.protocol}//${u.hostname}:5170`);
@@ -183,17 +279,29 @@
     return '';
   }
 
-  async function pushToBackend(payload) {
-    const token = await getAuthToken();
+  // Backwards-compatible shim used by the existing scrape flow.
+  async function getAuthToken() {
+    return getAuthTokenFor(serverUrl);
+  }
+
+  /** POST a batch of scraped emails to the chosen backend. By default
+   *  hits the dashboard's `serverUrl` (the one the user opened against)
+   *  ; pass `targetUrl` to redirect to another domain — used by the
+   *  "📤 Pousser" button to ship the same batch to prod / staging
+   *  without re-running the Outlook scrape. */
+  async function pushToBackend(payload, targetUrl) {
+    const target = (targetUrl || serverUrl).replace(/\/+$/, '');
+    const targetDomain = (() => { try { return new URL(target).host; } catch { return target; } })();
+    const token = await getAuthTokenFor(target);
     if (!token) {
-      throw new Error(`Non connecté à ${serverDomain}. Ouvre le serveur et connecte-toi, puis relance la sync.`);
+      throw new Error(`Non connecté à ${targetDomain}. Ouvre ${target} dans un onglet, connecte-toi, puis relance le push.`);
     }
     // Try /suivitess-api first (dev proxy), fall back to /suivitess/api
     // (prod nginx). Same dual-path strategy as the popup's apiFetch.
     const tryPaths = ['/suivitess-api/outlook/sync', '/suivitess/api/outlook/sync'];
     let lastErr = null;
     for (const path of tryPaths) {
-      const url = `${serverUrl.replace(/\/+$/, '')}${path}`;
+      const url = `${target}${path}`;
       try {
         const res = await fetch(url, {
           method: 'POST',
