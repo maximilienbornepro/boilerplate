@@ -1439,6 +1439,329 @@ export function ConnectorsPage({ onBack }: ConnectorsPageProps) {
   );
 }
 
+// ==================== Slack Config Editor ====================
+// Editable view of the user's Slack collector config — channels list,
+// xoxc/xoxd tokens, workspace URL — exposed in the admin connectors
+// page so the user can add a conversation, swap a token after rotation,
+// or just see which token is wired in for the current environment
+// without having to reconfigure from scratch via the Chrome extension.
+function SlackConfigEditor({
+  daysToFetch,
+  onSync,
+  syncing,
+  onDisconnect,
+  onChange,
+}: {
+  daysToFetch: number;
+  onSync: () => Promise<void> | void;
+  syncing: boolean;
+  onDisconnect: () => Promise<void> | void;
+  onChange: () => Promise<void> | void;
+}) {
+  type SlackChan = { id: string; name: string; url?: string };
+  const [config, setConfig] = useState<{
+    workspaceUrl: string;
+    xoxcToken: string;
+    xoxdCookie: string;
+    channels: SlackChan[];
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedFlash, setSavedFlash] = useState<string | null>(null);
+  const [showTokens, setShowTokens] = useState(false);
+  // Local working copy of the channel rows so edits don't fight with
+  // re-fetches. Reset to server state when `config` reloads.
+  const [draftChannels, setDraftChannels] = useState<SlackChan[]>([]);
+  const [newChan, setNewChan] = useState<SlackChan>({ id: '', name: '' });
+  // Token edit panel uses a separate draft so the masked display
+  // can stay readonly while the user types replacements.
+  const [editingToken, setEditingToken] = useState(false);
+  const [tokenDraft, setTokenDraft] = useState({ workspaceUrl: '', xoxcToken: '', xoxdCookie: '' });
+  const [savingToken, setSavingToken] = useState(false);
+
+  const loadConfig = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/suivitess-api/slack/config', { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data?.configured) {
+        setConfig({
+          workspaceUrl: data.workspaceUrl,
+          xoxcToken: data.xoxcToken,
+          xoxdCookie: data.xoxdCookie,
+          channels: data.channels || [],
+        });
+        setDraftChannels(data.channels || []);
+      } else {
+        setConfig(null);
+      }
+    } catch (err) {
+      setSaveError(`Lecture config échouée : ${(err as Error).message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadConfig(); }, [loadConfig]);
+
+  const channelsDirty = config !== null && JSON.stringify(draftChannels) !== JSON.stringify(config.channels);
+
+  const flashSaved = (msg: string) => {
+    setSavedFlash(msg);
+    setTimeout(() => setSavedFlash(null), 2500);
+  };
+
+  const saveChannels = async () => {
+    setSaveError(null);
+    try {
+      const res = await fetch('/suivitess-api/slack/channels', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channels: draftChannels }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      flashSaved('✓ Conversations enregistrées');
+      await loadConfig();
+      await onChange();
+    } catch (err) {
+      setSaveError(`Sauvegarde échouée : ${(err as Error).message}`);
+    }
+  };
+
+  const addChannel = () => {
+    const id = newChan.id.trim();
+    const name = newChan.name.trim();
+    if (!id) return;
+    if (draftChannels.some(c => c.id === id)) {
+      setSaveError(`La conversation ${id} est déjà dans la liste`);
+      return;
+    }
+    setDraftChannels([...draftChannels, { id, name: name || id }]);
+    setNewChan({ id: '', name: '' });
+    setSaveError(null);
+  };
+
+  const removeChannel = (id: string) => {
+    setDraftChannels(draftChannels.filter(c => c.id !== id));
+  };
+
+  const renameChannel = (id: string, patch: Partial<SlackChan>) => {
+    setDraftChannels(draftChannels.map(c => c.id === id ? { ...c, ...patch } : c));
+  };
+
+  const startTokenEdit = () => {
+    if (!config) return;
+    setTokenDraft({ workspaceUrl: config.workspaceUrl, xoxcToken: '', xoxdCookie: '' });
+    setEditingToken(true);
+    setSaveError(null);
+  };
+
+  const saveToken = async () => {
+    setSavingToken(true);
+    setSaveError(null);
+    try {
+      const res = await fetch('/suivitess-api/slack/token', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tokenDraft),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      flashSaved(`✓ Token mis à jour (auth Slack ok pour ${data.user || '?'})`);
+      setEditingToken(false);
+      await loadConfig();
+      await onChange();
+    } catch (err) {
+      setSaveError(`Mise à jour token échouée : ${(err as Error).message}`);
+    } finally {
+      setSavingToken(false);
+    }
+  };
+
+  const mask = (raw: string, keep = 4): string => {
+    if (!raw) return '';
+    const tail = raw.slice(-keep);
+    return `${raw.slice(0, 4)}…${tail}`;
+  };
+
+  if (loading) {
+    return (
+      <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
+        Chargement de la configuration…
+      </p>
+    );
+  }
+
+  if (!config) {
+    return (
+      <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--error)' }}>
+        Configuration introuvable. Recharge la page.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+      {saveError && (
+        <div style={{ padding: 'var(--spacing-sm)', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--error)', borderRadius: 'var(--radius-sm)', color: 'var(--error)', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+          ⚠ {saveError}
+        </div>
+      )}
+      {savedFlash && (
+        <div style={{ padding: 'var(--spacing-sm)', background: 'rgba(16,185,129,0.1)', border: '1px solid var(--success)', borderRadius: 'var(--radius-sm)', color: 'var(--success)', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+          {savedFlash}
+        </div>
+      )}
+
+      {/* ── Workspace + tokens ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
+        <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
+          Authentification Slack utilisée par cet environnement :
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '6px 12px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+          <span style={{ color: 'var(--text-muted)' }}>Workspace :</span>
+          <span style={{ color: 'var(--text-primary)' }}>{config.workspaceUrl}</span>
+          <span style={{ color: 'var(--text-muted)' }}>xoxc token :</span>
+          <span style={{ color: 'var(--text-primary)' }}>{showTokens ? config.xoxcToken : mask(config.xoxcToken, 6)}</span>
+          <span style={{ color: 'var(--text-muted)' }}>xoxd cookie :</span>
+          <span style={{ color: 'var(--text-primary)' }}>{showTokens ? config.xoxdCookie : mask(config.xoxdCookie, 6)}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>
+          <button className="connector-btn" onClick={() => setShowTokens(v => !v)} type="button">
+            {showTokens ? 'Masquer' : 'Afficher'} les tokens
+          </button>
+          {!editingToken && (
+            <button className="connector-btn" onClick={startTokenEdit} type="button">
+              Modifier le token
+            </button>
+          )}
+        </div>
+        {editingToken && (
+          <div style={{ marginTop: 'var(--spacing-sm)', padding: 'var(--spacing-sm)', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
+            <label style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
+              Workspace URL
+              <input
+                type="text"
+                value={tokenDraft.workspaceUrl}
+                onChange={e => setTokenDraft(d => ({ ...d, workspaceUrl: e.target.value }))}
+                placeholder="https://francetv.slack.com"
+                style={{ width: '100%', marginTop: 4, padding: '4px 8px', fontFamily: 'var(--font-mono)', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)' }}
+              />
+            </label>
+            <label style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
+              Nouveau xoxc token
+              <input
+                type="password"
+                value={tokenDraft.xoxcToken}
+                onChange={e => setTokenDraft(d => ({ ...d, xoxcToken: e.target.value }))}
+                placeholder="xoxc-..."
+                style={{ width: '100%', marginTop: 4, padding: '4px 8px', fontFamily: 'var(--font-mono)', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)' }}
+              />
+            </label>
+            <label style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
+              Nouveau xoxd cookie
+              <input
+                type="password"
+                value={tokenDraft.xoxdCookie}
+                onChange={e => setTokenDraft(d => ({ ...d, xoxdCookie: e.target.value }))}
+                placeholder="xoxd-..."
+                style={{ width: '100%', marginTop: 4, padding: '4px 8px', fontFamily: 'var(--font-mono)', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)' }}
+              />
+            </label>
+            <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginTop: 4 }}>
+              <button
+                className="connector-btn connector-btn-primary"
+                onClick={saveToken}
+                disabled={savingToken || !tokenDraft.xoxcToken || !tokenDraft.xoxdCookie}
+                type="button"
+              >
+                {savingToken ? 'Validation Slack…' : 'Enregistrer le nouveau token'}
+              </button>
+              <button className="connector-btn" onClick={() => setEditingToken(false)} type="button">
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Channels ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
+        <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
+          Conversations surveillées ({draftChannels.length}) :
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {draftChannels.map(ch => (
+            <div key={ch.id} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 6, alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+              <input
+                type="text"
+                value={ch.id}
+                readOnly
+                style={{ padding: '4px 8px', background: 'var(--bg-primary)', color: 'var(--text-muted)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', fontSize: 'inherit' }}
+              />
+              <input
+                type="text"
+                value={ch.name}
+                onChange={e => renameChannel(ch.id, { name: e.target.value })}
+                placeholder="nom-affiché"
+                style={{ padding: '4px 8px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', fontSize: 'inherit' }}
+              />
+              <button className="connector-btn connector-btn-danger" onClick={() => removeChannel(ch.id)} type="button">
+                Supprimer
+              </button>
+            </div>
+          ))}
+          {/* Add row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 6, alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: '12px', marginTop: 8 }}>
+            <input
+              type="text"
+              value={newChan.id}
+              onChange={e => setNewChan(c => ({ ...c, id: e.target.value }))}
+              placeholder="C0123ABCDEF"
+              style={{ padding: '4px 8px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', fontSize: 'inherit' }}
+            />
+            <input
+              type="text"
+              value={newChan.name}
+              onChange={e => setNewChan(c => ({ ...c, name: e.target.value }))}
+              placeholder="nom (optionnel)"
+              onKeyDown={e => { if (e.key === 'Enter') addChannel(); }}
+              style={{ padding: '4px 8px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', fontFamily: 'inherit', fontSize: 'inherit' }}
+            />
+            <button className="connector-btn" onClick={addChannel} disabled={!newChan.id.trim()} type="button">
+              + Ajouter
+            </button>
+          </div>
+        </div>
+        <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
+          Récupère les {daysToFetch} derniers jours · Sync automatique toutes les heures
+        </p>
+        {channelsDirty && (
+          <button className="connector-btn connector-btn-primary" onClick={saveChannels} type="button" style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+            Enregistrer les conversations
+          </button>
+        )}
+      </div>
+
+      {/* ── Actions ── */}
+      <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+        <button className="connector-btn connector-btn-primary" onClick={() => onSync()} disabled={syncing} type="button">
+          {syncing ? 'Synchronisation...' : 'Synchroniser maintenant'}
+        </button>
+        <button className="connector-btn connector-btn-danger" onClick={() => onDisconnect()} type="button">
+          Se déconnecter
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ==================== Collectors Section ====================
 
 function CollectorsSection() {
@@ -1543,35 +1866,13 @@ function CollectorsSection() {
           {slackExpanded && (
             <div className="connector-card-body" style={{ padding: 'var(--spacing-md)' }}>
               {slackStatus?.configured ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
-                    <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
-                      Channels surveillés :
-                    </p>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                      {(slackStatus.channels || []).map(ch => (
-                        <span key={ch.id} style={{
-                          padding: '2px 8px', borderRadius: 'var(--radius-sm)',
-                          background: 'var(--bg-primary)', border: '1px solid var(--border-color)',
-                          fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-primary)',
-                        }}>
-                          #{ch.name}
-                        </span>
-                      ))}
-                    </div>
-                    <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
-                      Récupère les {slackStatus.daysToFetch ?? 7} derniers jours · Sync automatique toutes les heures
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-                    <button className="connector-btn connector-btn-primary" onClick={handleSlackSync} disabled={slackSyncing}>
-                      {slackSyncing ? 'Synchronisation...' : 'Synchroniser maintenant'}
-                    </button>
-                    <button className="connector-btn connector-btn-danger" onClick={handleSlackDisconnect}>
-                      Se déconnecter
-                    </button>
-                  </div>
-                </div>
+                <SlackConfigEditor
+                  daysToFetch={slackStatus.daysToFetch ?? 7}
+                  onSync={handleSlackSync}
+                  syncing={slackSyncing}
+                  onDisconnect={handleSlackDisconnect}
+                  onChange={loadStatus}
+                />
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
                   <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)', lineHeight: 1.6 }}>

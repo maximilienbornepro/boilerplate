@@ -1996,6 +1996,96 @@ ${filteredContent.slice(0, 30000)}`,
     });
   }));
 
+  // Returns the user's full Slack config — including tokens — for the
+  // admin UI on /connectors. Per-user data, gated by the default
+  // authMiddleware. The tokens are returned in the clear : the user is
+  // looking at THEIR OWN tokens (not someone else's). The frontend masks
+  // them by default and offers an "afficher" toggle.
+  router.get('/slack/config', asyncHandler(async (req, res) => {
+    const { getSlackConfig } = await import('./slackCollectorService.js');
+    const config = await getSlackConfig(req.user!.id);
+    if (!config) {
+      res.json({ configured: false });
+      return;
+    }
+    res.json({
+      configured: true,
+      workspaceUrl: config.workspaceUrl,
+      xoxcToken: config.xoxcToken,
+      xoxdCookie: config.xoxdCookie,
+      channels: config.channels,
+      daysToFetch: config.daysToFetch,
+      syncIntervalMinutes: config.syncIntervalMinutes,
+      isActive: config.isActive,
+      lastSyncAt: config.lastSyncAt,
+    });
+  }));
+
+  // Update only the channels list (no token re-validation needed).
+  // Used by the admin UI when the user adds/removes a conversation
+  // without changing their auth.
+  router.patch('/slack/channels', asyncHandler(async (req, res) => {
+    const { channels } = req.body as { channels?: Array<{ id: string; name: string; url?: string }> };
+    if (!Array.isArray(channels)) {
+      res.status(400).json({ error: 'channels doit etre un tableau' });
+      return;
+    }
+    const { getSlackConfig, upsertSlackConfig } = await import('./slackCollectorService.js');
+    const existing = await getSlackConfig(req.user!.id);
+    if (!existing) {
+      res.status(400).json({ error: 'Slack non configuré — initialise d\'abord les credentials' });
+      return;
+    }
+    // Sanitize : trim ids/names, drop empty rows, dedupe by id.
+    const seen = new Set<string>();
+    const clean = channels
+      .map(c => ({ id: String(c.id || '').trim(), name: String(c.name || '').trim(), url: c.url ? String(c.url).trim() : undefined }))
+      .filter(c => c.id && !seen.has(c.id) && (seen.add(c.id), true));
+    const updated = await upsertSlackConfig(req.user!.id, {
+      workspaceUrl: existing.workspaceUrl,
+      xoxcToken: existing.xoxcToken,
+      xoxdCookie: existing.xoxdCookie,
+      channels: clean,
+      daysToFetch: existing.daysToFetch,
+      syncIntervalMinutes: existing.syncIntervalMinutes,
+    });
+    res.json({ success: true, channels: updated.channels, channelCount: updated.channels.length });
+  }));
+
+  // Update only the auth tokens (xoxc + xoxd) without losing the
+  // existing channels. Re-validates against Slack's auth.test before
+  // writing — same defensive flow as POST /slack/configure.
+  router.patch('/slack/token', asyncHandler(async (req, res) => {
+    const { workspaceUrl, xoxcToken, xoxdCookie } = req.body as {
+      workspaceUrl?: string; xoxcToken?: string; xoxdCookie?: string;
+    };
+    if (!xoxcToken || !xoxdCookie) {
+      res.status(400).json({ error: 'xoxcToken et xoxdCookie sont requis' });
+      return;
+    }
+    const { getSlackConfig, upsertSlackConfig, testSlackAuth } = await import('./slackCollectorService.js');
+    const existing = await getSlackConfig(req.user!.id);
+    if (!existing) {
+      res.status(400).json({ error: 'Slack non configuré — utilise POST /slack/configure pour la première fois' });
+      return;
+    }
+    const targetWorkspace = workspaceUrl || existing.workspaceUrl;
+    const auth = await testSlackAuth(targetWorkspace, xoxcToken, xoxdCookie);
+    if (!auth.ok) {
+      res.status(401).json({ error: auth.error || 'Authentification Slack échouée' });
+      return;
+    }
+    const updated = await upsertSlackConfig(req.user!.id, {
+      workspaceUrl: targetWorkspace,
+      xoxcToken,
+      xoxdCookie,
+      channels: existing.channels,
+      daysToFetch: existing.daysToFetch,
+      syncIntervalMinutes: existing.syncIntervalMinutes,
+    });
+    res.json({ success: true, user: auth.user, team: auth.team, workspaceUrl: updated.workspaceUrl });
+  }));
+
   // Get Slack collector status for the current user.
   router.get('/slack/status', asyncHandler(async (req, res) => {
     const { getSlackConfig, getSlackMessageCount } = await import('./slackCollectorService.js');
