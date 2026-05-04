@@ -8,6 +8,42 @@ import { createEmptyCV } from '../../types';
 import * as api from '../../services/api';
 import './MyProfilePage.css';
 
+/** Generate a stable React key for an Experience / Formation / Award.
+ *  Used to prevent ListEditor's internal state (input draft, edit
+ *  index) from leaking onto the wrong row when the user reorders or
+ *  deletes entries. Persisted in cv_data so the key survives
+ *  save / reload round-trips. */
+function makeUiKey(prefix: 'exp' | 'form' | 'award'): string {
+  // crypto.randomUUID is available in all modern browsers + Node 19+.
+  const rand = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${rand}`;
+}
+
+/** Walk a CV and assign `_uiKey` to any Experience / Formation /
+ *  Award that doesn't already have one. Idempotent — entries that
+ *  already carry a key keep theirs. Returns the same CV reference
+ *  unchanged when there's nothing to backfill, so React doesn't
+ *  re-render needlessly. */
+function backfillUiKeys(cv: CV): CV {
+  let mutated = false;
+  const cvData = { ...cv.cvData };
+  if (cvData.experiences && cvData.experiences.some(e => !e._uiKey)) {
+    cvData.experiences = cvData.experiences.map(e => e._uiKey ? e : { ...e, _uiKey: makeUiKey('exp') });
+    mutated = true;
+  }
+  if (cvData.formations && cvData.formations.some(f => !f._uiKey)) {
+    cvData.formations = cvData.formations.map(f => f._uiKey ? f : { ...f, _uiKey: makeUiKey('form') });
+    mutated = true;
+  }
+  if (cvData.awards && cvData.awards.some(a => !a._uiKey)) {
+    cvData.awards = cvData.awards.map(a => a._uiKey ? a : { ...a, _uiKey: makeUiKey('award') });
+    mutated = true;
+  }
+  return mutated ? { ...cv, cvData } : cv;
+}
+
 interface MyProfilePageProps {
   onNavigate?: (path: string) => void;
   cvId?: number;  // If provided, load and save this specific CV instead of default
@@ -41,7 +77,9 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
     try {
       setLoading(true);
       const data = cvId ? await api.fetchCV(cvId) : await api.fetchDefaultCV();
-      setCv(data);
+      // Ensure every Experience / Formation / Award has a stable
+      // _uiKey so React keys are tied to identity, not array index.
+      setCv(backfillUiKeys(data));
     } catch (err: any) {
       console.error('Failed to load CV:', err);
       addToast({ type: 'error', message: 'Erreur lors du chargement du CV' });
@@ -61,7 +99,10 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
       const updated = cvId
         ? await api.updateCV(cvId, { cvData })
         : await api.updateDefaultCV(cvData);
-      setCv(updated);
+      // The server round-trips _uiKey unchanged (it's just JSONB),
+      // but backfill defensively in case some legacy CV row predates
+      // this fix. Idempotent — no-op when keys are already present.
+      setCv(backfillUiKeys(updated));
     } catch (err: any) {
       console.error('Failed to save CV:', err);
       addToast({ type: 'error', message: 'Erreur lors de la sauvegarde' });
@@ -104,7 +145,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
   }, [cvId, onNavigate]);
 
   const handleImportComplete = useCallback((newCV: CV) => {
-    setCv(newCV);
+    setCv(backfillUiKeys(newCV));
     setShowImport(false);
     addToast({ type: 'success', message: 'CV importe avec succes' });
   }, [addToast]);
@@ -127,6 +168,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
       projects: [],
       clients: [],
       technologies: [],
+      _uiKey: makeUiKey('exp'),
     };
     handleChange({
       experiences: [...(cv.cvData.experiences || []), newExp],
@@ -164,6 +206,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
       school: '',
       period: '',
       location: '',
+      _uiKey: makeUiKey('form'),
     };
     handleChange({
       formations: [...(cv.cvData.formations || []), newForm],
@@ -200,6 +243,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
       year: '',
       title: '',
       location: '',
+      _uiKey: makeUiKey('award'),
     };
     handleChange({
       awards: [...(cv.cvData.awards || []), newAward],
@@ -443,7 +487,11 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
           >
             <div className="cv-experiences">
               {cvData.experiences?.map((exp, index) => (
-                <div key={index} className="cv-experience-item">
+                // Stable key (not array index) so reordering experiences
+                // doesn't carry the missions ListEditor's internal state
+                // (input draft, edit index) onto the next experience that
+                // happens to land at the same position.
+                <div key={exp._uiKey ?? `exp-fallback-${index}`} className="cv-experience-item">
                   <div className="cv-experience-header">
                     <span className="cv-experience-number">#{index + 1}</span>
                     <div className="cv-experience-actions">
@@ -559,7 +607,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
           >
             <div className="cv-formations">
               {cvData.formations?.map((form, index) => (
-                <div key={index} className="cv-formation-item">
+                <div key={form._uiKey ?? `form-fallback-${index}`} className="cv-formation-item">
                   <div className="cv-experience-header">
                     <span className="cv-experience-number">#{index + 1}</span>
                     <div className="cv-experience-actions">
@@ -647,7 +695,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
           >
             <div className="cv-awards">
               {cvData.awards?.map((award, index) => (
-                <div key={index} className="cv-award-item">
+                <div key={award._uiKey ?? `award-fallback-${index}`} className="cv-award-item">
                   <div className="cv-experience-header">
                     <span className="cv-experience-number">#{index + 1}</span>
                     <button

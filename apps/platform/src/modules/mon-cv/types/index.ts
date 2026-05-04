@@ -23,6 +23,13 @@ export interface Experience {
   clients?: string[];
   technologies?: string[];
   logo?: string; // base64 or logo ID reference
+  /** Stable client-side identity. Only used as a React key in the
+   *  editor — without it, reordering experiences makes children
+   *  components (like the missions ListEditor) keep their internal
+   *  state at the OLD position, which causes a half-typed mission
+   *  to land on the wrong experience. Persisted in cv_data JSONB
+   *  for round-trip stability across save/reload. */
+  _uiKey?: string;
 }
 
 // Education/Formation
@@ -31,6 +38,8 @@ export interface Formation {
   school: string;
   period: string;
   location?: string;
+  /** Stable client-side identity — see Experience._uiKey. */
+  _uiKey?: string;
 }
 
 // Award/Distinction
@@ -39,6 +48,8 @@ export interface Award {
   year: string;
   title: string;
   location?: string;
+  /** Stable client-side identity — see Experience._uiKey. */
+  _uiKey?: string;
 }
 
 // Side project item (category of projects)
