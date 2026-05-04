@@ -33,7 +33,11 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
   const [editDraft, setEditDraft] = useState<string>('');
   const [busyTileId, setBusyTileId] = useState<string | null>(null);
 
-  // Kick off the adaptation as soon as the modal mounts.
+  // Kick off the adaptation as soon as the modal mounts. Skill A
+  // runs synchronously (~60s) and returns the tile list ; skill B
+  // runs in the background and fills in the actual AI proposals.
+  // The frontend polls /tiles every 4s while at least one tile has
+  // proposalReady=false, then stops.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -52,6 +56,40 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
     })();
     return () => { cancelled = true; };
   }, [cvId, jobOffer]);
+
+  // Poll for skill-B updates while we're in routing phase and at
+  // least one tile is still awaiting its proposal. Stops as soon as
+  // every tile is ready (or the user closes the modal).
+  useEffect(() => {
+    if (phase !== 'routing' || adaptationId === null) return;
+    if (tiles.every(t => t.proposalReady)) return;
+    let cancelled = false;
+    const intervalId = setInterval(async () => {
+      try {
+        const fresh = await api.fetchTilesForAdaptation(adaptationId);
+        if (cancelled) return;
+        setTiles(prev => {
+          // Preserve the local UI state machine — only refresh fields
+          // that come from skill B (proposed_text + proposal_ready +
+          // ai_log_id + regenerate_count). Don't touch user_edited_text
+          // / status which the user may have just changed locally.
+          const byId = new Map(fresh.map(t => [t.id, t]));
+          return prev.map(t => {
+            const f = byId.get(t.id);
+            if (!f) return t;
+            return {
+              ...t,
+              proposedText: f.proposedText,
+              proposalReady: f.proposalReady,
+              regenerateCount: f.regenerateCount,
+              aiLogId: f.aiLogId,
+            };
+          });
+        });
+      } catch { /* swallow — next tick will retry */ }
+    }, 4000);
+    return () => { cancelled = true; clearInterval(intervalId); };
+  }, [phase, adaptationId, tiles]);
 
   const pendingTiles = useMemo(() => tiles.filter(t => t.status === 'pending'), [tiles]);
   const activeTile = useMemo(() => tiles.find(t => t.id === activeTileId) ?? null, [tiles, activeTileId]);
@@ -256,7 +294,8 @@ function RoutingTile({
       <section>
         <h4>
           Proposition de l'IA
-          {proposalUnchanged && <span className="adapt-cv-tiles__hint"> · identique à l'original</span>}
+          {!tile.proposalReady && <span className="adapt-cv-tiles__hint"> · 📡 IA en cours…</span>}
+          {tile.proposalReady && proposalUnchanged && <span className="adapt-cv-tiles__hint"> · identique à l'original</span>}
           {tile.regenerateCount > 0 && <span className="adapt-cv-tiles__hint"> · régénérée {tile.regenerateCount}×</span>}
         </h4>
         {isEditing ? (
@@ -267,6 +306,10 @@ function RoutingTile({
             rows={Math.min(12, Math.max(3, editDraft.split('\n').length + 1))}
             autoFocus
           />
+        ) : !tile.proposalReady ? (
+          <pre className="adapt-cv-tiles__text adapt-cv-tiles__text--pending">
+            La proposition adaptée à l'offre arrive dans quelques secondes…
+          </pre>
         ) : (
           <pre className="adapt-cv-tiles__text adapt-cv-tiles__text--proposed">
             {(tile.userEditedText ?? tile.proposedText) || '(vide)'}

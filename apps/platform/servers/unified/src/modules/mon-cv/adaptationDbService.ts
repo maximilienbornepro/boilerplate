@@ -90,6 +90,12 @@ async function ensureTable() {
   `);
   await pool.query('CREATE INDEX IF NOT EXISTS idx_cv_tiles_adaptation ON cv_adaptation_tiles(adaptation_id)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_cv_tiles_status ON cv_adaptation_tiles(adaptation_id, status)');
+  // Skill B is now run in the background after skill A so the user
+  // gets the modal in ~60s instead of ~2.5min. Tiles are persisted
+  // by skill A with proposal_ready=false (proposed_text = the
+  // original) ; skill B flips this to true once it has produced a
+  // proper adaptation. Frontend polls until every tile is ready.
+  await pool.query('ALTER TABLE cv_adaptation_tiles ADD COLUMN IF NOT EXISTS proposal_ready BOOLEAN NOT NULL DEFAULT FALSE');
 }
 
 // ============================================================
@@ -108,6 +114,10 @@ export interface CVAdaptationTile {
   status: 'pending' | 'accepted' | 'skipped' | 'edited';
   regenerateCount: number;
   aiLogId: number | null;
+  /** False between skill A creating the row (proposed_text = original_text)
+   *  and skill B writing the actual AI proposal. The frontend polls until
+   *  every tile is ready. */
+  proposalReady: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -125,6 +135,7 @@ function mapTileRow(row: any): CVAdaptationTile {
     status: row.status,
     regenerateCount: row.regenerate_count ?? 0,
     aiLogId: row.ai_log_id ?? null,
+    proposalReady: row.proposal_ready ?? false,
     createdAt: row.created_at?.toISOString() || new Date().toISOString(),
     updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
   };
@@ -204,6 +215,28 @@ export async function updateTileStatus(
   return result.rows[0] ? mapTileRow(result.rows[0]) : null;
 }
 
+/** Set the proposed text + flip proposal_ready=true on tiles
+ *  identified by their `tile_id` (NOT the row UUID — the stable
+ *  hash). Used by the background skill-B run after skill A has
+ *  already persisted the rows. Auth-checked at the adaptation
+ *  level via the join. */
+export async function setTileProposal(
+  adaptationId: number,
+  tileId: string,
+  proposedText: string,
+  aiLogId: number | null,
+): Promise<void> {
+  await pool.query(
+    `UPDATE cv_adaptation_tiles
+        SET proposed_text = $3,
+            proposal_ready = TRUE,
+            ai_log_id = COALESCE($4, ai_log_id),
+            updated_at = NOW()
+      WHERE adaptation_id = $1 AND tile_id = $2`,
+    [adaptationId, tileId, proposedText, aiLogId],
+  );
+}
+
 /** Replace the proposal text after a successful regenerate. Resets
  *  user_edited_text + status so the user re-validates the new
  *  proposal explicitly. */
@@ -220,6 +253,7 @@ export async function updateTileProposal(
         SET proposed_text = $2,
             user_edited_text = NULL,
             status = 'pending',
+            proposal_ready = TRUE,
             regenerate_count = regenerate_count + 1,
             ai_log_id = COALESCE($3, ai_log_id),
             updated_at = NOW()

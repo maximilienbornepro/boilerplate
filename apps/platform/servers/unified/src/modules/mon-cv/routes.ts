@@ -748,7 +748,7 @@ export function createMonCvRoutes(): Router {
     const { extractAtomicSubjects, adaptAllAtomics, persistTilesForAdaptation } =
       await import('./tileAdaptationService.js');
 
-    // Skill A
+    // Skill A — runs synchronously. ~60s for a packed CV.
     const { subjects, logId: extractLogId } = await extractAtomicSubjects(cv.cvData, userId, userEmail);
     if (subjects.length === 0) {
       return res.status(400).json({
@@ -758,11 +758,9 @@ export function createMonCvRoutes(): Router {
       });
     }
 
-    // Skill B (batch)
-    const { proposals } = await adaptAllAtomics(subjects, jobOffer, userId, userEmail);
-
     // Create the adaptation row up-front so tiles can reference it.
-    // adapted_cv = original at this point ; gets merged tile by tile.
+    // adapted_cv = original at this point ; merged tile by tile as
+    // the user accepts/edits each one.
     const emptyAtsScore = { overall: 0, keywordMatch: 0, sectionCoverage: 0, titleMatch: false, breakdown: { requiredFound: [], requiredMissing: [], multiSectionKeywords: [], singleSectionKeywords: [] } };
     const adaptation = await createAdaptation(cvId, userId, {
       jobOffer,
@@ -773,8 +771,34 @@ export function createMonCvRoutes(): Router {
       jobAnalysis: { requiredKeywords: [], preferredKeywords: [], exactJobTitle: '', technologies: [], keyResponsibilities: [], domain: '', atsHint: 'unknown' } as any,
     });
 
-    const tiles = await persistTilesForAdaptation(adaptation.id, subjects, proposals);
+    // Persist the tiles immediately with proposed_text = original_text
+    // and proposal_ready = false. This lets the frontend display the
+    // routing UI in ~60s instead of ~2min30. Skill B then fills in
+    // the actual proposals in the background.
+    const tiles = await persistTilesForAdaptation(adaptation.id, subjects, []);
     res.json({ adaptationId: adaptation.id, tiles });
+
+    // Skill B (batch) in the background. Updates each tile row as
+    // results come in and flips proposal_ready=true. The frontend
+    // polls /tiles every few seconds and re-renders. Errors are
+    // logged ; partial completion is fine (any unset tile keeps
+    // proposed_text === originalText).
+    setImmediate(async () => {
+      try {
+        const { proposals, logId: adaptLogId } = await adaptAllAtomics(subjects, jobOffer, userId, userEmail);
+        const { setTileProposal } = await import('./adaptationDbService.js');
+        for (const subj of subjects) {
+          const proposal = proposals.find(p => p.id === subj.id);
+          const text = proposal?.proposedText && proposal.proposedText.trim().length > 0
+            ? proposal.proposedText
+            : subj.originalText;
+          await setTileProposal(adaptation.id, subj.id, text, adaptLogId);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[mon-cv] background skill B failed for adaptation', adaptation.id, err);
+      }
+    });
   }));
 
   // GET /tile-adaptations/:id/tiles — list tiles for an adaptation.

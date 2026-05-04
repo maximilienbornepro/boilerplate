@@ -105,6 +105,16 @@
   border-color: rgba(96, 165, 250, 0.3);
 }
 
+/* Tile shown to the user while skill B is still running in the
+   background. The text is intentionally plain so it doesn't look
+   like a real proposal — the polling effect will replace it. */
+.adapt-cv-tiles__text--pending {
+  background: rgba(245, 158, 11, 0.05);
+  color: var(--text-muted);
+  border-color: rgba(245, 158, 11, 0.3);
+  font-style: italic;
+}
+
 .adapt-cv-tiles__edit {
   width: 100%;
   padding: var(--spacing-sm);

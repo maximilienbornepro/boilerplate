@@ -307,6 +307,11 @@ export interface CVAdaptationTile {
   status: 'pending' | 'accepted' | 'skipped' | 'edited';
   regenerateCount: number;
   aiLogId: number | null;
+  /** False between skill A creating the row (proposed_text =
+   *  original_text) and skill B writing the actual AI proposal in the
+   *  background. The modal polls /tiles every few seconds until every
+   *  tile is ready, then stops. */
+  proposalReady: boolean;
   createdAt: string;
   updatedAt: string;
 }
