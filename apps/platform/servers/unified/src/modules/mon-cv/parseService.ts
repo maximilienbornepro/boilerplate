@@ -108,25 +108,41 @@ Decoupage (uniquement de la separation, pas de reformulation) :
   titre et sa description tels quels.
 - IMPORTANT pour les missions : chaque mission/responsabilite
   distincte doit etre une entree separee dans le tableau "missions".
-  Recopie chaque ligne telle qu'elle apparait dans le CV.`;
+  Recopie chaque ligne telle qu'elle apparait dans le CV.
+
+REGLE CRITIQUE — RATTACHEMENT MISSIONS / PROJETS A LA BONNE EXPERIENCE :
+- Chaque mission, chaque projet, chaque responsabilite doit etre
+  rattache(e) a l'experience (entreprise + poste + periode) sous
+  laquelle il/elle apparait visuellement dans le CV. Une mission n'est
+  JAMAIS deplacee vers une autre experience.
+- Si une experience contient des elements qui pourraient sembler
+  appartenir a une autre (ex : un nom de client, un budget, un outil
+  cite), tu les laisses dans l'experience d'origine. Ce n'est PAS a
+  toi de re-attribuer les blocs.
+- En cas de doute (texte ambigu, mise en page complexe), tu reproduis
+  fidelement la structure visuelle du document : meme si une
+  experience est courte (1 ou 2 missions) ou tres longue (10+),
+  l'attribution doit refleter ce que voit le lecteur du CV original.
+- VERIFIE avant de renvoyer : la PREMIERE experience listee dans le
+  CV doit recevoir SES PROPRES missions/projets, pas ceux de la
+  deuxieme.`;
 
 export async function parseCV(buffer: Buffer, type: 'pdf' | 'docx'): Promise<CVData> {
-  let text: string;
-
+  // For PDFs we ALWAYS use vision-based parsing : `pdf-parse` flattens
+  // a multi-column / sidebar layout into raw text, which causes Claude
+  // to misattribute missions to the wrong experience block (a real
+  // bug observed on a 2-column CV — France.TV missions ended up under
+  // the next employer). Vision mode preserves the visual structure
+  // and is reliable enough that we no longer try the cheaper text
+  // path first.
   if (type === 'pdf') {
-    text = await extractPdfText(buffer);
-
-    // If very little text extracted, it might be a scanned PDF - use vision parsing
-    if (text.trim().length < 100) {
-      return parseCVWithVision(buffer);
-    }
-  } else {
-    // DOCX
-    const result = await mammoth.extractRawText({ buffer });
-    text = result.value;
+    return parseCVWithVision(buffer);
   }
 
-  return parseCVWithText(text);
+  // DOCX → mammoth gives a clean linear extraction, the text path is
+  // safe here.
+  const result = await mammoth.extractRawText({ buffer });
+  return parseCVWithText(result.value);
 }
 
 export async function parseCVWithText(text: string, userId: number = 1): Promise<CVData> {
@@ -181,7 +197,10 @@ export async function parseCVWithVision(buffer: Buffer, userId: number = 1): Pro
 
   const response = await client.messages.create({
     model,
-    max_tokens: 8000,
+    // 8k was tight for dense multi-experience CVs (truncation observed
+    // mid-array). 16k is safer ; the JSON output stays small relative
+    // to a 200k context model.
+    max_tokens: 16000,
     messages: [
       {
         role: 'user',

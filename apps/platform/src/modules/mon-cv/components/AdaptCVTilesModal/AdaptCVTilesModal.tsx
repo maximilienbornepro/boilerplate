@@ -349,11 +349,18 @@ function groupTilesBySection(tiles: CVAdaptationTile[]): SectionGroup[] {
     return g;
   };
   for (const t of tiles) {
-    // experiences[i].xxx → group by experience index
+    // experiences[i].xxx → group by experience index. Use the company
+    // name from the tile's `label` ("France.TV — Mission #1" → "France.TV")
+    // when available so the user sees real employer names instead of
+    // anonymous "Expérience #1".
     const expMatch = t.path.match(/^experiences\[(\d+)\]/);
     if (expMatch) {
       const idx = expMatch[1];
-      ensure(`experience-${idx}`, `Expérience #${parseInt(idx, 10) + 1}`).tiles.push(t);
+      const company = t.label?.split(' — ')[0]?.trim();
+      const label = company
+        ? `Expérience #${parseInt(idx, 10) + 1} — ${company}`
+        : `Expérience #${parseInt(idx, 10) + 1}`;
+      ensure(`experience-${idx}`, label).tiles.push(t);
       continue;
     }
     // sideProjects.items[i].xxx
@@ -562,8 +569,17 @@ function RoutingTile({
 
   return (
     <div className="adapt-cv-tiles__tile">
+      {/* Human-readable header so the user knows EXACTLY which CV
+          element this tile is — e.g. "France.TV — Mission #1". The
+          cryptic JSONPath is shown underneath as a debug hint, not as
+          the primary identifier (it confused users who couldn't tell
+          which experience a "missions[0]" was attached to). */}
+      {tile.label && (
+        <div className="adapt-cv-tiles__tile-label">{tile.label}</div>
+      )}
       <div className="adapt-cv-tiles__progress">
-        Modification {position} sur {total} · <code>{tile.kind}</code> · <code>{tile.path}</code>
+        Modification {position} sur {total} · <code>{tile.kind}</code>
+        {!tile.label && <> · <code>{tile.path}</code></>}
       </div>
 
       {/* Reasoning — surfaced FIRST so the user knows why before

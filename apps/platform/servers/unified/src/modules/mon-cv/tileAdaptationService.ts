@@ -204,6 +204,7 @@ export async function persistTilesForAdaptation(
       path: a.path,
       kind: a.kind,
       originalText: a.originalText,
+      label: a.label,
       proposedText: p?.proposedText && p.proposedText.trim().length > 0
         ? p.proposedText
         : a.originalText,

@@ -315,6 +315,11 @@ export interface CVAdaptationTile {
   /** Short human-readable rationale from skill B explaining why the
    *  text was changed. Null until skill B runs. */
   reasoning: string | null;
+  /** Human-readable display label such as "France.TV — Mission #1" so
+   *  the routing UI shows the user exactly which CV element they are
+   *  editing without surfacing the cryptic JSONPath. Legacy rows may
+   *  be null. */
+  label: string | null;
   createdAt: string;
   updatedAt: string;
 }

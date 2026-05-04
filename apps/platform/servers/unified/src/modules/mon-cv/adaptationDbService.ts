@@ -97,6 +97,10 @@ async function ensureTable() {
   // and writes the human-readable reasoning that drove the change.
   await pool.query('ALTER TABLE cv_adaptation_tiles ADD COLUMN IF NOT EXISTS proposal_ready BOOLEAN NOT NULL DEFAULT FALSE');
   await pool.query('ALTER TABLE cv_adaptation_tiles ADD COLUMN IF NOT EXISTS reasoning TEXT');
+  // Human-readable label like "Mission #1 — Tink / Cossette" so the
+  // routing UI can show the user exactly what they're modifying
+  // without making them parse the cryptic JSONPath.
+  await pool.query('ALTER TABLE cv_adaptation_tiles ADD COLUMN IF NOT EXISTS label TEXT');
 }
 
 // ============================================================
@@ -123,6 +127,10 @@ export interface CVAdaptationTile {
    *  Surfaced in the routing UI so the user understands the AI's
    *  rationale before accepting / rejecting. Null until skill B runs. */
   reasoning: string | null;
+  /** Human-readable display label such as "France.TV — Mission #1" so
+   *  the routing UI doesn't have to surface the cryptic JSONPath.
+   *  Always populated for new tiles ; legacy rows may be null. */
+  label: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -142,6 +150,7 @@ function mapTileRow(row: any): CVAdaptationTile {
     aiLogId: row.ai_log_id ?? null,
     proposalReady: row.proposal_ready ?? false,
     reasoning: row.reasoning ?? null,
+    label: row.label ?? null,
     createdAt: row.created_at?.toISOString() || new Date().toISOString(),
     updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
   };
@@ -152,19 +161,19 @@ function mapTileRow(row: any): CVAdaptationTile {
  *  the user already edited. */
 export async function insertTilesForAdaptation(
   adaptationId: number,
-  tiles: Array<Pick<CVAdaptationTile, 'tileId' | 'path' | 'kind' | 'originalText' | 'proposedText'>>,
+  tiles: Array<Pick<CVAdaptationTile, 'tileId' | 'path' | 'kind' | 'originalText' | 'proposedText' | 'label'>>,
 ): Promise<CVAdaptationTile[]> {
   if (tiles.length === 0) return [];
   const values: string[] = [];
   const params: any[] = [];
   let i = 1;
   for (const t of tiles) {
-    values.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
-    params.push(adaptationId, t.tileId, t.path, t.kind, t.originalText, t.proposedText);
+    values.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+    params.push(adaptationId, t.tileId, t.path, t.kind, t.originalText, t.proposedText, t.label ?? null);
   }
   const result = await pool.query(
     `INSERT INTO cv_adaptation_tiles
-       (adaptation_id, tile_id, path, kind, original_text, proposed_text)
+       (adaptation_id, tile_id, path, kind, original_text, proposed_text, label)
      VALUES ${values.join(', ')}
      ON CONFLICT (adaptation_id, tile_id) DO NOTHING
      RETURNING *`,
