@@ -62,13 +62,16 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
   }, [cvId, jobOffer]);
 
   // ── 3. Poll /tiles while skill B is running ─────────────────────────
+  // Important : we check `proposalReady` ONLY on the tiles the user
+  // SELECTED for adaptation. Tiles outside the selection never get
+  // a skill-B run, so they stay `proposalReady=false` forever — if
+  // we waited on `tiles.every(...)` the modal would be stuck on
+  // `adapting` indefinitely.
   useEffect(() => {
     if (phase !== 'adapting' && phase !== 'routing') return;
     if (adaptationId === null) return;
-    if (tiles.every(t => t.proposalReady)) {
-      // First time we discover everything is ready : flip from
-      // 'adapting' to 'routing'. From within 'routing' we just stop
-      // polling silently.
+    const watched = tiles.filter(t => selectedTileIds.has(t.tileId));
+    if (watched.length === 0 || watched.every(t => t.proposalReady)) {
       if (phase === 'adapting') setPhase('routing');
       return;
     }
@@ -97,16 +100,17 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
       } catch { /* swallow ; next tick retries */ }
     }, 4000);
     return () => { cancelled = true; clearInterval(intervalId); };
-  }, [phase, adaptationId, tiles]);
+  }, [phase, adaptationId, tiles, selectedTileIds]);
 
   // Once we transition to 'routing', set the first ready & modified
-  // tile as the active one.
+  // tile (within the user's selection) as the active one. If skill B
+  // produced no diff at all, fast-forward to 'done'.
   useEffect(() => {
     if (phase !== 'routing' || activeTileId !== null) return;
-    const first = visibleModifiedTiles(tiles)[0];
+    const first = visibleModifiedTiles(tiles).find(t => selectedTileIds.has(t.tileId));
     if (first) setActiveTileId(first.id);
-    else setPhase('done'); // skill B didn't modify anything
-  }, [phase, activeTileId, tiles]);
+    else setPhase('done');
+  }, [phase, activeTileId, tiles, selectedTileIds]);
 
   // ── 2. Selection actions ────────────────────────────────────────────
   const sectionGroups = useMemo(() => groupTilesBySection(tiles), [tiles]);
@@ -143,7 +147,15 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
   };
 
   // ── 4. Routing actions ──────────────────────────────────────────────
-  const visibleTiles = useMemo(() => visibleModifiedTiles(tiles), [tiles]);
+  // visibleTiles : only the user-selected tiles where skill B
+  // actually changed something. The unselected ones get filtered
+  // out (their proposalReady stays false forever), so they're
+  // implicitly excluded — but scoping by selectedTileIds makes the
+  // intent explicit.
+  const visibleTiles = useMemo(
+    () => visibleModifiedTiles(tiles).filter(t => selectedTileIds.has(t.tileId)),
+    [tiles, selectedTileIds],
+  );
   const activeTile = useMemo(() => tiles.find(t => t.id === activeTileId) ?? null, [tiles, activeTileId]);
 
   const advance = useCallback(() => {
