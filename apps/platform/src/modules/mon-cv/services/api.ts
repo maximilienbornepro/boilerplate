@@ -540,3 +540,19 @@ export async function regenerateTile(
   });
   return handleResponse(res);
 }
+
+/** Skill B on a user-selected subset. Returns immediately with a
+ *  job receipt — the modal keeps polling /tiles to see proposals
+ *  land. */
+export async function runAdaptOnSelected(
+  adaptationId: number,
+  tileIds: string[],
+): Promise<{ acceptedCount: number }> {
+  const res = await fetch(`${API_BASE}/tile-adaptations/${adaptationId}/run-adapt`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tileIds }),
+  });
+  return handleResponse(res);
+}

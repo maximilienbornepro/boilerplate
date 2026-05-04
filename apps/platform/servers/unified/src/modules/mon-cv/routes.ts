@@ -745,10 +745,12 @@ export function createMonCvRoutes(): Router {
     const cv = await db.getCVById(cvId, userId);
     if (!cv) return res.status(404).json({ error: 'CV non trouvé' });
 
-    const { extractAtomicSubjects, adaptAllAtomics, persistTilesForAdaptation } =
+    const { extractAtomicSubjects, persistTilesForAdaptation } =
       await import('./tileAdaptationService.js');
 
-    // Skill A — runs synchronously. ~60s for a packed CV.
+    // Skill A only — extraction. The user then picks WHICH atomics
+    // they want adapted via /run-adapt below, so we save tokens by
+    // not blindly running skill B on everything.
     const { subjects, logId: extractLogId } = await extractAtomicSubjects(cv.cvData, userId, userEmail);
     if (subjects.length === 0) {
       return res.status(400).json({
@@ -759,8 +761,6 @@ export function createMonCvRoutes(): Router {
     }
 
     // Create the adaptation row up-front so tiles can reference it.
-    // adapted_cv = original at this point ; merged tile by tile as
-    // the user accepts/edits each one.
     const emptyAtsScore = { overall: 0, keywordMatch: 0, sectionCoverage: 0, titleMatch: false, breakdown: { requiredFound: [], requiredMissing: [], multiSectionKeywords: [], singleSectionKeywords: [] } };
     const adaptation = await createAdaptation(cvId, userId, {
       jobOffer,
@@ -771,32 +771,69 @@ export function createMonCvRoutes(): Router {
       jobAnalysis: { requiredKeywords: [], preferredKeywords: [], exactJobTitle: '', technologies: [], keyResponsibilities: [], domain: '', atsHint: 'unknown' } as any,
     });
 
-    // Persist the tiles immediately with proposed_text = original_text
-    // and proposal_ready = false. This lets the frontend display the
-    // routing UI in ~60s instead of ~2min30. Skill B then fills in
-    // the actual proposals in the background.
+    // Persist the tiles with proposed_text = original_text and
+    // proposal_ready = false. The user then picks which ones to
+    // actually adapt via the next route.
     const tiles = await persistTilesForAdaptation(adaptation.id, subjects, []);
     res.json({ adaptationId: adaptation.id, tiles });
+  }));
 
-    // Skill B (batch) in the background. Updates each tile row as
-    // results come in and flips proposal_ready=true. The frontend
-    // polls /tiles every few seconds and re-renders. Errors are
-    // logged ; partial completion is fine (any unset tile keeps
-    // proposed_text === originalText).
+  // POST /tile-adaptations/:id/run-adapt
+  // Body : { tileIds: string[] }  — the subset selected by the user
+  // in the modal's "Selection" phase. Runs skill B on those atomics
+  // only and updates the matching tile rows. Saves tokens vs
+  // adapting every atomic blindly. Returns a job receipt — the
+  // frontend keeps polling /tiles to see results land.
+  router.post('/tile-adaptations/:id/run-adapt', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const userEmail = (req as any).user?.email ?? null;
+    const adaptationId = parseInt(req.params.id, 10);
+    if (isNaN(adaptationId)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const { tileIds } = (req.body || {}) as { tileIds?: string[] };
+    if (!Array.isArray(tileIds) || tileIds.length === 0) {
+      return res.status(400).json({ error: 'tileIds requis' });
+    }
+
+    const adaptation = await getAdaptation(adaptationId, userId);
+    if (!adaptation) return res.status(404).json({ error: 'Adaptation non trouvée' });
+
+    const { getTilesByAdaptation } = await import('./adaptationDbService.js');
+    const allTiles = await getTilesByAdaptation(adaptationId, userId);
+    const selectedIdSet = new Set(tileIds);
+    const selected = allTiles.filter(t => selectedIdSet.has(t.tileId));
+    if (selected.length === 0) {
+      return res.status(400).json({ error: 'Aucune tuile valide sélectionnée' });
+    }
+
+    res.json({ acceptedCount: selected.length });
+
+    // Background — skill B on the selected subset + write proposals
+    // back via setTileProposal. Errors logged, partial completion OK.
     setImmediate(async () => {
       try {
-        const { proposals, logId: adaptLogId } = await adaptAllAtomics(subjects, jobOffer, userId, userEmail);
+        const { adaptAllAtomics } = await import('./tileAdaptationService.js');
         const { setTileProposal } = await import('./adaptationDbService.js');
-        for (const subj of subjects) {
-          const proposal = proposals.find(p => p.id === subj.id);
+        const atomics = selected.map(t => ({
+          id: t.tileId,
+          path: t.path,
+          kind: t.kind,
+          originalText: t.originalText,
+          label: t.path,
+        }));
+        const { proposals, logId: adaptLogId } = await adaptAllAtomics(
+          atomics, adaptation.jobOffer, userId, userEmail,
+        );
+        for (const a of atomics) {
+          const proposal = proposals.find(p => p.id === a.id);
           const text = proposal?.proposedText && proposal.proposedText.trim().length > 0
             ? proposal.proposedText
-            : subj.originalText;
-          await setTileProposal(adaptation.id, subj.id, text, adaptLogId);
+            : a.originalText;
+          const reasoning = proposal?.reasoning ?? null;
+          await setTileProposal(adaptationId, a.id, text, reasoning, adaptLogId);
         }
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.error('[mon-cv] background skill B failed for adaptation', adaptation.id, err);
+        console.error('[mon-cv] background skill B failed for adaptation', adaptationId, err);
       }
     });
   }));
@@ -884,7 +921,8 @@ export function createMonCvRoutes(): Router {
     const newText = proposal?.proposedText && proposal.proposedText.trim().length > 0
       ? proposal.proposedText
       : tile.originalText;
-    const updated = await updateTileProposal(tileId, userId, newText, logId);
+    const reasoning = proposal?.reasoning ?? null;
+    const updated = await updateTileProposal(tileId, userId, newText, reasoning, logId);
     if (!updated) return res.status(404).json({ error: 'Tuile non trouvée' });
     res.json(updated);
   }));

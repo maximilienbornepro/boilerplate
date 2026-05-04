@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
+import { Modal, Button } from '@boilerplate/shared/components';
 import * as api from '../../services/api';
 import type { CVAdaptationTile } from '../../types';
 import './AdaptCVTilesModal.css';
@@ -8,36 +8,38 @@ interface Props {
   cvId: number;
   jobOffer: string;
   onClose: () => void;
-  /** Called once the user has finished walking through every tile.
-   *  Passes the resulting adaptation id so the parent can navigate to
-   *  the existing AdaptationDetailPage (PDF + edit buttons). */
   onDone: (adaptationId: number) => void;
 }
 
-/** Tile-by-tile CV adaptation modal. Forked from
- *  BulkTranscriptionImportModal — same machine d'état (analyzing →
- *  routing → done) but specialized for the CV flow. The tile UI
- *  exposes 5 actions (Valider · Ignorer · Modifier · Annuler les
- *  modifs · Régénérer) per atomic CV element. */
+type Phase = 'extracting' | 'selecting' | 'adapting' | 'routing' | 'done' | 'error';
+
+/** CV adaptation flow inspired by the suivitess BulkTranscriptionImportModal :
+ *  visible step indicator + per-tile reasoning + agree/disagree CTAs +
+ *  pre-selection of which atomics to adapt (saves tokens by skipping
+ *  parts the user isn't interested in).
+ *
+ *  Phases :
+ *    1. extracting  — skill A flattens the CV into atomic subjects (~60s)
+ *    2. selecting   — user ticks which subjects to adapt (default = all)
+ *    3. adapting    — skill B runs in background ; modal polls /tiles
+ *    4. routing     — tile-by-tile validation, ONLY tiles where the
+ *                     proposal differs from the original
+ *    5. done        — redirect to AdaptationDetailPage
+ */
 export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
-  type Phase = 'analyzing' | 'routing' | 'done' | 'error';
-  const [phase, setPhase] = useState<Phase>('analyzing');
+  const [phase, setPhase] = useState<Phase>('extracting');
   const [adaptationId, setAdaptationId] = useState<number | null>(null);
   const [tiles, setTiles] = useState<CVAdaptationTile[]>([]);
+  const [selectedTileIds, setSelectedTileIds] = useState<Set<string>>(new Set());
   const [activeTileId, setActiveTileId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Per-tile UI state — kept here (not on the row) because they're
-  // ephemeral (textarea visibility, regenerate spinner, save spinner).
+  // Per-tile UI state.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<string>('');
   const [busyTileId, setBusyTileId] = useState<string | null>(null);
 
-  // Kick off the adaptation as soon as the modal mounts. Skill A
-  // runs synchronously (~60s) and returns the tile list ; skill B
-  // runs in the background and fills in the actual AI proposals.
-  // The frontend polls /tiles every 4s while at least one tile has
-  // proposalReady=false, then stops.
+  // ── 1. Extract atomics on mount ─────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -46,8 +48,10 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
         if (cancelled) return;
         setAdaptationId(res.adaptationId);
         setTiles(res.tiles);
-        setActiveTileId(res.tiles[0]?.id ?? null);
-        setPhase('routing');
+        // Default selection : everything. The user trims down what they
+        // don't want before paying for skill B.
+        setSelectedTileIds(new Set(res.tiles.map(t => t.tileId)));
+        setPhase('selecting');
       } catch (err) {
         if (cancelled) return;
         setError((err as Error).message);
@@ -57,67 +61,106 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
     return () => { cancelled = true; };
   }, [cvId, jobOffer]);
 
-  // Poll for skill-B updates while we're in routing phase and at
-  // least one tile is still awaiting its proposal. Stops as soon as
-  // every tile is ready (or the user closes the modal).
+  // ── 3. Poll /tiles while skill B is running ─────────────────────────
   useEffect(() => {
-    if (phase !== 'routing' || adaptationId === null) return;
-    if (tiles.every(t => t.proposalReady)) return;
+    if (phase !== 'adapting' && phase !== 'routing') return;
+    if (adaptationId === null) return;
+    if (tiles.every(t => t.proposalReady)) {
+      // First time we discover everything is ready : flip from
+      // 'adapting' to 'routing'. From within 'routing' we just stop
+      // polling silently.
+      if (phase === 'adapting') setPhase('routing');
+      return;
+    }
     let cancelled = false;
     const intervalId = setInterval(async () => {
       try {
         const fresh = await api.fetchTilesForAdaptation(adaptationId);
         if (cancelled) return;
         setTiles(prev => {
-          // Preserve the local UI state machine — only refresh fields
-          // that come from skill B (proposed_text + proposal_ready +
-          // ai_log_id + regenerate_count). Don't touch user_edited_text
-          // / status which the user may have just changed locally.
           const byId = new Map(fresh.map(t => [t.id, t]));
           return prev.map(t => {
             const f = byId.get(t.id);
             if (!f) return t;
+            // Preserve user-edited fields ; only sync the skill-B
+            // outputs.
             return {
               ...t,
               proposedText: f.proposedText,
               proposalReady: f.proposalReady,
+              reasoning: f.reasoning,
               regenerateCount: f.regenerateCount,
               aiLogId: f.aiLogId,
             };
           });
         });
-      } catch { /* swallow — next tick will retry */ }
+      } catch { /* swallow ; next tick retries */ }
     }, 4000);
     return () => { cancelled = true; clearInterval(intervalId); };
   }, [phase, adaptationId, tiles]);
 
-  const pendingTiles = useMemo(() => tiles.filter(t => t.status === 'pending'), [tiles]);
+  // Once we transition to 'routing', set the first ready & modified
+  // tile as the active one.
+  useEffect(() => {
+    if (phase !== 'routing' || activeTileId !== null) return;
+    const first = visibleModifiedTiles(tiles)[0];
+    if (first) setActiveTileId(first.id);
+    else setPhase('done'); // skill B didn't modify anything
+  }, [phase, activeTileId, tiles]);
+
+  // ── 2. Selection actions ────────────────────────────────────────────
+  const sectionGroups = useMemo(() => groupTilesBySection(tiles), [tiles]);
+
+  const toggleTile = (tileId: string) => {
+    setSelectedTileIds(prev => {
+      const next = new Set(prev);
+      if (next.has(tileId)) next.delete(tileId);
+      else next.add(tileId);
+      return next;
+    });
+  };
+  const toggleGroup = (group: SectionGroup) => {
+    const allSelected = group.tiles.every(t => selectedTileIds.has(t.tileId));
+    setSelectedTileIds(prev => {
+      const next = new Set(prev);
+      for (const t of group.tiles) {
+        if (allSelected) next.delete(t.tileId);
+        else next.add(t.tileId);
+      }
+      return next;
+    });
+  };
+
+  const startAdaptation = async () => {
+    if (!adaptationId || selectedTileIds.size === 0) return;
+    setPhase('adapting');
+    try {
+      await api.runAdaptOnSelected(adaptationId, Array.from(selectedTileIds));
+    } catch (err) {
+      setError((err as Error).message);
+      setPhase('error');
+    }
+  };
+
+  // ── 4. Routing actions ──────────────────────────────────────────────
+  const visibleTiles = useMemo(() => visibleModifiedTiles(tiles), [tiles]);
   const activeTile = useMemo(() => tiles.find(t => t.id === activeTileId) ?? null, [tiles, activeTileId]);
 
-  // Pick the next pending tile after a status change. Prefer tiles
-  // whose AI proposal is already ready, so the user keeps validating
-  // real content while skill B catches up on the rest in the
-  // background. Falls back to non-ready tiles only if every ready
-  // one has already been treated. Falls through to phase=done when
-  // nothing's left.
   const advance = useCallback(() => {
     setEditingId(null);
     setEditDraft('');
-    const remaining = tiles.filter(t => t.status === 'pending' && t.id !== activeTileId);
+    const remaining = visibleTiles.filter(t => t.status === 'pending' && t.id !== activeTileId);
     if (remaining.length === 0) {
-      // Last tile committed.
       setPhase('done');
       return;
     }
     const ready = remaining.find(t => t.proposalReady);
     setActiveTileId((ready ?? remaining[0]).id);
-  }, [tiles, activeTileId]);
+  }, [visibleTiles, activeTileId]);
 
   const replaceTile = (updated: CVAdaptationTile) => {
     setTiles(prev => prev.map(t => (t.id === updated.id ? updated : t)));
   };
-
-  // ── Actions ─────────────────────────────────────────────────────────
 
   const handleAccept = async () => {
     if (!adaptationId || !activeTile) return;
@@ -161,10 +204,6 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
     finally { setBusyTileId(null); }
   };
 
-  /** Drop the user's edits AND any ongoing regeneration : the
-   *  proposal goes back to the AI's last suggestion. If the user
-   *  already accepted/edited the tile in DB, this PUT also rewrites
-   *  the merged text in `adapted_cv` (server-side merge). */
   const handleRevert = async () => {
     if (!adaptationId || !activeTile) return;
     setEditingId(null);
@@ -186,7 +225,6 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
     try {
       const updated = await api.regenerateTile(adaptationId, activeTile.id);
       replaceTile(updated);
-      // Clear any in-flight edit so the new proposal is what's displayed.
       setEditingId(null);
       setEditDraft('');
     } catch (err) { setError((err as Error).message); }
@@ -194,31 +232,39 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
   };
 
   // ── Render ──────────────────────────────────────────────────────────
-
-  const headerTitle = phase === 'analyzing'
-    ? 'Analyse du CV en cours…'
-    : phase === 'done'
-      ? 'Adaptation terminée'
-      : 'Adapter le CV à l\'offre';
+  const headerTitle =
+    phase === 'extracting' ? 'Analyse du CV…'
+    : phase === 'selecting' ? 'Choisis les sections à adapter'
+    : phase === 'adapting' ? 'L\'IA adapte ton CV à l\'offre…'
+    : phase === 'done' ? 'Adaptation terminée'
+    : phase === 'error' ? 'Erreur'
+    : 'Validation tuile par tuile';
 
   return (
     <Modal isOpen={true} onClose={onClose} title={headerTitle}>
       <div className="adapt-cv-tiles">
         {error && <div className="adapt-cv-tiles__error">⚠ {error}</div>}
 
-        {phase === 'analyzing' && (
-          <div className="adapt-cv-tiles__loading">
-            <LoadingSpinner size="lg" />
-            <p>L'IA extrait les sujets atomiques du CV puis propose une adaptation pour chaque élément. Patience, ça peut prendre 20-40 secondes.</p>
-          </div>
+        {(phase === 'extracting' || phase === 'adapting') && (
+          <PipelineStepsIndicator phase={phase} tiles={tiles} selectedCount={selectedTileIds.size} />
+        )}
+
+        {phase === 'selecting' && (
+          <SelectionPanel
+            sectionGroups={sectionGroups}
+            selectedTileIds={selectedTileIds}
+            onToggleTile={toggleTile}
+            onToggleGroup={toggleGroup}
+            onStart={startAdaptation}
+            onCancel={onClose}
+          />
         )}
 
         {phase === 'routing' && activeTile && (
           <RoutingTile
             tile={activeTile}
-            position={tiles.findIndex(t => t.id === activeTile.id) + 1}
-            total={tiles.length}
-            pendingCount={pendingTiles.length}
+            position={visibleTiles.findIndex(t => t.id === activeTile.id) + 1}
+            total={visibleTiles.length}
             editingId={editingId}
             editDraft={editDraft}
             busy={busyTileId === activeTile.id}
@@ -233,9 +279,23 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
           />
         )}
 
+        {phase === 'routing' && !activeTile && tiles.length > 0 && visibleTiles.length === 0 && (
+          <div className="adapt-cv-tiles__done">
+            <p>L'IA n'a proposé aucune modification (le CV est déjà aligné avec l'offre, ou la sélection ne contenait rien à ajuster).</p>
+            <div className="adapt-cv-tiles__done-actions">
+              <Button variant="secondary" onClick={onClose}>Fermer</Button>
+              {adaptationId !== null && (
+                <Button variant="primary" onClick={() => onDone(adaptationId)}>
+                  Voir l'adaptation
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
         {phase === 'done' && adaptationId !== null && (
           <div className="adapt-cv-tiles__done">
-            <p>Toutes les tuiles ont été traitées. Tu peux maintenant télécharger le CV adapté en PDF ou continuer à le modifier dans l'éditeur.</p>
+            <p>Toutes les modifications ont été passées en revue. Tu peux maintenant télécharger le CV adapté en PDF ou continuer à le modifier dans l'éditeur.</p>
             <div className="adapt-cv-tiles__done-actions">
               <Button variant="secondary" onClick={onClose}>Fermer</Button>
               <Button variant="primary" onClick={() => onDone(adaptationId)}>
@@ -247,7 +307,7 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
 
         {phase === 'error' && (
           <div className="adapt-cv-tiles__done">
-            <p className="adapt-cv-tiles__error-msg">⚠ Une erreur s'est produite. {error}</p>
+            <p className="adapt-cv-tiles__error-msg">⚠ {error}</p>
             <Button variant="secondary" onClick={onClose}>Fermer</Button>
           </div>
         )}
@@ -257,14 +317,216 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// RoutingTile — the per-tile UI : original / proposal / actions
+// Helpers
+// ────────────────────────────────────────────────────────────────────
+
+interface SectionGroup {
+  key: string;
+  label: string;
+  tiles: CVAdaptationTile[];
+}
+
+/** Group tiles into user-meaningful sections : one group per top-level
+ *  CV field (summary, competences, …) PLUS one group per experience
+ *  index (so the user can pick a single experience). */
+function groupTilesBySection(tiles: CVAdaptationTile[]): SectionGroup[] {
+  const groups = new Map<string, SectionGroup>();
+  const ensure = (key: string, label: string): SectionGroup => {
+    let g = groups.get(key);
+    if (!g) { g = { key, label, tiles: [] }; groups.set(key, g); }
+    return g;
+  };
+  for (const t of tiles) {
+    // experiences[i].xxx → group by experience index
+    const expMatch = t.path.match(/^experiences\[(\d+)\]/);
+    if (expMatch) {
+      const idx = expMatch[1];
+      ensure(`experience-${idx}`, `Expérience #${parseInt(idx, 10) + 1}`).tiles.push(t);
+      continue;
+    }
+    // sideProjects.items[i].xxx
+    const spMatch = t.path.match(/^sideProjects\.items\[(\d+)\]/);
+    if (spMatch) {
+      ensure('sideProjects', 'Side projects').tiles.push(t);
+      continue;
+    }
+    // Top-level fields → use kind for the label.
+    if (t.kind === 'summary' || t.path === 'summary') {
+      ensure('summary', 'Présentation').tiles.push(t);
+    } else if (t.kind === 'professional_title' || t.path === 'title') {
+      ensure('title', 'Titre professionnel').tiles.push(t);
+    } else if (t.kind === 'language' || t.path.startsWith('languages')) {
+      ensure('languages', 'Langues').tiles.push(t);
+    } else if (t.kind.startsWith('skill_') || t.path.startsWith('competences')
+      || t.path.startsWith('outils') || t.path.startsWith('dev')
+      || t.path.startsWith('frameworks') || t.path.startsWith('solutions')) {
+      ensure('skills', 'Compétences').tiles.push(t);
+    } else if (t.path.startsWith('formations')) {
+      ensure('formations', 'Formations').tiles.push(t);
+    } else if (t.path.startsWith('awards')) {
+      ensure('awards', 'Distinctions').tiles.push(t);
+    } else {
+      ensure('other', 'Autre').tiles.push(t);
+    }
+  }
+  return Array.from(groups.values());
+}
+
+/** Tiles surfaced in the routing phase — only those the AI actually
+ *  modified (skill B output ≠ original_text). Identical proposals
+ *  are auto-accepted server-side later. */
+function visibleModifiedTiles(tiles: CVAdaptationTile[]): CVAdaptationTile[] {
+  return tiles.filter(t => {
+    if (!t.proposalReady) return false;
+    if (t.proposedText.trim() === t.originalText.trim()) return false;
+    return true;
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────
+// PipelineStepsIndicator — visible step list inspired by suivitess
+// ────────────────────────────────────────────────────────────────────
+
+function PipelineStepsIndicator({
+  phase, tiles, selectedCount,
+}: {
+  phase: Phase;
+  tiles: CVAdaptationTile[];
+  selectedCount: number;
+}) {
+  const STEPS: ReadonlyArray<{ key: 'extract' | 'select' | 'adapt' | 'route'; label: string }> = [
+    { key: 'extract', label: 'Extraction des sujets atomiques du CV' },
+    { key: 'select',  label: 'Sélection par l\'utilisateur des sections à adapter' },
+    { key: 'adapt',   label: 'Adaptation à l\'offre par l\'IA (skill B)' },
+    { key: 'route',   label: 'Validation tuile par tuile' },
+  ];
+  const activeIdx =
+    phase === 'extracting' ? 0
+    : phase === 'selecting' ? 1
+    : phase === 'adapting' ? 2
+    : 3;
+
+  const ready = tiles.filter(t => t.proposalReady).length;
+  const subtitle = phase === 'adapting' && selectedCount > 0
+    ? `${ready} / ${selectedCount} tuiles adaptées`
+    : phase === 'extracting'
+      ? 'Analyse du CV en cours… (~60s pour un CV chargé)'
+      : '';
+
+  return (
+    <div className="adapt-cv-tiles__pipeline">
+      <ul>
+        {STEPS.map((step, i) => {
+          const status: 'done' | 'active' | 'pending' =
+            i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending';
+          const marker = status === 'done' ? '✓' : status === 'active' ? '◉' : '○';
+          return (
+            <li key={step.key} className={`adapt-cv-tiles__pipeline-step adapt-cv-tiles__pipeline-step--${status}`}>
+              <span className="adapt-cv-tiles__pipeline-marker">{marker}</span>
+              <span>{step.label}</span>
+            </li>
+          );
+        })}
+      </ul>
+      {subtitle && <p className="adapt-cv-tiles__pipeline-subtitle">{subtitle}</p>}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// SelectionPanel — checkbox tree of atomic subjects
+// ────────────────────────────────────────────────────────────────────
+
+interface SelectionPanelProps {
+  sectionGroups: SectionGroup[];
+  selectedTileIds: Set<string>;
+  onToggleTile: (tileId: string) => void;
+  onToggleGroup: (group: SectionGroup) => void;
+  onStart: () => void;
+  onCancel: () => void;
+}
+
+function SelectionPanel({
+  sectionGroups, selectedTileIds, onToggleTile, onToggleGroup, onStart, onCancel,
+}: SelectionPanelProps) {
+  const totalSelected = selectedTileIds.size;
+  return (
+    <div className="adapt-cv-tiles__selection">
+      <p className="adapt-cv-tiles__intro">
+        Coche les sections que tu veux adapter à l'offre. Décocher une partie évite à l'IA de retravailler ce qui ne t'intéresse pas (et économise des tokens). Tu pourras toujours valider/refuser/modifier chaque proposition après.
+      </p>
+      <div className="adapt-cv-tiles__groups">
+        {sectionGroups.map(group => {
+          const allChecked = group.tiles.every(t => selectedTileIds.has(t.tileId));
+          const someChecked = group.tiles.some(t => selectedTileIds.has(t.tileId));
+          return (
+            <fieldset key={group.key} className="adapt-cv-tiles__group">
+              <legend>
+                <label className="adapt-cv-tiles__group-toggle">
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    ref={el => { if (el) el.indeterminate = !allChecked && someChecked; }}
+                    onChange={() => onToggleGroup(group)}
+                  />
+                  <strong>{group.label}</strong>
+                  <span className="adapt-cv-tiles__group-count">
+                    {group.tiles.filter(t => selectedTileIds.has(t.tileId)).length} / {group.tiles.length}
+                  </span>
+                </label>
+              </legend>
+              <ul>
+                {group.tiles.map(t => (
+                  <li key={t.tileId}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={selectedTileIds.has(t.tileId)}
+                        onChange={() => onToggleTile(t.tileId)}
+                      />
+                      <span className="adapt-cv-tiles__group-item-text">
+                        {truncate(t.originalText, 90)}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </fieldset>
+          );
+        })}
+      </div>
+      <div className="adapt-cv-tiles__selection-footer">
+        <span>
+          <strong>{totalSelected}</strong> sujet{totalSelected > 1 ? 's' : ''} sélectionné{totalSelected > 1 ? 's' : ''}
+        </span>
+        <div className="adapt-cv-tiles__selection-actions">
+          <Button variant="secondary" onClick={onCancel}>Annuler</Button>
+          <Button
+            variant="primary"
+            onClick={onStart}
+            disabled={totalSelected === 0}
+          >
+            Lancer l'adaptation IA →
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function truncate(s: string, n: number): string {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n).trimEnd() + '…' : s;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// RoutingTile — original / proposed / reasoning / actions
 // ────────────────────────────────────────────────────────────────────
 
 interface RoutingTileProps {
   tile: CVAdaptationTile;
   position: number;
   total: number;
-  pendingCount: number;
   editingId: string | null;
   editDraft: string;
   busy: boolean;
@@ -279,30 +541,37 @@ interface RoutingTileProps {
 }
 
 function RoutingTile({
-  tile, position, total, pendingCount,
+  tile, position, total,
   editingId, editDraft, busy,
   onChangeDraft, onAccept, onSkip, onStartEdit, onSaveEdit, onCancelEdit, onRevert, onRegenerate,
 }: RoutingTileProps) {
   const isEditing = editingId === tile.id;
-  const proposalUnchanged = tile.proposedText.trim() === tile.originalText.trim();
+  const finalText = tile.userEditedText ?? tile.proposedText;
 
   return (
     <div className="adapt-cv-tiles__tile">
       <div className="adapt-cv-tiles__progress">
-        Tuile {position} sur {total} · {pendingCount} en attente · type : <code>{tile.kind}</code>
+        Modification {position} sur {total} · <code>{tile.kind}</code> · <code>{tile.path}</code>
       </div>
 
+      {/* Reasoning — surfaced FIRST so the user knows why before
+          comparing texts. */}
+      {tile.reasoning && (
+        <div className="adapt-cv-tiles__reasoning">
+          <strong>Pourquoi cette proposition :</strong> {tile.reasoning}
+        </div>
+      )}
+
       <section>
-        <h4>Texte d'origine</h4>
+        <h4>Avant — texte d'origine</h4>
         <pre className="adapt-cv-tiles__text adapt-cv-tiles__text--original">{tile.originalText || '(vide)'}</pre>
       </section>
 
       <section>
         <h4>
-          Proposition de l'IA
-          {!tile.proposalReady && <span className="adapt-cv-tiles__hint"> · 📡 IA en cours…</span>}
-          {tile.proposalReady && proposalUnchanged && <span className="adapt-cv-tiles__hint"> · identique à l'original</span>}
+          Après — proposition de l'IA
           {tile.regenerateCount > 0 && <span className="adapt-cv-tiles__hint"> · régénérée {tile.regenerateCount}×</span>}
+          {tile.userEditedText !== null && <span className="adapt-cv-tiles__hint"> · modifiée par toi</span>}
         </h4>
         {isEditing ? (
           <textarea
@@ -312,13 +581,9 @@ function RoutingTile({
             rows={Math.min(12, Math.max(3, editDraft.split('\n').length + 1))}
             autoFocus
           />
-        ) : !tile.proposalReady ? (
-          <pre className="adapt-cv-tiles__text adapt-cv-tiles__text--pending">
-            La proposition adaptée à l'offre arrive dans quelques secondes…
-          </pre>
         ) : (
           <pre className="adapt-cv-tiles__text adapt-cv-tiles__text--proposed">
-            {(tile.userEditedText ?? tile.proposedText) || '(vide)'}
+            {finalText || '(vide)'}
           </pre>
         )}
       </section>
@@ -335,36 +600,21 @@ function RoutingTile({
           </>
         ) : (
           <>
-            {/* Valider et Régénérer ne servent à rien tant que skill B
-                n'a pas écrit la proposition (sinon on commit l'original
-                comme s'il était la proposition IA). On les désactive et
-                on l'explique dans le tooltip / hint. Ignorer et
-                Modifier restent dispo pour avancer. */}
-            <Button
-              variant="primary"
-              onClick={onAccept}
-              disabled={busy || !tile.proposalReady}
-              title={!tile.proposalReady ? 'En attente de la proposition IA' : undefined}
-            >
-              ✓ Valider
+            <Button variant="primary" onClick={onAccept} disabled={busy}>
+              ✓ Je suis d'accord
             </Button>
             <Button variant="secondary" onClick={onSkip} disabled={busy}>
-              ⏭ Ignorer
+              ✗ Je ne suis pas d'accord
             </Button>
             <Button variant="secondary" onClick={onStartEdit} disabled={busy}>
               ✎ Modifier
             </Button>
-            <Button
-              variant="secondary"
-              onClick={onRegenerate}
-              disabled={busy || !tile.proposalReady}
-              title={!tile.proposalReady ? 'La proposition n\'est pas encore générée' : undefined}
-            >
+            <Button variant="secondary" onClick={onRegenerate} disabled={busy}>
               {busy ? 'Régénération…' : '🔄 Régénérer'}
             </Button>
             {(tile.userEditedText !== null || tile.regenerateCount > 0) && (
               <Button variant="secondary" onClick={onRevert} disabled={busy}>
-                ↺ Annuler les modifs
+                ↺ Revenir à l'original
               </Button>
             )}
           </>

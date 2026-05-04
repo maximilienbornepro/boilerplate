@@ -312,6 +312,9 @@ export interface CVAdaptationTile {
    *  background. The modal polls /tiles every few seconds until every
    *  tile is ready, then stops. */
   proposalReady: boolean;
+  /** Short human-readable rationale from skill B explaining why the
+   *  text was changed. Null until skill B runs. */
+  reasoning: string | null;
   createdAt: string;
   updatedAt: string;
 }
