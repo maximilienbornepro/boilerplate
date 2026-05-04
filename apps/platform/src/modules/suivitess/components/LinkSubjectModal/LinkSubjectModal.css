@@ -96,7 +96,7 @@
 
 .link-subject-modal__form {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr;
   gap: var(--spacing-sm);
   align-items: end;
 }
@@ -128,7 +128,7 @@
 
 .link-subject-modal__actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: var(--spacing-sm);
   border-top: 1px solid var(--border-color);
   padding-top: var(--spacing-sm);

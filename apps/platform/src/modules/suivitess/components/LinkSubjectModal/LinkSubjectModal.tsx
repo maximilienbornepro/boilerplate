@@ -192,13 +192,6 @@ export function LinkSubjectModal({ subject, currentDocumentId, onClose, onChange
                 ))}
               </select>
             </label>
-            <Button
-              variant="primary"
-              onClick={handleAddLink}
-              disabled={!pickedSectionId || submitting}
-            >
-              {submitting ? 'Ajout…' : 'Lier ici'}
-            </Button>
           </div>
           {otherDocs.length === 0 && (
             <p className="link-subject-modal__muted">
@@ -207,7 +200,17 @@ export function LinkSubjectModal({ subject, currentDocumentId, onClose, onChange
           )}
         </section>
 
+        {/* Footer : primary action ("Lier ici") on the left, "Fermer"
+            on the right. Lier reads from the picker state above and
+            stays disabled until both fields are filled. */}
         <div className="link-subject-modal__actions">
+          <Button
+            variant="primary"
+            onClick={handleAddLink}
+            disabled={!pickedSectionId || submitting}
+          >
+            {submitting ? 'Ajout…' : 'Lier ici'}
+          </Button>
           <Button variant="secondary" onClick={onClose}>Fermer</Button>
         </div>
       </div>
