@@ -742,39 +742,48 @@ export function createMonCvRoutes(): Router {
       return res.status(400).json({ error: 'jobOffer requis' });
     }
 
-    const cv = await db.getCVById(cvId, userId);
-    if (!cv) return res.status(404).json({ error: 'CV non trouvé' });
+    try {
+      const cv = await db.getCVById(cvId, userId);
+      if (!cv) return res.status(404).json({ error: 'CV non trouvé' });
 
-    const { extractAtomicsFromCV, persistTilesForAdaptation } =
-      await import('./tileAdaptationService.js');
+      const { extractAtomicsFromCV, persistTilesForAdaptation } =
+        await import('./tileAdaptationService.js');
 
-    // Deterministic extraction — no AI call, the CV is already
-    // structured in DB. Replaces the previous skill A which paid an
-    // LLM round-trip to reconstruct what we already have. The user
-    // then picks which atomics to adapt via /run-adapt below.
-    const subjects = extractAtomicsFromCV(cv.cvData);
-    if (subjects.length === 0) {
-      return res.status(400).json({
-        error: 'Aucun sujet atomique trouvé dans le CV. Vérifie qu\'il contient au moins un champ rempli (présentation, expériences, compétences…).',
+      // Deterministic extraction — no AI call, the CV is already
+      // structured in DB. Replaces the previous skill A which paid an
+      // LLM round-trip to reconstruct what we already have. The user
+      // then picks which atomics to adapt via /run-adapt below.
+      const subjects = extractAtomicsFromCV(cv.cvData);
+      if (subjects.length === 0) {
+        return res.status(400).json({
+          error: 'Aucun sujet atomique trouvé dans le CV. Vérifie qu\'il contient au moins un champ rempli (présentation, expériences, compétences…).',
+        });
+      }
+
+      // Create the adaptation row up-front so tiles can reference it.
+      const emptyAtsScore = { overall: 0, keywordMatch: 0, sectionCoverage: 0, titleMatch: false, breakdown: { requiredFound: [], requiredMissing: [], multiSectionKeywords: [], singleSectionKeywords: [] } };
+      const adaptation = await createAdaptation(cvId, userId, {
+        jobOffer,
+        adaptedCv: cv.cvData,
+        changes: { newMissions: [], addedSkills: {} } as any,
+        atsBefore: emptyAtsScore as any,
+        atsAfter: emptyAtsScore as any,
+        jobAnalysis: { requiredKeywords: [], preferredKeywords: [], exactJobTitle: '', technologies: [], keyResponsibilities: [], domain: '', atsHint: 'unknown' } as any,
+      });
+
+      // Persist the tiles with proposed_text = original_text and
+      // proposal_ready = false. The user then picks which ones to
+      // actually adapt via the next route.
+      const tiles = await persistTilesForAdaptation(adaptation.id, subjects, []);
+      res.json({ adaptationId: adaptation.id, tiles });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[mon-cv] tile-adaptations POST failed:', err);
+      res.status(500).json({
+        error: (err as Error).message || 'Erreur serveur',
+        stack: process.env.NODE_ENV !== 'production' ? (err as Error).stack : undefined,
       });
     }
-
-    // Create the adaptation row up-front so tiles can reference it.
-    const emptyAtsScore = { overall: 0, keywordMatch: 0, sectionCoverage: 0, titleMatch: false, breakdown: { requiredFound: [], requiredMissing: [], multiSectionKeywords: [], singleSectionKeywords: [] } };
-    const adaptation = await createAdaptation(cvId, userId, {
-      jobOffer,
-      adaptedCv: cv.cvData,
-      changes: { newMissions: [], addedSkills: {} } as any,
-      atsBefore: emptyAtsScore as any,
-      atsAfter: emptyAtsScore as any,
-      jobAnalysis: { requiredKeywords: [], preferredKeywords: [], exactJobTitle: '', technologies: [], keyResponsibilities: [], domain: '', atsHint: 'unknown' } as any,
-    });
-
-    // Persist the tiles with proposed_text = original_text and
-    // proposal_ready = false. The user then picks which ones to
-    // actually adapt via the next route.
-    const tiles = await persistTilesForAdaptation(adaptation.id, subjects, []);
-    res.json({ adaptationId: adaptation.id, tiles });
   }));
 
   // POST /tile-adaptations/:id/run-adapt
