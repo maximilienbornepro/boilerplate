@@ -83,8 +83,32 @@ Regles:
 - Laisse les champs vides si l'information n'est pas disponible
 - Pour les tableaux vides, utilise []
 - Assure-toi que le JSON est valide
-- IMPORTANT pour les projets: chaque projet distinct doit etre une entree separee dans le tableau "projects". Si tu vois plusieurs projets listes (separes par des virgules, tirets, ou sur des lignes differentes), cree une entree pour CHAQUE projet avec son titre et sa description.
-- IMPORTANT pour les missions: chaque mission/responsabilite distincte doit etre une entree separee dans le tableau "missions".`;
+
+REGLE ABSOLUE — VERBATIM, AUCUNE REFORMULATION :
+- Recopie le texte du CV TEL QUEL, mot pour mot, en preservant la
+  ponctuation, la casse, les accents, les majuscules, les chiffres et
+  l'ordre exact des phrases.
+- N'INVENTE jamais d'information qui n'est pas explicitement dans le
+  CV (pas de synonymes, pas de paraphrase, pas de "completion" basee
+  sur ce que tu sais du metier ou de l'entreprise).
+- NE REFORMULE rien : ni les missions, ni les descriptions, ni les
+  intitules de poste, ni les noms de projets. Si une mission dit
+  "Pilotage du backlog produit", tu ecris "Pilotage du backlog
+  produit", pas "Gestion du backlog" ni "Animation du backlog".
+- NE REGROUPE pas plusieurs missions en une seule, NE SPLIT pas une
+  mission en deux. Une ligne dans le CV = une entree dans missions.
+- NE TRADUIS pas, NE CORRIGE pas l'orthographe. Si le CV contient une
+  faute, tu la conserves.
+
+Decoupage (uniquement de la separation, pas de reformulation) :
+- IMPORTANT pour les projets : chaque projet distinct doit etre une
+  entree separee dans le tableau "projects". Si tu vois plusieurs
+  projets listes (separes par des virgules, tirets, ou sur des lignes
+  differentes), cree une entree pour CHAQUE projet en recopiant son
+  titre et sa description tels quels.
+- IMPORTANT pour les missions : chaque mission/responsabilite
+  distincte doit etre une entree separee dans le tableau "missions".
+  Recopie chaque ligne telle qu'elle apparait dans le CV.`;
 
 export async function parseCV(buffer: Buffer, type: 'pdf' | 'docx'): Promise<CVData> {
   let text: string;

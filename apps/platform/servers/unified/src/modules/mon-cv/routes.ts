@@ -342,7 +342,10 @@ export function createMonCvRoutes(): Router {
       : await db.getDefaultCV(userId);
     const currentData = cv?.cvData || createEmptyCV();
 
-    // Merge only selected sections
+    // For each selected section we trust the imported snapshot
+    // entirely — no smart merge, no partial preservation. The user
+    // explicitly asked for this : the import should replace whatever
+    // was there with what's in the PDF, systematically.
     const mergedData: CVData = { ...currentData };
     for (const section of sections) {
       if ((parsedData as any)[section] !== undefined) {
