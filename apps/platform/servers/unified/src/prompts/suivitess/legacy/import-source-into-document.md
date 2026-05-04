@@ -46,21 +46,29 @@ jamais en retirer. Voici les règles détaillées :
   Le backend concatène `situation_existante + "\n" + appendText`.
 - **Respecte le formatage multiligne** : utilise des retours à la ligne (`\n`) pour séparer
   chaque point distinct dans `appendText`. Si plusieurs faits sont mentionnés, chaque fait = une
-  ligne. Utilise des bullet points (`• `) si la situation existante en utilise déjà. Ne compresse
-  jamais plusieurs informations en une seule ligne.
-- **Indentation : uniquement des tabulations `\t`, JAMAIS d'espaces.** SuiviTess gère
-  l'indentation au clavier avec `Tab` (indenter) et `Maj+Tab` (désindenter) ; des espaces en début
-  de ligne apparaissent comme du texte brut et cassent l'alignement. Un niveau d'indentation = un
-  caractère tabulation réel (pas la chaîne `\t` littérale). Exemple à 2 niveaux : commence la
-  ligne par deux vrais caractères tab puis `• sous-point`.
-- **Analyse l'indentation de la situation existante** et reproduis-la : si l'existant est indenté
-  à un niveau (un tab), un ajout contextuel reste au même niveau ; un sous-point d'un élément
-  existant prend un niveau supplémentaire.
+  ligne. Ne compresse jamais plusieurs informations en une seule ligne. **N'écris pas toi-même
+  de puce** (`•`, `-`, `*`, `◦`) — SuiviTess l'affiche automatiquement à partir de l'indentation.
+- **Indentation par espaces** : SuiviTess parse l'indentation au caractère près en tête de ligne
+  et chaque paire d'espaces = 1 niveau. Niveau 0 = aucun espace (puce `•`), niveau 1 = 2 espaces
+  (puce `◦`), niveau 2 = 4 espaces (puce `▪`), niveau 3 = 6 espaces (puce `▸`). Les tabs en
+  legacy sont automatiquement convertis en espaces côté serveur, mais préfère les espaces dès
+  l'écriture pour rester lisible.
+- **Analyse l'indentation de la situation existante** et reproduis-la : si l'existant a une
+  ligne à 2 espaces, un ajout contextuel à ce sujet reste à 2 espaces ; un sous-point prend
+  4 espaces.
 - **Compare** la nouvelle information avec la situation existante :
   - Si l'info est **déjà présente** (même fait, même chiffre, même décision) → **ne propose pas**
     d'enrichissement pour ce sujet. Ignore-le.
-  - Si l'info est **nouvelle** → rédige un `appendText` clair, préfixé par la date si pertinent
-    (`Mise à jour du JJ/MM : …`).
+  - Si l'info est **nouvelle** → rédige un `appendText` clair. **Préfixe le bloc** par
+    `Mise à jour du JJ/MM :` (niveau 0, aucun espace en tête) **et indente chaque fait du
+    jour de 2 espaces** (niveau 1) sous cet en-tête. C'est ce qui produit le rendu attendu :
+    ```
+    • Mise à jour du 04/05 :
+      ◦ La prod est confirmée pour mercredi.
+      ◦ Backup à 2h, downtime annoncé.
+    ```
+    Sans cette indentation des faits, ils apparaissent au même rang que l'en-tête et la
+    chronologie « entête → faits du jour » devient illisible.
 - Tu peux **référencer** le contexte existant dans ta formulation pour mieux articuler l'ajout
   (ex. « Suite aux tests staging mentionnés précédemment, la mise en prod est confirmée. ») —
   mais le texte existant ne sera **pas touché**.
@@ -102,10 +110,13 @@ jamais en retirer. Voici les règles détaillées :
   détails** (numéros de ticket, versions, dates, références) qui
   n'ont pas leur place dans le titre. **Utilise des retours à la ligne
   (`\n`) pour séparer chaque point distinct.** Si plusieurs
-  informations, chaque fait = une ligne. Utilise des bullet points
-  (`• `) si pertinent. Ne mets jamais tout sur une seule ligne.
-- **Indentation : uniquement des tabulations `\t` (vrais caractères tab), JAMAIS d'espaces.**
-  SuiviTess gère `Tab` / `Maj+Tab` pour indenter / désindenter. Un niveau = un tab.
+  informations, chaque fait = une ligne. **N'écris pas toi-même de
+  puce** (`•`, `-`, `*`, `◦`) — la puce est dessinée par l'app à
+  partir de l'indentation. Ne mets jamais tout sur une seule ligne.
+- **Indentation par espaces** : 0 espace = niveau 0 (puce `•`), 2
+  espaces = niveau 1 (puce `◦`), 4 espaces = niveau 2 (puce `▪`).
+  Une ligne sans indentation est traitée comme un en-tête / un fait
+  de premier rang ; un sous-point prend 2 espaces de plus.
 - `status` : l'un de `"🔴 à faire"`, `"🟡 en cours"`, `"🟢 terminé"`, `"🟣 bloqué"`.
 - `responsibility` : la personne responsable si mentionnée, sinon `null`.
 
@@ -167,7 +178,7 @@ décrivent le même thème — préfère un seul sujet riche.
     "subjectId": "uuid-du-sujet-existant",
     "subjectTitle": "titre du sujet (pour affichage)",
     "sectionName": "nom de la section (pour affichage)",
-    "appendText": "Mise à jour du 16/04 : la prod est confirmée pour mercredi.",
+    "appendText": "Mise à jour du 16/04 :\n  La prod est confirmée pour mercredi.\n  Backup planifié à 2h, downtime annoncé aux users.",
     "reason": "Nouveau fait mentionné dans le call, absent de la situation actuelle."
   },
   {

@@ -61,6 +61,22 @@ produit un double bullet visuel (`• •`) dans l'app.
   de tabs ni de `\t`. Niveau 0 = aucun espace, niveau 1 = 2 espaces, niveau 2
   = 4 espaces. Chaque niveau change automatiquement le style de puce affiché
   (`•` → `◦` → `▪` → `▸`).
+- **Faits indentés sous l'en-tête « Mise à jour »** : SuiviTess parse
+  l'indentation au caractère près en tête de ligne (chaque paire
+  d'espaces = 1 niveau). Le préfixe `Mise à jour automatique en date
+  du JJ/MM/AAAA :` est rendu **au niveau 0** (aucun espace) avec une
+  puce `•`. **Chaque ligne de fait qui suit doit commencer par
+  EXACTEMENT 2 espaces** (`"  Migration validée mercredi."`) — c'est
+  ce qui place le fait au niveau 1 (puce `◦`) **sous** l'en-tête de
+  la mise à jour, dans le rendu hiérarchique attendu par SuiviTess.
+- **Sous-faits** : si un fait est un sous-point d'un autre fait dans
+  le même bloc (ex : « Downtime final 28 min » → « dont 5 min de
+  bascule DNS »), il prend **4 espaces** en tête (niveau 2, puce
+  `▪`).
+- **Vérifie le rendu** : SuiviTess affiche niveau 0 = `•`,
+  niveau 1 = `◦`, niveau 2 = `▪`, niveau 3 = `▸`. Si tu écris un fait
+  sans indentation, il sera rendu comme un en-tête au même rang que
+  « Mise à jour », ce qui casse la chronologie visuelle.
 - **Respecte l'indentation de `existingSituation`** : si une ligne d'`existingSituation`
   commence par N espaces (N ≥ 0), utilise le même nombre d'espaces pour tes
   lignes du même rang. Pour un sous-point d'un élément existant, ajoute 2
@@ -92,12 +108,22 @@ Input :
 Output :
 ```json
 {
-  "appendText": "Mise à jour automatique en date du 18/04/2026 :\nMigration validée mercredi.\nDowntime final **28 min** (sous les 30 annoncées)."
+  "appendText": "Mise à jour automatique en date du 18/04/2026 :\n  Migration validée mercredi.\n  Downtime final **28 min** (sous les 30 annoncées)."
 }
 ```
 
-Remarque : aucune ligne ne commence par `•`. L'app dessine les puces à partir
-des espaces en tête de ligne.
+Rendu côté SuiviTess :
+```
+• Mise à jour automatique en date du 18/04/2026 :
+  ◦ Migration validée mercredi.
+  ◦ Downtime final 28 min (sous les 30 annoncées).
+```
+
+Remarque : aucune ligne ne commence par `•` dans `appendText` — la puce
+est dessinée par l'app à partir du nombre d'espaces en tête. L'en-tête
+« Mise à jour … » n'a pas d'espace (niveau 0, `•`), les faits du jour
+ont **2 espaces** (niveau 1, `◦`), les éventuels sous-faits ont 4 espaces
+(niveau 2, `▪`).
 
 ## Format de sortie (JSON strict, rien hors JSON)
 
