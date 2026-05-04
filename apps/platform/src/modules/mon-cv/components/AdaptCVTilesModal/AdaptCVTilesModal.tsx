@@ -94,17 +94,23 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
   const pendingTiles = useMemo(() => tiles.filter(t => t.status === 'pending'), [tiles]);
   const activeTile = useMemo(() => tiles.find(t => t.id === activeTileId) ?? null, [tiles, activeTileId]);
 
-  // Pick the next pending tile after a status change. Falls through
-  // to phase=done when nothing's left.
+  // Pick the next pending tile after a status change. Prefer tiles
+  // whose AI proposal is already ready, so the user keeps validating
+  // real content while skill B catches up on the rest in the
+  // background. Falls back to non-ready tiles only if every ready
+  // one has already been treated. Falls through to phase=done when
+  // nothing's left.
   const advance = useCallback(() => {
     setEditingId(null);
     setEditDraft('');
-    const next = tiles.find(t => t.status === 'pending' && t.id !== activeTileId);
-    if (next) {
-      setActiveTileId(next.id);
-    } else {
+    const remaining = tiles.filter(t => t.status === 'pending' && t.id !== activeTileId);
+    if (remaining.length === 0) {
+      // Last tile committed.
       setPhase('done');
+      return;
     }
+    const ready = remaining.find(t => t.proposalReady);
+    setActiveTileId((ready ?? remaining[0]).id);
   }, [tiles, activeTileId]);
 
   const replaceTile = (updated: CVAdaptationTile) => {
@@ -329,7 +335,17 @@ function RoutingTile({
           </>
         ) : (
           <>
-            <Button variant="primary" onClick={onAccept} disabled={busy}>
+            {/* Valider et Régénérer ne servent à rien tant que skill B
+                n'a pas écrit la proposition (sinon on commit l'original
+                comme s'il était la proposition IA). On les désactive et
+                on l'explique dans le tooltip / hint. Ignorer et
+                Modifier restent dispo pour avancer. */}
+            <Button
+              variant="primary"
+              onClick={onAccept}
+              disabled={busy || !tile.proposalReady}
+              title={!tile.proposalReady ? 'En attente de la proposition IA' : undefined}
+            >
               ✓ Valider
             </Button>
             <Button variant="secondary" onClick={onSkip} disabled={busy}>
@@ -338,7 +354,12 @@ function RoutingTile({
             <Button variant="secondary" onClick={onStartEdit} disabled={busy}>
               ✎ Modifier
             </Button>
-            <Button variant="secondary" onClick={onRegenerate} disabled={busy}>
+            <Button
+              variant="secondary"
+              onClick={onRegenerate}
+              disabled={busy || !tile.proposalReady}
+              title={!tile.proposalReady ? 'La proposition n\'est pas encore générée' : undefined}
+            >
               {busy ? 'Régénération…' : '🔄 Régénérer'}
             </Button>
             {(tile.userEditedText !== null || tile.regenerateCount > 0) && (
