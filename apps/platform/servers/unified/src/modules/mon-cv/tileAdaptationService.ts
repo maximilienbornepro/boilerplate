@@ -1,9 +1,11 @@
 // Tile-by-tile CV adaptation pipeline.
 //
-// The flow has three steps :
-//   1. Skill A (`mon-cv-extract-atomic-subjects`) flattens the CV into
-//      a list of `AtomicSubject` items — one per adaptable text node
-//      (summary, each skill, each mission, each project, etc.).
+// The flow :
+//   1. **Extraction (deterministic, NO AI)** — `extractAtomicsFromCV()`
+//      walks the structured CVData JSON and emits one `AtomicSubject`
+//      per adaptable field. Free and instant ; replaces what used to be
+//      "skill A". The CV is already structured in DB so paying for an
+//      LLM to re-extract it was wasteful.
 //   2. Skill B (`mon-cv-adapt-atomic-to-offer`) takes the list + the
 //      job offer and proposes adapted text for each atomic subject.
 //      Same skill is invoked single-mode when the user clicks
@@ -13,13 +15,13 @@
 //      text is merged back into `cv_adaptations.adapted_cv` at the
 //      atomic's `path`.
 //
-// All AI calls go through `runSkill()` so the runs are logged in
+// AI calls go through `runSkill()` so the runs are logged in
 // `ai_analysis_logs` and visible from /ai-logs.
 
 import { runSkill } from '../aiSkills/runSkill.js';
 import * as adaptDb from './adaptationDbService.js';
 import type { CVAdaptationTile } from './adaptationDbService.js';
-import type { CVData } from './types.js';
+import type { CVData, Experience, Project, Formation, Award, SideProjectItem } from './types.js';
 
 /** Output of skill A — one atomic CV element per row, ready to be
  *  adapted to a job offer by skill B and validated tile-by-tile by
@@ -42,46 +44,80 @@ export interface AdaptedAtomic {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Skill A — extract atomic subjects from a CV.
+// Extraction — deterministic walk of CVData (no AI call).
 // ────────────────────────────────────────────────────────────────────
 
-export async function extractAtomicSubjects(
-  cvData: CVData,
-  userId: number,
-  userEmail: string | null = null,
-): Promise<{ subjects: AtomicSubject[]; logId: number | null; rawOutput: string }> {
-  const cvJson = JSON.stringify(cvData, null, 2);
-  // Hard cap to keep the prompt under a reasonable budget : 30k chars
-  // covers a packed CV (~50 missions + 20 projects) without truncation.
-  const cvJsonClipped = cvJson.length > 30000 ? cvJson.slice(0, 30000) : cvJson;
+const TRUE = (s: string | null | undefined): boolean => !!(s && s.trim().length > 0);
 
-  const run = await runSkill({
-    slug: 'mon-cv-extract-atomic-subjects',
-    userId,
-    userEmail,
-    buildContext: () => `## Contexte\n\n\`\`\`json\n${cvJsonClipped}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des sujets atomiques.`,
-    inputContent: cvJsonClipped,
-    sourceKind: 'cv',
-    sourceTitle: cvData.name || cvData.title || 'CV',
-    // 16k tokens : a packed CV (50 missions × 6 lines of JSON each
-    // + skills + projects + formations + …) easily produces 12k+
-    // tokens of output. The previous 8k cap silently truncated the
-    // last items mid-string, which made parseJsonArray fail and
-    // surfaced as "Aucun sujet atomique extrait du CV".
-    maxTokens: 16000,
+/** Flatten a CVData object into the atomic subjects the modal will
+ *  show. Pure function — no LLM, no I/O. Skips empty fields and
+ *  fields that don't make sense to adapt to a job offer
+ *  (name/contact/photo). The resulting `id` IS the `path` (already
+ *  stable, no need for an extra hash). */
+export function extractAtomicsFromCV(cvData: CVData): AtomicSubject[] {
+  const out: AtomicSubject[] = [];
+  const push = (path: string, kind: string, originalText: string, label: string) => {
+    if (!TRUE(originalText)) return;
+    out.push({ id: path, path, kind, originalText, label });
+  };
+
+  // Top-level adaptable scalars.
+  push('summary', 'summary', cvData.summary ?? '', 'Présentation');
+  push('title', 'professional_title', cvData.title ?? '', 'Titre professionnel');
+
+  // Flat skill arrays. Use index-based labels so duplicates ("React"
+  // appearing twice somewhere) don't clobber each other.
+  const skillBuckets: Array<[keyof CVData, string, string]> = [
+    ['languages',   'language',         'Langue'],
+    ['competences', 'skill_competence', 'Compétence'],
+    ['outils',      'skill_outil',      'Outil'],
+    ['dev',         'skill_dev',        'Dev'],
+    ['frameworks',  'skill_framework',  'Framework'],
+    ['solutions',   'skill_solution',   'Solution'],
+  ];
+  for (const [field, kind, prefix] of skillBuckets) {
+    const arr = (cvData[field] as string[] | undefined) ?? [];
+    arr.forEach((value, i) => {
+      push(`${field}[${i}]`, kind, value, `${prefix} : ${value || '(vide)'}`);
+    });
+  }
+
+  // Experiences — one big nested block per row. Adds tiles for
+  // title, description, missions, project titles + descriptions.
+  const experiences = cvData.experiences ?? [];
+  experiences.forEach((exp: Experience, i) => {
+    const company = exp.company || `Expérience #${i + 1}`;
+    push(`experiences[${i}].title`, 'experience_title', exp.title ?? '', `${company} — Poste`);
+    push(`experiences[${i}].description`, 'experience_description', exp.description ?? '', `${company} — Description`);
+    (exp.missions ?? []).forEach((m, j) => {
+      push(`experiences[${i}].missions[${j}]`, 'mission', m, `${company} — Mission #${j + 1}`);
+    });
+    (exp.projects ?? []).forEach((p: Project, j) => {
+      push(`experiences[${i}].projects[${j}].title`, 'project_title', p.title ?? '', `${company} — Projet #${j + 1} (titre)`);
+      push(`experiences[${i}].projects[${j}].description`, 'project_description', p.description ?? '', `${company} — Projet #${j + 1} (description)`);
+    });
   });
 
-  const subjects = parseJsonArray<AtomicSubject>(run.outputText);
-  if (!subjects || subjects.length === 0) {
-    // Server-side trace so we can debug from container logs even if
-    // the user can't open /ai-logs. Truncated to 2000 chars to keep
-    // logs readable.
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[mon-cv extract] skill A returned empty/unparseable output (logId=${run.logId}). Raw (first 2k chars):\n${run.outputText.slice(0, 2000)}`,
-    );
+  // Formations / awards — only their `title` is interesting to adapt.
+  (cvData.formations ?? []).forEach((f: Formation, i) => {
+    push(`formations[${i}].title`, 'formation_title', f.title ?? '', `Formation #${i + 1}`);
+  });
+  (cvData.awards ?? []).forEach((a: Award, i) => {
+    push(`awards[${i}].title`, 'award_title', a.title ?? '', `Distinction #${i + 1}`);
+  });
+
+  // Side projects.
+  const sp = cvData.sideProjects;
+  if (sp?.items) {
+    sp.items.forEach((item: SideProjectItem, i) => {
+      push(`sideProjects.items[${i}].category`, 'side_project_category', item.category ?? '', `Side projects — Catégorie #${i + 1}`);
+      (item.projects ?? []).forEach((p, j) => {
+        push(`sideProjects.items[${i}].projects[${j}]`, 'side_project_item', p, `Side projects — Item #${j + 1}`);
+      });
+    });
   }
-  return { subjects: subjects ?? [], logId: run.logId, rawOutput: run.outputText };
+
+  return out;
 }
 
 // ────────────────────────────────────────────────────────────────────

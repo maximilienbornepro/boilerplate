@@ -745,18 +745,17 @@ export function createMonCvRoutes(): Router {
     const cv = await db.getCVById(cvId, userId);
     if (!cv) return res.status(404).json({ error: 'CV non trouvé' });
 
-    const { extractAtomicSubjects, persistTilesForAdaptation } =
+    const { extractAtomicsFromCV, persistTilesForAdaptation } =
       await import('./tileAdaptationService.js');
 
-    // Skill A only — extraction. The user then picks WHICH atomics
-    // they want adapted via /run-adapt below, so we save tokens by
-    // not blindly running skill B on everything.
-    const { subjects, logId: extractLogId } = await extractAtomicSubjects(cv.cvData, userId, userEmail);
+    // Deterministic extraction — no AI call, the CV is already
+    // structured in DB. Replaces the previous skill A which paid an
+    // LLM round-trip to reconstruct what we already have. The user
+    // then picks which atomics to adapt via /run-adapt below.
+    const subjects = extractAtomicsFromCV(cv.cvData);
     if (subjects.length === 0) {
       return res.status(400).json({
-        error: 'Aucun sujet atomique extrait du CV. Vérifie le contenu du CV ou ouvre le log AI.',
-        logId: extractLogId,
-        logUrl: extractLogId ? `/ai-logs/${extractLogId}` : null,
+        error: 'Aucun sujet atomique trouvé dans le CV. Vérifie qu\'il contient au moins un champ rempli (présentation, expériences, compétences…).',
       });
     }
 

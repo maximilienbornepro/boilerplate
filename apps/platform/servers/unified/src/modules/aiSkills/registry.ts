@@ -243,18 +243,6 @@ export const SKILLS: readonly SkillDefinition[] = [
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/reconcile-multi-source.md'),
   },
   {
-    slug: 'mon-cv-extract-atomic-subjects',
-    name: 'Mon-CV — Extraire les sujets atomiques d\'un CV',
-    description:
-      'Tier 1 de l\'adaptation tuile-par-tuile. Reçoit un CV structuré (CVData) et produit la liste plate de tous les sujets atomiques (intro, chaque compétence, chaque expérience/mission/projet, formations, awards, side projects) avec un id stable + un path JSONPath-ish pour chacun. Sortie consommée par skill B et la modale de validation.',
-    usage: {
-      module: 'mon-cv',
-      endpoint: 'Interne — tileAdaptationService.extractAtomicSubjects()',
-      trigger: 'Bouton « Valider » sur AdaptCVPage après collage de l\'offre',
-    },
-    defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/extract-atomic-subjects.md'),
-  },
-  {
     slug: 'mon-cv-adapt-atomic-to-offer',
     name: 'Mon-CV — Adapter un sujet atomique à une offre',
     description:

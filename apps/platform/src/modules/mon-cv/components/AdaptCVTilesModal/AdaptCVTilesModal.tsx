@@ -241,7 +241,7 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
     : 'Validation tuile par tuile';
 
   return (
-    <Modal isOpen={true} onClose={onClose} title={headerTitle}>
+    <Modal title={headerTitle} onClose={onClose} size="xl">
       <div className="adapt-cv-tiles">
         {error && <div className="adapt-cv-tiles__error">⚠ {error}</div>}
 
