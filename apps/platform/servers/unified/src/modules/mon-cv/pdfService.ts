@@ -149,6 +149,14 @@ function generateExperienceHTML(exp: Experience): string {
         </div>`
       : '';
 
+  // Layout : the logo sits on the left as a sibling of the right
+  // column (`.exp-info`), and the right column holds **everything**
+  // — title, company, period, description, missions, projects,
+  // technologies — so they all align vertically under the title
+  // regardless of whether a logo is present. Previously
+  // description/missions/projects/technologies were siblings of
+  // `.exp-header`, which left them flush-left while the title was
+  // shifted right by the logo, creating a visible décalage.
   return `
     <div class="experience">
       <div class="exp-header">
@@ -157,12 +165,12 @@ function generateExperienceHTML(exp: Experience): string {
           <h3>${exp.title}</h3>
           <p class="company">${exp.company}</p>
           <p class="period-location">${exp.period}${exp.location ? ` • ${exp.location}` : ''}</p>
+          ${exp.description ? `<p class="description">${exp.description}</p>` : ''}
+          ${missions}
+          ${projects}
+          ${technologies}
         </div>
       </div>
-      ${exp.description ? `<p class="description">${exp.description}</p>` : ''}
-      ${missions}
-      ${projects}
-      ${technologies}
     </div>
   `;
 }
@@ -456,7 +464,6 @@ export function generateCVHTML(cvData: CVData): string {
     .exp-header {
       display: flex;
       gap: 10px;
-      margin-bottom: 10px;
     }
 
     .company-logo {
@@ -464,6 +471,15 @@ export function generateCVHTML(cvData: CVData): string {
       height: 40px;
       object-fit: contain;
       flex-shrink: 0;
+    }
+
+    /* The right column carries everything (title, company, period,
+       description, missions, projects, technologies) so they all
+       align vertically — no more décalage between the title and the
+       missions when a logo is present. */
+    .exp-info {
+      flex: 1;
+      min-width: 0;
     }
 
     .exp-info h3 {
@@ -481,6 +497,7 @@ export function generateCVHTML(cvData: CVData): string {
     .exp-info .period-location {
       font-size: 9px;
       color: #737373;
+      margin-bottom: 8px;
     }
 
     .experience .description {
