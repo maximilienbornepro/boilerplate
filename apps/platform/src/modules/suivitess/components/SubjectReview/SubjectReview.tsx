@@ -3,8 +3,10 @@ import { StatusTag } from '@boilerplate/shared/components';
 import type { Subject } from '../../types';
 import { STATUS_OPTIONS, getStatusOption } from '../../types';
 import { updateSubject } from '../../services/api';
+import * as api from '../../services/api';
 import { EmailPreviewModal } from '../EmailPreviewModal/EmailPreviewModal';
 import { TicketCreateModal } from '../TicketCreateModal/TicketCreateModal';
+import { LinkSubjectModal } from '../LinkSubjectModal';
 import styles from './SubjectReview.module.css';
 
 interface ExternalLink {
@@ -86,6 +88,7 @@ export function SubjectReview({
   const [reformulating, setReformulating] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
   const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
 
   const loadLinks = useCallback(async () => {
@@ -583,6 +586,29 @@ export function SubjectReview({
               onClick={() => { setEditingTitle(true); onFocus?.(); }}
             >
               {title}
+              {/* Badge surfaced when this card is rendered via a
+                  cross-document link rather than as a native
+                  subject of the section. The id is still the
+                  canonical one so any edit propagates everywhere. */}
+              {subject.linkedFromDocumentTitle && (
+                <span
+                  style={{
+                    marginLeft: 'var(--spacing-sm)',
+                    padding: '2px 8px',
+                    fontSize: '11px',
+                    fontWeight: 'normal',
+                    background: 'rgba(96, 165, 250, 0.15)',
+                    color: 'var(--info, #60a5fa)',
+                    border: '1px solid rgba(96, 165, 250, 0.3)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontFamily: 'var(--font-mono)',
+                    verticalAlign: 'middle',
+                  }}
+                  title={`Sujet d'origine : ${subject.linkedFromDocumentTitle} › ${subject.linkedFromSectionName}. Toute modification est partagée.`}
+                >
+                  🔗 lié depuis {subject.linkedFromDocumentTitle}
+                </span>
+              )}
             </h2>
           )}
 
@@ -651,11 +677,42 @@ export function SubjectReview({
             </svg>
           </button>
 
+          {/* 🔗 Cross-document link manager. Lets the user surface this
+              subject in another suivitess (or remove existing links).
+              Editing the subject anywhere always hits the canonical
+              row, so changes propagate to every linked location. */}
+          <button
+            className={styles.actionBtn}
+            onClick={() => setShowLinkModal(true)}
+            data-tooltip="Lier vers un autre suivitess"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
+          </button>
+
           {onDelete && (
             <button
               className={`shared-card__delete-btn ${styles.actionBtn}`}
-              onClick={onDelete}
-              data-tooltip="Supprimer"
+              onClick={async () => {
+                // Linked card : "delete" only removes the LINK,
+                // never the canonical subject. The user has to go
+                // to the origin doc to actually delete it. Without
+                // this guardrail the trash icon on a "🔗 lié …"
+                // card would silently nuke the subject everywhere.
+                if (subject.linkId) {
+                  try {
+                    await api.deleteSubjectCrossLink(subject.linkId);
+                    onSaved?.(subject); // parent reloads the doc → linked card disappears
+                  } catch (err) {
+                    console.warn('[SubjectReview] link removal failed:', err);
+                  }
+                  return;
+                }
+                onDelete();
+              }}
+              data-tooltip={subject.linkId ? 'Retirer ce sujet de cette section (n\'affecte pas l\'original)' : 'Supprimer'}
               style={{ opacity: 1 }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -959,6 +1016,18 @@ export function SubjectReview({
           subjectSituation={subject.situation}
           onClose={() => setShowTicketModal(false)}
           onCreated={loadLinks}
+        />
+      )}
+      {showLinkModal && (
+        <LinkSubjectModal
+          subject={subject}
+          currentDocumentId={documentId}
+          onClose={() => setShowLinkModal(false)}
+          // The parent's `onSaved` flow refreshes the doc on
+          // saves ; we re-trigger it so the linked subject card
+          // appears (or disappears) in the active suivitess
+          // immediately after a link is added or removed.
+          onChange={() => onSaved?.(subject)}
         />
       )}
     </div>

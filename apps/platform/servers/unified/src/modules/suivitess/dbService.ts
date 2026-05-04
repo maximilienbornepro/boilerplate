@@ -27,6 +27,20 @@ interface Subject {
   position: number;
   created_at: string;
   updated_at: string;
+  /** When non-null, this subject row is rendered in a section that is
+   *  NOT its canonical home — it's surfaced via a row in
+   *  `suivitess_subject_cross_links`. The frontend uses these fields
+   *  to display a "🔗 lié depuis …" badge. The id remains the
+   *  canonical subject id, so any PATCH /subjects/:id edits the
+   *  original — no special edit path needed. */
+  linkedFromSectionId?: string | null;
+  linkedFromSectionName?: string | null;
+  linkedFromDocumentId?: string | null;
+  linkedFromDocumentTitle?: string | null;
+  /** UUID of the row in `suivitess_subject_cross_links`. Lets the
+   *  frontend remove the link without touching the canonical
+   *  subject (DELETE /subject-links/:linkId). */
+  linkId?: string | null;
 }
 
 interface SectionWithSubjects extends Section {
@@ -157,6 +171,26 @@ export async function initDb(): Promise<void> {
     console.warn('[SuiVitess] subject_external_links migration failed:', (err as Error).message);
   }
 
+  // Subject cross-document links — see migration 27. Auto-applied
+  // here so the boot path doesn't depend on the SQL init folder
+  // running (it doesn't on existing DBs).
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS suivitess_subject_cross_links (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        origin_subject_id UUID NOT NULL REFERENCES suivitess_subjects(id) ON DELETE CASCADE,
+        target_section_id UUID NOT NULL REFERENCES suivitess_sections(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(origin_subject_id, target_section_id)
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_subj_links_origin ON suivitess_subject_cross_links(origin_subject_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_subj_links_target ON suivitess_subject_cross_links(target_section_id)');
+  } catch (err) {
+    console.warn('[SuiVitess] subject cross-links migration failed:', (err as Error).message);
+  }
+
   console.log('[SuiVitess] Module initialized');
 }
 
@@ -276,14 +310,69 @@ export async function getDocumentWithSections(docId: string): Promise<DocumentWi
   const sections: SectionWithSubjects[] = [];
 
   for (const section of sectionsResult.rows) {
-    const subjectsResult = await pool.query(
+    // Native subjects (whose canonical home is this section).
+    const nativeRes = await pool.query(
       'SELECT * FROM suivitess_subjects WHERE section_id = $1 ORDER BY position',
       [section.id]
     );
+    const nativeSubjects: Subject[] = nativeRes.rows.map((r: Subject) => ({ ...r, linkedFromSectionId: null }));
+
+    // Subjects pulled in by a cross-link. We surface the canonical
+    // subject row but tag it with the origin section + document so
+    // the UI can render the "🔗 lié depuis X" badge. Best-effort —
+    // if the link table doesn't exist (legacy DB), we just return
+    // the native subjects.
+    let linkedSubjects: Subject[] = [];
+    try {
+      const linkedRes = await pool.query(`
+        SELECT
+          sub.*,
+          link.id           AS link_id,
+          link.position     AS link_position,
+          origin_sec.id     AS origin_section_id,
+          origin_sec.name   AS origin_section_name,
+          origin_doc.id     AS origin_document_id,
+          origin_doc.title  AS origin_document_title
+        FROM suivitess_subject_cross_links link
+        JOIN suivitess_subjects   sub        ON sub.id = link.origin_subject_id
+        JOIN suivitess_sections   origin_sec ON origin_sec.id = sub.section_id
+        JOIN suivitess_documents  origin_doc ON origin_doc.id = origin_sec.document_id
+        WHERE link.target_section_id = $1
+        ORDER BY link.position, link.created_at
+      `, [section.id]);
+      linkedSubjects = linkedRes.rows.map((r: Subject & {
+        link_id: string;
+        link_position: number;
+        origin_section_id: string;
+        origin_section_name: string;
+        origin_document_id: string;
+        origin_document_title: string;
+      }) => ({
+        ...r,
+        // Keep the canonical id so PATCH /subjects/:id edits the
+        // single source of truth. The render-time `position` is the
+        // link's position (so the user can reorder linked + native
+        // freely inside the target section).
+        position: r.link_position ?? r.position,
+        linkId: r.link_id,
+        linkedFromSectionId: r.origin_section_id,
+        linkedFromSectionName: r.origin_section_name,
+        linkedFromDocumentId: r.origin_document_id,
+        linkedFromDocumentTitle: r.origin_document_title,
+      }));
+    } catch (err) {
+      console.warn('[SuiVitess] linked subjects fetch failed:', (err as Error).message);
+    }
+
+    // Merge by position. Native subjects' position lives on
+    // `suivitess_subjects.position`, linked ones on
+    // `suivitess_subject_cross_links.position`. Sort the union so the
+    // user sees one continuous ordered list.
+    const merged = [...nativeSubjects, ...linkedSubjects].sort((a, b) => a.position - b.position);
 
     sections.push({
       ...section,
-      subjects: subjectsResult.rows,
+      subjects: merged,
     });
   }
 
@@ -805,4 +894,115 @@ export async function updateSuggestionStatus(id: number, status: 'accepted' | 'r
     [status, id]
   );
   return result.rows[0] ? formatSuggestion(result.rows[0]) : null;
+}
+
+// ==================== SUBJECT CROSS-LINKS ====================
+
+export interface SubjectCrossLink {
+  id: string;
+  originSubjectId: string;
+  targetSectionId: string;
+  position: number;
+  createdAt: string;
+}
+
+/** Create a cross-doc link : surface `subjectId` inside another
+ *  section. Idempotent — a second call with the same pair returns
+ *  the existing link row instead of duplicating. Returns null if the
+ *  target section is the canonical home of the subject (linking a
+ *  subject to its own section makes no sense — the UI prevents it
+ *  too). */
+export async function createSubjectCrossLink(
+  originSubjectId: string,
+  targetSectionId: string,
+): Promise<SubjectCrossLink | null> {
+  // Reject self-link : the canonical section already shows the subject.
+  const subj = await pool.query('SELECT section_id FROM suivitess_subjects WHERE id = $1', [originSubjectId]);
+  if (subj.rows.length === 0) throw new Error('Subject introuvable');
+  if (subj.rows[0].section_id === targetSectionId) return null;
+
+  // Position : append at the end of the target section's existing
+  // links, so newly-linked subjects sit at the bottom of their slot.
+  const tail = await pool.query(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS next_pos
+     FROM suivitess_subject_cross_links
+     WHERE target_section_id = $1`,
+    [targetSectionId],
+  );
+  const nextPos: number = tail.rows[0]?.next_pos ?? 0;
+
+  const result = await pool.query(
+    `INSERT INTO suivitess_subject_cross_links (origin_subject_id, target_section_id, position)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (origin_subject_id, target_section_id) DO UPDATE SET position = suivitess_subject_cross_links.position
+     RETURNING id, origin_subject_id, target_section_id, position, created_at`,
+    [originSubjectId, targetSectionId, nextPos],
+  );
+  const r = result.rows[0];
+  return {
+    id: r.id,
+    originSubjectId: r.origin_subject_id,
+    targetSectionId: r.target_section_id,
+    position: r.position,
+    createdAt: r.created_at,
+  };
+}
+
+export async function deleteSubjectCrossLink(linkId: string): Promise<boolean> {
+  const result = await pool.query(
+    'DELETE FROM suivitess_subject_cross_links WHERE id = $1',
+    [linkId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** List every section/document where `subjectId` is currently
+ *  surfaced as a link, plus its canonical home. Used by the
+ *  "Ce sujet est lié à N suivis" inspector on the subject card. */
+export async function listSubjectCrossLinks(subjectId: string): Promise<Array<{
+  linkId: string | null;
+  sectionId: string;
+  sectionName: string;
+  documentId: string;
+  documentTitle: string;
+  isCanonical: boolean;
+}>> {
+  const result = await pool.query(`
+    -- Canonical home (no link row).
+    SELECT
+      NULL::uuid              AS link_id,
+      sec.id                  AS section_id,
+      sec.name                AS section_name,
+      doc.id                  AS document_id,
+      doc.title               AS document_title,
+      true                    AS is_canonical
+    FROM suivitess_subjects sub
+    JOIN suivitess_sections   sec ON sec.id = sub.section_id
+    JOIN suivitess_documents  doc ON doc.id = sec.document_id
+    WHERE sub.id = $1
+
+    UNION ALL
+
+    -- Cross-link occurrences.
+    SELECT
+      link.id                 AS link_id,
+      sec.id                  AS section_id,
+      sec.name                AS section_name,
+      doc.id                  AS document_id,
+      doc.title               AS document_title,
+      false                   AS is_canonical
+    FROM suivitess_subject_cross_links link
+    JOIN suivitess_sections   sec ON sec.id = link.target_section_id
+    JOIN suivitess_documents  doc ON doc.id = sec.document_id
+    WHERE link.origin_subject_id = $1
+    ORDER BY is_canonical DESC, document_title
+  `, [subjectId]);
+  return result.rows.map(r => ({
+    linkId: r.link_id,
+    sectionId: r.section_id,
+    sectionName: r.section_name,
+    documentId: r.document_id,
+    documentTitle: r.document_title,
+    isCanonical: r.is_canonical,
+  }));
 }

@@ -991,3 +991,44 @@ export async function fetchSourceContent(source: string, id: string): Promise<So
   }
   return res.json();
 }
+
+// ============ Subject cross-document links ============
+
+export interface SubjectCrossLinkLocation {
+  linkId: string | null;       // null when this is the canonical home
+  sectionId: string;
+  sectionName: string;
+  documentId: string;
+  documentTitle: string;
+  isCanonical: boolean;
+}
+
+export async function listSubjectCrossLinks(subjectId: string): Promise<SubjectCrossLinkLocation[]> {
+  const res = await fetch(`${API_BASE}/subjects/${subjectId}/cross-links`, { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function createSubjectCrossLink(subjectId: string, targetSectionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/subjects/${subjectId}/cross-links`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetSectionId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+}
+
+export async function deleteSubjectCrossLink(linkId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/subject-cross-links/${linkId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+}

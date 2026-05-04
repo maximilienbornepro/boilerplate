@@ -1,0 +1,135 @@
+/* LinkSubjectModal styles — kept minimal, leans on the shared Modal
+   wrapper and design tokens for spacing/typography. */
+
+.link-subject-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  font-family: var(--font-mono);
+}
+
+.link-subject-modal__intro {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.link-subject-modal__error {
+  padding: var(--spacing-sm);
+  border: 1px solid var(--error);
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--error);
+  font-size: 12px;
+}
+
+.link-subject-modal h4 {
+  margin: 0 0 var(--spacing-xs);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.link-subject-modal__locations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.link-subject-modal__locations li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.link-subject-modal__location-label {
+  flex: 1;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.link-subject-modal__sep {
+  color: var(--text-muted);
+  margin: 0 4px;
+}
+
+.link-subject-modal__badge {
+  padding: 2px 8px;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.link-subject-modal__remove-btn {
+  padding: 4px 10px;
+  background: transparent;
+  color: var(--error);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.link-subject-modal__remove-btn:hover:not(:disabled) {
+  background: var(--error);
+  color: #fff;
+}
+.link-subject-modal__remove-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.link-subject-modal__form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: var(--spacing-sm);
+  align-items: end;
+}
+
+.link-subject-modal__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.link-subject-modal__form select {
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.link-subject-modal__muted {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.link-subject-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--spacing-sm);
+}

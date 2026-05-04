@@ -1654,6 +1654,53 @@ ${filteredContent.slice(0, 30000)}`,
     res.json({ success: true });
   }));
 
+  // ==================== Subject CROSS-LINKS (cross-document) ====================
+  //
+  // Creates / lists / removes pointers from a target section back to a
+  // canonical subject in another document. The "linked" subject
+  // appears inside the target section as a normal card with a "🔗
+  // lié depuis [origin doc]" badge — but every PATCH still hits the
+  // same canonical row, so an edit anywhere propagates to every
+  // place the subject is linked.
+
+  // POST /subjects/:subjectId/cross-links
+  // Body : { targetSectionId } — surface the subject inside the
+  // target section. Returns 200 + the new link, or 409 if already
+  // linked, or 400 if the target IS the canonical home.
+  router.post('/subjects/:subjectId/cross-links', asyncHandler(async (req, res) => {
+    const { subjectId } = req.params;
+    const { targetSectionId } = (req.body || {}) as { targetSectionId?: string };
+    if (!targetSectionId) { res.status(400).json({ error: 'targetSectionId requis' }); return; }
+    try {
+      const link = await db.createSubjectCrossLink(subjectId, targetSectionId);
+      if (!link) {
+        res.status(400).json({ error: 'Cette section est déjà la section d\'origine du sujet' });
+        return;
+      }
+      res.json({ success: true, link });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  }));
+
+  // GET /subjects/:subjectId/cross-links
+  // Returns every place this subject is currently surfaced — its
+  // canonical home + each linked target. Used by the "Ce sujet est
+  // lié à N suivis" inspector on the subject card.
+  router.get('/subjects/:subjectId/cross-links', asyncHandler(async (req, res) => {
+    const links = await db.listSubjectCrossLinks(req.params.subjectId);
+    res.json(links);
+  }));
+
+  // DELETE /subject-cross-links/:linkId
+  // Removes a single occurrence of the subject from a target
+  // section. The canonical subject and other links survive.
+  router.delete('/subject-cross-links/:linkId', asyncHandler(async (req, res) => {
+    const ok = await db.deleteSubjectCrossLink(req.params.linkId);
+    if (!ok) { res.status(404).json({ error: 'Lien introuvable' }); return; }
+    res.json({ success: true });
+  }));
+
   // GET /jira/createmeta?projectKey=X&issueType=Task
   // Returns required + creatable fields for a project + issue type, with allowed values
   router.get('/jira/createmeta', asyncHandler(async (req, res) => {

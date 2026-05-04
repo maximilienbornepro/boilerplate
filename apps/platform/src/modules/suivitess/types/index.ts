@@ -17,6 +17,19 @@ export interface Subject {
   // UI state (not persisted)
   isNew?: boolean;
   hasChanges?: boolean;
+  /** Set when this row is rendered via a cross-document link rather
+   *  than as a native subject of the section. The id remains the
+   *  canonical subject id, so any PATCH /subjects/:id edits the
+   *  original — propagating the change to every other place where
+   *  the subject is linked. */
+  linkedFromSectionId?: string | null;
+  linkedFromSectionName?: string | null;
+  linkedFromDocumentId?: string | null;
+  linkedFromDocumentTitle?: string | null;
+  /** UUID of the row in `suivitess_subject_cross_links`. Used by the
+   *  "remove this link" action — distinct from "delete the canonical
+   *  subject", which would propagate to every linked place. */
+  linkId?: string | null;
 }
 
 export interface Section {
