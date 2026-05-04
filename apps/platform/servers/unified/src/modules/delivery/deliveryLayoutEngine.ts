@@ -173,12 +173,19 @@ export function widthFromEstimation(
  *   - no target version (`versionCategory === 'none'`)
  *   - no estimation at all (we can't size a slot for them)
  *  These are pinned to the rightmost column with a fixed width of 1.
+ *
+ *  **Exception : `in_progress` tickets are NEVER parked.** A ticket
+ *  someone is actively working on is by definition actionable and
+ *  belongs on today's column regardless of estimation or fixVersion
+ *  metadata gaps. Parking it would hide live work from the board,
+ *  which defeats the whole "today" view.
  *  @see prompts/delivery/layout-rules.md §5 */
 export function isParkingLot(
   statusCat: StatusCategory,
   versionCat: VersionCategory,
   estWidth: number | null,
 ): boolean {
+  if (statusCat === 'in_progress') return false;
   return statusCat === 'blocked'
     || versionCat === 'none'
     || estWidth == null;
