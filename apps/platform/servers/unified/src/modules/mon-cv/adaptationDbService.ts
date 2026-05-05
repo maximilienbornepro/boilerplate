@@ -446,6 +446,30 @@ export async function markAdaptationCompleted(
   return result.rows[0] ? mapRow(result.rows[0]) : null;
 }
 
+/** Look up an existing recent DRAFT for the same (user, cv, exact
+ *  jobOffer) created in the last 10 minutes. Used to dedup the
+ *  POST /cvs/:id/tile-adaptations endpoint so React StrictMode
+ *  double-mounts and accidental double-clicks don't pile up
+ *  identical drafts. Returns null if none. */
+export async function getRecentDraftForOffer(
+  cvId: number,
+  userId: number,
+  jobOffer: string,
+): Promise<CVAdaptation | null> {
+  const result = await pool.query(
+    `SELECT *
+       FROM cv_adaptations
+      WHERE cv_id = $1 AND user_id = $2
+        AND status = 'draft'
+        AND job_offer = $3
+        AND created_at > NOW() - INTERVAL '10 minutes'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [cvId, userId, jobOffer],
+  );
+  return result.rows[0] ? mapRow(result.rows[0]) : null;
+}
+
 export async function getAdaptation(
   id: number,
   userId: number

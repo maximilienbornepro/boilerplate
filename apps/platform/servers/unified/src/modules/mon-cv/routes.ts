@@ -746,6 +746,29 @@ export function createMonCvRoutes(): Router {
       const cv = await db.getCVById(cvId, userId);
       if (!cv) return res.status(404).json({ error: 'CV non trouvé' });
 
+      // Dedup against an existing recent draft for the SAME
+      // (user, cv, jobOffer). This catches :
+      //  - React StrictMode double-mount in dev (effect fires twice
+      //    before the cancel flag short-circuits the second call's
+      //    state update — but the API call already went through)
+      //  - User clicking "Valider" twice in quick succession
+      //  - Idempotent retry from a flaky network
+      // Window = 10 min : long enough to absorb the above, short
+      // enough that a deliberate fresh attempt with the exact same
+      // offer 30 min later still creates a new row.
+      const { getRecentDraftForOffer } = await import('./adaptationDbService.js');
+      const existingDraft = await getRecentDraftForOffer(cvId, userId, jobOffer);
+      if (existingDraft) {
+        const { getTilesByAdaptation } = await import('./adaptationDbService.js');
+        const existingTiles = await getTilesByAdaptation(existingDraft.id, userId);
+        return res.json({
+          adaptationId: existingDraft.id,
+          name: existingDraft.name,
+          tiles: existingTiles,
+          deduped: true,
+        });
+      }
+
       const { extractAtomicsFromCV, persistTilesForAdaptation } =
         await import('./tileAdaptationService.js');
       const { analyzeJobOffer, scoreCV } = await import('./adaptService.js');
