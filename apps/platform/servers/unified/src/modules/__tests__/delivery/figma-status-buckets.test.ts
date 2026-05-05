@@ -26,8 +26,26 @@ describe('delivery — figmaExport.normalizeStatus', () => {
   });
 
   describe('classic done states still bucket as DONE', () => {
-    const doneVariants = ['Done', 'done', 'Terminé', 'Closed', 'Resolved', 'En test', 'En livraison', 'Vérifié'];
+    const doneVariants = ['Done', 'done', 'Terminé', 'Closed', 'Resolved', 'En livraison', 'Vérifié'];
     for (const v of doneVariants) {
+      it(`"${v}" → done`, () => {
+        expect(normalizeStatus(v)).toBe('done');
+      });
+    }
+  });
+
+  describe('test / QA states bucket as DONE (Figma export rule)', () => {
+    const testVariants = [
+      'En test', 'en test', 'In Test', 'in test',
+      'Test', 'test', 'Tests', 'tests',
+      'À tester', 'A tester', 'à tester',
+      'QA', 'qa', 'En QA', 'en qa',
+      'Recette', 'recette',
+      'En recette', 'en recette',
+      'À recetter', 'a recetter',
+      'À recette', 'a recette',
+    ];
+    for (const v of testVariants) {
       it(`"${v}" → done`, () => {
         expect(normalizeStatus(v)).toBe('done');
       });

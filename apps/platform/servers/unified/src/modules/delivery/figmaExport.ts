@@ -275,11 +275,14 @@ export function generateMepMarkerSvg(version: string, date: string): string {
  * frontend's `mapSimpleStatus` (utils/jiraUtils.ts) :
  *
  * - Code review states (« Revue », « In Review », « En relecture »)
- *   are treated as DONE in the Figma copy because, in the user's
- *   delivery board, anything in review is functionally complete from
- *   the planning view's perspective. The screen can keep its own
- *   in-progress styling for review tickets — only the Figma export
- *   collapses them to done.
+ *   are treated as DONE in the Figma copy.
+ * - QA / test states (« En test », « À tester », « Recette »,
+ *   « QA ») are treated as DONE in the Figma copy.
+ *
+ * Rationale : from the planning view's perspective, anything that
+ * has reached review or QA is functionally complete (it left the
+ * dev team's hands). The screen keeps its own styling for these —
+ * only the Figma export collapses them to done.
  */
 export function normalizeStatus(status: string | null | undefined): string {
   if (!status) return 'todo';
@@ -287,8 +290,13 @@ export function normalizeStatus(status: string | null | undefined): string {
   if (lower === '') return 'todo';
   const done = [
     'done', 'termine', 'terminé', 'closed', 'resolved',
-    'in test', 'en test', 'verified', 'verifie', 'vérifié',
+    'verified', 'verifie', 'vérifié',
     'livraison', 'en livraison',
+    // Test / QA states — counted as done for the Figma copy.
+    'in test', 'en test', 'test', 'tests',
+    'à tester', 'a tester',
+    'qa', 'en qa',
+    'recette', 'en recette', 'à recetter', 'a recetter', 'à recette', 'a recette',
     // Review states — counted as done for the Figma copy.
     'revue', 'en revue', 'review', 'in review', 'code review',
     'en relecture', 'relecture', 'pr review', 'awaiting review',
