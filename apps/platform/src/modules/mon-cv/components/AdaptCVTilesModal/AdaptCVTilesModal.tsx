@@ -7,6 +7,11 @@ import './AdaptCVTilesModal.css';
 interface Props {
   cvId: number;
   jobOffer: string;
+  /** When set, skip the "create new adaptation" path and resume an
+   *  existing draft : the modal fetches its tiles, infers the right
+   *  phase from their state (selecting / adapting / routing), and
+   *  picks up where the user left off. */
+  resumeAdaptationId?: number;
   onClose: () => void;
   onDone: (adaptationId: number) => void;
 }
@@ -26,7 +31,7 @@ type Phase = 'extracting' | 'selecting' | 'adapting' | 'routing' | 'done' | 'err
  *                     proposal differs from the original
  *    5. done        — redirect to AdaptationDetailPage
  */
-export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
+export function AdaptCVTilesModal({ cvId, jobOffer, resumeAdaptationId, onClose, onDone }: Props) {
   const [phase, setPhase] = useState<Phase>('extracting');
   const [adaptationId, setAdaptationId] = useState<number | null>(null);
   const [tiles, setTiles] = useState<CVAdaptationTile[]>([]);
@@ -51,6 +56,40 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
     let cancelled = false;
     (async () => {
       try {
+        if (resumeAdaptationId) {
+          // Resume path : the user reopened a draft from the
+          // AdaptCVPage. Pull its existing tiles and infer the
+          // phase :
+          //  - If skill B never ran (no proposalReady=true) → back
+          //    to `selecting` so the user can pick subset & mode.
+          //  - If some proposals are ready and some are still
+          //    pending → `adapting` (the polling loop will catch up
+          //    if a background run is mid-flight, otherwise jumps
+          //    straight to routing on the next tick).
+          //  - If there are still pending tiles → `routing` to
+          //    walk through them.
+          //  - If everything is done (accepted/skipped) → `done`.
+          const tiles = await api.fetchTilesForAdaptation(resumeAdaptationId);
+          if (cancelled) return;
+          setAdaptationId(resumeAdaptationId);
+          setTiles(tiles);
+          // Re-include every tile that already has a proposal in
+          // the selection — they're the ones skill B touched, so
+          // the resume path keeps them in scope.
+          const adapted = tiles.filter(t => t.proposalReady);
+          if (adapted.length === 0) {
+            setSelectedTileIds(new Set(tiles.map(t => t.tileId)));
+            setPhase('selecting');
+          } else {
+            setSelectedTileIds(new Set(adapted.map(t => t.tileId)));
+            const stillPending = adapted.some(
+              t => t.status === 'pending' && t.proposedText.trim() !== t.originalText.trim()
+            );
+            setPhase(stillPending ? 'routing' : 'done');
+          }
+          return;
+        }
+
         const res = await api.startTileAdaptation(cvId, jobOffer);
         if (cancelled) return;
         setAdaptationId(res.adaptationId);
@@ -66,7 +105,8 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [cvId, jobOffer]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cvId, jobOffer, resumeAdaptationId]);
 
   // ── 3. Poll /tiles while skill B is running ─────────────────────────
   // Important : we check `proposalReady` ONLY on the tiles the user
@@ -134,6 +174,15 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
     if (first) setActiveTileId(first.id);
     else setPhase('done');
   }, [phase, activeTileId, tiles, selectedTileIds]);
+
+  // Once we land in `done`, mark the adaptation completed server-
+  // side so the AdaptCVPage drafts list stops surfacing it. Fire-
+  // and-forget — failure is non-fatal (the draft simply stays
+  // resumable, which is the safe behaviour).
+  useEffect(() => {
+    if (phase !== 'done' || adaptationId === null) return;
+    api.completeTileAdaptation(adaptationId).catch(() => { /* swallow */ });
+  }, [phase, adaptationId]);
 
   // ── 2. Selection actions ────────────────────────────────────────────
   const sectionGroups = useMemo(() => groupTilesBySection(tiles), [tiles]);

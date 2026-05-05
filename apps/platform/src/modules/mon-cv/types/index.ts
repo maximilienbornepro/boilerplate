@@ -348,6 +348,9 @@ export interface CVAdaptation {
   atsAfter: AtsScore;
   jobAnalysis: JobAnalysis;
   name: string | null;
+  /** Lifecycle : draft while the modal is being walked, completed
+   *  once the user reaches the "done" step. */
+  status: 'draft' | 'completed';
   createdAt: string;
   updatedAt: string;
 }
@@ -360,6 +363,7 @@ export interface CVAdaptationListItem {
   jobOfferPreview: string;
   atsAfterOverall: number;
   missionsAdded: number;
+  status: 'draft' | 'completed';
   createdAt: string;
 }
 

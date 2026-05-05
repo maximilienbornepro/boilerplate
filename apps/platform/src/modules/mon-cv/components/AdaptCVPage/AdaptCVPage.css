@@ -26,6 +26,72 @@
   color: var(--text-primary);
 }
 
+/* Drafts surface — adaptations the user started but never finished.
+   Surfaced ABOVE the offer textarea so they don't have to scroll. */
+.adapt-cv-page__drafts {
+  padding: var(--spacing-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-primary, #60a5fa);
+  border-radius: var(--radius-md);
+}
+.adapt-cv-page__drafts h3 {
+  margin: 0 0 var(--spacing-xs);
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+}
+.adapt-cv-page__drafts-hint {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+.adapt-cv-page__drafts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+.adapt-cv-page__draft {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary, var(--bg-primary));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+.adapt-cv-page__draft-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.adapt-cv-page__draft-info strong {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.adapt-cv-page__draft-preview {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adapt-cv-page__draft-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.adapt-cv-page__draft-actions {
+  display: flex;
+  flex-direction: row;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
 .adapt-cv-page__form {
   display: flex;
   flex-direction: column;

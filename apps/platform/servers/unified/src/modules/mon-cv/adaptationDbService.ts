@@ -22,6 +22,10 @@ export interface CVAdaptation {
   atsAfter: AtsScore;
   jobAnalysis: JobAnalysis;
   name: string | null;
+  /** Lifecycle : `draft` while the modal is still being walked,
+   *  `completed` once the user hits "done". The AdaptCVPage uses
+   *  this to surface drafts as resumable. */
+  status: 'draft' | 'completed';
   createdAt: string;
   updatedAt: string;
 }
@@ -33,6 +37,7 @@ export interface CVAdaptationListItem {
   jobOfferPreview: string;   // first 120 chars
   atsAfterOverall: number;
   missionsAdded: number;
+  status: 'draft' | 'completed';
   createdAt: string;
 }
 
@@ -65,6 +70,20 @@ async function ensureTable() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_cv_adaptations_user_id ON cv_adaptations(user_id)
   `);
+  // Lifecycle status — `draft` while the user is still walking the
+  // tile-by-tile modal, `completed` once they hit "done" (PDF /
+  // editor). Lets the AdaptCVPage surface drafts with a "Reprendre"
+  // CTA so an accidental modal close doesn't lose the work.
+  // Existing rows are stamped `completed` since they predate this.
+  await pool.query(
+    "ALTER TABLE cv_adaptations ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'draft'"
+  );
+  await pool.query(
+    "UPDATE cv_adaptations SET status = 'completed' WHERE status IS NULL OR status = 'draft' AND created_at < (NOW() - INTERVAL '6 hours')"
+  );
+  await pool.query(
+    'CREATE INDEX IF NOT EXISTS idx_cv_adaptations_status ON cv_adaptations(cv_id, status)'
+  );
 
   // Tile-by-tile adaptation table — see migration 28. One row per
   // atomic CV element that the AI proposes to adjust to a specific
@@ -341,6 +360,7 @@ function mapRow(row: any): CVAdaptation {
     atsAfter: row.ats_after,
     jobAnalysis: row.job_analysis,
     name: row.name ?? null,
+    status: (row.status === 'draft' || row.status === 'completed') ? row.status : 'completed',
     createdAt: row.created_at?.toISOString() || new Date().toISOString(),
     updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
   };
@@ -354,6 +374,7 @@ function mapListRow(row: any): CVAdaptationListItem {
     jobOfferPreview: (row.job_offer as string).slice(0, 120),
     atsAfterOverall: (row.ats_after as AtsScore).overall,
     missionsAdded: ((row.changes as any)?.newMissions ?? []).length,
+    status: (row.status === 'draft' || row.status === 'completed') ? row.status : 'completed',
     createdAt: row.created_at?.toISOString() || new Date().toISOString(),
   };
 }
@@ -369,12 +390,15 @@ export async function createAdaptation(
     atsAfter: AtsScore;
     jobAnalysis: JobAnalysis;
     name?: string;
+    /** Defaults to `draft` when called from the tile-by-tile flow.
+     *  The legacy /adaptations endpoint passes `completed`. */
+    status?: 'draft' | 'completed';
   }
 ): Promise<CVAdaptation> {
   const result = await pool.query(
     `INSERT INTO cv_adaptations
-       (cv_id, user_id, job_offer, adapted_cv, changes, ats_before, ats_after, job_analysis, name)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (cv_id, user_id, job_offer, adapted_cv, changes, ats_before, ats_after, job_analysis, name, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       cvId,
@@ -386,6 +410,7 @@ export async function createAdaptation(
       JSON.stringify(payload.atsAfter),
       JSON.stringify(payload.jobAnalysis),
       payload.name ?? null,
+      payload.status ?? 'draft',
     ]
   );
   return mapRow(result.rows[0]);
@@ -396,13 +421,29 @@ export async function getAdaptationsByCV(
   userId: number
 ): Promise<CVAdaptationListItem[]> {
   const result = await pool.query(
-    `SELECT id, cv_id, name, job_offer, ats_after, changes, created_at
+    `SELECT id, cv_id, name, job_offer, ats_after, changes, status, created_at
      FROM cv_adaptations
      WHERE cv_id = $1 AND user_id = $2
      ORDER BY created_at DESC`,
     [cvId, userId]
   );
   return result.rows.map(mapListRow);
+}
+
+/** Mark a draft adaptation as completed — called by the modal when
+ *  the user reaches the "done" phase. Idempotent, safe to call twice. */
+export async function markAdaptationCompleted(
+  id: number,
+  userId: number,
+): Promise<CVAdaptation | null> {
+  const result = await pool.query(
+    `UPDATE cv_adaptations
+        SET status = 'completed', updated_at = NOW()
+      WHERE id = $1 AND user_id = $2
+      RETURNING *`,
+    [id, userId],
+  );
+  return result.rows[0] ? mapRow(result.rows[0]) : null;
 }
 
 export async function getAdaptation(

@@ -748,6 +748,7 @@ export function createMonCvRoutes(): Router {
 
       const { extractAtomicsFromCV, persistTilesForAdaptation } =
         await import('./tileAdaptationService.js');
+      const { analyzeJobOffer, scoreCV } = await import('./adaptService.js');
 
       // Deterministic extraction — no AI call, the CV is already
       // structured in DB. Replaces the previous skill A which paid an
@@ -760,22 +761,47 @@ export function createMonCvRoutes(): Router {
         });
       }
 
-      // Create the adaptation row up-front so tiles can reference it.
-      const emptyAtsScore = { overall: 0, keywordMatch: 0, sectionCoverage: 0, titleMatch: false, breakdown: { requiredFound: [], requiredMissing: [], multiSectionKeywords: [], singleSectionKeywords: [] } };
+      // Analyse the offer up-front so :
+      //  - we have a real exactJobTitle for the auto-name
+      //  - atsBefore/atsAfter reflect actual offer keywords (otherwise
+      //    `requiredKeywords=[]` makes scoreCV always return 80%, which
+      //    is what the user observed)
+      // Failure here is non-fatal — fall back to empty analysis so
+      // the modal still opens, score stays 0 instead of 80.
+      let jobAnalysis;
+      try {
+        jobAnalysis = await analyzeJobOffer(jobOffer);
+      } catch (analyseErr) {
+        // eslint-disable-next-line no-console
+        console.warn('[mon-cv] analyzeJobOffer failed, using empty analysis:', (analyseErr as Error).message);
+        jobAnalysis = { requiredKeywords: [], preferredKeywords: [], exactJobTitle: '', technologies: [], keyResponsibilities: [], domain: '', atsHint: 'unknown' as const };
+      }
+
+      const atsBefore = scoreCV(cv.cvData, jobAnalysis);
+
+      // Auto-name : "<CV name> · <Job title>" so the user always
+      // recognises drafts in the AdaptCVPage list. Falls back to
+      // generic labels when either piece is missing.
+      const cvLabel = (cv.name || cv.cvData.name || '').trim() || `CV #${cvId}`;
+      const jobLabel = (jobAnalysis.exactJobTitle || '').trim() || 'Adaptation en cours';
+      const autoName = `${cvLabel} · ${jobLabel}`;
+
       const adaptation = await createAdaptation(cvId, userId, {
         jobOffer,
         adaptedCv: cv.cvData,
         changes: { newMissions: [], addedSkills: {} } as any,
-        atsBefore: emptyAtsScore as any,
-        atsAfter: emptyAtsScore as any,
-        jobAnalysis: { requiredKeywords: [], preferredKeywords: [], exactJobTitle: '', technologies: [], keyResponsibilities: [], domain: '', atsHint: 'unknown' } as any,
+        atsBefore,
+        atsAfter: atsBefore, // identical until tiles are accepted
+        jobAnalysis,
+        name: autoName,
+        status: 'draft',
       });
 
       // Persist the tiles with proposed_text = original_text and
       // proposal_ready = false. The user then picks which ones to
       // actually adapt via the next route.
       const tiles = await persistTilesForAdaptation(adaptation.id, subjects, []);
-      res.json({ adaptationId: adaptation.id, tiles });
+      res.json({ adaptationId: adaptation.id, name: autoName, tiles });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[mon-cv] tile-adaptations POST failed:', err);
@@ -784,6 +810,32 @@ export function createMonCvRoutes(): Router {
         stack: process.env.NODE_ENV !== 'production' ? (err as Error).stack : undefined,
       });
     }
+  }));
+
+  // POST /tile-adaptations/:id/complete — flip the adaptation from
+  // `draft` to `completed`. Called by the modal once the user reaches
+  // the "done" phase. Idempotent.
+  router.post('/tile-adaptations/:id/complete', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const adaptationId = parseInt(req.params.id, 10);
+    if (isNaN(adaptationId)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const { markAdaptationCompleted } = await import('./adaptationDbService.js');
+    const updated = await markAdaptationCompleted(adaptationId, userId);
+    if (!updated) return res.status(404).json({ error: 'Adaptation non trouvée' });
+    res.json(updated);
+  }));
+
+  // DELETE /tile-adaptations/:id — discard a draft (or any
+  // adaptation). Used by the AdaptCVPage to let the user clean up
+  // drafts they no longer want to resume.
+  router.delete('/tile-adaptations/:id', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const adaptationId = parseInt(req.params.id, 10);
+    if (isNaN(adaptationId)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const { deleteAdaptation } = await import('./adaptationDbService.js');
+    const ok = await deleteAdaptation(adaptationId, userId);
+    if (!ok) return res.status(404).json({ error: 'Adaptation non trouvée' });
+    res.status(204).end();
   }));
 
   // POST /tile-adaptations/:id/run-adapt

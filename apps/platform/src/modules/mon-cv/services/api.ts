@@ -563,3 +563,36 @@ export async function runAdaptOnSelected(
   });
   return handleResponse(res);
 }
+
+/** Mark a draft tile-adaptation as completed. Called by the modal
+ *  when the user reaches the "done" phase ; safe to call twice
+ *  (idempotent server-side). */
+export async function completeTileAdaptation(
+  adaptationId: number,
+): Promise<import('../types').CVAdaptation> {
+  const res = await fetch(`${API_BASE}/tile-adaptations/${adaptationId}/complete`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse(res);
+}
+
+/** Discard a draft (or any) adaptation — used by the AdaptCVPage
+ *  drafts list to let the user clean up unwanted resumes. */
+export async function deleteTileAdaptation(adaptationId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/tile-adaptations/${adaptationId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error(`Suppression échouée (${res.status})`);
+}
+
+/** List adaptations for a CV (used by AdaptCVPage to surface drafts). */
+export async function fetchAdaptationsForCV(
+  cvId: number,
+): Promise<import('../types').CVAdaptationListItem[]> {
+  const res = await fetch(`${API_BASE}/cvs/${cvId}/adaptations`, {
+    credentials: 'include',
+  });
+  return handleResponse(res);
+}
