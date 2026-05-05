@@ -797,10 +797,16 @@ export function createMonCvRoutes(): Router {
     const userEmail = (req as any).user?.email ?? null;
     const adaptationId = parseInt(req.params.id, 10);
     if (isNaN(adaptationId)) return res.status(400).json({ error: 'Invalid adaptation id' });
-    const { tileIds } = (req.body || {}) as { tileIds?: string[] };
+    const { tileIds, mode: rawMode } = (req.body || {}) as {
+      tileIds?: string[];
+      mode?: 'classic' | 'aggressive';
+    };
     if (!Array.isArray(tileIds) || tileIds.length === 0) {
       return res.status(400).json({ error: 'tileIds requis' });
     }
+    // Default to classic when missing/invalid — same behaviour as
+    // before the mode option was added.
+    const mode: 'classic' | 'aggressive' = rawMode === 'aggressive' ? 'aggressive' : 'classic';
 
     const adaptation = await getAdaptation(adaptationId, userId);
     if (!adaptation) return res.status(404).json({ error: 'Adaptation non trouvée' });
@@ -813,23 +819,32 @@ export function createMonCvRoutes(): Router {
       return res.status(400).json({ error: 'Aucune tuile valide sélectionnée' });
     }
 
-    res.json({ acceptedCount: selected.length });
+    res.json({ acceptedCount: selected.length, mode });
 
     // Background — skill B on the selected subset + write proposals
-    // back via setTileProposal. Errors logged, partial completion OK.
+    // back via setTileProposal. In aggressive mode, also persist
+    // suggested NEW competences as fresh tiles. Errors logged, partial
+    // completion OK.
     setImmediate(async () => {
       try {
-        const { adaptAllAtomics } = await import('./tileAdaptationService.js');
-        const { setTileProposal } = await import('./adaptationDbService.js');
+        const {
+          adaptAllAtomics, buildSkillsSnapshot, buildAdditionAtomic,
+        } = await import('./tileAdaptationService.js');
+        const {
+          setTileProposal, insertTilesForAdaptation,
+        } = await import('./adaptationDbService.js');
         const atomics = selected.map(t => ({
           id: t.tileId,
           path: t.path,
           kind: t.kind,
           originalText: t.originalText,
-          label: t.path,
+          label: t.label ?? t.path,
         }));
-        const { proposals, logId: adaptLogId } = await adaptAllAtomics(
-          atomics, adaptation.jobOffer, userId, userEmail,
+        const snapshot = mode === 'aggressive'
+          ? buildSkillsSnapshot(adaptation.adaptedCv)
+          : null;
+        const { proposals, additions, logId: adaptLogId } = await adaptAllAtomics(
+          atomics, adaptation.jobOffer, userId, userEmail, mode, snapshot,
         );
         for (const a of atomics) {
           const proposal = proposals.find(p => p.id === a.id);
@@ -838,6 +853,25 @@ export function createMonCvRoutes(): Router {
             : a.originalText;
           const reasoning = proposal?.reasoning ?? null;
           await setTileProposal(adaptationId, a.id, text, reasoning, adaptLogId);
+        }
+        // Aggressive-mode additions → new tiles, already-ready
+        // (proposal_ready=true) so the modal surfaces them
+        // immediately alongside the rewritten ones.
+        if (mode === 'aggressive' && additions.length > 0) {
+          const additionRows = additions.map((add, i) => {
+            const atom = buildAdditionAtomic(add, i);
+            return {
+              tileId: atom.id,
+              path: atom.path,
+              kind: atom.kind,
+              originalText: atom.originalText,
+              proposedText: add.proposedText,
+              label: atom.label,
+              proposalReady: true,
+              reasoning: add.reasoning ?? null,
+            };
+          });
+          await insertTilesForAdaptation(adaptationId, additionRows);
         }
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -909,6 +943,8 @@ export function createMonCvRoutes(): Router {
     const adaptationId = parseInt(req.params.id, 10);
     if (isNaN(adaptationId)) return res.status(400).json({ error: 'Invalid adaptation id' });
     const { tileId } = req.params;
+    const { mode: rawMode } = (req.body || {}) as { mode?: 'classic' | 'aggressive' };
+    const mode: 'classic' | 'aggressive' = rawMode === 'aggressive' ? 'aggressive' : 'classic';
 
     const { getTileById, updateTileProposal } = await import('./adaptationDbService.js');
     const tile = await getTileById(tileId, userId);
@@ -921,10 +957,11 @@ export function createMonCvRoutes(): Router {
 
     const { adaptOneAtomic } = await import('./tileAdaptationService.js');
     const { proposal, logId } = await adaptOneAtomic(
-      { id: tile.tileId, path: tile.path, kind: tile.kind, originalText: tile.originalText, label: tile.path },
+      { id: tile.tileId, path: tile.path, kind: tile.kind, originalText: tile.originalText, label: tile.label ?? tile.path },
       adaptation.jobOffer,
       userId,
       userEmail,
+      mode,
     );
     const newText = proposal?.proposedText && proposal.proposedText.trim().length > 0
       ? proposal.proposedText

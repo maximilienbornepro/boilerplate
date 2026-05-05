@@ -33,6 +33,13 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
   const [selectedTileIds, setSelectedTileIds] = useState<Set<string>>(new Set());
   const [activeTileId, setActiveTileId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // User-picked adaptation mode. Drives which prompt skill B uses :
+  //   classic    → faithful rewriting only (no new skills)
+  //   aggressive → louder ATS rewriting + suggested skill additions
+  // Locked once the user clicks "Lancer l'adaptation IA" — the modal
+  // keeps it for the regenerate calls so single-tile regen matches the
+  // batch run's tone.
+  const [mode, setMode] = useState<'classic' | 'aggressive'>('classic');
 
   // Per-tile UI state.
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -81,14 +88,16 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
         const fresh = await api.fetchTilesForAdaptation(adaptationId);
         if (cancelled) return;
         setTiles(prev => {
-          const byId = new Map(fresh.map(t => [t.id, t]));
-          return prev.map(t => {
-            const f = byId.get(t.id);
-            if (!f) return t;
-            // Preserve user-edited fields ; only sync the skill-B
-            // outputs.
+          const prevById = new Map(prev.map(t => [t.id, t]));
+          // Merge : for known tiles, sync only the skill-B fields
+          // (preserves user edits in flight) ; for NEW tiles
+          // (aggressive-mode additions inserted server-side after
+          // skill B ran), append them as-is.
+          return fresh.map(f => {
+            const existing = prevById.get(f.id);
+            if (!existing) return f;
             return {
-              ...t,
+              ...existing,
               proposedText: f.proposedText,
               proposalReady: f.proposalReady,
               reasoning: f.reasoning,
@@ -96,6 +105,20 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
               aiLogId: f.aiLogId,
             };
           });
+        });
+        // Auto-include any newly-inserted addition tiles in the
+        // selection so visibleModifiedTiles surfaces them — the
+        // user picks accept/reject per addition in the routing UI.
+        setSelectedTileIds(prev => {
+          let changed = false;
+          const next = new Set(prev);
+          for (const f of fresh) {
+            if (f.kind.endsWith('_addition') && !next.has(f.tileId)) {
+              next.add(f.tileId);
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
         });
       } catch { /* swallow ; next tick retries */ }
     }, 4000);
@@ -139,7 +162,7 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
     if (!adaptationId || selectedTileIds.size === 0) return;
     setPhase('adapting');
     try {
-      await api.runAdaptOnSelected(adaptationId, Array.from(selectedTileIds));
+      await api.runAdaptOnSelected(adaptationId, Array.from(selectedTileIds), mode);
     } catch (err) {
       setError((err as Error).message);
       setPhase('error');
@@ -235,7 +258,7 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
     if (!adaptationId || !activeTile) return;
     setBusyTileId(activeTile.id);
     try {
-      const updated = await api.regenerateTile(adaptationId, activeTile.id);
+      const updated = await api.regenerateTile(adaptationId, activeTile.id, mode);
       replaceTile(updated);
       setEditingId(null);
       setEditDraft('');
@@ -269,6 +292,8 @@ export function AdaptCVTilesModal({ cvId, jobOffer, onClose, onDone }: Props) {
             onToggleGroup={toggleGroup}
             onStart={startAdaptation}
             onCancel={onClose}
+            mode={mode}
+            onChangeMode={setMode}
           />
         )}
 
@@ -463,10 +488,13 @@ interface SelectionPanelProps {
   onToggleGroup: (group: SectionGroup) => void;
   onStart: () => void;
   onCancel: () => void;
+  mode: 'classic' | 'aggressive';
+  onChangeMode: (m: 'classic' | 'aggressive') => void;
 }
 
 function SelectionPanel({
   sectionGroups, selectedTileIds, onToggleTile, onToggleGroup, onStart, onCancel,
+  mode, onChangeMode,
 }: SelectionPanelProps) {
   const totalSelected = selectedTileIds.size;
   return (
@@ -474,6 +502,37 @@ function SelectionPanel({
       <p className="adapt-cv-tiles__intro">
         Coche les sections que tu veux adapter à l'offre. Décocher une partie évite à l'IA de retravailler ce qui ne t'intéresse pas (et économise des tokens). Tu pourras toujours valider/refuser/modifier chaque proposition après.
       </p>
+
+      {/* Mode picker — surfaced above the section list because it
+          changes the AI's overall behaviour, not just one tile. */}
+      <fieldset className="adapt-cv-tiles__mode">
+        <legend>Mode d'adaptation</legend>
+        <label className={`adapt-cv-tiles__mode-option${mode === 'classic' ? ' adapt-cv-tiles__mode-option--selected' : ''}`}>
+          <input
+            type="radio"
+            name="adapt-mode"
+            checked={mode === 'classic'}
+            onChange={() => onChangeMode('classic')}
+          />
+          <div>
+            <strong>Classique</strong>
+            <span>Réécriture fidèle au CV. Synonymes ATS uniquement, aucune compétence ajoutée. À privilégier si tu veux rester strict sur les faits.</span>
+          </div>
+        </label>
+        <label className={`adapt-cv-tiles__mode-option${mode === 'aggressive' ? ' adapt-cv-tiles__mode-option--selected' : ''}`}>
+          <input
+            type="radio"
+            name="adapt-mode"
+            checked={mode === 'aggressive'}
+            onChange={() => onChangeMode('aggressive')}
+          />
+          <div>
+            <strong>Agressif</strong>
+            <span>Réécriture plus offensive (mots-clés, méthodologies, vocabulaire de l'offre) <em>et</em> propose des compétences à <strong>ajouter</strong> au CV — chacune validable individuellement.</span>
+          </div>
+        </label>
+      </fieldset>
+
       <div className="adapt-cv-tiles__groups">
         {sectionGroups.map(group => {
           const allChecked = group.tiles.every(t => selectedTileIds.has(t.tileId));
@@ -525,7 +584,7 @@ function SelectionPanel({
             onClick={onStart}
             disabled={totalSelected === 0}
           >
-            Lancer l'adaptation IA →
+            Lancer l'adaptation IA · mode {mode === 'aggressive' ? 'agressif' : 'classique'} →
           </Button>
         </div>
       </div>
@@ -566,6 +625,10 @@ function RoutingTile({
 }: RoutingTileProps) {
   const isEditing = editingId === tile.id;
   const finalText = tile.userEditedText ?? tile.proposedText;
+  // Aggressive-mode additions have no `originalText` (they're brand
+  // new entries the AI suggests). Don't render the "Avant" section
+  // for them — there's nothing to compare against.
+  const isAddition = tile.kind.endsWith('_addition');
 
   return (
     <div className="adapt-cv-tiles__tile">
@@ -575,7 +638,10 @@ function RoutingTile({
           the primary identifier (it confused users who couldn't tell
           which experience a "missions[0]" was attached to). */}
       {tile.label && (
-        <div className="adapt-cv-tiles__tile-label">{tile.label}</div>
+        <div className="adapt-cv-tiles__tile-label">
+          {isAddition && <span className="adapt-cv-tiles__addition-badge">+ Ajout suggéré</span>}
+          {tile.label}
+        </div>
       )}
       <div className="adapt-cv-tiles__progress">
         Modification {position} sur {total} · <code>{tile.kind}</code>
@@ -586,18 +652,20 @@ function RoutingTile({
           comparing texts. */}
       {tile.reasoning && (
         <div className="adapt-cv-tiles__reasoning">
-          <strong>Pourquoi cette proposition :</strong> {tile.reasoning}
+          <strong>{isAddition ? 'Pourquoi cet ajout' : 'Pourquoi cette proposition'} :</strong> {tile.reasoning}
         </div>
       )}
 
-      <section>
-        <h4>Avant — texte d'origine</h4>
-        <pre className="adapt-cv-tiles__text adapt-cv-tiles__text--original">{tile.originalText || '(vide)'}</pre>
-      </section>
+      {!isAddition && (
+        <section>
+          <h4>Avant — texte d'origine</h4>
+          <pre className="adapt-cv-tiles__text adapt-cv-tiles__text--original">{tile.originalText || '(vide)'}</pre>
+        </section>
+      )}
 
       <section>
         <h4>
-          Après — proposition de l'IA
+          {isAddition ? 'Compétence à ajouter' : 'Après — proposition de l\'IA'}
           {tile.regenerateCount > 0 && <span className="adapt-cv-tiles__hint"> · régénérée {tile.regenerateCount}×</span>}
           {tile.userEditedText !== null && <span className="adapt-cv-tiles__hint"> · modifiée par toi</span>}
         </h4>
@@ -629,10 +697,10 @@ function RoutingTile({
         ) : (
           <>
             <Button variant="primary" onClick={onAccept} disabled={busy}>
-              ✓ Je suis d'accord
+              {isAddition ? '+ Ajouter au CV' : '✓ Je suis d\'accord'}
             </Button>
             <Button variant="secondary" onClick={onSkip} disabled={busy}>
-              ✗ Je ne suis pas d'accord
+              {isAddition ? '✗ Ne pas ajouter' : '✗ Je ne suis pas d\'accord'}
             </Button>
             <Button variant="secondary" onClick={onStartEdit} disabled={busy}>
               ✎ Modifier

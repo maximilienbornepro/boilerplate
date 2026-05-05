@@ -243,16 +243,28 @@ export const SKILLS: readonly SkillDefinition[] = [
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/reconcile-multi-source.md'),
   },
   {
-    slug: 'mon-cv-adapt-atomic-to-offer',
-    name: 'Mon-CV — Adapter un sujet atomique à une offre',
+    slug: 'mon-cv-adapt-atomic-classic',
+    name: 'Mon-CV — Adapter un sujet (mode CLASSIQUE)',
     description:
-      'Tier 2 de l\'adaptation tuile-par-tuile. Reçoit l\'offre + un sujet atomique (mode single) ou la liste complète (mode batch) et produit pour chacun une proposition de texte adaptée à l\'offre — minimale, sans inventer de fait. Réutilisé en single-mode quand l\'utilisateur clique « Régénérer » sur une tuile.',
+      'Tier 2 — adaptation tuile-par-tuile, MODE STRICT. Réécrit chaque sujet atomique de manière minimale et fidèle au CV original (synonymes ATS uniquement, aucune invention). N\'ajoute jamais de nouvelle compétence. Choisi par l\'utilisateur dans la modale via le sélecteur de mode.',
     usage: {
       module: 'mon-cv',
-      endpoint: 'POST /mon-cv-api/cvs/:id/tile-adaptations + POST /tile-adaptations/:id/tiles/:tileId/regenerate',
-      trigger: 'Validation initiale (batch) puis clic « Régénérer » sur une tuile (single)',
+      endpoint: 'POST /mon-cv-api/tile-adaptations/:id/run-adapt + regenerate (mode=classic)',
+      trigger: 'Sélection « Mode classique » dans la modale d\'adaptation',
     },
-    defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/adapt-atomic-to-offer.md'),
+    defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/adapt-atomic-classic.md'),
+  },
+  {
+    slug: 'mon-cv-adapt-atomic-aggressive',
+    name: 'Mon-CV — Adapter un sujet (mode AGRESSIF)',
+    description:
+      'Tier 2 — adaptation tuile-par-tuile, MODE AGRESSIF. Réécriture plus offensive (enrichissement par mots-clés ATS, méthodologies plausibles, vocabulaire de l\'offre) ET propose en plus des compétences à AJOUTER absentes du CV mais demandées par l\'offre. Choisi par l\'utilisateur dans la modale.',
+    usage: {
+      module: 'mon-cv',
+      endpoint: 'POST /mon-cv-api/tile-adaptations/:id/run-adapt + regenerate (mode=aggressive)',
+      trigger: 'Sélection « Mode agressif » dans la modale d\'adaptation',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/adapt-atomic-aggressive.md'),
   },
 ] as const;
 

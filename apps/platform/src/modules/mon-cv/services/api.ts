@@ -528,31 +528,38 @@ export async function updateTile(
   return handleResponse(res);
 }
 
-/** Re-run skill B on a single tile. Replaces `proposedText` and
+/** Re-run skill B on a single tile. `mode` MUST match the mode the
+ *  user picked when starting the adaptation (otherwise we'd get a
+ *  stricter/looser regen than expected). Replaces `proposedText` and
  *  resets the user edit + status. */
 export async function regenerateTile(
   adaptationId: number,
   tileRowId: string,
+  mode: 'classic' | 'aggressive' = 'classic',
 ): Promise<import('../types').CVAdaptationTile> {
   const res = await fetch(`${API_BASE}/tile-adaptations/${adaptationId}/tiles/${tileRowId}/regenerate`, {
     method: 'POST',
     credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
   });
   return handleResponse(res);
 }
 
-/** Skill B on a user-selected subset. Returns immediately with a
- *  job receipt — the modal keeps polling /tiles to see proposals
- *  land. */
+/** Skill B on a user-selected subset, in the chosen mode. Returns
+ *  immediately with a job receipt — the modal keeps polling /tiles
+ *  to see proposals land. In aggressive mode, the backend ALSO
+ *  inserts brand-new tiles for suggested skill additions. */
 export async function runAdaptOnSelected(
   adaptationId: number,
   tileIds: string[],
-): Promise<{ acceptedCount: number }> {
+  mode: 'classic' | 'aggressive' = 'classic',
+): Promise<{ acceptedCount: number; mode: 'classic' | 'aggressive' }> {
   const res = await fetch(`${API_BASE}/tile-adaptations/${adaptationId}/run-adapt`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tileIds }),
+    body: JSON.stringify({ tileIds, mode }),
   });
   return handleResponse(res);
 }

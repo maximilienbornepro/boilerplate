@@ -1,9 +1,12 @@
-# Skill — Mon-CV : adapter un sujet atomique à une offre
+# Skill — Mon-CV : adapter un sujet atomique à une offre (mode CLASSIQUE)
 
 ## À propos de ce skill
 
-- **Slug** : `mon-cv-adapt-atomic-to-offer`
+- **Slug** : `mon-cv-adapt-atomic-classic`
 - **Tier** : 2 (writer / adaptation)
+- **Mode** : classique — réécriture **strictement fidèle**, aucune
+  invention, aucune nouvelle compétence ajoutée. Voir
+  `adapt-atomic-aggressive.md` pour le mode plus permissif.
 - **Où il est utilisé** : adaptation tuile-par-tuile du module mon-cv.
   Invoqué deux fois :
   1. **Mode batch** au moment de la validation initiale (chaque sujet

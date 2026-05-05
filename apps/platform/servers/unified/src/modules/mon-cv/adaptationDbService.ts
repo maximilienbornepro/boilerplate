@@ -161,19 +161,32 @@ function mapTileRow(row: any): CVAdaptationTile {
  *  the user already edited. */
 export async function insertTilesForAdaptation(
   adaptationId: number,
-  tiles: Array<Pick<CVAdaptationTile, 'tileId' | 'path' | 'kind' | 'originalText' | 'proposedText' | 'label'>>,
+  tiles: Array<
+    Pick<CVAdaptationTile, 'tileId' | 'path' | 'kind' | 'originalText' | 'proposedText' | 'label'>
+    & Partial<Pick<CVAdaptationTile, 'proposalReady' | 'reasoning'>>
+  >,
 ): Promise<CVAdaptationTile[]> {
   if (tiles.length === 0) return [];
   const values: string[] = [];
   const params: any[] = [];
   let i = 1;
   for (const t of tiles) {
-    values.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
-    params.push(adaptationId, t.tileId, t.path, t.kind, t.originalText, t.proposedText, t.label ?? null);
+    values.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+    params.push(
+      adaptationId,
+      t.tileId,
+      t.path,
+      t.kind,
+      t.originalText,
+      t.proposedText,
+      t.label ?? null,
+      t.proposalReady ?? false,
+      t.reasoning ?? null,
+    );
   }
   const result = await pool.query(
     `INSERT INTO cv_adaptation_tiles
-       (adaptation_id, tile_id, path, kind, original_text, proposed_text, label)
+       (adaptation_id, tile_id, path, kind, original_text, proposed_text, label, proposal_ready, reasoning)
      VALUES ${values.join(', ')}
      ON CONFLICT (adaptation_id, tile_id) DO NOTHING
      RETURNING *`,

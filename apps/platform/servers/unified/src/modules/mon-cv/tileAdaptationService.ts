@@ -23,6 +23,28 @@ import * as adaptDb from './adaptationDbService.js';
 import type { CVAdaptationTile } from './adaptationDbService.js';
 import type { CVData, Experience, Project, Formation, Award, SideProjectItem } from './types.js';
 
+/** Adaptation mode picked by the user in the modal. Drives which
+ *  skill prompt is used :
+ *  - `classic`    → minimal, faithful rewriting (no new skills)
+ *  - `aggressive` → louder ATS rewriting + suggested skill additions */
+export type AdaptMode = 'classic' | 'aggressive';
+
+/** Buckets eligible for an aggressive-mode "addition" — the AI may
+ *  propose to add a new entry to one of these flat string arrays.
+ *  Persisted as a tile with kind=`skill_*_addition` and path=`bucket[*]`
+ *  (the trailing `[*]` triggers an append in `applyTextAtPath`). */
+export type AdditionBucket =
+  | 'languages'
+  | 'competences'
+  | 'outils'
+  | 'dev'
+  | 'frameworks'
+  | 'solutions';
+
+const ADDITION_BUCKETS: AdditionBucket[] = [
+  'languages', 'competences', 'outils', 'dev', 'frameworks', 'solutions',
+];
+
 /** Output of skill A — one atomic CV element per row, ready to be
  *  adapted to a job offer by skill B and validated tile-by-tile by
  *  the user. The `path` is JSONPath-ish so the apply step can merge
@@ -39,6 +61,15 @@ export interface AtomicSubject {
  *  regeneration and inside an array for the batch initial pass). */
 export interface AdaptedAtomic {
   id: string;
+  proposedText: string;
+  reasoning?: string;
+}
+
+/** Aggressive-mode only — a brand new skill the model proposes to add
+ *  to the CV (was not in the original). Surfaced as its own tile in
+ *  the modal so the user accepts/rejects each addition individually. */
+export interface AdditionAtomic {
+  bucket: AdditionBucket;
   proposedText: string;
   reasoning?: string;
 }
@@ -124,39 +155,96 @@ export function extractAtomicsFromCV(cvData: CVData): AtomicSubject[] {
 // Skill B — adapt atomic subjects to a job offer (batch + single).
 // ────────────────────────────────────────────────────────────────────
 
+/** Snapshot of every skill currently on the CV — sent to the
+ *  aggressive-mode prompt so it doesn't propose duplicate additions. */
+export interface CVSkillsSnapshot {
+  languages: string[];
+  competences: string[];
+  outils: string[];
+  dev: string[];
+  frameworks: string[];
+  solutions: string[];
+}
+
+export function buildSkillsSnapshot(cvData: CVData): CVSkillsSnapshot {
+  return {
+    languages: cvData.languages ?? [],
+    competences: cvData.competences ?? [],
+    outils: cvData.outils ?? [],
+    dev: cvData.dev ?? [],
+    frameworks: cvData.frameworks ?? [],
+    solutions: cvData.solutions ?? [],
+  };
+}
+
 export async function adaptAllAtomics(
   atomics: AtomicSubject[],
   jobOffer: string,
   userId: number,
   userEmail: string | null = null,
-): Promise<{ proposals: AdaptedAtomic[]; logId: number | null }> {
-  if (atomics.length === 0) return { proposals: [], logId: null };
+  mode: AdaptMode = 'classic',
+  skillsSnapshot: CVSkillsSnapshot | null = null,
+): Promise<{ proposals: AdaptedAtomic[]; additions: AdditionAtomic[]; logId: number | null }> {
+  if (atomics.length === 0) return { proposals: [], additions: [], logId: null };
 
-  const payload = { atomics, jobOffer };
+  // Aggressive mode also gets the snapshot of existing skills so it
+  // can avoid duplicate additions. Classic mode never produces
+  // additions, snapshot is irrelevant there.
+  const payload = mode === 'aggressive'
+    ? { atomics, jobOffer, cvSkillsSnapshot: skillsSnapshot ?? emptySnapshot() }
+    : { atomics, jobOffer };
   const json = JSON.stringify(payload, null, 2);
   const clipped = json.length > 60000 ? json.slice(0, 60000) : json;
 
+  const slug = mode === 'aggressive'
+    ? 'mon-cv-adapt-atomic-aggressive'
+    : 'mon-cv-adapt-atomic-classic';
+
+  const expectedShape = mode === 'aggressive'
+    ? 'Renvoie UNIQUEMENT un objet JSON `{ "proposals": [...], "additions": [...] }`. Le tableau `proposals` doit avoir un objet par sujet, dans le même ordre que `atomics`.'
+    : 'Renvoie UNIQUEMENT le tableau JSON des propositions, un objet par sujet, dans le même ordre.';
+
   const run = await runSkill({
-    slug: 'mon-cv-adapt-atomic-to-offer',
+    slug,
     userId,
     userEmail,
-    buildContext: () => `## Contexte (mode batch)\n\n\`\`\`json\n${clipped}\n\`\`\`\n\nRenvoie UNIQUEMENT le tableau JSON des propositions, un objet par sujet, dans le même ordre.`,
+    buildContext: () => `## Contexte (mode batch — ${mode})\n\n\`\`\`json\n${clipped}\n\`\`\`\n\n${expectedShape}`,
     inputContent: clipped,
     sourceKind: 'cv',
-    sourceTitle: 'Adaptation batch',
-    // Same 16k cap as skill A : N atomics × ~150 tokens of JSON
-    // per proposal saturates 8k for any CV with > ~50 atomics.
+    sourceTitle: `Adaptation batch (${mode})`,
     maxTokens: 16000,
   });
 
-  const proposals = parseJsonArray<AdaptedAtomic>(run.outputText) ?? [];
+  // Aggressive mode → object output { proposals, additions }
+  // Classic mode    → array output  [...]
+  let proposals: AdaptedAtomic[] = [];
+  let additions: AdditionAtomic[] = [];
+  if (mode === 'aggressive') {
+    const obj = parseJsonObject<{ proposals?: AdaptedAtomic[]; additions?: AdditionAtomic[] }>(run.outputText);
+    proposals = obj?.proposals ?? parseJsonArray<AdaptedAtomic>(run.outputText) ?? [];
+    additions = (obj?.additions ?? []).filter(isValidAddition);
+  } else {
+    proposals = parseJsonArray<AdaptedAtomic>(run.outputText) ?? [];
+  }
+
   if (proposals.length === 0) {
     // eslint-disable-next-line no-console
     console.warn(
-      `[mon-cv adapt batch] skill B returned empty/unparseable output (logId=${run.logId}). Raw (first 2k):\n${run.outputText.slice(0, 2000)}`,
+      `[mon-cv adapt batch ${mode}] skill returned empty/unparseable proposals (logId=${run.logId}). Raw (first 2k):\n${run.outputText.slice(0, 2000)}`,
     );
   }
-  return { proposals, logId: run.logId };
+  return { proposals, additions, logId: run.logId };
+}
+
+function emptySnapshot(): CVSkillsSnapshot {
+  return { languages: [], competences: [], outils: [], dev: [], frameworks: [], solutions: [] };
+}
+
+function isValidAddition(a: any): a is AdditionAtomic {
+  return !!a
+    && typeof a.proposedText === 'string'
+    && a.proposedText.trim().length > 0
+    && ADDITION_BUCKETS.includes(a.bucket);
 }
 
 export async function adaptOneAtomic(
@@ -164,18 +252,23 @@ export async function adaptOneAtomic(
   jobOffer: string,
   userId: number,
   userEmail: string | null = null,
+  mode: AdaptMode = 'classic',
 ): Promise<{ proposal: AdaptedAtomic | null; logId: number | null }> {
   const payload = { atomic, jobOffer };
   const json = JSON.stringify(payload, null, 2);
 
+  const slug = mode === 'aggressive'
+    ? 'mon-cv-adapt-atomic-aggressive'
+    : 'mon-cv-adapt-atomic-classic';
+
   const run = await runSkill({
-    slug: 'mon-cv-adapt-atomic-to-offer',
+    slug,
     userId,
     userEmail,
-    buildContext: () => `## Contexte (mode single)\n\n\`\`\`json\n${json}\n\`\`\`\n\nRenvoie UNIQUEMENT l'objet JSON de la proposition pour ce sujet.`,
+    buildContext: () => `## Contexte (mode single — ${mode})\n\n\`\`\`json\n${json}\n\`\`\`\n\nRenvoie UNIQUEMENT l'objet JSON de la proposition pour ce sujet.`,
     inputContent: json,
     sourceKind: 'cv',
-    sourceTitle: `Régénération : ${atomic.label}`,
+    sourceTitle: `Régénération : ${atomic.label} (${mode})`,
     maxTokens: 1000,
   });
 
@@ -232,31 +325,81 @@ export function applyTextAtPath(cvData: CVData, path: string, finalText: string)
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i];
     if (cursor == null) return next;
-    cursor = seg.kind === 'index' ? cursor[seg.value] : cursor[seg.value];
+    if (seg.kind === 'append') return next; // append only valid as last segment
+    cursor = cursor[seg.value];
     if (cursor == null) return next;
   }
   const last = segments[segments.length - 1];
   if (cursor == null) return next;
-  if (last.kind === 'index') cursor[last.value] = finalText;
-  else cursor[last.value] = finalText;
+  if (last.kind === 'append') {
+    // Aggressive-mode "addition" — append to the parent array. The
+    // path looks like "competences[*]" — penultimate segment is the
+    // bucket key, last segment is the append marker. The `cursor`
+    // here is the parent OBJECT holding the array, so we resolve the
+    // array via the segment's bucket name.
+    const arr = cursor[last.value];
+    if (Array.isArray(arr)) arr.push(finalText);
+    return next;
+  }
+  cursor[last.value] = finalText;
   return next;
 }
 
-type Segment = { kind: 'key'; value: string } | { kind: 'index'; value: number };
+type Segment =
+  | { kind: 'key'; value: string }
+  | { kind: 'index'; value: number }
+  /** `[*]` — last-segment-only append marker, used by aggressive-mode
+   *  additions. `value` carries the bucket key (e.g. "competences"). */
+  | { kind: 'append'; value: string };
 
 function parsePath(path: string): Segment[] {
   // Tokenise patterns like "experiences[2].projects[1].title" into
   // [{key,'experiences'},{index,2},{key,'projects'},{index,1},{key,'title'}].
-  // Tolerant : accepts dot-only paths like "summary".
+  // Also handles `competences[*]` → last segment becomes
+  // {append,'competences'} so applyTextAtPath knows to push instead
+  // of overwrite. Tolerant : accepts dot-only paths like "summary".
   const out: Segment[] = [];
-  const tokenRe = /([a-zA-Z_][a-zA-Z0-9_]*)|\[(\d+)\]/g;
+  const tokenRe = /([a-zA-Z_][a-zA-Z0-9_]*)|\[(\d+)\]|\[\*\]/g;
   let m: RegExpExecArray | null;
   while ((m = tokenRe.exec(path)) !== null) {
     if (m[1] != null) out.push({ kind: 'key', value: m[1] });
     else if (m[2] != null) out.push({ kind: 'index', value: parseInt(m[2], 10) });
+    else {
+      // [*] — convert the previous key segment into an append marker.
+      const prev = out[out.length - 1];
+      if (prev && prev.kind === 'key') {
+        out[out.length - 1] = { kind: 'append', value: prev.value };
+      }
+    }
   }
   return out;
 }
+
+/** Build an `AtomicSubject` shape for an aggressive-mode addition,
+ *  ready to be persisted alongside the regular proposal tiles. The
+ *  tileId is hashed from `bucket + index + text` to stay stable
+ *  across re-imports. */
+export function buildAdditionAtomic(
+  addition: AdditionAtomic,
+  index: number,
+): AtomicSubject {
+  return {
+    id: `addition_${addition.bucket}_${index}`,
+    path: `${addition.bucket}[*]`,
+    kind: `${addition.bucket}_addition`,
+    originalText: '', // no original — this is a brand new entry
+    label: `Ajout suggéré · ${BUCKET_LABEL[addition.bucket]} : ${addition.proposedText}`,
+  };
+}
+
+const BUCKET_LABEL: Record<AdditionBucket, string> = {
+  languages:   'Langue',
+  competences: 'Compétence',
+  outils:      'Outil',
+  dev:         'Langage',
+  frameworks:  'Framework',
+  solutions:   'Solution',
+};
 
 // ────────────────────────────────────────────────────────────────────
 // Tolerant JSON parsing (skill outputs sometimes wrap in markdown).
