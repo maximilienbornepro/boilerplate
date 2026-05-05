@@ -270,13 +270,29 @@ export function generateMepMarkerSvg(version: string, date: string): string {
 }
 
 /**
- * Normalize a raw Jira status string to a simple bucket.
- * Mirrors mapSimpleStatus from delivery utils.
+ * Normalize a raw Jira status string to a simple bucket FOR THE
+ * FIGMA EXPORT. Bucketing here intentionally diverges from the
+ * frontend's `mapSimpleStatus` (utils/jiraUtils.ts) :
+ *
+ * - Code review states (« Revue », « In Review », « En relecture »)
+ *   are treated as DONE in the Figma copy because, in the user's
+ *   delivery board, anything in review is functionally complete from
+ *   the planning view's perspective. The screen can keep its own
+ *   in-progress styling for review tickets — only the Figma export
+ *   collapses them to done.
  */
 export function normalizeStatus(status: string | null | undefined): string {
   if (!status) return 'todo';
   const lower = status.toLowerCase().trim();
-  const done = ['done', 'termine', 'terminé', 'closed', 'resolved', 'in test', 'en test', 'verified', 'verifie', 'vérifié', 'livraison', 'en livraison'];
+  if (lower === '') return 'todo';
+  const done = [
+    'done', 'termine', 'terminé', 'closed', 'resolved',
+    'in test', 'en test', 'verified', 'verifie', 'vérifié',
+    'livraison', 'en livraison',
+    // Review states — counted as done for the Figma copy.
+    'revue', 'en revue', 'review', 'in review', 'code review',
+    'en relecture', 'relecture', 'pr review', 'awaiting review',
+  ];
   const todo = ['backlog', 'to do', 'todo', 'a faire', 'à faire', 'open', 'new', 'selected for development'];
   if (done.includes(lower)) return 'done';
   if (todo.includes(lower)) return 'todo';
