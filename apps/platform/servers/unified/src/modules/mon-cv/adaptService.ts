@@ -129,10 +129,43 @@ async function getAnthropicClient(userId: number = 1): Promise<{ client: Anthrop
 function resetClientCache() { _cachedClient = null; }
 
 /**
- * Normalize text for ATS token matching (lowercase, trim)
+ * Normalize text for ATS token matching.
+ *
+ * - lowercase + trim
+ * - strip accents/diacritics ("Géstion" → "gestion")
+ * - collapse common ATS punctuation (`/ \ & , ; : ( ) -`) into spaces so
+ *   "HTML / CSS", "HTML/CSS", "html, css" all normalize to the same
+ *   tokenizable string. Without this, the substring match was failing
+ *   on punctuation variants of identical keywords.
+ * - collapse runs of whitespace.
  */
 function normalizeText(text: string): string {
-  return text.toLowerCase().trim();
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[/\\&,;:()\-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Detect "structural" requirements that should not be counted against
+ * the keyword match : pure descriptions of background that no amount of
+ * CV editing can match via text (e.g. "4 et 5 ans d'expérience",
+ * "budgets à + 150K", "minimum 3 ans"). They were inflating the total
+ * and tanking the score.
+ */
+function isStructuralRequirement(keyword: string): boolean {
+  const k = keyword.toLowerCase();
+  // Years of experience patterns : "4 et 5 ans d'expérience", "minimum 3 ans", "5+ ans"
+  if (/\d+\s*(et\s*\d+\s*)?(\+\s*)?ans?\b/.test(k)) return true;
+  // Budget patterns : "+150K", "150K€", "à + 150K"
+  if (/\+?\s*\d+\s*k\b/.test(k)) return true;
+  // Long descriptive phrases (> 5 tokens) — usually a sentence, not a keyword
+  const tokens = k.split(/\s+/).filter(Boolean);
+  if (tokens.length > 5) return true;
+  return false;
 }
 
 /**
@@ -153,7 +186,7 @@ function containsKeyword(text: string, keyword: string): boolean {
   if (kwWords.length < 6) return false;
 
   // Extract significant tokens (4+ chars, no stop words)
-  const stopWords = new Set(['dans', 'avec', 'pour', 'les', 'des', 'une', 'que', 'sur', 'par', 'est', 'qui', 'son', 'ses', 'aux', 'été', 'bonne', 'minimum', 'expérience', 'connaissance', 'maîtrise', 'environnements']);
+  const stopWords = new Set(['dans', 'avec', 'pour', 'les', 'des', 'une', 'que', 'sur', 'par', 'est', 'qui', 'son', 'ses', 'aux', 'ete', 'bonne', 'minimum', 'experience', 'connaissance', 'maitrise', 'environnements']);
   const kwTokens = kwWords.filter(t => t.length >= 4 && !stopWords.has(t));
   if (kwTokens.length < 2) return false;
 
@@ -217,12 +250,19 @@ export function scoreCV(cvData: CVData, jobAnalysis: JobAnalysis): AtsScore {
   const cvTitleNorm = normalizeText(cvData.title || '');
   const jobTitleNorm = normalizeText(exactJobTitle || '');
 
+  // Filter out structural requirements (years of experience, budget
+  // ranges, long descriptive phrases) — they're not actionable as
+  // keywords and were skewing the score downward. Kept in
+  // `requiredMissing` for transparency but excluded from `total`.
+  const scorableKeywords = requiredKeywords.filter(kw => !isStructuralRequirement(kw));
+  const structuralKeywords = requiredKeywords.filter(kw => isStructuralRequirement(kw));
+
   const requiredFound: string[] = [];
-  const requiredMissing: string[] = [];
+  const requiredMissing: string[] = [...structuralKeywords];
   const multiSectionKeywords: string[] = [];
   const singleSectionKeywords: string[] = [];
 
-  for (const keyword of requiredKeywords) {
+  for (const keyword of scorableKeywords) {
     const inExperience = containsKeyword(experienceText, keyword);
     const inSkills = containsKeyword(skillsText, keyword);
 
@@ -238,10 +278,16 @@ export function scoreCV(cvData: CVData, jobAnalysis: JobAnalysis): AtsScore {
     }
   }
 
-  const total = requiredKeywords.length;
+  const total = scorableKeywords.length;
   const keywordMatch = total > 0 ? Math.round((requiredFound.length / total) * 100) : 100;
-  const sectionCoverage =
-    total > 0 ? Math.round((multiSectionKeywords.length / total) * 100) : 100;
+  // Section coverage : a keyword in 2+ sections counts as 100 %, a
+  // keyword in only 1 section counts as 50 % (still a real signal,
+  // just weaker than seeing it both in skills and missions). Previous
+  // implementation gave 0 % to single-section keywords which was way
+  // too punitive (real ATS engines reward presence even in one place).
+  const sectionCoverage = total > 0
+    ? Math.round((multiSectionKeywords.length * 100 + singleSectionKeywords.length * 50) / total)
+    : 100;
 
   // Title match: CV title contains job title or is very similar (both directions)
   const titleMatch =

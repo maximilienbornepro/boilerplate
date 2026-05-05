@@ -653,6 +653,92 @@ describe('Mon CV - ATS Score (scoreCV)', () => {
     expect(score.keywordMatch).toBe(100);
     expect(score.sectionCoverage).toBe(100);
   });
+
+  // ── Fixes for the strict-matching issues surfaced by adaptation #10
+  // (see fix/ats-scoring branch). Each test reproduces a real-world
+  // case where the previous algorithm was unfairly punitive.
+
+  it('should match keywords across punctuation variants (HTML / CSS ↔ HTML/CSS)', () => {
+    const ja = {
+      ...jobAnalysis,
+      requiredKeywords: ['HTML / CSS', 'SEO/SEA'],
+    };
+    const cv: CVData = {
+      ...createEmptyCV(),
+      title: 'Chef de Projet',
+      experiences: [{
+        title: 'PM', company: 'Corp', period: '2020-2023',
+        missions: ['Maîtrise de HTML/CSS et bonnes pratiques SEO/SEA'],
+        projects: [],
+      }],
+    };
+    const score = scoreCV(cv, ja);
+    // Both keywords should match despite slash/space variations.
+    expect(score.breakdown.requiredFound).toContain('HTML / CSS');
+    expect(score.breakdown.requiredFound).toContain('SEO/SEA');
+  });
+
+  it('should match accented vs unaccented variants', () => {
+    const ja = { ...jobAnalysis, requiredKeywords: ['expérience'] };
+    const cv: CVData = {
+      ...createEmptyCV(),
+      title: 'Chef de Projet',
+      experiences: [{
+        title: 'PM', company: 'Corp', period: '2020-2023',
+        missions: ['10 ans d\'experience en gestion de projet'],
+        projects: [],
+      }],
+    };
+    const score = scoreCV(cv, ja);
+    expect(score.breakdown.requiredFound).toContain('expérience');
+  });
+
+  it('should exclude structural requirements from the score (years/budget)', () => {
+    const ja = {
+      ...jobAnalysis,
+      requiredKeywords: [
+        'gestion de projet',
+        '4 et 5 ans d\'expérience', // structural — no actionable token
+        'budgets à + 150K', // structural
+      ],
+    };
+    const cv: CVData = {
+      ...createEmptyCV(),
+      title: 'Chef de Projet',
+      experiences: [{
+        title: 'PM', company: 'Corp', period: '2020-2023',
+        missions: ['Mise en place de la gestion de projet Agile'],
+        projects: [],
+      }],
+    };
+    const score = scoreCV(cv, ja);
+    // 1 scorable keyword found / 1 scorable total → 100% keywordMatch
+    // (structural ones are kept in requiredMissing for transparency)
+    expect(score.keywordMatch).toBe(100);
+    expect(score.breakdown.requiredMissing).toContain('4 et 5 ans d\'expérience');
+    expect(score.breakdown.requiredMissing).toContain('budgets à + 150K');
+  });
+
+  it('should give partial credit (50%) to single-section keywords in sectionCoverage', () => {
+    const ja = {
+      ...jobAnalysis,
+      requiredKeywords: ['Jira', 'Confluence'],
+    };
+    // Both keywords present in missions only — no skills section.
+    const cv: CVData = {
+      ...createEmptyCV(),
+      title: 'Chef de Projet',
+      experiences: [{
+        title: 'PM', company: 'Corp', period: '2020-2023',
+        missions: ['Suivi des tickets via Jira et documentation Confluence'],
+        projects: [],
+      }],
+    };
+    const score = scoreCV(cv, ja);
+    expect(score.keywordMatch).toBe(100);
+    // Both single-section → 50 % (used to be 0 % under multi-only rule)
+    expect(score.sectionCoverage).toBe(50);
+  });
 });
 
 describe('Mon CV - ATS Recommendations', () => {
