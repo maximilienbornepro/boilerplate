@@ -12,9 +12,25 @@ interface AdaptationDetailPageProps {
   onNavigate?: (path: string) => void;
 }
 
-// ─── Client-side ATS scoring (same as AdaptCVPage) ───────────────────────────
+// ─── Client-side ATS scoring (mirrors server adaptService.scoreCV) ───────────
 
-function normalizeText(text: string): string { return text.toLowerCase().trim(); }
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[/\\&,;:()\-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function isStructuralRequirement(keyword: string): boolean {
+  const k = keyword.toLowerCase();
+  if (/\d+\s*(et\s*\d+\s*)?(\+\s*)?ans?\b/.test(k)) return true;
+  if (/\+?\s*\d+\s*k\b/.test(k)) return true;
+  const tokens = k.split(/\s+/).filter(Boolean);
+  if (tokens.length > 5) return true;
+  return false;
+}
 function containsKeyword(text: string, keyword: string): boolean {
   if (!keyword || !text) return false;
   const normText = normalizeText(text);
@@ -25,7 +41,7 @@ function containsKeyword(text: string, keyword: string): boolean {
   const kwWords = normKw.split(/\s+/);
   if (kwWords.length < 6) return false;
 
-  const stopWords = new Set(['dans', 'avec', 'pour', 'les', 'des', 'une', 'que', 'sur', 'par', 'est', 'qui', 'son', 'ses', 'aux', 'été', 'bonne', 'minimum', 'expérience', 'connaissance', 'maîtrise', 'environnements']);
+  const stopWords = new Set(['dans', 'avec', 'pour', 'les', 'des', 'une', 'que', 'sur', 'par', 'est', 'qui', 'son', 'ses', 'aux', 'ete', 'bonne', 'minimum', 'experience', 'connaissance', 'maitrise', 'environnements']);
   const kwTokens = kwWords.filter(t => t.length >= 4 && !stopWords.has(t));
   if (kwTokens.length < 2) return false;
 
@@ -56,9 +72,12 @@ function computeScore(cv: CVData, jobAnalysis: CVAdaptation['jobAnalysis']): Ats
   const skillText = extractSkillText(cv);
   const cvNorm = normalizeText(cv.title || '');
   const jobNorm = normalizeText(exactJobTitle || '');
-  const requiredFound: string[] = [], requiredMissing: string[] = [];
+  const scorableKeywords = requiredKeywords.filter(kw => !isStructuralRequirement(kw));
+  const structuralKeywords = requiredKeywords.filter(kw => isStructuralRequirement(kw));
+  const requiredFound: string[] = [];
+  const requiredMissing: string[] = [...structuralKeywords];
   const multiSectionKeywords: string[] = [], singleSectionKeywords: string[] = [];
-  for (const kw of requiredKeywords) {
+  for (const kw of scorableKeywords) {
     const inExp = containsKeyword(expText, kw);
     const inSkill = containsKeyword(skillText, kw);
     if (inExp || inSkill) {
@@ -69,9 +88,11 @@ function computeScore(cv: CVData, jobAnalysis: CVAdaptation['jobAnalysis']): Ats
       requiredMissing.push(kw);
     }
   }
-  const total = requiredKeywords.length;
+  const total = scorableKeywords.length;
   const keywordMatch = total > 0 ? Math.round((requiredFound.length / total) * 100) : 100;
-  const sectionCoverage = total > 0 ? Math.round((multiSectionKeywords.length / total) * 100) : 100;
+  const sectionCoverage = total > 0
+    ? Math.round((multiSectionKeywords.length * 100 + singleSectionKeywords.length * 50) / total)
+    : 100;
   const titleMatch = jobNorm.length > 0 && (cvNorm === jobNorm || cvNorm.includes(jobNorm) || jobNorm.includes(cvNorm));
   const overall = Math.round(0.5 * keywordMatch + 0.3 * sectionCoverage + 0.2 * (titleMatch ? 100 : 0));
   return { overall, keywordMatch, sectionCoverage, titleMatch, breakdown: { requiredFound, requiredMissing, multiSectionKeywords, singleSectionKeywords } };
