@@ -206,6 +206,43 @@ export function createMonCvRoutes(): Router {
     res.status(204).send();
   }));
 
+  // POST /cvs/:id/transform — body { kind: 'translate-en' | 'esn' }
+  // AI-powered CV-level transformation : translates a CV to
+  // English or rewrites it in the ESN consultant format. Always
+  // creates a NEW CV row (suffix " · EN" / " · ESN") so the
+  // original is preserved.
+  router.post('/cvs/:id/transform', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const userEmail = (req as any).user?.email ?? null;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid CV id' });
+    const { kind } = (req.body || {}) as { kind?: 'translate-en' | 'esn' };
+    if (kind !== 'translate-en' && kind !== 'esn') {
+      return res.status(400).json({ error: 'kind doit valoir "translate-en" ou "esn"' });
+    }
+
+    const source = await db.getCVById(id, userId);
+    if (!source) return res.status(404).json({ error: 'CV non trouvé' });
+
+    try {
+      const { transformCV: runTransform } = await import('./cvTransformService.js');
+      const { transformed } = await runTransform(source.cvData, kind, userId, userEmail);
+
+      // Save as a new CV. NEVER default — the user picks which one
+      // they want to use as primary themselves.
+      const suffix = kind === 'translate-en' ? '· EN' : '· ESN';
+      const newName = `${source.name} ${suffix}`;
+      const newCv = await db.createCV(userId, newName, transformed, false);
+      res.json(newCv);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[mon-cv] transform failed:', err);
+      res.status(500).json({
+        error: (err as Error).message || 'Échec de la transformation',
+      });
+    }
+  }));
+
   // PUT /cvs/:id/default - Set CV as default
   router.put('/cvs/:id/default', asyncHandler(async (req, res) => {
     const userId = req.user!.id;

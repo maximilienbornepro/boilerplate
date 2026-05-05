@@ -596,3 +596,20 @@ export async function fetchAdaptationsForCV(
   });
   return handleResponse(res);
 }
+
+/** Transform a CV with AI : either translate to English or convert
+ *  to the ESN (consulting firm) format. Always creates a brand new
+ *  CV row (suffix « · EN » / « · ESN ») — the source is preserved.
+ *  Returns the new CV. */
+export async function transformCV(
+  cvId: number,
+  kind: 'translate-en' | 'esn',
+): Promise<import('../types').CV> {
+  const res = await fetch(`${API_BASE}/cvs/${cvId}/transform`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind }),
+  });
+  return handleResponse(res);
+}

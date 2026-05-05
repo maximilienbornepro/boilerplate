@@ -255,6 +255,30 @@ export const SKILLS: readonly SkillDefinition[] = [
     defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/adapt-atomic-classic.md'),
   },
   {
+    slug: 'mon-cv-translate-en',
+    name: 'Mon-CV — Traduire le CV en anglais',
+    description:
+      'Tier 2 — transformation. Traduit l\'intégralité d\'un CV (résumé, intitulés, missions, descriptions) en anglais professionnel. Préserve les noms propres, les technos et les faits ; ne reformule pas la substance. Le résultat est sauvegardé comme un nouveau CV avec suffixe « · EN ».',
+    usage: {
+      module: 'mon-cv',
+      endpoint: 'POST /mon-cv-api/cvs/:id/transform (kind=translate-en)',
+      trigger: 'Bouton « Traduire en anglais » de la liste des CV',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/translate-en.md'),
+  },
+  {
+    slug: 'mon-cv-esn-version',
+    name: 'Mon-CV — Convertir en version ESN',
+    description:
+      'Tier 2 — transformation. Réécrit un CV au format standard des ESN (Entreprise de Services du Numérique) : anonymisation par initiales, résumé étoffé à la 3ᵉ personne, expériences structurées contexte/missions/environnement technique. Le résultat est sauvegardé comme un nouveau CV avec suffixe « · ESN ».',
+    usage: {
+      module: 'mon-cv',
+      endpoint: 'POST /mon-cv-api/cvs/:id/transform (kind=esn)',
+      trigger: 'Bouton « Version ESN » de la liste des CV',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/esn-version.md'),
+  },
+  {
     slug: 'mon-cv-adapt-atomic-aggressive',
     name: 'Mon-CV — Adapter un sujet (mode AGRESSIF)',
     description:

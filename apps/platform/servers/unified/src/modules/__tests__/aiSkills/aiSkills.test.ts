@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SKILLS, getSkill } from '../../aiSkills/registry.js';
 
 describe('aiSkills.registry', () => {
-  it('exposes the 18 expected slugs (legacy + modular pipelines + multi-source reconciliation + name suggester + mon-cv tile flow with classic & aggressive modes)', () => {
+  it('exposes the 20 expected slugs (legacy + modular pipelines + multi-source reconciliation + name suggester + mon-cv tile flow + mon-cv transformations)', () => {
     const slugs = SKILLS.map(s => s.slug).sort();
     expect(slugs).toEqual([
       'delivery-assess-tickets',
@@ -11,6 +11,8 @@ describe('aiSkills.registry', () => {
       'llm-judge-faithfulness',
       'mon-cv-adapt-atomic-aggressive',
       'mon-cv-adapt-atomic-classic',
+      'mon-cv-esn-version',
+      'mon-cv-translate-en',
       'suivitess-append-situation',
       'suivitess-compose-situation',
       'suivitess-extract-outlook',

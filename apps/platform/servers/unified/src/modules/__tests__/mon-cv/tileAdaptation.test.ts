@@ -5,6 +5,7 @@ import {
   buildAdditionAtomic,
   buildSkillsSnapshot,
 } from '../../mon-cv/tileAdaptationService.js';
+import { computeInitials } from '../../mon-cv/cvTransformService.js';
 import type { CVData } from '../../mon-cv/types.js';
 
 const baseCv: CVData = {
@@ -139,6 +140,35 @@ describe('mon-cv tileAdaptationService', () => {
       expect(snap.dev).toEqual([]);
       expect(snap.frameworks).toEqual([]);
       expect(snap.solutions).toEqual([]);
+    });
+  });
+
+  describe('computeInitials (ESN anonymisation)', () => {
+    it('takes first + last name initials for a 2-token name', () => {
+      expect(computeInitials('Maximilien Borne')).toBe('MB');
+    });
+
+    it('takes first + LAST initials for a 3-token name (skips middle)', () => {
+      expect(computeInitials('Jean Pierre Dupont')).toBe('JD');
+    });
+
+    it('falls back to first 2 letters for a single token', () => {
+      expect(computeInitials('Alex')).toBe('AL');
+    });
+
+    it('returns XX for empty / null / undefined', () => {
+      expect(computeInitials('')).toBe('XX');
+      expect(computeInitials('   ')).toBe('XX');
+      expect(computeInitials(null)).toBe('XX');
+      expect(computeInitials(undefined)).toBe('XX');
+    });
+
+    it('uppercases lowercase input', () => {
+      expect(computeInitials('jean dupont')).toBe('JD');
+    });
+
+    it('handles tabs / extra whitespace cleanly', () => {
+      expect(computeInitials('  Jean   Dupont  ')).toBe('JD');
     });
   });
 });
