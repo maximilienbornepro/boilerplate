@@ -104,13 +104,14 @@ function AdaptationsListRoute({ onNavigate }: { onNavigate?: (path: string) => v
   );
 }
 
-function AdaptationDetailRoute({ onNavigate }: { onNavigate?: (path: string) => void }) {
+function AdaptationDetailRoute({ onNavigate: _onNavigate }: { onNavigate?: (path: string) => void }) {
   const { cvId, adaptationId } = useParams<{ cvId: string; adaptationId: string }>();
   const navigate = useNavigate();
   return (
     <AdaptationDetailPage
       adaptationId={parseInt(adaptationId || '0', 10)}
       onBack={() => navigate(`/mon-cv/${cvId}/adaptations`)}
+      onNavigate={(path) => navigate(path)}
     />
   );
 }

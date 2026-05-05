@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import type { CVAdaptation, CVData, Project, AtsScore, AtsRecommendationItem } from '../../types';
-import { getAdaptation, updateAdaptation, downloadAdaptationPDF, getFullPreviewHTML, getAtsRecommendations } from '../../services/api';
+import { getAdaptation, updateAdaptation, downloadAdaptationPDF, getFullPreviewHTML, getAtsRecommendations, transformAdaptation } from '../../services/api';
 import './AdaptationDetailPage.css';
 
 interface AdaptationDetailPageProps {
   adaptationId: number;
   onBack: () => void;
+  /** Optional router push so the EN/ESN buttons can land the user
+   *  directly on the freshly-created CV's editor. */
+  onNavigate?: (path: string) => void;
 }
 
 // ─── Client-side ATS scoring (same as AdaptCVPage) ───────────────────────────
@@ -76,7 +79,7 @@ function computeScore(cv: CVData, jobAnalysis: CVAdaptation['jobAnalysis']): Ats
 
 function getScoreClass(s: number) { return s >= 75 ? 'detail-score-good' : s >= 50 ? 'detail-score-medium' : 'detail-score-bad'; }
 
-export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailPageProps) {
+export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: AdaptationDetailPageProps) {
   const [adaptation, setAdaptation] = useState<CVAdaptation | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -97,6 +100,25 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
   const [loadingReco, setLoadingReco] = useState(false);
   const [recoItems, setRecoItems] = useState<AtsRecommendationItem[] | null>(null);
   const [recoError, setRecoError] = useState('');
+  // Tracks which AI transformation (EN / ESN) is currently running
+  // on the adaptation's adapted_cv.
+  const [transforming, setTransforming] = useState<null | 'translate-en' | 'esn'>(null);
+
+  const handleTransform = async (kind: 'translate-en' | 'esn') => {
+    if (!adaptation || transforming) return;
+    setTransforming(kind);
+    try {
+      const created = await transformAdaptation(adaptationId, kind);
+      // Land the user on the new CV's editor so they can review /
+      // export it immediately.
+      if (onNavigate) onNavigate(`/mon-cv/${created.id}`);
+      else setError(`"${created.name}" créé. Ouvre-le depuis la liste des CV.`);
+    } catch (err: any) {
+      setError(err.message || 'Échec de la transformation');
+    } finally {
+      setTransforming(null);
+    }
+  };
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -377,6 +399,22 @@ export function AdaptationDetailPage({ adaptationId, onBack }: AdaptationDetailP
           disabled={loadingReco || downloadingPDF}
         >
           {loadingReco ? '...' : '✦ Optimiser le score ATS'}
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={() => handleTransform('translate-en')}
+          disabled={transforming !== null || downloadingPDF}
+          title="Traduire cette adaptation en anglais (crée un nouveau CV)"
+        >
+          {transforming === 'translate-en' ? '…' : '🇬🇧 EN'}
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={() => handleTransform('esn')}
+          disabled={transforming !== null || downloadingPDF}
+          title="Version ESN — anonymisée, format dossier de prestation (crée un nouveau CV)"
+        >
+          {transforming === 'esn' ? '…' : 'ESN'}
         </button>
         <button
           className="module-header-btn module-header-btn-primary"

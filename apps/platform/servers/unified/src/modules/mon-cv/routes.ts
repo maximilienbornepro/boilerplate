@@ -742,6 +742,44 @@ export function createMonCvRoutes(): Router {
     res.status(204).send();
   }));
 
+  // POST /adaptations/:id/transform — body { kind: 'translate-en' | 'esn' }
+  // Same idea as POST /cvs/:id/transform but operates on the
+  // adaptation's adapted_cv (= the CV that has been adapted to a
+  // specific job offer). Persists the result as a new CV row
+  // named "<adaptation.name> · EN" / " · ESN" so the user can
+  // download / further edit a translated or ESN-flavoured version
+  // of the adapted CV without losing the source.
+  router.post('/adaptations/:id/transform', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const userEmail = (req as any).user?.email ?? null;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const { kind } = (req.body || {}) as { kind?: 'translate-en' | 'esn' };
+    if (kind !== 'translate-en' && kind !== 'esn') {
+      return res.status(400).json({ error: 'kind doit valoir "translate-en" ou "esn"' });
+    }
+
+    const adaptation = await getAdaptation(id, userId);
+    if (!adaptation) return res.status(404).json({ error: 'Adaptation non trouvée' });
+
+    try {
+      const { transformCV: runTransform } = await import('./cvTransformService.js');
+      const { transformed } = await runTransform(adaptation.adaptedCv, kind, userId, userEmail);
+
+      const baseName = (adaptation.name || `Adaptation #${adaptation.id}`).trim();
+      const suffix = kind === 'translate-en' ? '· EN' : '· ESN';
+      const newName = `${baseName} ${suffix}`;
+      const newCv = await db.createCV(userId, newName, transformed, false);
+      res.json(newCv);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[mon-cv] adaptation transform failed:', err);
+      res.status(500).json({
+        error: (err as Error).message || 'Échec de la transformation',
+      });
+    }
+  }));
+
   // POST /adaptations/:id/pdf — generate and return PDF for a saved adaptation
   router.post('/adaptations/:id/pdf', asyncHandler(async (req, res) => {
     const userId = (req as any).user?.id;

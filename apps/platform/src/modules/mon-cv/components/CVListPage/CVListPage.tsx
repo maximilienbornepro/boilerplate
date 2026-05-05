@@ -31,10 +31,6 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations }: CVListPageProps) 
   const [confirmDelete, setConfirmDelete] = useState<CVListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Transform (translate-en / esn) — track which CV is currently
-  // running so we can disable buttons + show the right toast.
-  const [transformingId, setTransformingId] = useState<number | null>(null);
-
   const addToast = (toast: Omit<ToastData, 'id'>) => {
     setToasts(prev => [...prev, { ...toast, id: Date.now().toString() }]);
   };
@@ -102,29 +98,6 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations }: CVListPageProps) 
     setConfirmDelete(cv);
   };
 
-  const handleTransform = async (e: React.MouseEvent, cv: CVListItem, kind: 'translate-en' | 'esn') => {
-    e.stopPropagation();
-    if (transformingId !== null) return; // already running
-    const label = kind === 'translate-en' ? 'Traduction en anglais' : 'Version ESN';
-    setTransformingId(cv.id);
-    addToast({ type: 'info', message: `${label} de "${cv.name}" en cours… (~30s)` });
-    try {
-      const created = await api.transformCV(cv.id, kind);
-      // Insert the new CV at the top of the list (most recent first
-      // is the user's intuitive order ; the API sort handles full
-      // reload but we want immediate feedback).
-      setCvs(prev => [
-        { id: created.id, name: created.name, isDefault: false, createdAt: created.createdAt, updatedAt: created.updatedAt },
-        ...prev,
-      ]);
-      addToast({ type: 'success', message: `"${created.name}" créé` });
-    } catch (err: any) {
-      addToast({ type: 'error', message: err.message || `Échec de la transformation` });
-    } finally {
-      setTransformingId(null);
-    }
-  };
-
   const handleDelete = async () => {
     if (!confirmDelete) return;
     const name = confirmDelete.name;
@@ -187,22 +160,6 @@ export function CVListPage({ onEdit, onAdapt, onAdaptations }: CVListPageProps) 
                     )}
                   </div>
                 </div>
-                <button
-                  className="cv-list-action-btn"
-                  onClick={(e) => handleTransform(e, cv, 'translate-en')}
-                  disabled={transformingId !== null}
-                  title="Traduire en anglais (crée un nouveau CV)"
-                >
-                  EN
-                </button>
-                <button
-                  className="cv-list-action-btn"
-                  onClick={(e) => handleTransform(e, cv, 'esn')}
-                  disabled={transformingId !== null}
-                  title="Version ESN — anonymisée, format dossier de prestation (crée un nouveau CV)"
-                >
-                  ESN
-                </button>
                 <button
                   className="shared-card__edit-btn"
                   onClick={(e) => handleRenameClick(e, cv)}

@@ -56,6 +56,10 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
   const [showImport, setShowImport] = useState(false);
   const [deleteExperienceConfirm, setDeleteExperienceConfirm] = useState<number | null>(null);
   const [toasts, setToasts] = useState<ToastData[]>([]);
+  // Tracks which AI transformation (EN / ESN) is currently running
+  // on the source CV so we disable the buttons + show the right
+  // pending state.
+  const [transforming, setTransforming] = useState<null | 'translate-en' | 'esn'>(null);
 
   // Debounce timer ref
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -143,6 +147,27 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
     else if (onNavigate) onNavigate('/');
     else window.location.href = '/';
   }, [cvId, onNavigate]);
+
+  // AI-driven CV-level transformation : EN translation or ESN
+  // anonymisation. Always creates a NEW CV row server-side ; we
+  // navigate to it so the user lands directly on the result.
+  const handleTransform = useCallback(async (kind: 'translate-en' | 'esn') => {
+    if (!cv?.id || transforming) return;
+    const label = kind === 'translate-en' ? 'Traduction en anglais' : 'Version ESN';
+    setTransforming(kind);
+    addToast({ type: 'info', message: `${label} en cours… (~30s)` });
+    try {
+      const created = await api.transformCV(cv.id, kind);
+      addToast({ type: 'success', message: `"${created.name}" créé` });
+      // Land the user on the new CV's editor so they can review /
+      // tweak it immediately.
+      if (onNavigate) onNavigate(`/mon-cv/${created.id}`);
+    } catch (err: any) {
+      addToast({ type: 'error', message: err.message || 'Échec de la transformation' });
+    } finally {
+      setTransforming(null);
+    }
+  }, [cv?.id, transforming, onNavigate, addToast]);
 
   const handleImportComplete = useCallback((newCV: CV) => {
     setCv(backfillUiKeys(newCV));
@@ -315,6 +340,22 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
           onClick={() => setShowImport(true)}
         >
           Importer
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={() => handleTransform('translate-en')}
+          disabled={transforming !== null}
+          title="Traduire ce CV en anglais (crée un nouveau CV)"
+        >
+          {transforming === 'translate-en' ? '…' : '🇬🇧 EN'}
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={() => handleTransform('esn')}
+          disabled={transforming !== null}
+          title="Version ESN — anonymisée, format dossier de prestation (crée un nouveau CV)"
+        >
+          {transforming === 'esn' ? '…' : 'ESN'}
         </button>
         <button
           className="module-header-btn"

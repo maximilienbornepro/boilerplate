@@ -613,3 +613,20 @@ export async function transformCV(
   });
   return handleResponse(res);
 }
+
+/** Same as transformCV() but operates on an ADAPTATION's adapted
+ *  CV. Useful when the user has tailored the CV to a job offer and
+ *  wants an EN or ESN variant of THAT adapted version (instead of
+ *  the source). Output is also persisted as a new CV row. */
+export async function transformAdaptation(
+  adaptationId: number,
+  kind: 'translate-en' | 'esn',
+): Promise<import('../types').CV> {
+  const res = await fetch(`${API_BASE}/adaptations/${adaptationId}/transform`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind }),
+  });
+  return handleResponse(res);
+}
