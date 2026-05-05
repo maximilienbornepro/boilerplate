@@ -101,6 +101,22 @@ async function ensureTable() {
   // routing UI can show the user exactly what they're modifying
   // without making them parse the cryptic JSONPath.
   await pool.query('ALTER TABLE cv_adaptation_tiles ADD COLUMN IF NOT EXISTS label TEXT');
+  // Display order. A bulk INSERT gives every row the same NOW()
+  // timestamp at microsecond resolution → ORDER BY created_at is
+  // non-deterministic and the user saw experience #3 before #5 in
+  // the modal. `position` is the array index assigned at insert
+  // time ; the routing UI sorts on it. Backfill existing rows on
+  // first boot so legacy adaptations also display in order.
+  await pool.query('ALTER TABLE cv_adaptation_tiles ADD COLUMN IF NOT EXISTS position INTEGER');
+  await pool.query(`
+    UPDATE cv_adaptation_tiles t
+       SET position = sub.rn - 1
+      FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY adaptation_id ORDER BY created_at, tile_id) AS rn
+          FROM cv_adaptation_tiles
+      ) sub
+     WHERE t.id = sub.id AND t.position IS NULL
+  `);
 }
 
 // ============================================================
@@ -167,11 +183,21 @@ export async function insertTilesForAdaptation(
   >,
 ): Promise<CVAdaptationTile[]> {
   if (tiles.length === 0) return [];
+  // Find the current MAX(position) for this adaptation so a 2nd
+  // insertion (e.g. aggressive-mode additions persisted after the
+  // initial bulk) appends ordered rows AFTER the existing ones
+  // instead of clashing on position 0.
+  const offsetRes = await pool.query(
+    'SELECT COALESCE(MAX(position), -1) AS max_pos FROM cv_adaptation_tiles WHERE adaptation_id = $1',
+    [adaptationId],
+  );
+  const positionOffset = (offsetRes.rows[0]?.max_pos ?? -1) + 1;
+
   const values: string[] = [];
   const params: any[] = [];
   let i = 1;
-  for (const t of tiles) {
-    values.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+  tiles.forEach((t, idx) => {
+    values.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
     params.push(
       adaptationId,
       t.tileId,
@@ -182,11 +208,12 @@ export async function insertTilesForAdaptation(
       t.label ?? null,
       t.proposalReady ?? false,
       t.reasoning ?? null,
+      positionOffset + idx,
     );
-  }
+  });
   const result = await pool.query(
     `INSERT INTO cv_adaptation_tiles
-       (adaptation_id, tile_id, path, kind, original_text, proposed_text, label, proposal_ready, reasoning)
+       (adaptation_id, tile_id, path, kind, original_text, proposed_text, label, proposal_ready, reasoning, position)
      VALUES ${values.join(', ')}
      ON CONFLICT (adaptation_id, tile_id) DO NOTHING
      RETURNING *`,
@@ -199,12 +226,18 @@ export async function getTilesByAdaptation(
   adaptationId: number,
   userId: number,
 ): Promise<CVAdaptationTile[]> {
-  // Join via adaptation to enforce ownership.
+  // Join via adaptation to enforce ownership. Sort on `position`
+  // (assigned at insert time = array index) so the modal walks
+  // the tiles in the same order as the underlying CV. Bulk
+  // inserts share a created_at to the microsecond → can't rely on
+  // it here. Fall back to created_at + tile_id for legacy rows
+  // that haven't been backfilled yet (NULLS LAST keeps them after
+  // the well-ordered ones).
   const result = await pool.query(
     `SELECT t.* FROM cv_adaptation_tiles t
      JOIN cv_adaptations a ON a.id = t.adaptation_id
      WHERE t.adaptation_id = $1 AND a.user_id = $2
-     ORDER BY t.created_at`,
+     ORDER BY t.position NULLS LAST, t.created_at, t.tile_id`,
     [adaptationId, userId],
   );
   return result.rows.map(mapTileRow);
