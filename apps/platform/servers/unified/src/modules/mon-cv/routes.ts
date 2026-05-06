@@ -742,6 +742,78 @@ export function createMonCvRoutes(): Router {
     res.status(204).send();
   }));
 
+  // PUT /adaptations/:id/questions — body { questions: AdaptationQuestion[] }
+  // Replaces the full Q&A array (add / rename / delete / answer
+  // edit). The frontend sends the entire list on every change —
+  // simpler than per-entry CRUD and the array stays small.
+  router.put('/adaptations/:id/questions', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const { questions } = (req.body || {}) as { questions?: unknown };
+    if (!Array.isArray(questions)) {
+      return res.status(400).json({ error: 'questions doit être un tableau' });
+    }
+    // Light validation : each entry must have at least an id +
+    // question. answer can be empty (not yet generated).
+    const sanitized = questions
+      .filter((q: any): q is { id: string; question: string; answer?: string; generatedAt?: string; aiLogId?: number | null } =>
+        !!q && typeof q.id === 'string' && typeof q.question === 'string',
+      )
+      .map((q: any) => ({
+        id: q.id,
+        question: String(q.question),
+        answer: typeof q.answer === 'string' ? q.answer : '',
+        generatedAt: typeof q.generatedAt === 'string' ? q.generatedAt : undefined,
+        aiLogId: typeof q.aiLogId === 'number' ? q.aiLogId : null,
+      }));
+
+    const { updateAdaptationQuestions } = await import('./adaptationDbService.js');
+    const updated = await updateAdaptationQuestions(id, userId, sanitized);
+    if (!updated) return res.status(404).json({ error: 'Adaptation non trouvée' });
+    res.json(updated);
+  }));
+
+  // POST /adaptations/:id/questions/:qid/answer — runs the
+  // mon-cv-answer-question skill on a SINGLE question already
+  // present in the adaptation's questions array, persists the
+  // returned answer + ai_log_id, returns the full updated array.
+  router.post('/adaptations/:id/questions/:qid/answer', asyncHandler(async (req, res) => {
+    const userId = (req as any).user?.id;
+    const userEmail = (req as any).user?.email ?? null;
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const qid = req.params.qid;
+
+    const adaptation = await getAdaptation(id, userId);
+    if (!adaptation) return res.status(404).json({ error: 'Adaptation non trouvée' });
+    const question = adaptation.questions.find(q => q.id === qid);
+    if (!question) return res.status(404).json({ error: 'Question non trouvée' });
+
+    try {
+      const { generateAnswer, applyAnswerToQuestions } = await import('./qaService.js');
+      const { answer, logId } = await generateAnswer(
+        {
+          jobOffer: adaptation.jobOffer,
+          adaptedCv: adaptation.adaptedCv,
+          jobAnalysis: adaptation.jobAnalysis,
+          question: question.question,
+        },
+        userId,
+        userEmail,
+      );
+      const newQuestions = applyAnswerToQuestions(adaptation.questions, qid, answer, logId);
+      const { updateAdaptationQuestions } = await import('./adaptationDbService.js');
+      const updated = await updateAdaptationQuestions(id, userId, newQuestions);
+      if (!updated) return res.status(404).json({ error: 'Adaptation non trouvée' });
+      res.json(updated);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[mon-cv] answer-question failed:', err);
+      res.status(500).json({ error: (err as Error).message || 'Échec de la génération' });
+    }
+  }));
+
   // POST /adaptations/:id/transform — body { kind: 'translate-en' | 'esn' }
   // Same idea as POST /cvs/:id/transform but operates on the
   // adaptation's adapted_cv (= the CV that has been adapted to a

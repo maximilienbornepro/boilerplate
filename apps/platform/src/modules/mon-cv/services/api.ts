@@ -614,6 +614,36 @@ export async function transformCV(
   return handleResponse(res);
 }
 
+/** Save the full Q&A array on an adaptation (add / rename / delete /
+ *  edit the answer manually). The backend replaces the column atomically. */
+export async function saveAdaptationQuestions(
+  adaptationId: number,
+  questions: import('../types').AdaptationQuestion[],
+): Promise<import('../types').CVAdaptation> {
+  const res = await fetch(`${API_BASE}/adaptations/${adaptationId}/questions`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ questions }),
+  });
+  return handleResponse(res);
+}
+
+/** Generate an AI answer for a SINGLE question on an adaptation.
+ *  Server runs `mon-cv-answer-question` (grounded on the adapted
+ *  CV + the offer), persists the resulting answer in the questions
+ *  JSONB, returns the full updated adaptation. */
+export async function generateQuestionAnswer(
+  adaptationId: number,
+  questionId: string,
+): Promise<import('../types').CVAdaptation> {
+  const res = await fetch(`${API_BASE}/adaptations/${adaptationId}/questions/${questionId}/answer`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  return handleResponse(res);
+}
+
 /** Same as transformCV() but operates on an ADAPTATION's adapted
  *  CV. Useful when the user has tailored the CV to a job offer and
  *  wants an EN or ESN variant of THAT adapted version (instead of

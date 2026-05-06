@@ -351,8 +351,24 @@ export interface CVAdaptation {
   /** Lifecycle : draft while the modal is being walked, completed
    *  once the user reaches the "done" step. */
   status: 'draft' | 'completed';
+  /** User-defined Q&A pairs grounded in the adapted CV + offer.
+   *  Empty until the user adds a question ; the frontend pre-fills
+   *  a single suggestion ("Pourquoi êtes-vous la bonne personne
+   *  pour cette mission ?") on first render. */
+  questions: AdaptationQuestion[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** A Q&A entry on an adaptation. `answer` is empty until the user
+ *  triggers AI generation. `aiLogId` lets /ai-logs link back to
+ *  the run. */
+export interface AdaptationQuestion {
+  id: string;
+  question: string;
+  answer: string;
+  generatedAt?: string;
+  aiLogId?: number | null;
 }
 
 // Lightweight adaptation record (for list view)

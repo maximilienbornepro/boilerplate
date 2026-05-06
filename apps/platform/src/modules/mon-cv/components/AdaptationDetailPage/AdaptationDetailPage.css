@@ -127,6 +127,111 @@
   margin-top: var(--spacing-xs);
 }
 
+/* ── Q&A panel ─────────────────────────────────────────────────── */
+
+.adapt-detail-qa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+.adapt-detail-qa-header h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+.adapt-detail-qa-header p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.adapt-detail-qa-empty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.adapt-detail-qa-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+
+.adapt-detail-qa-question-label,
+.adapt-detail-qa-answer-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+.adapt-detail-qa-meta {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-style: italic;
+  margin-left: 6px;
+}
+
+.adapt-detail-qa-question,
+.adapt-detail-qa-answer {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background: var(--bg-secondary, var(--bg-primary));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  resize: vertical;
+  line-height: 1.5;
+}
+.adapt-detail-qa-question:focus,
+.adapt-detail-qa-answer:focus {
+  outline: none;
+  border-color: var(--accent-primary, #60a5fa);
+}
+
+.adapt-detail-qa-answer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-xs);
+}
+.adapt-detail-qa-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+.adapt-detail-qa-answer {
+  min-height: 120px;
+}
+
+.adapt-detail-qa-add {
+  align-self: flex-start;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--accent-primary, #60a5fa);
+  background: transparent;
+  border: 1px dashed var(--accent-primary, #60a5fa);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.adapt-detail-qa-add:hover:not(:disabled) {
+  background: var(--accent-light, rgba(99, 102, 241, 0.1));
+}
+.adapt-detail-qa-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Offer text */
 .adapt-detail-offer-text {
   font-size: 0.82rem;

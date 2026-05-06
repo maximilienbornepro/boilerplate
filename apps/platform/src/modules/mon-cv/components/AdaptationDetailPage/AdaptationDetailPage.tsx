@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
-import type { CVAdaptation, CVData, Project, AtsScore, AtsRecommendationItem } from '../../types';
-import { getAdaptation, updateAdaptation, downloadAdaptationPDF, getFullPreviewHTML, getAtsRecommendations, transformAdaptation } from '../../services/api';
+import type { CVAdaptation, CVData, Project, AtsScore, AtsRecommendationItem, AdaptationQuestion } from '../../types';
+import { getAdaptation, updateAdaptation, downloadAdaptationPDF, getFullPreviewHTML, getAtsRecommendations, transformAdaptation, saveAdaptationQuestions, generateQuestionAnswer } from '../../services/api';
 import './AdaptationDetailPage.css';
 
 interface AdaptationDetailPageProps {
@@ -125,6 +125,83 @@ export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: Adapt
   // on the adaptation's adapted_cv.
   const [transforming, setTransforming] = useState<null | 'translate-en' | 'esn'>(null);
 
+  // Q&A — user-defined custom questions, AI-answered from the
+  // adapted CV + the offer. Pre-suggested with the "Pourquoi êtes-
+  // vous la bonne personne pour cette mission ?" question on first
+  // render. Persisted in adaptation.questions JSONB.
+  const [questions, setQuestions] = useState<AdaptationQuestion[]>([]);
+  // Per-question generation in flight (questionId).
+  const [generatingQid, setGeneratingQid] = useState<string | null>(null);
+  const questionsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Debounced save of the questions array. Mirrors the rest of the
+   *  page's auto-save pattern : 600ms after the last edit, the full
+   *  list is PUT to the server. Generation calls bypass this and
+   *  receive their fresh state in the response. */
+  const persistQuestions = useCallback((next: AdaptationQuestion[]) => {
+    if (questionsSaveTimerRef.current) clearTimeout(questionsSaveTimerRef.current);
+    questionsSaveTimerRef.current = setTimeout(async () => {
+      try {
+        if (adaptation) await saveAdaptationQuestions(adaptation.id, next);
+      } catch (err: any) {
+        setError(err.message || 'Échec de la sauvegarde des questions');
+      }
+    }, 600);
+  }, [adaptation]);
+
+  const updateQuestion = (qid: string, patch: Partial<AdaptationQuestion>) => {
+    setQuestions(prev => {
+      const next = prev.map(q => q.id === qid ? { ...q, ...patch } : q);
+      persistQuestions(next);
+      return next;
+    });
+  };
+
+  const addQuestion = () => {
+    const id = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+      ? crypto.randomUUID()
+      : `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setQuestions(prev => {
+      const next = [...prev, { id, question: '', answer: '' }];
+      persistQuestions(next);
+      return next;
+    });
+  };
+
+  const deleteQuestion = (qid: string) => {
+    setQuestions(prev => {
+      const next = prev.filter(q => q.id !== qid);
+      persistQuestions(next);
+      return next;
+    });
+  };
+
+  const handleGenerateAnswer = async (qid: string) => {
+    if (!adaptation || generatingQid) return;
+    const q = questions.find(x => x.id === qid);
+    if (!q || !q.question.trim()) {
+      setError('La question doit être renseignée avant de générer la réponse.');
+      return;
+    }
+    // Flush any pending debounced save first so the question is on
+    // the server before we ask it to be answered.
+    if (questionsSaveTimerRef.current) {
+      clearTimeout(questionsSaveTimerRef.current);
+      try { await saveAdaptationQuestions(adaptation.id, questions); }
+      catch { /* swallow — the generate call will fail loud below */ }
+    }
+    setGeneratingQid(qid);
+    try {
+      const updated = await generateQuestionAnswer(adaptation.id, qid);
+      setAdaptation(updated);
+      setQuestions(updated.questions);
+    } catch (err: any) {
+      setError(err.message || 'Échec de la génération de la réponse');
+    } finally {
+      setGeneratingQid(null);
+    }
+  };
+
   const handleTransform = async (kind: 'translate-en' | 'esn') => {
     if (!adaptation || transforming) return;
     setTransforming(kind);
@@ -193,6 +270,23 @@ export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: Adapt
       }
       setEditableSkills(skillsCopy);
       setLiveScore(data.atsAfter);
+      // Q&A — seed with the suggested first question if the
+      // adaptation has none. Persisted lazily on the next change ;
+      // the user might not interact with it at all.
+      if (Array.isArray(data.questions) && data.questions.length > 0) {
+        setQuestions(data.questions);
+      } else {
+        const seedId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+          ? crypto.randomUUID()
+          : `q-seed-${Date.now()}`;
+        setQuestions([
+          {
+            id: seedId,
+            question: 'Pourquoi êtes-vous la bonne personne pour cette mission ?',
+            answer: '',
+          },
+        ]);
+      }
     } catch (err: any) {
       setError(err.message || 'Erreur lors du chargement');
     } finally {
@@ -540,6 +634,82 @@ export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: Adapt
             Manquants : {displayScore.breakdown.requiredMissing.map(k => `"${k}"`).join(', ')}
           </div>
         )}
+      </div>
+
+      {/* ── Q&A : custom questions answered from the adapted CV ── */}
+      <div className="adapt-detail-section adapt-detail-qa">
+        <div className="adapt-detail-qa-header">
+          <h3>Questions / Réponses</h3>
+          <p>
+            Pose toutes les questions que tu veux préparer pour ton entretien
+            ou pour répondre à un formulaire de candidature. L'IA y répond en
+            s'appuyant uniquement sur le CV adapté + l'offre.
+          </p>
+        </div>
+        {questions.length === 0 && (
+          <p className="adapt-detail-qa-empty">Aucune question pour l'instant.</p>
+        )}
+        {questions.map((q) => {
+          const isGenerating = generatingQid === q.id;
+          const hasAnswer = q.answer.trim().length > 0;
+          return (
+            <div key={q.id} className="adapt-detail-qa-item">
+              <label className="adapt-detail-qa-question-label">Question</label>
+              <textarea
+                className="adapt-detail-qa-question"
+                value={q.question}
+                onChange={e => updateQuestion(q.id, { question: e.target.value })}
+                placeholder="Ex : Pourquoi êtes-vous la bonne personne pour cette mission ?"
+                rows={2}
+              />
+              <div className="adapt-detail-qa-answer-row">
+                <label className="adapt-detail-qa-answer-label">
+                  Réponse
+                  {q.generatedAt && (
+                    <span className="adapt-detail-qa-meta">
+                      · générée le {new Date(q.generatedAt).toLocaleString('fr-FR', {
+                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </span>
+                  )}
+                </label>
+                <div className="adapt-detail-qa-actions">
+                  <button
+                    className="module-header-btn module-header-btn-primary"
+                    onClick={() => handleGenerateAnswer(q.id)}
+                    disabled={isGenerating || !q.question.trim() || generatingQid !== null}
+                    title={hasAnswer ? 'Régénérer une nouvelle réponse' : 'Générer une réponse à partir du CV adapté'}
+                  >
+                    {isGenerating ? '…' : hasAnswer ? '🔄 Régénérer' : '✨ Générer la réponse'}
+                  </button>
+                  <button
+                    className="module-header-btn"
+                    onClick={() => deleteQuestion(q.id)}
+                    disabled={isGenerating}
+                    title="Supprimer cette question"
+                  >
+                    × Supprimer
+                  </button>
+                </div>
+              </div>
+              <textarea
+                className="adapt-detail-qa-answer"
+                value={q.answer}
+                onChange={e => updateQuestion(q.id, { answer: e.target.value })}
+                placeholder={isGenerating ? '… génération en cours' : 'La réponse apparaîtra ici. Tu peux ensuite l\'éditer librement.'}
+                rows={6}
+                disabled={isGenerating}
+              />
+            </div>
+          );
+        })}
+        <button
+          className="adapt-detail-qa-add"
+          onClick={addQuestion}
+          disabled={generatingQid !== null}
+        >
+          + Ajouter une question
+        </button>
       </div>
 
       {/* Job offer */}

@@ -255,6 +255,18 @@ export const SKILLS: readonly SkillDefinition[] = [
     defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/adapt-atomic-classic.md'),
   },
   {
+    slug: 'mon-cv-answer-question',
+    name: 'Mon-CV — Répondre à une question (Q&A adaptation)',
+    description:
+      'Tier 2 — répond à une question (ouverte ou ciblée) en s\'appuyant sur le CV adapté à l\'offre. 1ère personne, faits du CV uniquement, croisé avec les attentes de l\'offre. Utilisé par la section « Questions / Réponses » de la page d\'une adaptation — chaque clic « Générer la réponse » lance ce skill avec la question courante.',
+    usage: {
+      module: 'mon-cv',
+      endpoint: 'POST /mon-cv-api/adaptations/:id/questions/:qid/answer',
+      trigger: 'Bouton « Générer la réponse » / « Régénérer » sur une question custom de la page d\'adaptation',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'mon-cv/answer-question.md'),
+  },
+  {
     slug: 'mon-cv-translate-en',
     name: 'Mon-CV — Traduire le CV en anglais',
     description:

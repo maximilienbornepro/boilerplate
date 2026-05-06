@@ -26,8 +26,26 @@ export interface CVAdaptation {
    *  `completed` once the user hits "done". The AdaptCVPage uses
    *  this to surface drafts as resumable. */
   status: 'draft' | 'completed';
+  /** User-defined Q&A pairs grounded in the adapted CV + the
+   *  offer. The frontend pre-fills a single suggestion ("Pourquoi
+   *  êtes-vous la bonne personne pour cette mission ?") but the
+   *  user can add / rename / delete any question. The AI answer is
+   *  generated on demand and editable. */
+  questions: AdaptationQuestion[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** A Q&A entry on an adaptation. `answer` is empty until the user
+ *  triggers AI generation ; `aiLogId` lets the /ai-logs page link
+ *  back to the run. The `id` is generated client-side (uuid) so the
+ *  frontend can address each entry without a server round-trip. */
+export interface AdaptationQuestion {
+  id: string;
+  question: string;
+  answer: string;
+  generatedAt?: string;
+  aiLogId?: number | null;
 }
 
 export interface CVAdaptationListItem {
@@ -83,6 +101,16 @@ async function ensureTable() {
   );
   await pool.query(
     'CREATE INDEX IF NOT EXISTS idx_cv_adaptations_status ON cv_adaptations(cv_id, status)'
+  );
+  // Q&A custom questions per adaptation — the user can add any
+  // question (e.g. "Pourquoi êtes-vous la bonne personne pour
+  // cette mission ?", "Quel est votre style de management ?") and
+  // have the AI answer it grounded in the adapted CV + the offer.
+  // Stored as a JSONB array of { id, question, answer, generatedAt,
+  // aiLogId }. Default is an empty array — the frontend pre-fills
+  // a single suggested question on first render.
+  await pool.query(
+    "ALTER TABLE cv_adaptations ADD COLUMN IF NOT EXISTS questions JSONB NOT NULL DEFAULT '[]'::jsonb"
   );
 
   // Tile-by-tile adaptation table — see migration 28. One row per
@@ -361,6 +389,7 @@ function mapRow(row: any): CVAdaptation {
     jobAnalysis: row.job_analysis,
     name: row.name ?? null,
     status: (row.status === 'draft' || row.status === 'completed') ? row.status : 'completed',
+    questions: Array.isArray(row.questions) ? row.questions : [],
     createdAt: row.created_at?.toISOString() || new Date().toISOString(),
     updatedAt: row.updated_at?.toISOString() || new Date().toISOString(),
   };
@@ -514,6 +543,24 @@ export async function updateAdaptation(
   );
   if (result.rows.length === 0) return null;
   return mapRow(result.rows[0]);
+}
+
+/** Replace the full Q&A array on an adaptation. The frontend sends
+ *  the entire list on every change (add / rename / delete / answer
+ *  edit) — simpler than per-entry CRUD and the array is small. */
+export async function updateAdaptationQuestions(
+  id: number,
+  userId: number,
+  questions: AdaptationQuestion[],
+): Promise<CVAdaptation | null> {
+  const result = await pool.query(
+    `UPDATE cv_adaptations
+        SET questions = $1, updated_at = NOW()
+      WHERE id = $2 AND user_id = $3
+      RETURNING *`,
+    [JSON.stringify(questions), id, userId],
+  );
+  return result.rows[0] ? mapRow(result.rows[0]) : null;
 }
 
 export async function deleteAdaptation(
