@@ -183,12 +183,21 @@ export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: Adapt
       setError('La question doit être renseignée avant de générer la réponse.');
       return;
     }
-    // Flush any pending debounced save first so the question is on
-    // the server before we ask it to be answered.
+    // Always flush the FULL current array to the server FIRST,
+    // unconditionally. The seeded suggestion (rendered when the
+    // adaptation is loaded with no questions) sets state without
+    // going through `updateQuestion()`, so the debounce timer is
+    // never armed — without this explicit save, the server never
+    // knows about the question and the next call returns 404.
     if (questionsSaveTimerRef.current) {
       clearTimeout(questionsSaveTimerRef.current);
-      try { await saveAdaptationQuestions(adaptation.id, questions); }
-      catch { /* swallow — the generate call will fail loud below */ }
+      questionsSaveTimerRef.current = null;
+    }
+    try {
+      await saveAdaptationQuestions(adaptation.id, questions);
+    } catch (err: any) {
+      setError(err.message || 'Échec de la sauvegarde des questions');
+      return;
     }
     setGeneratingQid(qid);
     try {
