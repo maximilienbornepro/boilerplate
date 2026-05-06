@@ -146,10 +146,13 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
       } catch (err) {
         console.warn('[slack sync] trigger failed:', err);
       }
-      // 2) Fetch meta + list in parallel.
+      // 2) Fetch meta + list in parallel. Pass the scoped document
+      // id so "déjà importé" is contextualised : a source imported
+      // into ANOTHER suivitess of the user is NOT flagged here, only
+      // sources imported into THIS suivitess are.
       const [meta, items] = await Promise.all([
         api.fetchSyncMeta(),
-        api.fetchBulkSources(),
+        api.fetchBulkSources(30, scopedDocumentId),
       ]);
       setSyncMeta(meta);
       setSources(items);

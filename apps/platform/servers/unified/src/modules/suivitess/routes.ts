@@ -2419,6 +2419,14 @@ ${filteredContent.slice(0, 30000)}`,
   router.get('/transcription/bulk-sources', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
     const days = Math.min(60, Math.max(1, parseInt(req.query.days as string, 10) || 30));
+    // Optional : when the modal is opened FROM a specific document
+    // (per-document Actions menu), the "Déjà importé" badge should
+    // only fire when the source was imported INTO THAT SAME document
+    // — not into any sibling document the user owns. Without this,
+    // a fathom call imported into "Doc A" misleadingly looks
+    // already-imported when the user opens the bulk modal from
+    // "Doc B" and decides to import the same call again.
+    const scopedDocumentId = (req.query.documentId as string | undefined)?.trim() || null;
 
     type Item = {
       id: string;
@@ -2529,12 +2537,23 @@ ${filteredContent.slice(0, 30000)}`,
 
     // Mark items already imported — we keep them in the list so the user
     // can re-import on purpose, just tagged so the UI can show them greyed.
+    // When `scopedDocumentId` is set, the badge is contextualised to that
+    // specific document — a source imported elsewhere is NOT flagged as
+    // "déjà importé" here. When absent (global modal), we still aggregate
+    // across the user's documents.
     try {
-      const { rows } = await db.pool.query(
-        `SELECT call_id FROM suivitess_transcript_imports
-         WHERE document_id IN (SELECT id FROM suivitess_documents WHERE owner_id = $1 OR owner_id IS NULL)`,
-        [userId],
-      );
+      const importedQuery = scopedDocumentId
+        ? db.pool.query(
+            `SELECT call_id FROM suivitess_transcript_imports
+             WHERE document_id = $1`,
+            [scopedDocumentId],
+          )
+        : db.pool.query(
+            `SELECT call_id FROM suivitess_transcript_imports
+             WHERE document_id IN (SELECT id FROM suivitess_documents WHERE owner_id = $1 OR owner_id IS NULL)`,
+            [userId],
+          );
+      const { rows } = await importedQuery;
       const imported = new Set(rows.map(r => r.call_id as string));
       for (const item of items) {
         if (imported.has(item.id)) (item as { alreadyImported?: boolean }).alreadyImported = true;

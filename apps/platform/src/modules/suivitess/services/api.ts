@@ -360,9 +360,18 @@ export async function triggerSyncAll(): Promise<SyncAllResponse> {
   return r.json();
 }
 
-export async function fetchBulkSources(days = 30): Promise<BulkSourceItem[]> {
+export async function fetchBulkSources(
+  days = 30,
+  /** When set, the "déjà importé" tag is contextualised to that
+   *  specific suivitess document — a source imported into a SIBLING
+   *  document of the same user is no longer flagged as already
+   *  imported here. Forwarded by the per-document bulk import modal. */
+  scopedDocumentId?: string,
+): Promise<BulkSourceItem[]> {
+  const params = new URLSearchParams({ days: String(days) });
+  if (scopedDocumentId) params.set('documentId', scopedDocumentId);
   const response = await fetch(
-    `${API_BASE}/transcription/bulk-sources?days=${days}`,
+    `${API_BASE}/transcription/bulk-sources?${params.toString()}`,
     { credentials: 'include' },
   );
   if (!response.ok) throw new Error('Failed to fetch bulk sources');
