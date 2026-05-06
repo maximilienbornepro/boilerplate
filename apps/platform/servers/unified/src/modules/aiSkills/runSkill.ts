@@ -18,6 +18,39 @@ import { logAnalysis } from './analysisLogsService.js';
 import { computeCostUsd } from './pricing.js';
 import { getAnthropicClient, logAnthropicUsage } from '../connectors/aiProvider.js';
 
+/** Style rules injected globally into every AI call. Sits in a
+ *  separate (non-cached) system block so it overrides nothing in
+ *  the skill body, applies uniformly across every prompt, and stays
+ *  cheap to update without invalidating the per-skill cache. */
+const GLOBAL_STYLE_RULES = `# Règles de style globales (s'appliquent à TOUTE la génération)
+
+INTERDICTION ABSOLUE du tiret cadratin "—" (em-dash, U+2014) — il
+trahit immédiatement un texte généré par IA et nous voulons éviter
+ce signal.
+
+À utiliser à la place selon le contexte :
+- une virgule simple, deux virgules pour une incise courte
+- des parenthèses pour un commentaire de côté
+- deux-points lorsqu'il s'agit d'introduire une liste ou une
+  explication
+- un tiret demi-cadratin "–" (en-dash) UNIQUEMENT pour des
+  intervalles (« 2020–2024 »)
+- un point + nouvelle phrase si le passage le permet
+
+Cette règle s'applique aussi bien aux titres, missions, résumés,
+réponses, descriptions, qu'aux commentaires (\`reasoning\`).
+Tu n'utilises JAMAIS le caractère "—" dans aucun champ texte.`;
+
+/** Hard sanitiser used as a fallback after the model's output : no
+ *  matter what the prompt said, we strip em-dash. Pure : the same
+ *  input always produces the same output, easy to unit-test. */
+export function stripEmDash(text: string): string {
+  return text
+    .replace(/ — /g, ', ')   // mid-sentence pause → comma + space
+    .replace(/—/g, '-');     // any remaining bare em-dash → hyphen
+}
+
+
 export interface RunSkillInput {
   /** Registry slug, e.g. 'suivitess-route-source-to-review'. */
   slug: string;
@@ -107,20 +140,35 @@ export async function runSkill(input: RunSkillInput): Promise<RunSkillResult> {
           model,
           max_tokens: input.maxTokens ?? 4096,
           system: [
+            // Skill body comes first → cache-stable for repeat calls.
             { type: 'text', text: skillContent, cache_control: { type: 'ephemeral' } },
+            // Global style rules append a small uncached block. Tiny
+            // (~150 tokens) so the cache miss on this segment is cheap
+            // and the rule applies to every skill at once instead of
+            // having to be repeated in each prompt MD.
+            { type: 'text', text: GLOBAL_STYLE_RULES },
           ],
           messages: [{ role: 'user', content: userContent }],
         }
       : {
+          // Legacy path : prepend the style rules to the user content
+          // since there's no system slot.
           model,
           max_tokens: input.maxTokens ?? 4096,
-          messages: [{ role: 'user', content: userContent }],
+          messages: [{ role: 'user', content: `${GLOBAL_STYLE_RULES}\n\n---\n\n${userContent}` }],
         };
     const aiRes = await client.messages.create(payload);
     outputText = aiRes.content
       .filter(c => c.type === 'text')
       .map(c => (c as { type: 'text'; text: string }).text)
       .join('');
+    // Hard-strip any em-dash that slipped past the prompt-level
+    // interdiction. Replacement keeps grammar readable :
+    //   " — "   → ", "    (mid-sentence pause)
+    //   "—"     → "-"     (bare, e.g. compound-like usage)
+    // Applied AFTER token counting so we still pay for what the
+    // model emitted, but before the text reaches the caller / log.
+    outputText = stripEmDash(outputText);
     // Anthropic returns cache_* only when cache_control was used. The SDK
     // types mark them optional so we read defensively.
     const usage = aiRes.usage as {
