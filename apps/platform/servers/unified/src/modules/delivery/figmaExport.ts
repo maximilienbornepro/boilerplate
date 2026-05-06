@@ -182,36 +182,45 @@ export function generateContainerSvg(
     return sum + (c.storyPoints ?? 0);
   }, 0);
 
-  // Header
-  let header = `<text x="${padding}" y="${padding + 22}" font-size="20" font-weight="700" fill="#1f2937" font-family="system-ui, sans-serif">${escapeXml(task.title)}</text>`;
+  // Header — wrapped in its own <g> so Figma treats it as one
+  // selectable unit (title + days badge) once the SVG is pasted.
+  const headerInner: string[] = [];
+  headerInner.push(`<text x="${padding}" y="${padding + 22}" font-size="20" font-weight="700" fill="#1f2937" font-family="system-ui, sans-serif">${escapeXml(task.title)}</text>`);
   if (totalDays > 0) {
     const txt = `${totalDays}j`;
     const w = txt.length * 11 + 18;
-    header += `<rect x="${width - padding - w}" y="${padding}" width="${w}" height="28" rx="6" fill="#0ea5e9"/>`;
-    header += `<text x="${width - padding - w / 2}" y="${padding + 20}" font-size="14" font-weight="700" fill="#fff" text-anchor="middle" font-family="system-ui, sans-serif">${txt}</text>`;
+    headerInner.push(`<rect x="${width - padding - w}" y="${padding}" width="${w}" height="28" rx="6" fill="#0ea5e9"/>`);
+    headerInner.push(`<text x="${width - padding - w / 2}" y="${padding + 20}" font-size="14" font-weight="700" fill="#fff" text-anchor="middle" font-family="system-ui, sans-serif">${txt}</text>`);
   }
+  const header = `<g data-name="Header">${headerInner.join('')}</g>`;
 
-  // Stacked child chips
+  // Stacked child chips — EACH chip is wrapped in its own <g> so
+  // Figma surfaces it as a single selectable subgroup. Without this,
+  // pasting the SVG produces one giant flattened group per
+  // container, and the user can only move the whole container, not
+  // individual chips. The data-name attribute carries the Jira key
+  // so each chip's name in the Figma layers panel is recognisable.
   const chipParts: string[] = [];
   visibleChildren.forEach((c, i) => {
     const y = headerHeight + i * (CHIP_HEIGHT + CHIP_GAP);
     const statusColor = STATUS_COLORS[c.status] || '#6b7280';
     const projectKey = c.jiraKey?.split('-')[0] || '';
     const colors = PROJECT_FIGMA_COLORS[projectKey] || PROJECT_FIGMA_COLORS.TVSMART;
+    const chipInner: string[] = [];
 
     // Chip background
-    chipParts.push(`<rect x="${padding}" y="${y}" width="${width - 2 * padding}" height="${CHIP_HEIGHT}" rx="6" fill="#ffffff" stroke="rgba(0,0,0,0.08)"/>`);
+    chipInner.push(`<rect x="${padding}" y="${y}" width="${width - 2 * padding}" height="${CHIP_HEIGHT}" rx="6" fill="#ffffff" stroke="rgba(0,0,0,0.08)"/>`);
 
     // Status dot (left)
     let cursorX = padding + 12;
-    chipParts.push(`<circle cx="${cursorX}" cy="${y + CHIP_HEIGHT / 2}" r="5" fill="${statusColor}"/>`);
+    chipInner.push(`<circle cx="${cursorX}" cy="${y + CHIP_HEIGHT / 2}" r="5" fill="${statusColor}"/>`);
     cursorX += 14;
 
     // Jira key badge
     if (c.jiraKey) {
       const kw = c.jiraKey.length * 8 + 12;
-      chipParts.push(`<rect x="${cursorX}" y="${y + 8}" width="${kw}" height="20" rx="4" fill="${colors.badge}"/>`);
-      chipParts.push(`<text x="${cursorX + kw / 2}" y="${y + 22}" font-size="12" font-weight="700" fill="${colors.badgeText}" text-anchor="middle" font-family="system-ui, sans-serif">${escapeXml(c.jiraKey)}</text>`);
+      chipInner.push(`<rect x="${cursorX}" y="${y + 8}" width="${kw}" height="20" rx="4" fill="${colors.badge}"/>`);
+      chipInner.push(`<text x="${cursorX + kw / 2}" y="${y + 22}" font-size="12" font-weight="700" fill="${colors.badgeText}" text-anchor="middle" font-family="system-ui, sans-serif">${escapeXml(c.jiraKey)}</text>`);
       cursorX += kw + 8;
     }
 
@@ -220,8 +229,8 @@ export function generateContainerSvg(
     if (c.storyPoints != null) {
       const sp = `${c.storyPoints}`;
       const spw = sp.length * 9 + 14;
-      chipParts.push(`<rect x="${width - padding - 8 - spw}" y="${y + 8}" width="${spw}" height="20" rx="10" fill="#eef2ff"/>`);
-      chipParts.push(`<text x="${width - padding - 8 - spw / 2}" y="${y + 22}" font-size="12" font-weight="600" fill="#4338ca" text-anchor="middle" font-family="system-ui, sans-serif">${escapeXml(sp)}</text>`);
+      chipInner.push(`<rect x="${width - padding - 8 - spw}" y="${y + 8}" width="${spw}" height="20" rx="10" fill="#eef2ff"/>`);
+      chipInner.push(`<text x="${width - padding - 8 - spw / 2}" y="${y + 22}" font-size="12" font-weight="600" fill="#4338ca" text-anchor="middle" font-family="system-ui, sans-serif">${escapeXml(sp)}</text>`);
       titleEndX = width - padding - 8 - spw - 10;
     }
 
@@ -231,7 +240,10 @@ export function generateContainerSvg(
     const truncated = c.title.length > charsAvail
       ? c.title.slice(0, Math.max(0, charsAvail - 1)) + '…'
       : c.title;
-    chipParts.push(`<text x="${cursorX}" y="${y + 22}" font-size="13" fill="#1f2937" font-family="system-ui, sans-serif">${escapeXml(truncated)}</text>`);
+    chipInner.push(`<text x="${cursorX}" y="${y + 22}" font-size="13" fill="#1f2937" font-family="system-ui, sans-serif">${escapeXml(truncated)}</text>`);
+
+    const chipName = c.jiraKey || `Chip #${i + 1}`;
+    chipParts.push(`<g data-name="${escapeXml(chipName)}">${chipInner.join('')}</g>`);
   });
 
   // "+N de plus" hint when chips were capped
