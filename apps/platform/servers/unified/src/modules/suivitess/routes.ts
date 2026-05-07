@@ -895,6 +895,67 @@ Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En fran
     res.json({ email: emailBody, template });
   }));
 
+  // ====================================================================
+  // SUBJECT MARKS — live "🎙️ on en parle" stamps during a recording.
+  //
+  // Strictly ADDITIVE : marks are an optional ground-truth signal for
+  // the T1 transcript pipeline. The import works exactly the same with
+  // or without marks ; users who never click never see any difference.
+  // See dbService.SubjectMark + 29_suivitess_subject_marks_schema.sql.
+  // ====================================================================
+
+  // POST /documents/:docId/marks — body { subjectId: string | null }
+  // Stamps a mark with clicked_at = NOW() server-side. Sending
+  // subjectId=null records a "stop marking" / "off-topic now" event.
+  router.post('/documents/:docId/marks', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { docId } = req.params;
+    const { subjectId } = (req.body || {}) as { subjectId?: string | null };
+    // Sanity : if a subjectId is provided, accept any string ; null is
+    // explicit "stop marking". undefined is rejected to surface bugs.
+    if (subjectId === undefined) {
+      return res.status(400).json({ error: 'subjectId requis (string ou null)' });
+    }
+    const mark = await db.insertSubjectMark(userId, docId, subjectId ?? null);
+    res.status(201).json(mark);
+  }));
+
+  // GET /documents/:docId/marks/active — most recent mark for this
+  // (user, document). Frontend uses it to render the sticky banner.
+  router.get('/documents/:docId/marks/active', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { docId } = req.params;
+    const mark = await db.getActiveSubjectMark(userId, docId);
+    res.json(mark);
+  }));
+
+  // GET /documents/:docId/marks?from=ISO&to=ISO — list marks within
+  // an inclusive time window. Used by the import flow's verification
+  // modal to render the timeline aligned to a Fathom call.
+  router.get('/documents/:docId/marks', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { docId } = req.params;
+    const fromRaw = (req.query.from as string | undefined) ?? '';
+    const toRaw = (req.query.to as string | undefined) ?? '';
+    const from = fromRaw ? new Date(fromRaw) : null;
+    const to = toRaw ? new Date(toRaw) : null;
+    if (!from || isNaN(from.getTime()) || !to || isNaN(to.getTime())) {
+      return res.status(400).json({ error: 'from + to (ISO 8601) requis' });
+    }
+    const marks = await db.getSubjectMarksInWindow(userId, docId, from, to);
+    res.json(marks);
+  }));
+
+  // DELETE /marks/:markId — undo a misclick. Ownership enforced via
+  // user_id filter inside the helper.
+  router.delete('/marks/:markId', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { markId } = req.params;
+    const ok = await db.deleteSubjectMark(markId, userId);
+    if (!ok) return res.status(404).json({ error: 'Mark non trouvé' });
+    res.status(204).end();
+  }));
+
   // Delete subject
   router.delete('/subjects/:subjectId', asyncHandler(async (req, res) => {
     const { subjectId } = req.params;
@@ -2689,8 +2750,13 @@ ${filteredContent.slice(0, 30000)}`,
   // suggest a review + section for each.
   router.post('/transcription/analyze-and-route', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
-    const { source, id, title, date } = (req.body || {}) as {
+    const { source, id, title, date, scopedDocumentId } = (req.body || {}) as {
       source?: string; id?: string; title?: string; date?: string | null;
+      /** OPTIONAL — when the modal was opened from a specific
+       *  suivitess document, pass its id here so the marks layer can
+       *  fetch only that document's marks (a sibling document's marks
+       *  on the same call window would otherwise leak in). */
+      scopedDocumentId?: string;
     };
     if (!source || !id) {
       res.status(400).json({ error: 'source et id sont requis' });
@@ -2810,6 +2876,55 @@ ${filteredContent.slice(0, 30000)}`,
 
     const { analyzeSourceForReviews } = await import('../aiSkills/analyzeSourcePipeline.js');
 
+    // Optional ground-truth marks block — fail-soft : any error here
+    // is silently downgraded to "no marks" so the import keeps
+    // working exactly like before this feature shipped.
+    let marksGroundTruthBlock: string | undefined;
+    if (scopedDocumentId && (source === 'fathom' || source === 'otter')) {
+      try {
+        const { buildMarksTimeline, renderMarksGroundTruth } =
+          await import('./marksTimeline.js');
+        // Resolve the call window. listFathomCalls returns the
+        // user's recent calls already shaped with date + duration ;
+        // we look up by id. Otter has the equivalent call list — for
+        // brevity we currently support fathom only ; otter falls back
+        // to no marks (still works, just no ground truth).
+        let recordedAt: Date | null = null;
+        let durationSeconds: number | null = null;
+        if (source === 'fathom') {
+          const { listFathomCalls } = await import('./fathomService.js');
+          const calls = await listFathomCalls(userId, 30);
+          const call = calls.find(c => c.id === id);
+          if (call?.date) {
+            recordedAt = new Date(call.date);
+            durationSeconds = call.duration ?? null;
+          }
+        }
+        if (recordedAt && durationSeconds && durationSeconds > 0) {
+          const windowEnd = new Date(recordedAt.getTime() + durationSeconds * 1000);
+          const marks = await db.getSubjectMarksInWindow(
+            userId, scopedDocumentId, recordedAt, windowEnd,
+          );
+          if (marks.length > 0) {
+            const timeline = buildMarksTimeline(
+              marks.map(m => ({
+                clickedAt: m.clickedAt,
+                subjectId: m.subjectId,
+                subjectTitle: m.subjectTitle,
+              })),
+              { recordedAt, durationSeconds },
+            );
+            marksGroundTruthBlock = renderMarksGroundTruth(timeline);
+            console.log(`[SuiVitess marks] ${marks.length} mark(s), ${timeline.length} segment(s) injected for doc=${scopedDocumentId} call=${id}`);
+          }
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[SuiVitess marks] timeline build failed, falling back to no-marks:', (err as Error).message);
+        marksGroundTruthBlock = undefined;
+      }
+    }
+
     try {
       const { proposals, rootLogId } = await analyzeSourceForReviews({
         sourceKind: source as 'transcript' | 'slack' | 'outlook' | 'fathom' | 'otter' | 'gmail',
@@ -2818,6 +2933,9 @@ ${filteredContent.slice(0, 30000)}`,
         reviews,
         userId,
         userEmail: req.user!.email || '',
+        // Forwarded only when the marks layer succeeded ; undefined
+        // ⇒ pipeline behaves like before the marks feature shipped.
+        marksGroundTruthBlock,
       });
       res.json({
         summary: proposals.length > 0 ? `${proposals.length} sujet(s) extrait(s) et routé(s).` : 'Aucun sujet exploitable.',

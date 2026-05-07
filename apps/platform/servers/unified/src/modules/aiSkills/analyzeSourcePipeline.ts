@@ -348,6 +348,13 @@ export function selectExistingSubjectsForExtraction(
 async function tier1Extract(base: TierBase & {
   sourceRaw: string;
   existingSubjects?: ExistingSubjectAnchor[];
+  /** OPTIONAL ground-truth timeline (built from suivitess subject
+   *  marks the user clicked during the recording). Strictly
+   *  additive : when undefined or empty, the extraction behaves
+   *  exactly as before. The block is rendered into the prompt
+   *  ONLY for transcription-kind sources where a recording window
+   *  is well-defined. */
+  marksGroundTruthBlock?: string;
 }): Promise<{ logId: number | null; subjects: ExtractedSubject[]; durationMs: number }> {
   const t0 = Date.now();
   // Build the optional `existingSubjects` block. Only emitted when
@@ -360,6 +367,7 @@ async function tier1Extract(base: TierBase & {
     ? `\n\n## existingSubjects (sujets déjà suivis dans le document de destination)\n\n` +
       `\`\`\`json\n${JSON.stringify(ranked, null, 2)}\n\`\`\`\n`
     : '';
+  const marksBlock = base.marksGroundTruthBlock ?? '';
 
   const run = await runSkill({
     slug: extractorSlugFor(base.sourceKind as SourceKind),
@@ -373,6 +381,7 @@ async function tier1Extract(base: TierBase & {
       // rules, edge cases) because the prompt cut off mid-discussion.
       `## Source brute\n\n${base.sourceRaw.slice(0, 60000)}` +
       existingBlock +
+      marksBlock +
       `\n\nRenvoie UNIQUEMENT le tableau JSON des sujets extraits.`,
     inputContent: base.sourceRaw,
     sourceKind: base.sourceKind,
@@ -685,6 +694,13 @@ export interface AnalyzeForDocumentInput {
   document: DocumentContext;
   userId: number;
   userEmail: string;
+  /** OPTIONAL pre-rendered ground-truth section from
+   *  `renderMarksGroundTruth(buildMarksTimeline(...))`. The caller
+   *  (transcription wizard) computes it server-side from the user's
+   *  marks aligned to the Fathom call window. Empty string or
+   *  undefined → no marks, no behaviour change vs. the
+   *  pre-marks-feature pipeline. */
+  marksGroundTruthBlock?: string;
 }
 
 /** Pipeline for the TranscriptionWizard / content-wizard on a specific doc. */
@@ -712,6 +728,10 @@ export async function analyzeSourceForDocument(
     ...base,
     sourceRaw: input.sourceRaw,
     existingSubjects: anchors,
+    // Forward the optional ground-truth block. The pipeline does NOT
+    // build it — the caller is responsible for marshalling marks vs.
+    // the call window so this layer stays storage-agnostic.
+    marksGroundTruthBlock: input.marksGroundTruthBlock,
   });
   onProgress({ kind: 't1-end', subjectsExtracted: ex.subjects.length, rootLogId: ex.logId, durationMs: ex.durationMs });
   if (ex.subjects.length === 0) {
@@ -1108,6 +1128,12 @@ export interface AnalyzeForReviewsInput {
   reviews: ReviewContext[];
   userId: number;
   userEmail: string;
+  /** OPTIONAL ground-truth section pre-rendered by the caller from
+   *  the user's subject marks aligned to the Fathom call window.
+   *  Strictly additive : empty / undefined ⇒ identical behaviour to
+   *  the pre-marks pipeline, no surprise for callers that don't
+   *  use marks. */
+  marksGroundTruthBlock?: string;
 }
 
 /** Pipeline for the bulk import modal on the listing page (multi-review). */
@@ -1126,7 +1152,11 @@ export async function analyzeSourceForReviews(
 
   // Tier 1
   onProgress({ kind: 't1-start' });
-  const ex = await tier1Extract({ ...base, sourceRaw: input.sourceRaw });
+  const ex = await tier1Extract({
+    ...base,
+    sourceRaw: input.sourceRaw,
+    marksGroundTruthBlock: input.marksGroundTruthBlock,
+  });
   onProgress({ kind: 't1-end', subjectsExtracted: ex.subjects.length, rootLogId: ex.logId, durationMs: ex.durationMs });
   if (ex.subjects.length === 0) {
     // eslint-disable-next-line no-console

@@ -191,6 +191,29 @@ export async function initDb(): Promise<void> {
     console.warn('[SuiVitess] subject cross-links migration failed:', (err as Error).message);
   }
 
+  // Live subject marks during a recording. Each row = one click on
+  // a subject button (or the "stop marking" button → subject_id =
+  // null). The pipeline T1 transcript fetches them at import time
+  // and converts to relative offsets vs. the call's recorded_at,
+  // injecting them as ground-truth into the extraction prompt.
+  // See migration 29_suivitess_subject_marks_schema.sql.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS suivitess_subject_marks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        document_id VARCHAR(50) NOT NULL REFERENCES suivitess_documents(id) ON DELETE CASCADE,
+        subject_id UUID REFERENCES suivitess_subjects(id) ON DELETE SET NULL,
+        clicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_marks_user_doc ON suivitess_subject_marks(user_id, document_id, clicked_at DESC)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_marks_clicked_at ON suivitess_subject_marks(clicked_at DESC)');
+  } catch (err) {
+    console.warn('[SuiVitess] subject marks migration failed:', (err as Error).message);
+  }
+
   console.log('[SuiVitess] Module initialized');
 }
 
@@ -1005,4 +1028,118 @@ export async function listSubjectCrossLinks(subjectId: string): Promise<Array<{
     documentTitle: r.document_title,
     isCanonical: r.is_canonical,
   }));
+}
+
+// ==================== SUBJECT MARKS (live recording) ====================
+//
+// Each row = one click on a subject's "🎙️ on en parle" button (or
+// the "stop marking" button → subject_id = null) during a meeting.
+// Surfaced at transcript import time as ground-truth for T1. Strictly
+// ADDITIVE : the import works exactly as before when no marks exist
+// (and most users will never use them).
+
+export interface SubjectMark {
+  id: string;
+  userId: number;
+  documentId: string;
+  /** null = the user explicitly stopped marking ("hors-sujet"). The
+   *  pipeline interprets a null mark as the END of the previous
+   *  subject's window. */
+  subjectId: string | null;
+  clickedAt: string;        // ISO 8601 UTC
+  /** Denormalized for the UI banner / verification modal — saves a
+   *  JOIN on the hot path. */
+  subjectTitle: string | null;
+}
+
+function mapMarkRow(row: any): SubjectMark {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    documentId: row.document_id,
+    subjectId: row.subject_id ?? null,
+    clickedAt: row.clicked_at instanceof Date
+      ? row.clicked_at.toISOString()
+      : String(row.clicked_at),
+    subjectTitle: row.subject_title ?? null,
+  };
+}
+
+/** Insert a fresh mark. clicked_at is stamped server-side via DEFAULT
+ *  NOW() — we never trust the client's clock. */
+export async function insertSubjectMark(
+  userId: number,
+  documentId: string,
+  subjectId: string | null,
+): Promise<SubjectMark> {
+  const result = await pool.query(
+    `WITH ins AS (
+       INSERT INTO suivitess_subject_marks (user_id, document_id, subject_id)
+       VALUES ($1, $2, $3)
+       RETURNING *
+     )
+     SELECT ins.*, s.title AS subject_title
+       FROM ins
+       LEFT JOIN suivitess_subjects s ON s.id = ins.subject_id`,
+    [userId, documentId, subjectId],
+  );
+  return mapMarkRow(result.rows[0]);
+}
+
+/** Most recent mark for (user, document) — used by the frontend
+ *  banner to show what's currently being marked. Returns null when
+ *  the user has never clicked, or when the latest click was a
+ *  "stop marking" (subject_id null). */
+export async function getActiveSubjectMark(
+  userId: number,
+  documentId: string,
+): Promise<SubjectMark | null> {
+  const result = await pool.query(
+    `SELECT m.*, s.title AS subject_title
+       FROM suivitess_subject_marks m
+       LEFT JOIN suivitess_subjects s ON s.id = m.subject_id
+      WHERE m.user_id = $1 AND m.document_id = $2
+      ORDER BY m.clicked_at DESC
+      LIMIT 1`,
+    [userId, documentId],
+  );
+  return result.rows[0] ? mapMarkRow(result.rows[0]) : null;
+}
+
+/** All marks within an inclusive time window. Used by the T1
+ *  pipeline to fetch the marks that fall inside a Fathom call's
+ *  recorded_at + duration. Filters strictly by document so marks
+ *  on a sibling suivitess never bleed in. */
+export async function getSubjectMarksInWindow(
+  userId: number,
+  documentId: string,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<SubjectMark[]> {
+  const result = await pool.query(
+    `SELECT m.*, s.title AS subject_title
+       FROM suivitess_subject_marks m
+       LEFT JOIN suivitess_subjects s ON s.id = m.subject_id
+      WHERE m.user_id = $1
+        AND m.document_id = $2
+        AND m.clicked_at >= $3
+        AND m.clicked_at <= $4
+      ORDER BY m.clicked_at ASC`,
+    [userId, documentId, windowStart.toISOString(), windowEnd.toISOString()],
+  );
+  return result.rows.map(mapMarkRow);
+}
+
+/** Delete a single mark — exposed so the user can undo a
+ *  misclicked button without committing a new "stop marking"
+ *  entry. Owner check happens via the user_id filter. */
+export async function deleteSubjectMark(
+  markId: string,
+  userId: number,
+): Promise<boolean> {
+  const result = await pool.query(
+    'DELETE FROM suivitess_subject_marks WHERE id = $1 AND user_id = $2',
+    [markId, userId],
+  );
+  return (result.rowCount ?? 0) > 0;
 }

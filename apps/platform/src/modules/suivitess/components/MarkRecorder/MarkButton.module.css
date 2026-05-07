@@ -1,0 +1,71 @@
+/* 🎙️ button next to a subject's title in the SubjectReview header.
+   Inherits the suivitess styling tokens — border, radius, spacing. */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.05s;
+  font-size: 14px;
+  line-height: 1;
+}
+.btn:hover:not(:disabled) {
+  background: var(--bg-secondary, var(--bg-primary));
+  border-color: var(--text-secondary, var(--text-muted));
+  color: var(--text-primary);
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.icon {
+  display: inline-block;
+  filter: grayscale(40%);
+}
+
+/* Currently marking THIS subject — red, pulsing. */
+.active {
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+}
+.active .icon {
+  filter: none;
+}
+.active .dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  background: #dc2626;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg-primary);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+/* Another subject is currently marked — this one is dim. */
+.dim {
+  opacity: 0.5;
+}
+
+.idle {
+  /* default styles, no extra. */
+}

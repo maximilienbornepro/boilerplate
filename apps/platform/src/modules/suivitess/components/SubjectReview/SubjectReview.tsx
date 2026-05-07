@@ -7,6 +7,7 @@ import * as api from '../../services/api';
 import { EmailPreviewModal } from '../EmailPreviewModal/EmailPreviewModal';
 import { TicketCreateModal } from '../TicketCreateModal/TicketCreateModal';
 import { LinkSubjectModal } from '../LinkSubjectModal';
+import { MarkButton, useActiveSubjectMark } from '../MarkRecorder';
 import styles from './SubjectReview.module.css';
 
 interface ExternalLink {
@@ -130,6 +131,11 @@ export function SubjectReview({
 
   // Track the currently focused/editing line to sync content before save
   const editingLineRef = useRef<number | null>(null);
+
+  // 🎙️ live mark controller — fetches the active mark for this
+  // (user, document) and exposes a setter. Strictly additive : when
+  // unused (the user never clicks the button), nothing changes.
+  const markController = useActiveSubjectMark(documentId);
 
   const titleRef = useRef<HTMLInputElement>(null);
   const responsibilityRef = useRef<HTMLInputElement>(null);
@@ -641,6 +647,12 @@ export function SubjectReview({
               </div>
             )}
           </div>
+
+          {/* 🎙️ live mark — additive : opt-in feature for marking
+              the current call's discussion against this subject. The
+              import flow only consumes marks when they exist. */}
+          <MarkButton controller={markController} subjectId={subject.id} />
+
 
           <button
             className={styles.actionBtn}
