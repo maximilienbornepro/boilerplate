@@ -72,9 +72,27 @@ Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
 
 ## Règles d'extraction
 
-1. **Un sujet = un thème distinct** : une action à réaliser, une décision, une
-   question ouverte, un blocage, un point débattu. Si deux interventions parlent
-   du même projet/feature/personne, c'est **un seul** sujet.
+1. **Un sujet = un thème distinct**. La liste de ce qui MÉRITE un
+   sujet est volontairement large, parce qu'un suivi exhaustif vaut
+   mieux qu'un suivi partiel :
+   - une **action à réaliser** (qui doit faire quoi)
+   - une **décision** prise pendant l'appel
+   - une **règle de gestion** énoncée ou clarifiée (« si X alors Y »,
+     « dans le cas A on bascule en mode B », critères d'éligibilité,
+     conditions d'application)
+   - un **cas d'usage** discuté (parcours utilisateur, scénario
+     fonctionnel, edge case)
+   - une **question ouverte** (point non tranché qui restera à
+     clarifier)
+   - un **blocage** (technique, organisationnel, dépendance externe)
+   - un **point débattu** même s'il n'aboutit pas à une décision
+   - une **information importante** sur le contexte (changement
+     d'organisation, départ d'un partenaire, contrainte légale,
+     évolution roadmap)
+   Si deux interventions parlent **du même objet métier**, c'est
+   **un seul** sujet — mais ne fusionne pas deux règles de gestion
+   distinctes (deux conditions différentes, deux scénarios
+   différents) sous un titre générique.
 2. **Ignore** : le small-talk (« ça va ? »), les salutations, les blagues, les
    pauses techniques (« tu m'entends ? »), les annonces d'agenda (« on passe au
    point 3 »), les rappels de meeting (« pour info la prochaine réunion… »).
@@ -94,36 +112,72 @@ Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
      `"medium"` si le contour est flou, `"low"` si c'est juste une mention
      passagère qui pourrait ne pas mériter un suivi.
 
-## Étape finale obligatoire — déduplique tes propres nouveaux sujets
+## Étape finale obligatoire — déduplique avec PRUDENCE
 
 Avant de renvoyer ton tableau, **relis la liste des sujets que tu as
-créés** (`mappedToExistingSubjectId: null`). Si **deux ou plus** d'entre
-eux ont :
+créés** (`mappedToExistingSubjectId: null`). Fusionne deux entrées
+**uniquement** si **TOUS** ces critères sont vrais en même temps :
 
-- des titres quasi identiques (mêmes mots-clés, reformulation
-  superficielle — ex : « Bug paiement Stripe » et « Incident paiement
-  Stripe » sont le même sujet), OU
-- les mêmes `entities` principales **ET** le même `responsibilityHint`, OU
-- des `rawQuotes` qui décrivent manifestement le même fait sous deux
-  angles (la même décision racontée deux fois dans le call),
+- titres quasi identiques (mêmes mots-clés, reformulation
+  superficielle, ex : « Bug paiement Stripe » et « Incident paiement
+  Stripe »),
+- mêmes `entities` principales,
+- les `rawQuotes` décrivent **manifestement le même fait** sous
+  deux angles (la même décision racontée deux fois).
 
-alors **fusionne-les en une seule entrée** avant de renvoyer :
+**Ne fusionne PAS** :
 
+- deux règles de gestion distinctes même si elles concernent le
+  même produit (ex : « Code parental sur contenu adulte » et
+  « Code parental sur live sport en première instance » → 2 sujets
+  distincts, conditions d'application différentes),
+- une décision et la règle de gestion qui en découle (ex :
+  « Décision : activer le code parental » et « Règle : code parental
+  obligatoire pour les contenus 18+ » → 2 sujets),
+- deux cas d'usage qui partagent une feature mais aboutissent à
+  des comportements différents.
+
+En cas de doute, garde **deux entrées** plutôt qu'une — la perte
+d'information est pire qu'un doublon que l'utilisateur peut
+fusionner manuellement.
+
+Quand tu fusionnes :
 - Garde le titre **le plus synthétique** (cf. règles de nommage).
 - Combine les `rawQuotes` (max 3 au total, en gardant les plus
   parlantes) et les `participants` / `entities` (déduplique).
 - Réindexe : la sortie a des `index` consécutifs à partir de 0.
 
-Le but : l'utilisateur ne doit jamais voir deux nouvelles cartes qui
-décrivent le même thème. Mieux vaut un sujet riche qu'un doublon.
+## Étape finale obligatoire — vérification de complétude
+
+Avant de renvoyer, balaye la transcription **dans l'ordre** et
+demande-toi : « Pour chaque sujet substantiel discuté pendant ≥30
+secondes, est-ce que j'ai bien une entrée dans mon tableau ? »
+
+Liste mentale des familles à ne jamais omettre :
+- toute **règle de gestion** énoncée pendant le call, même
+  brièvement,
+- toute **décision** (même implicite : « OK on part là-dessus »),
+- tout **scénario fonctionnel** débattu,
+- toute **contrainte** mentionnée (légale, technique, RH,
+  budgétaire),
+- toute **clarification** d'un comportement attendu.
+
+Si un thème a été discuté plus de 30 secondes et n'apparaît pas
+dans ton tableau, ajoute-le. **Mieux vaut 15 sujets pertinents que
+8 sujets « actionnables » en perdant la moitié du contenu**.
 
 ## Règles absolues
 
 - **Jamais inventer** de fait, de chiffre, de nom absent des `rawQuotes`.
 - **Jamais résumer** les quotes : ce sont des citations mot pour mot.
 - **Jamais interpréter** ce qui n'est pas dit. Si le sujet n'a pas de responsable
-  cité, `responsibilityHint: null` — ne devine pas.
-- Maximum **10 sujets**, priorise les plus actionnables.
+  cité, `responsibilityHint: null`, ne devine pas.
+- **Plafond souple à 20 sujets**. La transcription dicte le bon
+  nombre : 5 sujets pour un call court, 15 pour un call dense de
+  ce qu'il faut. Tronque seulement si tu dépasses **20** ; en
+  dessous, retourne tout. Ne supprime PAS un sujet réel pour
+  "tenir le quota", surtout pas une règle de gestion ou un cas
+  d'usage discuté.
 - **`rawQuotes` courts** : 1 à 3 quotes de **maximum 150 caractères chacune**. Coupe
   les longues interventions aux phrases les plus porteuses d'information. Le but
   est de tenir dans le budget tokens, pas de faire une compilation exhaustive.

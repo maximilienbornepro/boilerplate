@@ -368,7 +368,10 @@ async function tier1Extract(base: TierBase & {
     // Use buildContext (cacheable) — the skill body goes to system with
     // cache_control, the user message carries only the source.
     buildContext: () =>
-      `## Source brute\n\n${base.sourceRaw.slice(0, 30000)}` +
+      // 60k chars covers a ~45-min call comfortably. Below that the
+      // model occasionally missed late-in-call topics (business
+      // rules, edge cases) because the prompt cut off mid-discussion.
+      `## Source brute\n\n${base.sourceRaw.slice(0, 60000)}` +
       existingBlock +
       `\n\nRenvoie UNIQUEMENT le tableau JSON des sujets extraits.`,
     inputContent: base.sourceRaw,
@@ -376,9 +379,11 @@ async function tier1Extract(base: TierBase & {
     sourceTitle: base.sourceTitle,
     documentId: base.documentId,
     // Extract step needs headroom for N subjects × (title + rawQuotes +
-    // participants + entities). 10 subjects ≈ 4000 tokens, 15 ≈ 6500.
-    // We size for the full 15 so the JSON never truncates mid-item.
-    maxTokens: 8000,
+    // participants + entities). 10 subjects ≈ 4000 tokens, 15 ≈ 6500,
+    // 20 ≈ 9000. We size for the full 20-soft-cap so the JSON never
+    // truncates mid-item on dense transcriptions where rules of
+    // engagement, edge cases AND action items must all surface.
+    maxTokens: 12000,
   });
   const raw = extractJson<ExtractedSubject[]>(run.outputText);
   const subjects = Array.isArray(raw)
