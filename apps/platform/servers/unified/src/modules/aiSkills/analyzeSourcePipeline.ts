@@ -399,10 +399,16 @@ async function tier1Extract(base: TierBase & {
   // Annotate the log row so /ai-logs shows a clear error instead of a
   // successful-looking log with empty proposals.
   if (run.logId != null) {
-    if (raw == null) {
-      await updateLogError(run.logId, `[PIPELINE T1] JSON parse failed — output may be truncated (${run.outputText.length} chars). Check the raw output below.`);
+    if (run.error) {
+      // The Anthropic call itself failed (5xx, timeout, rate-limit).
+      // Preserve the original SDK error message — overwriting it
+      // with a generic "JSON parse failed" hides the real cause and
+      // makes the log impossible to diagnose.
+      await updateLogError(run.logId, `[PIPELINE T1] ${run.error}`);
+    } else if (raw == null) {
+      await updateLogError(run.logId, `[PIPELINE T1] JSON parse failed, output may be truncated (${run.outputText.length} chars). Check the raw output below.`);
     } else if (subjects.length === 0) {
-      await updateLogError(run.logId, `[PIPELINE T1] Extracted 0 subjects — source may lack actionable content or the skill's filtering is too aggressive.`);
+      await updateLogError(run.logId, `[PIPELINE T1] Extracted 0 subjects, source may lack actionable content or the skill's filtering is too aggressive.`);
     } else {
       // Attach the subjects as "proposals" so the log's count reflects
       // what this tier actually produced (otherwise the UI shows
@@ -453,10 +459,12 @@ async function tier2PlaceDocument(base: TierBase & {
   // eslint-disable-next-line no-console -- visible for pipeline debugging
   console.log(`[pipeline] tier2 place-in-document → ${placements.length} placements · ${fmtDur(durationMs)} · logId=${run.logId}`);
   if (run.logId != null) {
-    if (raw == null) {
-      await updateLogError(run.logId, `[PIPELINE T2 document] JSON parse failed — output may be truncated.`);
+    if (run.error) {
+      await updateLogError(run.logId, `[PIPELINE T2 document] ${run.error}`);
+    } else if (raw == null) {
+      await updateLogError(run.logId, `[PIPELINE T2 document] JSON parse failed, output may be truncated.`);
     } else if (placements.length === 0 && base.subjects.length > 0) {
-      await updateLogError(run.logId, `[PIPELINE T2 document] 0 placements for ${base.subjects.length} subjects — likely all considered duplicates already present in the document.`);
+      await updateLogError(run.logId, `[PIPELINE T2 document] 0 placements for ${base.subjects.length} subjects, likely all considered duplicates already present in the document.`);
     } else {
       await attachProposalsToLog(run.logId, placements);
     }
@@ -564,10 +572,12 @@ ${learnedExamplesBlock}
   // eslint-disable-next-line no-console -- visible for pipeline debugging
   console.log(`[pipeline] tier2 place-in-reviews → ${placements.length} placements · ${fmtDur(durationMs)} · logId=${run.logId}`);
   if (run.logId != null) {
-    if (raw == null) {
-      await updateLogError(run.logId, `[PIPELINE T2 reviews] JSON parse failed — output may be truncated.`);
+    if (run.error) {
+      await updateLogError(run.logId, `[PIPELINE T2 reviews] ${run.error}`);
+    } else if (raw == null) {
+      await updateLogError(run.logId, `[PIPELINE T2 reviews] JSON parse failed, output may be truncated.`);
     } else if (placements.length === 0 && base.subjects.length > 0) {
-      await updateLogError(run.logId, `[PIPELINE T2 reviews] 0 routings for ${base.subjects.length} subjects — likely all considered duplicates already present in existing reviews.`);
+      await updateLogError(run.logId, `[PIPELINE T2 reviews] 0 routings for ${base.subjects.length} subjects, likely all considered duplicates already present in existing reviews.`);
     } else {
       await attachProposalsToLog(run.logId, placements);
     }
@@ -605,8 +615,10 @@ async function tier3Append(base: TierBase & {
   });
   const parsed = extractJson<{ appendText: string | null }>(run.outputText);
   if (run.logId != null) {
-    if (parsed == null) {
-      await updateLogError(run.logId, `[PIPELINE T3 append] JSON parse failed — output may be truncated or malformed.`);
+    if (run.error) {
+      await updateLogError(run.logId, `[PIPELINE T3 append] ${run.error}`);
+    } else if (parsed == null) {
+      await updateLogError(run.logId, `[PIPELINE T3 append] JSON parse failed, output may be truncated or malformed.`);
     } else if (parsed.appendText) {
       // A T3 writer produces a single item. We store it as a 1-item array so
       // /ai-logs displays "1 proposition" instead of "0 propositions" (which
@@ -645,8 +657,10 @@ async function tier3Compose(base: TierBase & {
   });
   const parsed = extractJson<{ situation: string }>(run.outputText);
   if (run.logId != null) {
-    if (parsed == null) {
-      await updateLogError(run.logId, `[PIPELINE T3 compose] JSON parse failed — output may be truncated or malformed.`);
+    if (run.error) {
+      await updateLogError(run.logId, `[PIPELINE T3 compose] ${run.error}`);
+    } else if (parsed == null) {
+      await updateLogError(run.logId, `[PIPELINE T3 compose] JSON parse failed, output may be truncated or malformed.`);
     } else {
       await attachProposalsToLog(run.logId, [{ kind: 'compose', text: parsed.situation ?? '' }]);
     }

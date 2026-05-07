@@ -1072,6 +1072,36 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                       })
                       .map(x => x.newSectionName.trim()),
                   ));
+                  // Sibling rows that target the SAME (review, section)
+                  // AND propose to create a new subject. Surfacing them
+                  // in the current row's subject dropdown lets the user
+                  // group their own row under the same new subject. The
+                  // backend dedups on (sectionId, titleLower) so two
+                  // rows landing on the same key merge into a single
+                  // subject with appended situations.
+                  const sectionKey = r.sectionMode === 'existing'
+                    ? `existing::${r.sectionId ?? ''}`
+                    : `new::${(r.newSectionName ?? '').trim().toLowerCase()}`;
+                  const reviewSectionKey = `${reviewKey}||${sectionKey}`;
+                  const pendingNewSubjectTitles = Array.from(new Set(
+                    rows
+                      .filter(x =>
+                        x.key !== r.key
+                        && !x.skipped
+                        && x.subjectAction === 'create',
+                      )
+                      .filter(x => {
+                        const sibReview = x.mode === 'existing'
+                          ? `existing::${x.reviewId ?? ''}`
+                          : `new::${(x.newReviewTitle ?? '').trim().toLowerCase()}`;
+                        const sibSection = x.sectionMode === 'existing'
+                          ? `existing::${x.sectionId ?? ''}`
+                          : `new::${(x.newSectionName ?? '').trim().toLowerCase()}`;
+                        return `${sibReview}||${sibSection}` === reviewSectionKey;
+                      })
+                      .map(x => (x.overrideSubjectTitle ?? x.subject.title).trim())
+                      .filter(t => t.length > 0),
+                  ));
                   return (
                     <div className={styles.subjectsList}>
                       <SubjectRow
@@ -1093,6 +1123,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
                         isMultiPlacement={sameTitleCount >= 2}
                         sameNewSectionCount={sameSectionCount}
                         pendingNewSectionNames={pendingNewSectionNames}
+                        pendingNewSubjectTitles={pendingNewSubjectTitles}
                         nextRowKey={null}
                       />
                     </div>
@@ -1152,7 +1183,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
 function SubjectRow({
   row, consolidation, reviews, onUpdate, onRenameNewSection, id, nextRowKey,
   onDuplicate, onRemove, onImmediateAdd, onSkip, onDisagree, isAdding, addDisabled,
-  isMultiPlacement, sameNewSectionCount, pendingNewSectionNames, reviewLocked,
+  isMultiPlacement, sameNewSectionCount, pendingNewSectionNames, pendingNewSubjectTitles, reviewLocked,
 }: {
   row: Row;
   consolidation: api.ConsolidationMeta | null;
@@ -1206,8 +1237,17 @@ function SubjectRow({
    *  — without that, the user couldn't group two subjects under the
    *  same brand-new section. */
   pendingNewSectionNames: string[];
+  /** Titles of pending NEW subjects proposed by sibling rows of this
+   *  same import that target the same (review, section). Surfaced as
+   *  selectable options in the subject dropdown so the user can
+   *  group two source proposals under one new subject. The picked
+   *  title is copied into THIS row as `overrideSubjectTitle` and
+   *  the action stays 'create' — the backend dedups on
+   *  (sectionId, titleLower) so both rows merge into a single
+   *  newly-created subject. */
+  pendingNewSubjectTitles: string[];
   /** When true (document-scoped flow), the review pill becomes a
-   *  static label instead of an editable dropdown — the destination
+   *  static label instead of an editable dropdown, the destination
    *  review/document is fixed by the parent page context. */
   reviewLocked?: boolean;
 }) {
@@ -1711,6 +1751,24 @@ function SubjectRow({
                         </span>
                       ),
                     },
+                    // Pending NEW subjects proposed by sibling rows
+                    // of this same import that target the same
+                    // (review, section). Picking one copies the
+                    // title into THIS row + keeps action='create' ;
+                    // the backend dedup merges both creates into a
+                    // single subject at apply time. Excludes the
+                    // current row's own pending title (already
+                    // surfaced via "+ Créer un nouveau sujet").
+                    ...pendingNewSubjectTitles
+                      .filter(t => t !== (row.overrideSubjectTitle?.trim() || subject.title.trim()))
+                      .map(t => ({
+                        value: `__pending__::${t}`,
+                        label: (
+                          <span className={styles.dropdownNewOption}>
+                            ↳ Regrouper sous le nouveau sujet <em className={styles.dropdownNewHint}>« {t} »</em>
+                          </span>
+                        ),
+                      })),
                     ...(currentSection && currentSection.subjects.length > 0
                       ? [{ value: '__sep__', label: 'Ou ajouter comme état de situation à un sujet existant' }]
                       : []),
@@ -1725,6 +1783,16 @@ function SubjectRow({
                       } else {
                         onUpdate({ subjectAction: 'create', targetSubjectId: null });
                       }
+                    } else if (typeof val === 'string' && val.startsWith('__pending__::')) {
+                      // Group under a sibling's pending-new subject —
+                      // copy the title locally, stay in 'create' mode
+                      // so backend dedup merges them.
+                      const pendingTitle = val.slice('__pending__::'.length);
+                      onUpdate({
+                        subjectAction: 'create',
+                        targetSubjectId: null,
+                        overrideSubjectTitle: pendingTitle,
+                      });
                     } else {
                       onUpdate({ subjectAction: 'update', targetSubjectId: val });
                     }

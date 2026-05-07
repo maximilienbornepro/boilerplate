@@ -3600,6 +3600,13 @@ ${filteredContent.slice(0, 30000)}`,
 
     const newReviewByTitle = new Map<string, string>();
     const newSectionByKey = new Map<string, string>(); // key = `${reviewId}::${sectionName}`
+    // Dedup map for new subjects within the SAME apply call : when two
+    // rows of the same import both ask to create a subject with the
+    // same title in the same section, the SECOND one becomes an
+    // append on the first instead of duplicating. Mirrors the
+    // section-level dedup so the user can group two source proposals
+    // under one new subject.
+    const newSubjectByKey = new Map<string, string>(); // key = `${sectionId}::${subjectTitleLower}`
 
     const reviewsCreated: Array<{ id: string; title: string }> = [];
     const sectionsCreated: Array<{ id: string; name: string; reviewId: string }> = [];
@@ -3791,14 +3798,70 @@ ${filteredContent.slice(0, 30000)}`,
           }
         }
 
-        const subject = await db.createSubject(
-          sectionId,
-          title,
-          (s.situation ?? null),
-          (s.status || '🔴 à faire'),
-          s.responsibility ?? null,
-        );
-        subjectsCreated.push({ id: subject.id, title, reviewId, sectionId });
+        // Dedup : if a subject with the same (section, title) was
+        // already created earlier in THIS same apply call, merge into
+        // it instead of duplicating. The user just told us "use the
+        // pending-new subject from row N" via the dropdown ; both
+        // rows ended up with subjectAction='create' on the same
+        // (review, section, title) so the dedup must run server-side
+        // too.
+        const subjectDedupKey = `${sectionId}::${title.trim().toLowerCase()}`;
+        const cachedSubjectId = newSubjectByKey.get(subjectDedupKey);
+        let subjectId: string;
+        if (cachedSubjectId) {
+          // Merge situation + optionally update status/responsibility
+          // on the previously-created subject. Same merge helper as
+          // the explicit "update-existing-subject" path so behaviour
+          // stays consistent. updateSubjectFields takes an array of
+          // SQL fragments + a parallel values array.
+          subjectId = cachedSubjectId;
+          const updateFragments: string[] = [];
+          const updateValues: (string | number | null)[] = [];
+          let pIdx = 1;
+          const incoming = (s.situation ?? '').trim();
+          if (incoming.length > 0) {
+            try {
+              const { mergeSituationAppend, todayFrFr } = await import('./situationMerge.js');
+              const existingSubj = await db.getSubject(cachedSubjectId);
+              const merged = mergeSituationAppend(
+                existingSubj?.situation ?? '',
+                incoming,
+                todayFrFr(),
+              );
+              updateFragments.push(`situation = $${pIdx++}`);
+              updateValues.push(merged);
+            } catch { /* best effort */ }
+          }
+          if (s.status) {
+            updateFragments.push(`status = $${pIdx++}`);
+            updateValues.push(s.status);
+          }
+          if (s.responsibility !== undefined && s.responsibility !== null && String(s.responsibility).trim().length > 0) {
+            updateFragments.push(`responsibility = $${pIdx++}`);
+            updateValues.push(s.responsibility);
+          }
+          if (updateFragments.length > 0) {
+            try { await db.updateSubjectFields(cachedSubjectId, updateFragments, updateValues); }
+            catch { /* best effort */ }
+          }
+          subjectsUpdated.push({ id: cachedSubjectId, title });
+        } else {
+          const subject = await db.createSubject(
+            sectionId,
+            title,
+            (s.situation ?? null),
+            (s.status || '🔴 à faire'),
+            s.responsibility ?? null,
+          );
+          subjectId = subject.id;
+          newSubjectByKey.set(subjectDedupKey, subjectId);
+          subjectsCreated.push({ id: subject.id, title, reviewId, sectionId });
+        }
+        // `subjectId` is captured for the memory-entry block below
+        // (currently only `title` + section context are stored, so
+        // we don't actually need it — but keep the binding stable in
+        // case future decisions key on the resolved subject id).
+        void subjectId;
 
         // Capture for the routing memory — a "new-subject" decision here
         // teaches the model to create rather than enrich for similar
