@@ -4124,6 +4124,15 @@ ${filteredContent.slice(0, 30000)}`,
     res.json(s);
   }));
 
+  // POST /auto-import/run-now — manually triggers ONE scheduler
+  // tick. Useful to validate the setup without waiting for the
+  // hourly cron, or to force a sync after enabling new sources.
+  router.post('/auto-import/run-now', asyncHandler(async (_req, res) => {
+    const { tick } = await import('./autoImportScheduler.js');
+    const stats = await tick();
+    res.json(stats);
+  }));
+
   // ── Per-doc opt-in ────────────────────────────────────────────────
   // GET /documents/:docId/auto-import-enabled — boolean.
   router.get('/documents/:docId/auto-import-enabled', asyncHandler(async (req, res) => {

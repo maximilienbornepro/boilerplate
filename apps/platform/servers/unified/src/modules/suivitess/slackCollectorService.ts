@@ -525,3 +525,68 @@ export function parseSlackChannelUrl(url: string): string | null {
   const match = url.match(/\/client\/[A-Z0-9]+\/([A-Z0-9]+)/);
   return match ? match[1] : null;
 }
+
+/**
+ * Group Slack messages by (channel, day) — produces one digest per
+ * day per channel for the bulk-import / auto-import flows. Migrated
+ * out of routes.ts so other services can consume it (e.g. the cron
+ * scheduler that walks user sources).
+ *
+ * The id is `slack:channelId:YYYY-MM-DD` and stays stable for dedup
+ * against `suivitess_transcript_imports`.
+ */
+export function groupSlackMessagesByDay(
+  messages: Array<{
+    channelId: string;
+    channelName: string | null;
+    messageTs: string;
+    senderName: string | null;
+    text: string;
+  }>,
+): Array<{
+  id: string;
+  provider: 'slack';
+  title: string;
+  date: string;
+  preview: string;
+  participants: string[];
+}> {
+  const groups = new Map<string, typeof messages>();
+  for (const m of messages) {
+    const dateStr = new Date(parseFloat(m.messageTs) * 1000)
+      .toISOString().slice(0, 10);
+    const key = `${m.channelId}:${dateStr}`;
+    const group = groups.get(key) || [];
+    group.push(m);
+    groups.set(key, group);
+  }
+  const items: Array<{
+    id: string;
+    provider: 'slack';
+    title: string;
+    date: string;
+    preview: string;
+    participants: string[];
+  }> = [];
+  for (const [key, msgs] of groups) {
+    const [channelId, dateStr] = key.split(':');
+    const channelName = msgs[0]?.channelName || channelId;
+    const participants = [...new Set(msgs.map(m => m.senderName).filter(Boolean) as string[])];
+    const dateLabel = new Date(dateStr + 'T00:00:00')
+      .toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const sorted = msgs.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs));
+    const preview = sorted
+      .slice(0, 5)
+      .map(m => `[${m.senderName || '?'}] ${m.text.slice(0, 80)}`)
+      .join('\n');
+    items.push({
+      id: `slack:${channelId}:${dateStr}`,
+      provider: 'slack',
+      title: `#${channelName} — Messages du ${dateLabel} (${msgs.length} messages)`,
+      date: dateStr + 'T12:00:00.000Z',
+      preview,
+      participants,
+    });
+  }
+  return items.sort((a, b) => b.date.localeCompare(a.date));
+}

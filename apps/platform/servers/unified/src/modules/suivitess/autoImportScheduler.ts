@@ -103,61 +103,82 @@ async function runUserOnce(
   userId: number,
   settings: UserAutoImportSettings,
 ): Promise<{ analysed: number; skipped: number }> {
-  let analysed = 0;
-  let skipped = 0;
-
   const subscribedDocIds = await autoDb.listEnabledTargetDocumentIds(userId);
   if (subscribedDocIds.length === 0) return { analysed: 0, skipped: 0 };
 
-  for (const source of settings.sources) {
-    const items = await listNewSourceItems(userId, source);
-    for (const item of items) {
-      try {
-        const exists = await autoDb.inboxProposalAlreadyExistsForUser(
-          userId, source, item.id,
-        );
-        if (exists) { skipped++; continue; }
+  // Process every enabled source IN PARALLEL — the bottleneck is the
+  // AI calls (T1+T2+T3) per item, and they don't share state across
+  // sources. Running fathom/outlook/slack concurrently turns the
+  // first-tick wall-clock from N×source_time into max(source_times)
+  // so users see proposals from ALL sources lighting up together
+  // instead of waiting for fathom to finish first.
+  const results = await Promise.all(
+    settings.sources.map(source =>
+      processSource(userId, source, subscribedDocIds)
+        .catch(err => {
+          // eslint-disable-next-line no-console
+          console.warn(`[SuiVitess auto-import] source ${source} failed:`, (err as Error).message);
+          return { analysed: 0, skipped: 0 };
+        }),
+    ),
+  );
+  return results.reduce(
+    (acc, r) => ({ analysed: acc.analysed + r.analysed, skipped: acc.skipped + r.skipped }),
+    { analysed: 0, skipped: 0 },
+  );
+}
 
-        const transcript = await fetchSourceContent(userId, source, item.id);
-        if (!transcript || !transcript.trim()) { skipped++; continue; }
+async function processSource(
+  userId: number,
+  source: 'fathom' | 'otter' | 'outlook' | 'gmail' | 'slack',
+  subscribedDocIds: string[],
+): Promise<{ analysed: number; skipped: number }> {
+  let analysed = 0;
+  let skipped = 0;
+  const items = await listNewSourceItems(userId, source);
+  for (const item of items) {
+    try {
+      const exists = await autoDb.inboxProposalAlreadyExistsForUser(
+        userId, source, item.id,
+      );
+      if (exists) { skipped++; continue; }
 
-        const proposals = await analyseSource({
-          userId,
-          source,
-          sourceTitle: item.title,
-          transcript,
-          subscribedDocIds,
-        });
-        if (proposals.proposals.length === 0) {
-          skipped++;
-          continue;
-        }
-        // The PRIMARY target doc = the most-frequent reviewId among
-        // proposals. Used by the inbox UI's per-doc filter even though
-        // the row carries proposals for potentially multiple docs.
-        const docCounts = new Map<string, number>();
-        for (const p of proposals.proposals as Array<{ reviewId?: string | null; targetReviewId?: string | null }>) {
-          const r = p.reviewId ?? p.targetReviewId ?? null;
-          if (r) docCounts.set(r, (docCounts.get(r) ?? 0) + 1);
-        }
-        const primaryDocId = [...docCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
-          ?? subscribedDocIds[0];
-        await autoDb.insertInboxProposal({
-          userId,
-          documentId: primaryDocId,
-          sourceKind: source,
-          sourceId: item.id,
-          sourceTitle: item.title,
-          sourceDate: item.date ?? null,
-          proposals: proposals.proposals,
-          aiLogId: proposals.rootLogId,
-        });
-        analysed++;
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn(`[SuiVitess auto-import] item ${source}:${item.id} failed:`, (err as Error).message);
+      const transcript = await fetchSourceContent(userId, source, item.id);
+      if (!transcript || !transcript.trim()) { skipped++; continue; }
+
+      const proposals = await analyseSource({
+        userId,
+        source,
+        sourceTitle: item.title,
+        transcript,
+        subscribedDocIds,
+      });
+      if (proposals.proposals.length === 0) {
         skipped++;
+        continue;
       }
+      const docCounts = new Map<string, number>();
+      for (const p of proposals.proposals as Array<{ reviewId?: string | null; targetReviewId?: string | null }>) {
+        const r = p.reviewId ?? p.targetReviewId ?? null;
+        if (r) docCounts.set(r, (docCounts.get(r) ?? 0) + 1);
+      }
+      const primaryDocId = [...docCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+        ?? subscribedDocIds[0];
+      await autoDb.insertInboxProposal({
+        userId,
+        documentId: primaryDocId,
+        sourceKind: source,
+        sourceId: item.id,
+        sourceTitle: item.title,
+        sourceDate: item.date ?? null,
+        proposals: proposals.proposals,
+        aiLogId: proposals.rootLogId,
+      });
+      analysed++;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[SuiVitess auto-import] item ${source}:${item.id} failed:`, (err as Error).message);
+      skipped++;
     }
   }
   return { analysed, skipped };

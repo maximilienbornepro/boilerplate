@@ -338,17 +338,21 @@ export async function countPendingForUser(userId: number): Promise<number> {
   return r.rows[0]?.n ?? 0;
 }
 
-/** User-level dedup guard — the cron uses this instead of the
- *  per-doc variant because in the cross-doc model the source isn't
- *  scoped to a target document upfront (the AI decides). Returns
- *  true if any row for the same (user, source) exists in any
- *  status (pending/accepted/rejected). */
+/** Dedup guard for the cron. Returns true if EITHER :
+ *   1. an inbox proposal for the same (user, source) already exists
+ *      (regardless of pending/accepted/rejected), OR
+ *   2. the source was already imported via the manual flow into ANY
+ *      doc (the existing `suivitess_transcript_imports` table —
+ *      same call_id reused by both the bulk modal and the cron).
+ *
+ *  Without (2), a Fathom call previously imported manually via the
+ *  bulk modal would reappear in the inbox at the next cron tick. */
 export async function inboxProposalAlreadyExistsForUser(
   userId: number,
   sourceKind: string,
   sourceId: string,
 ): Promise<boolean> {
-  const r = await pool.query(
+  const inbox = await pool.query(
     `SELECT 1
        FROM suivitess_inbox_proposals
       WHERE user_id = $1
@@ -357,5 +361,22 @@ export async function inboxProposalAlreadyExistsForUser(
       LIMIT 1`,
     [userId, sourceKind, sourceId],
   );
-  return r.rowCount! > 0;
+  if (inbox.rowCount! > 0) return true;
+
+  // Match against the manual-import dedup table too. We don't filter
+  // by provider here because the bulk-router writes provider =
+  // "bulk-router" while the cron uses "fathom" / "slack" / etc. ;
+  // the call_id alone is unique enough across providers (fathom is
+  // numeric, slack/outlook digests carry their kind in the id).
+  // The user's ownership is enforced via the joined document.
+  const manual = await pool.query(
+    `SELECT 1
+       FROM suivitess_transcript_imports t
+       JOIN suivitess_documents d ON d.id = t.document_id
+      WHERE t.call_id = $1
+        AND (d.owner_id = $2 OR d.owner_id IS NULL)
+      LIMIT 1`,
+    [sourceId, userId],
+  );
+  return manual.rowCount! > 0;
 }
