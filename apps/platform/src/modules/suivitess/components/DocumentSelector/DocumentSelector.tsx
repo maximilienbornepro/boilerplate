@@ -5,6 +5,8 @@ import type { Document } from '../../types';
 import * as api from '../../services/api';
 import { BulkTranscriptionImportModal } from '../BulkTranscriptionImportModal/BulkTranscriptionImportModal';
 import { consumeBulkImportReopenFlag } from '../BulkTranscriptionImportModal/InlineConnectorSetup';
+import { AutoImportSettings } from '../AutoImportSettings';
+import { useNavigate } from 'react-router-dom';
 import styles from './DocumentSelector.module.css';
 
 interface DocumentSelectorProps {
@@ -18,8 +20,27 @@ interface DeleteConfirmState {
 }
 
 export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: DocumentSelectorProps) {
+  const navigate = useNavigate();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAutoImport, setShowAutoImport] = useState(false);
+  const [inboxPending, setInboxPending] = useState(0);
+
+  // Inbox pending count (for the badge). Cheap COUNT(*) ; refreshed
+  // on focus and every 60s.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      void api.getInboxPendingCount()
+        .then(n => { if (!cancelled) setInboxPending(n); })
+        .catch(() => {});
+    };
+    refresh();
+    const t = setInterval(refresh, 60_000);
+    window.addEventListener('focus', refresh);
+    return () => { cancelled = true; clearInterval(t); window.removeEventListener('focus', refresh); };
+  }, []);
+
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
@@ -191,6 +212,31 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
           title="Importer les transcriptions et mails récents — l'IA propose la review de destination"
         >
           Importer & ranger
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={() => setShowAutoImport(true)}
+          title="Configurer l'import automatique : sources et suivitess opt-in"
+        >
+          🤖 Import auto
+        </button>
+        <button
+          className="module-header-btn"
+          onClick={() => navigate('/suivitess/inbox')}
+          title="Boîte de réception — propositions du bot en attente de validation"
+        >
+          📥 Inbox
+          {inboxPending > 0 && (
+            <span style={{
+              marginLeft: 6,
+              padding: '0 6px',
+              borderRadius: 10,
+              fontSize: 11,
+              fontWeight: 600,
+              background: '#dc2626',
+              color: 'white',
+            }}>{inboxPending}</span>
+          )}
         </button>
         <button
           className="module-header-btn module-header-btn-primary"
@@ -401,6 +447,13 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
             }
             api.fetchDocuments().then(setDocuments).catch(() => {});
           }}
+        />
+      )}
+
+      {showAutoImport && (
+        <AutoImportSettings
+          documents={documents}
+          onClose={() => setShowAutoImport(false)}
         />
       )}
 

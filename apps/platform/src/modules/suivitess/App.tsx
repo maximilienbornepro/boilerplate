@@ -12,7 +12,6 @@ import { BulkTranscriptionImportModal } from './components/BulkTranscriptionImpo
 import { consumeBulkImportReopenFlag } from './components/BulkTranscriptionImportModal/InlineConnectorSetup';
 import { EmailPreviewModal } from './components/EmailPreviewModal/EmailPreviewModal';
 import { SubjectAnalysisModal } from './components/SubjectAnalysisModal/SubjectAnalysisModal';
-import { AutoImportSettings } from './components/AutoImportSettings';
 import { InboxPage } from './components/InboxPage/InboxPage';
 import * as api from './services/api';
 
@@ -31,8 +30,6 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
-  const [showAutoImportSettings, setShowAutoImportSettings] = useState(false);
-  const [autoImportDocs, setAutoImportDocs] = useState<Array<{ id: string; title: string }>>([]);
   const [inboxPending, setInboxPending] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedAI, setSelectedAI] = useState('');
@@ -269,32 +266,6 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
 
               <div className="suivitess-exports-divider" />
 
-              {/* ── Import auto ── */}
-              <div className="suivitess-exports-divider" />
-              <div className="suivitess-exports-group-title">Import auto</div>
-              <button
-                type="button"
-                className="suivitess-exports-item"
-                onClick={async () => {
-                  setShowActions(false);
-                  // Need the doc list for the per-doc table — quick fetch.
-                  try {
-                    const docs = await api.fetchDocuments();
-                    setAutoImportDocs(docs.map(d => ({ id: d.id, title: d.title })));
-                  } catch { /* show modal anyway, empty state is OK */ }
-                  setShowAutoImportSettings(true);
-                }}
-              >
-                Réglages
-              </button>
-              <button
-                type="button"
-                className="suivitess-exports-item"
-                onClick={() => { setShowActions(false); navigate('/inbox'); }}
-              >
-                Boîte de réception
-              </button>
-
               <div className="suivitess-exports-divider" />
 
               {/* ── IA ── */}
@@ -420,12 +391,6 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           documentId={docId}
           onClose={() => setShowAnalysis(false)}
           onDone={() => { setRefreshKey(k => k + 1); setShowAnalysis(false); }}
-        />
-      )}
-      {showAutoImportSettings && (
-        <AutoImportSettings
-          documents={autoImportDocs as never}
-          onClose={() => setShowAutoImportSettings(false)}
         />
       )}
       <ToastContainer toasts={toasts} onClose={(id) => setToasts(t => t.filter(x => x.id !== id))} />
