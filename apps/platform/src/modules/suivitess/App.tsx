@@ -12,6 +12,9 @@ import { BulkTranscriptionImportModal } from './components/BulkTranscriptionImpo
 import { consumeBulkImportReopenFlag } from './components/BulkTranscriptionImportModal/InlineConnectorSetup';
 import { EmailPreviewModal } from './components/EmailPreviewModal/EmailPreviewModal';
 import { SubjectAnalysisModal } from './components/SubjectAnalysisModal/SubjectAnalysisModal';
+import { AutoImportSettings } from './components/AutoImportSettings';
+import { InboxPage } from './components/InboxPage/InboxPage';
+import * as api from './services/api';
 
 function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void }) {
   const { docId } = useParams<{ docId: string }>();
@@ -28,6 +31,9 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [showAutoImportSettings, setShowAutoImportSettings] = useState(false);
+  const [autoImportDocs, setAutoImportDocs] = useState<Array<{ id: string; title: string }>>([]);
+  const [inboxPending, setInboxPending] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedAI, setSelectedAI] = useState('');
   const [connectedAIs, setConnectedAIs] = useState<Array<{ id: string; label: string }>>([]);
@@ -48,6 +54,21 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const AI_LABELS: Record<string, string> = {
     anthropic: 'Claude', openai: 'OpenAI', mistral: 'Mistral', scaleway: 'Scaleway',
   };
+
+  // Inbox pending count for the header badge — refreshed on focus +
+  // every 60s. Cheap COUNT(*) query, no observable cost.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      void api.getInboxPendingCount()
+        .then(n => { if (!cancelled) setInboxPending(n); })
+        .catch(() => {});
+    };
+    refresh();
+    const interval = setInterval(refresh, 60_000);
+    window.addEventListener('focus', refresh);
+    return () => { cancelled = true; clearInterval(interval); window.removeEventListener('focus', refresh); };
+  }, []);
 
   // Load connected AI providers
   useEffect(() => {
@@ -176,6 +197,24 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
         >
           Historique
         </button>
+        <button
+          className="module-header-btn"
+          onClick={() => navigate('/suivitess/inbox')}
+          title="Boîte de réception"
+        >
+          📥 Inbox
+          {inboxPending > 0 && (
+            <span style={{
+              marginLeft: 6,
+              padding: '0 6px',
+              borderRadius: 10,
+              fontSize: 11,
+              fontWeight: 600,
+              background: '#dc2626',
+              color: 'white',
+            }}>{inboxPending}</span>
+          )}
+        </button>
         <div ref={actionsRef} className="suivitess-exports">
           <button
             type="button"
@@ -227,6 +266,34 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
                   Tableau
                 </button>
               )}
+
+              <div className="suivitess-exports-divider" />
+
+              {/* ── Import auto ── */}
+              <div className="suivitess-exports-divider" />
+              <div className="suivitess-exports-group-title">Import auto</div>
+              <button
+                type="button"
+                className="suivitess-exports-item"
+                onClick={async () => {
+                  setShowActions(false);
+                  // Need the doc list for the per-doc table — quick fetch.
+                  try {
+                    const docs = await api.fetchDocuments();
+                    setAutoImportDocs(docs.map(d => ({ id: d.id, title: d.title })));
+                  } catch { /* show modal anyway, empty state is OK */ }
+                  setShowAutoImportSettings(true);
+                }}
+              >
+                Réglages
+              </button>
+              <button
+                type="button"
+                className="suivitess-exports-item"
+                onClick={() => { setShowActions(false); navigate('/inbox'); }}
+              >
+                Boîte de réception
+              </button>
 
               <div className="suivitess-exports-divider" />
 
@@ -355,6 +422,12 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           onDone={() => { setRefreshKey(k => k + 1); setShowAnalysis(false); }}
         />
       )}
+      {showAutoImportSettings && (
+        <AutoImportSettings
+          documents={autoImportDocs as never}
+          onClose={() => setShowAutoImportSettings(false)}
+        />
+      )}
       <ToastContainer toasts={toasts} onClose={(id) => setToasts(t => t.filter(x => x.id !== id))} />
     </Layout>
   );
@@ -385,6 +458,7 @@ function DocumentList({ onNavigate }: { onNavigate?: (path: string) => void }) {
 export default function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
   return (
     <Routes>
+      <Route path="/inbox" element={<InboxPage onNavigate={onNavigate} />} />
       <Route path="/:docId" element={<DocumentReview onNavigate={onNavigate} />} />
       <Route path="/" element={<DocumentList onNavigate={onNavigate} />} />
     </Routes>

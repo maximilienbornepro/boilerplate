@@ -4218,6 +4218,32 @@ ${filteredContent.slice(0, 30000)}`,
     res.json(row);
   }));
 
+  // GET /inbox/available-reviews — same reviews+sections+subjects
+  // snapshot the bulk-modal needs to render the per-row pickers.
+  // No AI call ; pure DB read ; cheap. Used by the inbox flow when
+  // the modal opens with pre-analysed proposals.
+  router.get('/inbox/available-reviews', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const isAdmin = req.user!.isAdmin;
+    const { buildReviewsSnapshotForAI } = await import('./reviewSnapshotBuilder.js');
+    const reviews = await buildReviewsSnapshotForAI({ userId, isAdmin, db });
+    const payload = reviews.map(r => ({
+      id: r.id,
+      title: r.title,
+      sections: r.sections.map(s => ({
+        id: s.id,
+        name: s.name,
+        subjects: s.subjects.map(sub => ({
+          id: sub.id,
+          title: sub.title,
+          status: sub.status,
+          situation: sub.situationExcerpt || null,
+        })),
+      })),
+    }));
+    res.json(payload);
+  }));
+
   // GET /inbox/:id/source-content — raw text the cron analysed
   // (transcript / mail body / slack messages). Powers the detail
   // view's "Contenu source" tab. Re-fetched on demand to avoid

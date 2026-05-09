@@ -1110,3 +1110,136 @@ export async function deleteSubjectMark(markId: string): Promise<void> {
   });
   if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
 }
+
+// ====================================================================
+// AUTO-IMPORT — config + inbox
+// ====================================================================
+
+export type AutoImportSource = 'fathom' | 'otter' | 'outlook' | 'gmail' | 'slack';
+
+export interface AutoImportConfig {
+  enabled: boolean;
+  enabledSources: AutoImportSource[];
+  lastRunAt?: string | null;
+  lastError?: string | null;
+}
+
+export type InboxStatus = 'pending' | 'accepted' | 'rejected' | 'all';
+
+export interface InboxProposal {
+  id: string;
+  userId: number;
+  documentId: string;
+  documentTitle?: string;
+  sourceKind: AutoImportSource;
+  sourceId: string;
+  sourceTitle: string | null;
+  sourceDate: string | null;
+  proposals: unknown[];
+  aiLogId: number | null;
+  status: 'pending' | 'accepted' | 'rejected';
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
+// Master kill-switch
+export async function getAutoImportMaster(): Promise<{ enabled: boolean }> {
+  const r = await fetch(`${API_BASE}/auto-import/master`, { credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+export async function setAutoImportMaster(enabled: boolean): Promise<{ enabled: boolean }> {
+  const r = await fetch(`${API_BASE}/auto-import/master`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// Per-document config
+export async function getAutoImportConfig(documentId: string): Promise<AutoImportConfig> {
+  const r = await fetch(`${API_BASE}/documents/${documentId}/auto-import-config`, { credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+export async function setAutoImportConfig(
+  documentId: string,
+  patch: { enabled?: boolean; enabledSources?: AutoImportSource[] },
+): Promise<AutoImportConfig> {
+  const r = await fetch(`${API_BASE}/documents/${documentId}/auto-import-config`, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// Inbox
+export async function listInbox(opts: {
+  status?: InboxStatus;
+  source?: AutoImportSource;
+  document?: string;
+  from?: string;
+  to?: string;
+} = {}): Promise<InboxProposal[]> {
+  const params = new URLSearchParams();
+  if (opts.status) params.set('status', opts.status);
+  if (opts.source) params.set('source', opts.source);
+  if (opts.document) params.set('document', opts.document);
+  if (opts.from) params.set('from', opts.from);
+  if (opts.to) params.set('to', opts.to);
+  const qs = params.toString();
+  const r = await fetch(`${API_BASE}/inbox${qs ? `?${qs}` : ''}`, { credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function getInboxPendingCount(): Promise<number> {
+  const r = await fetch(`${API_BASE}/inbox/count`, { credentials: 'include' });
+  if (!r.ok) return 0;
+  const data = await r.json();
+  return data.pending ?? 0;
+}
+
+export async function getInboxProposal(id: string): Promise<InboxProposal | null> {
+  const r = await fetch(`${API_BASE}/inbox/${id}`, { credentials: 'include' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function getInboxSourceContent(id: string): Promise<{ content: string; sourceKind: string; sourceTitle: string | null }> {
+  const r = await fetch(`${API_BASE}/inbox/${id}/source-content`, { credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+export async function acceptInboxProposal(id: string): Promise<InboxProposal> {
+  const r = await fetch(`${API_BASE}/inbox/${id}/accept`, { method: 'POST', credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+export async function rejectInboxProposal(id: string): Promise<InboxProposal> {
+  const r = await fetch(`${API_BASE}/inbox/${id}/reject`, { method: 'POST', credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+export async function reconsiderInboxProposal(id: string): Promise<InboxProposal> {
+  const r = await fetch(`${API_BASE}/inbox/${id}/reconsider`, { method: 'POST', credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+/** Reviews+sections+subjects snapshot for the bulk-modal pickers.
+ *  Pure DB, no AI. Called by the modal in inbox mode (= when proposals
+ *  are pre-loaded and we don't need to re-run analyze-and-route). */
+export async function fetchAvailableReviewsForRouting(): Promise<AvailableReview[]> {
+  const r = await fetch(`${API_BASE}/inbox/available-reviews`, { credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}

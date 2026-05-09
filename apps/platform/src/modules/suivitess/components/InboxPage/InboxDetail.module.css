@@ -1,0 +1,140 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  font-family: var(--font-sans);
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.status {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.status.pending  { background: rgba(99, 102, 241, 0.12); color: var(--accent-primary, #60a5fa); }
+.status.accepted { background: rgba(22, 163, 74, 0.12); color: var(--success, #16a34a); }
+.status.rejected { background: rgba(127, 127, 127, 0.12); color: var(--text-muted); }
+
+.tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-color);
+}
+.tab {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.tab:hover { color: var(--text-primary); }
+.tabActive {
+  color: var(--accent-primary, #60a5fa);
+  border-bottom-color: var(--accent-primary, #60a5fa);
+}
+
+.tabBody {
+  min-height: 300px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.sourcePre {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-primary);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.decisionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+.empty {
+  padding: var(--spacing-md);
+  color: var(--text-muted);
+  font-style: italic;
+}
+.decisionCard {
+  padding: var(--spacing-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+.decisionHead { font-size: 0.92rem; }
+.reasoning {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-style: italic;
+}
+.reasoningLabel { font-weight: 600; font-style: normal; color: var(--accent-primary, #60a5fa); }
+.target {
+  font-size: 0.82rem;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.targetLabel { font-weight: 600; color: var(--text-muted); }
+.quotes {
+  margin-top: var(--spacing-xs);
+  font-size: 0.78rem;
+}
+.quotes summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  user-select: none;
+}
+.quotes ul {
+  margin: var(--spacing-xs) 0 0;
+  padding-left: var(--spacing-md);
+  color: var(--text-secondary);
+}
+.quotes li { line-height: 1.5; }
+
+.promptTab {
+  padding: var(--spacing-md);
+}
+.aiLogLink {
+  display: inline-block;
+  padding: 8px 14px;
+  margin-top: var(--spacing-sm);
+  background: var(--accent-primary, #60a5fa);
+  color: white;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.footer {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: flex-end;
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+}

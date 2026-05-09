@@ -29,6 +29,19 @@ interface Props {
    *  otherwise be editable. Purely presentational; the modal still
    *  relies on scopedDocumentId as the source of truth. */
   scopedDocumentTitle?: string;
+  /** AUTO-IMPORT INBOX MODE — when set, the modal skips the picking
+   *  + analyzing phases and jumps straight to routing with proposals
+   *  pre-loaded from the inbox row. The bulk-modal's UI (per-row
+   *  edits, create-new-section, create-new-subject, etc.) works
+   *  identically whether the proposals come from a fresh AI call or
+   *  from the inbox. */
+  inboxProposalId?: string;
+  /** Pre-analysed FinalReviewProposal[] from
+   *  suivitess_inbox_proposals.proposals. Same shape the bulk-modal
+   *  receives from /transcription/analyze-and-route. */
+  inboxProposals?: api.AnalyzedSubject[];
+  /** Document the inbox proposals were originally scoped to. */
+  inboxDocumentId?: string;
 }
 
 type Phase = 'picking' | 'analyzing' | 'routing' | 'applying' | 'done' | 'error';
@@ -79,7 +92,7 @@ interface Row {
   originalIndex?: number | null;
 }
 
-export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId, scopedDocumentTitle }: Props) {
+export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId, scopedDocumentTitle, inboxProposalId, inboxProposals, inboxDocumentId }: Props) {
   const [phase, setPhase] = useState<Phase>('picking');
   const [error, setError] = useState('');
 
@@ -165,7 +178,33 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
   };
 
   // ============ Load sources on mount ============
+  // INBOX MODE — when the modal is opened from the inbox page with
+  // pre-analysed proposals, skip the picking + analyzing phases and
+  // jump straight to routing. The user sees the SAME UI as a fresh
+  // import (per-row pickers, create-section / create-subject CTAs,
+  // etc.) — only the source of the proposals differs.
   useEffect(() => {
+    if (inboxProposals && inboxProposals.length > 0) {
+      // Fetch the available reviews/sections snapshot so the per-row
+      // pickers can render existing options. Same call the bulk path
+      // makes via /transcription/analyze-and-route's response shape ;
+      // here we hit a dedicated endpoint that just returns the
+      // snapshot without running any AI.
+      (async () => {
+        try {
+          const reviews = await api.fetchAvailableReviewsForRouting?.()
+            ?? []; // graceful when the helper isn't there yet
+          setAvailableReviews(reviews);
+        } catch { setAvailableReviews([]); }
+        const initialRows = buildRowsFromSubjects(inboxProposals);
+        setRows(initialRows);
+        setConsolidationByRow(inboxProposals.map(() => null));
+        setTotalAtStart(initialRows.length);
+        setPhase('routing');
+        setSummary(`Boîte de réception — ${inboxProposals.length} proposition(s) à valider`);
+      })();
+      return;
+    }
     reloadAll();
     // Also load the replay catalog so the user sees "Rejouer un import"
     // as soon as the modal opens — cheap DB query, no LLM.
@@ -173,7 +212,7 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
       .then(setReplayableRuns)
       .catch(() => setReplayableRuns([])); // silent — feature just hides
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [inboxProposals]);
 
   const handleReplay = async (t2LogId: number) => {
     setReplayingLogId(t2LogId);
