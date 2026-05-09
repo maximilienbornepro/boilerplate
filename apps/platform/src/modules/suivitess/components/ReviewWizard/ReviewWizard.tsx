@@ -21,6 +21,7 @@ import {
 import { SubjectReview } from '../SubjectReview/SubjectReview';
 import { Preview } from '../Preview/Preview';
 import { TableOfContents } from '../TableOfContents/TableOfContents';
+import { MarkBanner, useActiveSubjectMark } from '../MarkRecorder';
 import styles from './ReviewWizard.module.css';
 
 // Email table helpers - status colors with background and text
@@ -111,6 +112,9 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
   const [step, setStep] = useState<WizardStep>(docId ? 'review' : 'select');
   const [selectedDoc, setSelectedDoc] = useState<string>(docId || '');
   const [docTitle, setDocTitle] = useState<string>('');
+  // 🎙️ live mark controller for the document-level banner. The hook
+  // gracefully no-ops while the doc id is empty (selection step).
+  const markController = useActiveSubjectMark(selectedDoc || null);
   const [j5Date, setJ5Date] = useState<string | null>(null);
   const [snapshotChanges, setSnapshotChanges] = useState<{ added: { title: string; section: string }[]; removed: { title: string; section: string }[]; modified: { title: string; section: string; lastChange: string; status: string }[] }>({ added: [], removed: [], modified: [] });
   const [availableSnapshots, setAvailableSnapshots] = useState<SnapshotInfo[]>([]);
@@ -782,6 +786,7 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
     <div className={styles.wizard}>
       {step === 'review' && (
         <>
+          <MarkBanner controller={markController} />
           <div className={styles.header}>
             <h1>{docTitle}</h1>
           </div>

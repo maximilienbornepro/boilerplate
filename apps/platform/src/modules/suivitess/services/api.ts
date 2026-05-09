@@ -1041,3 +1041,72 @@ export async function deleteSubjectCrossLink(linkId: string): Promise<void> {
     throw new Error(data.error || `HTTP ${res.status}`);
   }
 }
+
+// ====================================================================
+// SUBJECT MARKS — live "🎙️ on en parle" stamps during a recording.
+//
+// Strictly additive : these calls only matter when the user clicks
+// the mark button. The transcript import flow falls back to the
+// pre-marks behaviour when no marks exist for a given call window.
+// ====================================================================
+
+export interface SubjectMark {
+  id: string;
+  userId: number;
+  documentId: string;
+  subjectId: string | null;
+  clickedAt: string;
+  subjectTitle: string | null;
+}
+
+/** Stamp a mark with clicked_at = NOW() server-side. Pass `null` to
+ *  record an explicit "stop marking" event ("hors-sujet maintenant"). */
+export async function setSubjectMark(documentId: string, subjectId: string | null): Promise<SubjectMark> {
+  const res = await fetch(`${API_BASE}/documents/${documentId}/marks`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subjectId }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/** Returns the most recent mark on this (user, document), or null
+ *  if the user has never clicked. The frontend banner uses it to
+ *  render the currently-active subject. */
+export async function getActiveSubjectMark(documentId: string): Promise<SubjectMark | null> {
+  const res = await fetch(`${API_BASE}/documents/${documentId}/marks/active`, {
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    throw new Error(`HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/** Lists marks within a time window (ISO 8601 inclusive). Used by
+ *  the verification modal in the import flow. */
+export async function listSubjectMarksInWindow(
+  documentId: string,
+  fromIso: string,
+  toIso: string,
+): Promise<SubjectMark[]> {
+  const url = `${API_BASE}/documents/${documentId}/marks?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`;
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/** Undo a misclicked mark. */
+export async function deleteSubjectMark(markId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/marks/${markId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+}
