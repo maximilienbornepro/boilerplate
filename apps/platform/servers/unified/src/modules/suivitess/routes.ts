@@ -4189,6 +4189,32 @@ ${filteredContent.slice(0, 30000)}`,
     res.json({ pending: n });
   }));
 
+  // GET /inbox/available-reviews — reviews+sections+subjects snapshot
+  // for the bulk-modal pickers (no AI ; cheap DB read). Declared
+  // BEFORE the `/inbox/:id` catch-all so Express doesn't try to
+  // parse "available-reviews" as a UUID.
+  router.get('/inbox/available-reviews', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const isAdmin = req.user!.isAdmin;
+    const { buildReviewsSnapshotForAI } = await import('./reviewSnapshotBuilder.js');
+    const reviews = await buildReviewsSnapshotForAI({ userId, isAdmin, db });
+    const payload = reviews.map(r => ({
+      id: r.id,
+      title: r.title,
+      sections: r.sections.map(s => ({
+        id: s.id,
+        name: s.name,
+        subjects: s.subjects.map(sub => ({
+          id: sub.id,
+          title: sub.title,
+          status: sub.status,
+          situation: sub.situationExcerpt || null,
+        })),
+      })),
+    }));
+    res.json(payload);
+  }));
+
   // GET /inbox/:id — single proposal (raw FinalReviewProposal[]).
   router.get('/inbox/:id', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
@@ -4230,32 +4256,6 @@ ${filteredContent.slice(0, 30000)}`,
     const row = await setInboxProposalStatus(id, userId, 'accepted');
     if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
     res.json(row);
-  }));
-
-  // GET /inbox/available-reviews — same reviews+sections+subjects
-  // snapshot the bulk-modal needs to render the per-row pickers.
-  // No AI call ; pure DB read ; cheap. Used by the inbox flow when
-  // the modal opens with pre-analysed proposals.
-  router.get('/inbox/available-reviews', asyncHandler(async (req, res) => {
-    const userId = req.user!.id;
-    const isAdmin = req.user!.isAdmin;
-    const { buildReviewsSnapshotForAI } = await import('./reviewSnapshotBuilder.js');
-    const reviews = await buildReviewsSnapshotForAI({ userId, isAdmin, db });
-    const payload = reviews.map(r => ({
-      id: r.id,
-      title: r.title,
-      sections: r.sections.map(s => ({
-        id: s.id,
-        name: s.name,
-        subjects: s.subjects.map(sub => ({
-          id: sub.id,
-          title: sub.title,
-          status: sub.status,
-          situation: sub.situationExcerpt || null,
-        })),
-      })),
-    }));
-    res.json(payload);
   }));
 
   // GET /inbox/:id/source-content — raw text the cron analysed
