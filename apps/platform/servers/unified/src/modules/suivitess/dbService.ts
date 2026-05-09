@@ -191,6 +191,59 @@ export async function initDb(): Promise<void> {
     console.warn('[SuiVitess] subject cross-links migration failed:', (err as Error).message);
   }
 
+  // Auto-import feature : per-document config + accumulated inbox
+  // proposals waiting for human validation. See migration
+  // 30_suivitess_auto_import_schema.sql for the contract.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS suivitess_auto_import_config (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        document_id VARCHAR(50) NOT NULL REFERENCES suivitess_documents(id) ON DELETE CASCADE,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        enabled_sources TEXT[] NOT NULL DEFAULT '{}',
+        last_run_at TIMESTAMPTZ,
+        last_error TEXT,
+        consecutive_errors INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, document_id)
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_autoimport_config_enabled ON suivitess_auto_import_config(enabled, last_run_at) WHERE enabled = TRUE');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS suivitess_inbox_proposals (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        document_id VARCHAR(50) NOT NULL REFERENCES suivitess_documents(id) ON DELETE CASCADE,
+        source_kind TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        source_title TEXT,
+        source_date TIMESTAMPTZ,
+        proposals JSONB NOT NULL,
+        ai_log_id INTEGER REFERENCES ai_analysis_logs(id) ON DELETE SET NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'accepted', 'rejected')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        reviewed_at TIMESTAMPTZ
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_inbox_user_status ON suivitess_inbox_proposals(user_id, status, created_at DESC)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_inbox_document ON suivitess_inbox_proposals(document_id, created_at DESC)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_inbox_source ON suivitess_inbox_proposals(source_kind, source_id)');
+    // Per-user master kill-switch. Stored module-local so we don't
+    // poke at `users.settings` from suivitess code.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS suivitess_user_settings (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        auto_import_disabled BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+  } catch (err) {
+    console.warn('[SuiVitess] auto-import migration failed:', (err as Error).message);
+  }
+
   // Live subject marks during a recording. Each row = one click on
   // a subject button (or the "stop marking" button → subject_id =
   // null). The pipeline T1 transcript fetches them at import time

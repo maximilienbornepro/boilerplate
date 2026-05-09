@@ -4085,5 +4085,202 @@ ${filteredContent.slice(0, 30000)}`,
     });
   }));
 
+  // ====================================================================
+  // AUTO-IMPORT — config + inbox (per-user × per-document)
+  //
+  // Strictly additive : nothing here changes the existing import flow.
+  // The cron analyses sources and DROPS proposals into the inbox ; the
+  // user reviews them via the same BulkTranscriptionImportModal.
+  // ====================================================================
+
+  // GET /auto-import/master — read the user-level kill-switch.
+  router.get('/auto-import/master', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { isMasterKillSwitchOn } = await import('./autoImportDbService.js');
+    const disabled = await isMasterKillSwitchOn(userId);
+    res.json({ enabled: !disabled });
+  }));
+
+  // PUT /auto-import/master — flip the user-level kill-switch.
+  router.put('/auto-import/master', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { enabled } = (req.body || {}) as { enabled?: boolean };
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled (boolean) requis' });
+    }
+    const { setMasterKillSwitch } = await import('./autoImportDbService.js');
+    await setMasterKillSwitch(userId, !enabled); // flip
+    res.json({ enabled });
+  }));
+
+  // GET /documents/:docId/auto-import-config — per-doc config.
+  router.get('/documents/:docId/auto-import-config', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { docId } = req.params;
+    const { getConfig } = await import('./autoImportDbService.js');
+    const cfg = await getConfig(userId, docId);
+    res.json(cfg ?? { enabled: false, enabledSources: [] });
+  }));
+
+  // PUT /documents/:docId/auto-import-config — upsert.
+  router.put('/documents/:docId/auto-import-config', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { docId } = req.params;
+    const { enabled, enabledSources } = (req.body || {}) as {
+      enabled?: boolean;
+      enabledSources?: string[];
+    };
+    const { upsertConfig } = await import('./autoImportDbService.js');
+    const SAFE_SOURCES = new Set(['fathom', 'otter', 'outlook', 'gmail', 'slack']);
+    const cleanSources = Array.isArray(enabledSources)
+      ? enabledSources.filter(s => SAFE_SOURCES.has(s)) as Array<'fathom'|'otter'|'outlook'|'gmail'|'slack'>
+      : undefined;
+    const cfg = await upsertConfig(userId, docId, {
+      enabled: typeof enabled === 'boolean' ? enabled : undefined,
+      enabledSources: cleanSources,
+    });
+    res.json(cfg);
+  }));
+
+  // GET /inbox?status=&source=&document=&from=&to= — list inbox rows.
+  router.get('/inbox', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const status = (req.query.status as string | undefined) ?? 'pending';
+    const sourceKind = (req.query.source as string | undefined) ?? undefined;
+    const documentId = (req.query.document as string | undefined) ?? undefined;
+    const fromIso = (req.query.from as string | undefined) ?? undefined;
+    const toIso = (req.query.to as string | undefined) ?? undefined;
+    const { listInboxProposals } = await import('./autoImportDbService.js');
+    const SAFE_SOURCES = ['fathom','otter','outlook','gmail','slack'] as const;
+    const rows = await listInboxProposals({
+      userId,
+      status: (['pending','accepted','rejected','all'] as const).includes(status as any)
+        ? (status as 'pending' | 'accepted' | 'rejected' | 'all')
+        : 'pending',
+      sourceKind: SAFE_SOURCES.includes(sourceKind as any)
+        ? (sourceKind as 'fathom' | 'otter' | 'outlook' | 'gmail' | 'slack')
+        : undefined,
+      documentId,
+      fromDate: fromIso ? new Date(fromIso) : undefined,
+      toDate: toIso ? new Date(toIso) : undefined,
+    });
+    res.json(rows);
+  }));
+
+  // GET /inbox/count — pending count for the nav badge.
+  router.get('/inbox/count', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { countPendingForUser } = await import('./autoImportDbService.js');
+    const n = await countPendingForUser(userId);
+    res.json({ pending: n });
+  }));
+
+  // GET /inbox/:id — single proposal (raw FinalReviewProposal[]).
+  router.get('/inbox/:id', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { getInboxProposal } = await import('./autoImportDbService.js');
+    const row = await getInboxProposal(id, userId);
+    if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
+    res.json(row);
+  }));
+
+  // POST /inbox/:id/reject — flip a row to rejected. Idempotent.
+  router.post('/inbox/:id/reject', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { setInboxProposalStatus } = await import('./autoImportDbService.js');
+    const row = await setInboxProposalStatus(id, userId, 'rejected');
+    if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
+    res.json(row);
+  }));
+
+  // POST /inbox/:id/reconsider — move back to pending (un-reject).
+  router.post('/inbox/:id/reconsider', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { setInboxProposalStatus } = await import('./autoImportDbService.js');
+    const row = await setInboxProposalStatus(id, userId, 'pending');
+    if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
+    res.json(row);
+  }));
+
+  // POST /inbox/:id/accept — only marks the row as accepted ; the
+  // actual apply-routing is performed by the existing
+  // /transcription/apply-routing endpoint (called from the bulk
+  // modal). This route is the post-apply confirmation.
+  router.post('/inbox/:id/accept', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { setInboxProposalStatus } = await import('./autoImportDbService.js');
+    const row = await setInboxProposalStatus(id, userId, 'accepted');
+    if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
+    res.json(row);
+  }));
+
+  // GET /inbox/:id/source-content — raw text the cron analysed
+  // (transcript / mail body / slack messages). Powers the detail
+  // view's "Contenu source" tab. Re-fetched on demand to avoid
+  // bloating the inbox table — providers stay the source of truth.
+  router.get('/inbox/:id/source-content', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { getInboxProposal } = await import('./autoImportDbService.js');
+    const row = await getInboxProposal(id, userId);
+    if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
+
+    let content = '';
+    try {
+      if (row.sourceKind === 'fathom') {
+        const { getFathomTranscript } = await import('./fathomService.js');
+        const entries = await getFathomTranscript(userId, row.sourceId);
+        content = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+      } else if (row.sourceKind === 'otter') {
+        const { getOtterTranscript } = await import('./otterService.js');
+        const entries = await getOtterTranscript(userId, row.sourceId);
+        content = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+      } else if (row.sourceKind === 'outlook') {
+        if (row.sourceId.startsWith('outlook:')) {
+          const dateFilter = row.sourceId.replace('outlook:', '');
+          const { getOutlookMessages } = await import('./outlookCollectorService.js');
+          const msgs = await getOutlookMessages(userId, { dateFilter });
+          const filtered = msgs.filter(m => m.date.slice(0, 10) === dateFilter);
+          content = filtered
+            .map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`)
+            .join('\n');
+        } else {
+          const { getOutlookEmailBody } = await import('./emailService.js');
+          content = await getOutlookEmailBody(userId, row.sourceId);
+        }
+      } else if (row.sourceKind === 'gmail') {
+        const { getGmailEmailBody } = await import('./emailService.js');
+        content = await getGmailEmailBody(userId, row.sourceId);
+      } else if (row.sourceKind === 'slack') {
+        const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+        const cfg = await getSlackConfig(userId);
+        if (cfg) {
+          const parts = row.sourceId.split(':');
+          const channelId = parts[1] || parts[0];
+          const dateFilter = parts[2];
+          const messages = await getSlackMessages(cfg.id, { days: cfg.daysToFetch, channelId });
+          const filtered = dateFilter
+            ? messages.filter(m => {
+                const d = new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10);
+                return d === dateFilter;
+              })
+            : messages;
+          content = filtered
+            .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+            .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
+            .join('\n');
+        }
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[SuiVitess inbox source-content] fetch failed:', (err as Error).message);
+    }
+    res.json({ content, sourceKind: row.sourceKind, sourceTitle: row.sourceTitle });
+  }));
+
   return router;
 }
