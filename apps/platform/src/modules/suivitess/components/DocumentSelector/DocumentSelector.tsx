@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ModuleHeader, Card, Modal, FormField, ConfirmModal, Button, ToastContainer, LoadingSpinner, SharingModal, VisibilityPicker } from '@boilerplate/shared/components';
 import type { ToastData, Visibility } from '@boilerplate/shared/components';
 import type { Document } from '../../types';
@@ -25,6 +25,21 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
   const [loading, setLoading] = useState(true);
   const [showAutoImport, setShowAutoImport] = useState(false);
   const [inboxPending, setInboxPending] = useState(0);
+  const [showActions, setShowActions] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+
+  // Close the Actions dropdown on outside click — mirrors the
+  // per-document Actions menu's UX.
+  useEffect(() => {
+    if (!showActions) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+        setShowActions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showActions]);
 
   // Inbox pending count (for the badge). Cheap COUNT(*) ; refreshed
   // on focus and every 60s.
@@ -206,38 +221,72 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
   return (
     <>
       <ModuleHeader title="SuiviTess">
-        <button
-          className="module-header-btn"
-          onClick={() => setShowBulkImport(true)}
-          title="Importer les transcriptions et mails récents — l'IA propose la review de destination"
-        >
-          Importer & ranger
-        </button>
-        <button
-          className="module-header-btn"
-          onClick={() => setShowAutoImport(true)}
-          title="Configurer l'import automatique : sources et suivitess opt-in"
-        >
-          🤖 Import auto
-        </button>
-        <button
-          className="module-header-btn"
-          onClick={() => navigate('/suivitess/inbox')}
-          title="Boîte de réception — propositions du bot en attente de validation"
-        >
-          📥 Inbox
-          {inboxPending > 0 && (
-            <span style={{
-              marginLeft: 6,
-              padding: '0 6px',
-              borderRadius: 10,
-              fontSize: 11,
-              fontWeight: 600,
-              background: '#dc2626',
-              color: 'white',
-            }}>{inboxPending}</span>
+        <div ref={actionsRef} className="suivitess-exports">
+          <button
+            type="button"
+            className="module-header-btn"
+            onClick={() => setShowActions(v => !v)}
+            aria-haspopup="menu"
+            aria-expanded={showActions}
+          >
+            Actions
+            {inboxPending > 0 && (
+              <span style={{
+                marginLeft: 6,
+                padding: '0 6px',
+                borderRadius: 10,
+                fontSize: 11,
+                fontWeight: 600,
+                background: '#dc2626',
+                color: 'white',
+              }}>{inboxPending}</span>
+            )}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {showActions && (
+            <div className="suivitess-exports-menu" role="menu">
+              <div className="suivitess-exports-group-title">Importer</div>
+              <button
+                type="button"
+                className="suivitess-exports-item"
+                onClick={() => { setShowActions(false); setShowBulkImport(true); }}
+              >
+                Importer & ranger
+              </button>
+
+              <div className="suivitess-exports-divider" />
+
+              <div className="suivitess-exports-group-title">Import auto</div>
+              <button
+                type="button"
+                className="suivitess-exports-item"
+                onClick={() => { setShowActions(false); setShowAutoImport(true); }}
+              >
+                Réglages
+              </button>
+              <button
+                type="button"
+                className="suivitess-exports-item"
+                onClick={() => { setShowActions(false); navigate('/suivitess/inbox'); }}
+              >
+                Boîte de réception
+                {inboxPending > 0 && (
+                  <span style={{
+                    marginLeft: 8,
+                    padding: '0 6px',
+                    borderRadius: 10,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    background: '#dc2626',
+                    color: 'white',
+                  }}>{inboxPending}</span>
+                )}
+              </button>
+            </div>
           )}
-        </button>
+        </div>
         <button
           className="module-header-btn module-header-btn-primary"
           onClick={() => setShowCreateForm(true)}
