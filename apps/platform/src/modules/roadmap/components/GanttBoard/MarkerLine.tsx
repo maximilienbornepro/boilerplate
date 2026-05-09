@@ -119,6 +119,14 @@ export function MarkerLine({
       ? (rowOffsets ? rowOffsets[snappedRow.rowIndex] : snappedRow.rowIndex * rowHeight) + 4
       : undefined;
 
+  // When the marker is snapped to a task row, inherit that task's
+  // colour so the marker visually belongs to its line. Falls back
+  // to the marker's stored color for free-floating markers (no
+  // taskId) and as a safety net if the snapped task lost its
+  // colour. The color picker still writes `marker.color` so an
+  // unsnapped marker can still be customised.
+  const effectiveColor = snappedRow?.task.color ?? marker.color;
+
   return (
     <div
       ref={markerRef}
@@ -128,12 +136,12 @@ export function MarkerLine({
         ...(maxHeight !== undefined ? { height: maxHeight, bottom: 'auto' } : {}),
       }}
     >
-      <div className={styles.line} style={{ backgroundImage: `linear-gradient(180deg, ${marker.color} 0%, ${marker.color} 50%, transparent 50%, transparent 100%)` }} />
+      <div className={styles.line} style={{ backgroundImage: `linear-gradient(180deg, ${effectiveColor} 0%, ${effectiveColor} 50%, transparent 50%, transparent 100%)` }} />
       <div
         className={`${styles.badge} ${readOnly ? styles.badgeReadOnly : ''}`}
         onMouseDown={readOnly ? undefined : handleMouseDown}
         onDoubleClick={handleDoubleClick}
-        style={{ background: marker.color, ...(badgeTop !== undefined ? { top: badgeTop } : {}) }}
+        style={{ background: effectiveColor, ...(badgeTop !== undefined ? { top: badgeTop } : {}) }}
       >
         {isEditing ? (
           <input

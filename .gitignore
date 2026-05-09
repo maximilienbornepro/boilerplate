@@ -71,3 +71,7 @@ sync-boilerplate.sh
 .claire/
 .claude/scheduled_tasks.lock
 .claude/.ux-ui-ack
+
+# Production data dumps (contain real user/team names — never commit)
+suivitess-prod-dump-*.sql
+prod-dump-*.sql
