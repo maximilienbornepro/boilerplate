@@ -37,6 +37,8 @@
 }
 .statusOn { color: var(--success, #16a34a); font-weight: 600; }
 .statusOff { color: var(--text-muted); font-style: italic; }
+.lastRun { color: var(--text-muted); margin-left: 4px; }
+.lastError { color: var(--error, #dc2626); margin-left: 4px; }
 
 .divider {
   border: none;

@@ -4093,53 +4093,58 @@ ${filteredContent.slice(0, 30000)}`,
   // user reviews them via the same BulkTranscriptionImportModal.
   // ====================================================================
 
-  // GET /auto-import/master — read the user-level kill-switch.
-  router.get('/auto-import/master', asyncHandler(async (req, res) => {
+  // GET /auto-import/settings — user-level config (master toggle +
+  // which sources to fetch + run telemetry).
+  router.get('/auto-import/settings', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
-    const { isMasterKillSwitchOn } = await import('./autoImportDbService.js');
-    const disabled = await isMasterKillSwitchOn(userId);
-    res.json({ enabled: !disabled });
+    const { getUserSettings } = await import('./autoImportDbService.js');
+    const s = await getUserSettings(userId);
+    res.json(s);
   }));
 
-  // PUT /auto-import/master — flip the user-level kill-switch.
-  router.put('/auto-import/master', asyncHandler(async (req, res) => {
+  // PUT /auto-import/settings — body { masterDisabled?, sources? }.
+  // Sources is the user-level set of providers the cron is allowed
+  // to pull from. The set of TARGET docs lives on each suivitess
+  // (per-doc opt-in).
+  router.put('/auto-import/settings', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
+    const { masterDisabled, sources } = (req.body || {}) as {
+      masterDisabled?: boolean;
+      sources?: string[];
+    };
+    const SAFE_SOURCES = new Set(['fathom', 'otter', 'outlook', 'gmail', 'slack']);
+    const cleanSources = Array.isArray(sources)
+      ? sources.filter(s => SAFE_SOURCES.has(s)) as Array<'fathom'|'otter'|'outlook'|'gmail'|'slack'>
+      : undefined;
+    const { upsertUserSettings } = await import('./autoImportDbService.js');
+    const s = await upsertUserSettings(userId, {
+      masterDisabled: typeof masterDisabled === 'boolean' ? masterDisabled : undefined,
+      sources: cleanSources,
+    });
+    res.json(s);
+  }));
+
+  // ── Per-doc opt-in ────────────────────────────────────────────────
+  // GET /documents/:docId/auto-import-enabled — boolean.
+  router.get('/documents/:docId/auto-import-enabled', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { docId } = req.params;
+    const { isDocumentEnabled } = await import('./autoImportDbService.js');
+    const enabled = await isDocumentEnabled(userId, docId);
+    res.json({ enabled });
+  }));
+
+  // PUT /documents/:docId/auto-import-enabled body { enabled }.
+  router.put('/documents/:docId/auto-import-enabled', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { docId } = req.params;
     const { enabled } = (req.body || {}) as { enabled?: boolean };
     if (typeof enabled !== 'boolean') {
       return res.status(400).json({ error: 'enabled (boolean) requis' });
     }
-    const { setMasterKillSwitch } = await import('./autoImportDbService.js');
-    await setMasterKillSwitch(userId, !enabled); // flip
+    const { setDocumentEnabled } = await import('./autoImportDbService.js');
+    await setDocumentEnabled(userId, docId, enabled);
     res.json({ enabled });
-  }));
-
-  // GET /documents/:docId/auto-import-config — per-doc config.
-  router.get('/documents/:docId/auto-import-config', asyncHandler(async (req, res) => {
-    const userId = req.user!.id;
-    const { docId } = req.params;
-    const { getConfig } = await import('./autoImportDbService.js');
-    const cfg = await getConfig(userId, docId);
-    res.json(cfg ?? { enabled: false, enabledSources: [] });
-  }));
-
-  // PUT /documents/:docId/auto-import-config — upsert.
-  router.put('/documents/:docId/auto-import-config', asyncHandler(async (req, res) => {
-    const userId = req.user!.id;
-    const { docId } = req.params;
-    const { enabled, enabledSources } = (req.body || {}) as {
-      enabled?: boolean;
-      enabledSources?: string[];
-    };
-    const { upsertConfig } = await import('./autoImportDbService.js');
-    const SAFE_SOURCES = new Set(['fathom', 'otter', 'outlook', 'gmail', 'slack']);
-    const cleanSources = Array.isArray(enabledSources)
-      ? enabledSources.filter(s => SAFE_SOURCES.has(s)) as Array<'fathom'|'otter'|'outlook'|'gmail'|'slack'>
-      : undefined;
-    const cfg = await upsertConfig(userId, docId, {
-      enabled: typeof enabled === 'boolean' ? enabled : undefined,
-      enabledSources: cleanSources,
-    });
-    res.json(cfg);
   }));
 
   // GET /inbox?status=&source=&document=&from=&to= — list inbox rows.

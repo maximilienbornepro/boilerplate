@@ -231,8 +231,10 @@ export async function initDb(): Promise<void> {
     await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_inbox_user_status ON suivitess_inbox_proposals(user_id, status, created_at DESC)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_inbox_document ON suivitess_inbox_proposals(document_id, created_at DESC)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_inbox_source ON suivitess_inbox_proposals(source_kind, source_id)');
-    // Per-user master kill-switch. Stored module-local so we don't
-    // poke at `users.settings` from suivitess code.
+    // Per-user settings : master kill-switch + which providers the
+    // hourly cron is allowed to pull from. The set of TARGET docs
+    // is decided per-doc via `suivitess_auto_import_config.enabled`
+    // — the AI then routes each subject AMONG those opted-in docs.
     await pool.query(`
       CREATE TABLE IF NOT EXISTS suivitess_user_settings (
         user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -240,6 +242,10 @@ export async function initDb(): Promise<void> {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await pool.query("ALTER TABLE suivitess_user_settings ADD COLUMN IF NOT EXISTS auto_import_sources TEXT[] NOT NULL DEFAULT '{}'");
+    await pool.query('ALTER TABLE suivitess_user_settings ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMPTZ');
+    await pool.query('ALTER TABLE suivitess_user_settings ADD COLUMN IF NOT EXISTS last_error TEXT');
+    await pool.query('ALTER TABLE suivitess_user_settings ADD COLUMN IF NOT EXISTS consecutive_errors INTEGER NOT NULL DEFAULT 0');
   } catch (err) {
     console.warn('[SuiVitess] auto-import migration failed:', (err as Error).message);
   }

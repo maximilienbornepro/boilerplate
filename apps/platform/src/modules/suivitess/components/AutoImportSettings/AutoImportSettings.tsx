@@ -1,15 +1,20 @@
 // Settings modal for the auto-import feature.
-// - Master kill-switch (per user) at the top — one click disables EVERYTHING.
-// - Per-document list with an enabled switch + source checkboxes
-//   (Fathom / Otter / Outlook / Gmail / Slack).
-// - Live status per document : last run, last error, count of pending /
-//   accepted / rejected proposals.
+// Two surfaces :
+//   1. User-level — master kill-switch + which source integrations
+//      the cron is allowed to fetch from (Fathom / Otter / Outlook /
+//      Gmail / Slack).
+//   2. Per-document opt-in list — a toggle next to each suivitess
+//      saying "this doc accepts auto-routed content from the bot".
+//
+// The IMPORT itself is cross-doc (the bulk modal on the suivitess
+// LIST page) : the AI decides which subscribed doc each subject
+// lands in.
 
 import { useEffect, useState } from 'react';
 import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
 import * as api from '../../services/api';
 import type { Document } from '../../types';
-import type { AutoImportSource } from '../../services/api';
+import type { AutoImportSource, UserAutoImportSettings } from '../../services/api';
 import styles from './AutoImportSettings.module.css';
 
 const SOURCES: Array<{ value: AutoImportSource; label: string; emoji: string }> = [
@@ -25,83 +30,82 @@ interface Props {
   onClose: () => void;
 }
 
-interface PerDocConfig {
-  enabled: boolean;
-  enabledSources: AutoImportSource[];
-  lastRunAt?: string | null;
-  lastError?: string | null;
-}
-
 export function AutoImportSettings({ documents, onClose }: Props) {
   const [loading, setLoading] = useState(true);
-  const [savingMaster, setSavingMaster] = useState(false);
+  const [savingUser, setSavingUser] = useState(false);
   const [savingDocId, setSavingDocId] = useState<string | null>(null);
-  const [masterEnabled, setMasterEnabled] = useState(true);
-  const [configs, setConfigs] = useState<Record<string, PerDocConfig>>({});
+  const [userSettings, setUserSettings] = useState<UserAutoImportSettings>({
+    masterDisabled: false,
+    sources: [],
+    lastRunAt: null,
+    lastError: null,
+    consecutiveErrors: 0,
+  });
+  const [docOptIn, setDocOptIn] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [master, ...docConfigs] = await Promise.all([
-          api.getAutoImportMaster(),
-          ...documents.map(d => api.getAutoImportConfig(d.id).then(c => ({ id: d.id, c }))),
+        const [s, ...docStates] = await Promise.all([
+          api.getAutoImportSettings(),
+          ...documents.map(d =>
+            api.getDocumentAutoImportEnabled(d.id).then(r => ({ id: d.id, enabled: r.enabled }))
+          ),
         ]);
         if (cancelled) return;
-        setMasterEnabled(master.enabled);
-        const map: Record<string, PerDocConfig> = {};
-        for (const e of docConfigs as Array<{ id: string; c: PerDocConfig }>) {
-          map[e.id] = e.c;
+        setUserSettings(s);
+        const map: Record<string, boolean> = {};
+        for (const e of docStates as Array<{ id: string; enabled: boolean }>) {
+          map[e.id] = e.enabled;
         }
-        setConfigs(map);
-      } catch {
-        // swallow — empty state is fine
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+        setDocOptIn(map);
+      } catch { /* empty state ok */ }
+      finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [documents]);
 
-  const toggleMaster = async (next: boolean) => {
-    setSavingMaster(true);
+  const updateUser = async (patch: Partial<UserAutoImportSettings>) => {
+    setSavingUser(true);
+    const prev = userSettings;
+    const next = { ...prev, ...patch };
+    setUserSettings(next); // optimistic
     try {
-      await api.setAutoImportMaster(next);
-      setMasterEnabled(next);
+      const fresh = await api.setAutoImportSettings({
+        masterDisabled: patch.masterDisabled,
+        sources: patch.sources,
+      });
+      setUserSettings(fresh);
     } catch {
-      // surface no toast — caller's modal close handles UX
+      setUserSettings(prev);
     } finally {
-      setSavingMaster(false);
+      setSavingUser(false);
     }
   };
 
-  const updateDoc = async (docId: string, patch: Partial<PerDocConfig>) => {
+  const toggleSource = (source: AutoImportSource) => {
+    const has = userSettings.sources.includes(source);
+    const next = has
+      ? userSettings.sources.filter(s => s !== source)
+      : [...userSettings.sources, source];
+    void updateUser({ sources: next });
+  };
+
+  const toggleDoc = async (docId: string) => {
+    const next = !docOptIn[docId];
     setSavingDocId(docId);
-    const prev = configs[docId] ?? { enabled: false, enabledSources: [] };
-    const next: PerDocConfig = { ...prev, ...patch };
-    setConfigs(c => ({ ...c, [docId]: next })); // optimistic
+    setDocOptIn(prev => ({ ...prev, [docId]: next })); // optimistic
     try {
-      const fresh = await api.setAutoImportConfig(docId, {
-        enabled: next.enabled,
-        enabledSources: next.enabledSources,
-      });
-      setConfigs(c => ({ ...c, [docId]: fresh }));
+      await api.setDocumentAutoImportEnabled(docId, next);
     } catch {
-      // Roll back on failure — keep optimistic if the user already moved on
-      setConfigs(c => ({ ...c, [docId]: prev }));
+      setDocOptIn(prev => ({ ...prev, [docId]: !next })); // rollback
     } finally {
       setSavingDocId(null);
     }
   };
 
-  const toggleSource = (docId: string, source: AutoImportSource) => {
-    const cfg = configs[docId] ?? { enabled: false, enabledSources: [] };
-    const has = cfg.enabledSources.includes(source);
-    const nextSources = has
-      ? cfg.enabledSources.filter(s => s !== source)
-      : [...cfg.enabledSources, source];
-    void updateDoc(docId, { enabledSources: nextSources });
-  };
+  const masterEnabled = !userSettings.masterDisabled;
 
   return (
     <Modal title="Réglages — Import automatique" onClose={onClose} size="lg">
@@ -116,16 +120,16 @@ export function AutoImportSettings({ documents, onClose }: Props) {
                 <div className={styles.masterText}>
                   <strong>Import automatique global</strong>
                   <span className={styles.masterHint}>
-                    Coupe TOUT en un clic, peu importe les configs par document.
-                    Tu peux le ré-activer plus tard sans reconfigurer chaque doc.
+                    Maître. Coupe TOUT en un clic peu importe les sources et docs subscribed.
+                    L'IA tourne toutes les heures et range les propositions dans la boîte de réception.
                   </span>
                 </div>
                 <label className={styles.bigSwitch}>
                   <input
                     type="checkbox"
                     checked={masterEnabled}
-                    onChange={e => toggleMaster(e.target.checked)}
-                    disabled={savingMaster}
+                    onChange={e => updateUser({ masterDisabled: !e.target.checked })}
+                    disabled={savingUser}
                   />
                   <span className={styles.bigSwitchTrack} />
                 </label>
@@ -133,70 +137,73 @@ export function AutoImportSettings({ documents, onClose }: Props) {
               <div className={styles.masterStatus}>
                 {masterEnabled
                   ? <span className={styles.statusOn}>● Actif</span>
-                  : <span className={styles.statusOff}>○ Désactivé · les configs par document sont ignorées</span>}
+                  : <span className={styles.statusOff}>○ Désactivé · les sources et opt-ins par doc sont ignorés</span>}
+                {userSettings.lastRunAt && (
+                  <span className={styles.lastRun}>
+                    · Dernier run : {new Date(userSettings.lastRunAt).toLocaleString('fr-FR', {
+                      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+                )}
+                {userSettings.lastError && (
+                  <span className={styles.lastError}> · ⚠ {userSettings.lastError.slice(0, 80)}</span>
+                )}
               </div>
             </div>
 
             <hr className={styles.divider} />
 
-            {/* Per-doc */}
-            <h3 className={styles.sectionTitle}>Configuration par document</h3>
+            {/* Sources at user level */}
+            <h3 className={styles.sectionTitle}>Sources à analyser (intégrations utilisateur)</h3>
             <p className={styles.sectionHint}>
-              Active l'import automatique sur les documents qui t'intéressent et
-              choisis les sources à analyser. Le scheduler tourne toutes les heures
-              et range les propositions dans la boîte de réception en attente de ta validation.
+              Quels providers le bot va-t-il interroger pour récupérer du nouveau ?
+              Les intégrations sont configurées dans tes connecteurs habituels — coche
+              ici lesquelles servent l'auto-import.
             </p>
+            <div className={styles.sourcesRow}>
+              {SOURCES.map(s => (
+                <label key={s.value} className={styles.sourceChip}>
+                  <input
+                    type="checkbox"
+                    checked={userSettings.sources.includes(s.value)}
+                    onChange={() => toggleSource(s.value)}
+                    disabled={savingUser || !masterEnabled}
+                  />
+                  <span>{s.emoji} {s.label}</span>
+                </label>
+              ))}
+            </div>
 
+            <hr className={styles.divider} />
+
+            {/* Per-doc opt-in */}
+            <h3 className={styles.sectionTitle}>Suivitess candidats au routage</h3>
+            <p className={styles.sectionHint}>
+              Coche les suivitess que l'IA peut cibler quand elle analyse une nouvelle source.
+              Ceux qui ne sont pas cochés sont invisibles pour l'auto-import (le bot peut quand
+              même router manuellement vers eux via la modale d'import classique).
+            </p>
             <div className={styles.docList}>
               {documents.length === 0 && (
                 <div className={styles.emptyDocs}>Aucun document. Crée-en un d'abord.</div>
               )}
               {documents.map(doc => {
-                const cfg = configs[doc.id] ?? { enabled: false, enabledSources: [] };
+                const optedIn = docOptIn[doc.id] === true;
                 const isSaving = savingDocId === doc.id;
                 return (
-                  <div key={doc.id} className={`${styles.docCard} ${cfg.enabled ? styles.docCardActive : ''}`}>
+                  <div key={doc.id} className={`${styles.docCard} ${optedIn ? styles.docCardActive : ''}`}>
                     <div className={styles.docHeader}>
-                      <div className={styles.docTitleBlock}>
-                        <strong className={styles.docTitle}>{doc.title}</strong>
-                        {cfg.lastRunAt && (
-                          <span className={styles.docMeta}>
-                            Dernier run : {new Date(cfg.lastRunAt).toLocaleString('fr-FR', {
-                              day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                            })}
-                          </span>
-                        )}
-                        {cfg.lastError && (
-                          <span className={styles.docError}>⚠ {cfg.lastError.slice(0, 100)}</span>
-                        )}
-                      </div>
+                      <strong className={styles.docTitle}>{doc.title}</strong>
                       <label className={styles.smallSwitch}>
                         <input
                           type="checkbox"
-                          checked={cfg.enabled}
-                          onChange={e => updateDoc(doc.id, { enabled: e.target.checked })}
-                          disabled={isSaving}
+                          checked={optedIn}
+                          onChange={() => void toggleDoc(doc.id)}
+                          disabled={isSaving || !masterEnabled}
                         />
                         <span className={styles.smallSwitchTrack} />
                       </label>
                     </div>
-
-                    {cfg.enabled && (
-                      <div className={styles.sourcesRow}>
-                        <span className={styles.sourcesLabel}>Sources :</span>
-                        {SOURCES.map(s => (
-                          <label key={s.value} className={styles.sourceChip}>
-                            <input
-                              type="checkbox"
-                              checked={cfg.enabledSources.includes(s.value)}
-                              onChange={() => toggleSource(doc.id, s.value)}
-                              disabled={isSaving}
-                            />
-                            <span>{s.emoji} {s.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -206,8 +213,8 @@ export function AutoImportSettings({ documents, onClose }: Props) {
 
         <div className={styles.footer}>
           <span className={styles.footerHint}>
-            Le scheduler tourne toutes les heures. Les propositions apparaîtront dans
-            la <strong>Boîte de réception</strong> de la barre latérale.
+            Le scheduler tourne toutes les heures. Les propositions atterrissent dans
+            la <strong>Boîte de réception</strong> en haut à droite, en attente de validation.
           </span>
           <Button variant="primary" onClick={onClose}>Fermer</Button>
         </div>

@@ -14,19 +14,6 @@ import { pool } from './dbService.js';
 
 export type AutoImportSource = 'fathom' | 'otter' | 'outlook' | 'gmail' | 'slack';
 
-export interface AutoImportConfig {
-  id: string;
-  userId: number;
-  documentId: string;
-  enabled: boolean;
-  enabledSources: AutoImportSource[];
-  lastRunAt: string | null;
-  lastError: string | null;
-  consecutiveErrors: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export type InboxProposalStatus = 'pending' | 'accepted' | 'rejected';
 
 export interface InboxProposal {
@@ -53,21 +40,6 @@ export interface InboxProposal {
 // Mappers
 // ────────────────────────────────────────────────────────────────────
 
-function mapConfigRow(r: any): AutoImportConfig {
-  return {
-    id: r.id,
-    userId: r.user_id,
-    documentId: r.document_id,
-    enabled: r.enabled,
-    enabledSources: Array.isArray(r.enabled_sources) ? r.enabled_sources as AutoImportSource[] : [],
-    lastRunAt: r.last_run_at instanceof Date ? r.last_run_at.toISOString() : (r.last_run_at ?? null),
-    lastError: r.last_error ?? null,
-    consecutiveErrors: r.consecutive_errors ?? 0,
-    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
-    updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : String(r.updated_at),
-  };
-}
-
 function mapInboxRow(r: any): InboxProposal {
   return {
     id: r.id,
@@ -87,121 +59,159 @@ function mapInboxRow(r: any): InboxProposal {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// Config CRUD
+// User-level settings (master kill-switch + which sources to pull)
 // ────────────────────────────────────────────────────────────────────
 
-/** Fetch a config by (user, document). Returns null when nothing's been
- *  set yet — the caller treats null as "auto-import disabled". */
-export async function getConfig(
+export interface UserAutoImportSettings {
+  /** True when the user has explicitly DISABLED auto-import globally.
+   *  Default false (no row = auto-import allowed). */
+  masterDisabled: boolean;
+  /** Which integrations the cron is allowed to fetch from for THIS
+   *  user. Empty array = no source = nothing to do (fast no-op). */
+  sources: AutoImportSource[];
+  lastRunAt: string | null;
+  lastError: string | null;
+  consecutiveErrors: number;
+}
+
+const ALL_SOURCES: AutoImportSource[] = ['fathom', 'otter', 'outlook', 'gmail', 'slack'];
+
+export async function getUserSettings(userId: number): Promise<UserAutoImportSettings> {
+  const r = await pool.query(
+    `SELECT auto_import_disabled, auto_import_sources, last_run_at, last_error, consecutive_errors
+       FROM suivitess_user_settings WHERE user_id = $1`,
+    [userId],
+  );
+  const row = r.rows[0];
+  if (!row) {
+    return { masterDisabled: false, sources: [], lastRunAt: null, lastError: null, consecutiveErrors: 0 };
+  }
+  return {
+    masterDisabled: row.auto_import_disabled === true,
+    sources: Array.isArray(row.auto_import_sources)
+      ? (row.auto_import_sources as string[]).filter(s => (ALL_SOURCES as string[]).includes(s)) as AutoImportSource[]
+      : [],
+    lastRunAt: row.last_run_at instanceof Date ? row.last_run_at.toISOString() : (row.last_run_at ?? null),
+    lastError: row.last_error ?? null,
+    consecutiveErrors: row.consecutive_errors ?? 0,
+  };
+}
+
+/** Upsert the user-level settings row. Pass `undefined` for any
+ *  field you don't want to change. */
+export async function upsertUserSettings(
   userId: number,
-  documentId: string,
-): Promise<AutoImportConfig | null> {
-  const r = await pool.query(
-    `SELECT * FROM suivitess_auto_import_config
-      WHERE user_id = $1 AND document_id = $2`,
-    [userId, documentId],
+  patch: { masterDisabled?: boolean; sources?: AutoImportSource[] },
+): Promise<UserAutoImportSettings> {
+  const existing = await getUserSettings(userId);
+  const masterDisabled = patch.masterDisabled ?? existing.masterDisabled;
+  const sources = patch.sources ?? existing.sources;
+  await pool.query(
+    `INSERT INTO suivitess_user_settings
+       (user_id, auto_import_disabled, auto_import_sources, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (user_id) DO UPDATE
+       SET auto_import_disabled = EXCLUDED.auto_import_disabled,
+           auto_import_sources = EXCLUDED.auto_import_sources,
+           updated_at = NOW()`,
+    [userId, masterDisabled, sources],
   );
-  return r.rows[0] ? mapConfigRow(r.rows[0]) : null;
+  return getUserSettings(userId);
 }
 
-/** UPSERT a config row. Used by the settings page each time the user
- *  toggles a switch or a source checkbox. */
-export async function upsertConfig(
+/** Mark a successful or failed run at the user level. Same auto-pause
+ *  logic as before : 3 consecutive failures flip masterDisabled to
+ *  true so a broken integration doesn't burn tokens. */
+export async function recordUserRunResult(
   userId: number,
-  documentId: string,
-  patch: { enabled?: boolean; enabledSources?: AutoImportSource[] },
-): Promise<AutoImportConfig> {
-  const existing = await getConfig(userId, documentId);
-  const enabled = patch.enabled ?? existing?.enabled ?? false;
-  const sources = patch.enabledSources ?? existing?.enabledSources ?? [];
-  const r = await pool.query(
-    `INSERT INTO suivitess_auto_import_config
-       (user_id, document_id, enabled, enabled_sources, updated_at)
-     VALUES ($1, $2, $3, $4, NOW())
-     ON CONFLICT (user_id, document_id) DO UPDATE
-       SET enabled = EXCLUDED.enabled,
-           enabled_sources = EXCLUDED.enabled_sources,
-           updated_at = NOW()
-     RETURNING *`,
-    [userId, documentId, enabled, sources],
-  );
-  return mapConfigRow(r.rows[0]);
-}
-
-/** List ALL configs flagged enabled — consumed by the scheduler when
- *  it walks every active doc/user pair. */
-export async function listEnabledConfigs(): Promise<AutoImportConfig[]> {
-  const r = await pool.query(
-    `SELECT * FROM suivitess_auto_import_config WHERE enabled = TRUE ORDER BY last_run_at NULLS FIRST`,
-  );
-  return r.rows.map(mapConfigRow);
-}
-
-/** Update the post-run metadata on a config. Called after each
- *  scheduler tick — success path resets `consecutive_errors` to 0,
- *  failure path increments + stores the last_error message. The
- *  scheduler auto-disables a config once `consecutive_errors >= 3`
- *  to avoid burning tokens on a broken integration. */
-export async function recordRunResult(
-  configId: string,
   success: boolean,
   errorMessage: string | null = null,
 ): Promise<void> {
   if (success) {
     await pool.query(
-      `UPDATE suivitess_auto_import_config
-          SET last_run_at = NOW(),
-              last_error = NULL,
-              consecutive_errors = 0,
-              updated_at = NOW()
-        WHERE id = $1`,
-      [configId],
+      `INSERT INTO suivitess_user_settings (user_id, last_run_at, consecutive_errors, updated_at)
+       VALUES ($1, NOW(), 0, NOW())
+       ON CONFLICT (user_id) DO UPDATE
+         SET last_run_at = NOW(),
+             last_error = NULL,
+             consecutive_errors = 0,
+             updated_at = NOW()`,
+      [userId],
     );
   } else {
     await pool.query(
-      `UPDATE suivitess_auto_import_config
-          SET last_run_at = NOW(),
-              last_error = $2,
-              consecutive_errors = consecutive_errors + 1,
-              -- auto-pause after 3 consecutive errors
-              enabled = (consecutive_errors + 1 < 3),
-              updated_at = NOW()
-        WHERE id = $1`,
-      [configId, errorMessage ?? 'unknown'],
+      `INSERT INTO suivitess_user_settings (user_id, last_run_at, last_error, consecutive_errors, updated_at)
+       VALUES ($1, NOW(), $2, 1, NOW())
+       ON CONFLICT (user_id) DO UPDATE
+         SET last_run_at = NOW(),
+             last_error = $2,
+             consecutive_errors = suivitess_user_settings.consecutive_errors + 1,
+             auto_import_disabled = (suivitess_user_settings.consecutive_errors + 1 >= 3),
+             updated_at = NOW()`,
+      [userId, errorMessage ?? 'unknown'],
     );
   }
 }
 
-// ────────────────────────────────────────────────────────────────────
-// User-level master kill-switch
-// ────────────────────────────────────────────────────────────────────
-
-/** Master kill-switch lives in the module-local
- *  `suivitess_user_settings` table. Absence of a row = default
- *  (= NOT disabled, = auto-import allowed if the per-doc config
- *  enables it). Returns true when the user explicitly opted out. */
+/** Legacy alias used by existing route handlers — checks the
+ *  master kill-switch only. Returns true when user opted out. */
 export async function isMasterKillSwitchOn(userId: number): Promise<boolean> {
-  const r = await pool.query(
-    `SELECT auto_import_disabled FROM suivitess_user_settings WHERE user_id = $1`,
-    [userId],
-  );
-  return r.rows[0]?.auto_import_disabled === true;
+  const s = await getUserSettings(userId);
+  return s.masterDisabled;
 }
 
-/** Set/unset the master kill-switch on the user level. Upserts the
- *  module-local settings row (created if missing). */
+/** Legacy alias for the routes that flip just the master toggle. */
 export async function setMasterKillSwitch(
   userId: number,
   disabled: boolean,
 ): Promise<void> {
-  await pool.query(
-    `INSERT INTO suivitess_user_settings (user_id, auto_import_disabled, updated_at)
-     VALUES ($1, $2, NOW())
-     ON CONFLICT (user_id) DO UPDATE
-       SET auto_import_disabled = EXCLUDED.auto_import_disabled,
-           updated_at = NOW()`,
-    [userId, disabled],
+  await upsertUserSettings(userId, { masterDisabled: disabled });
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Per-doc opt-in (which docs the AI is allowed to ROUTE TO)
+// ────────────────────────────────────────────────────────────────────
+
+/** List documents the user has opted in as auto-import targets.
+ *  Source-of-truth for the cross-doc analyzer's `reviews` parameter
+ *  — only opted-in docs are surfaced to the AI as candidates. */
+export async function listEnabledTargetDocumentIds(userId: number): Promise<string[]> {
+  const r = await pool.query(
+    `SELECT document_id
+       FROM suivitess_auto_import_config
+      WHERE user_id = $1 AND enabled = TRUE`,
+    [userId],
   );
+  return r.rows.map(row => row.document_id as string);
+}
+
+/** Set/unset a single doc's opt-in status. */
+export async function setDocumentEnabled(
+  userId: number,
+  documentId: string,
+  enabled: boolean,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO suivitess_auto_import_config (user_id, document_id, enabled, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (user_id, document_id) DO UPDATE
+       SET enabled = EXCLUDED.enabled,
+           updated_at = NOW()`,
+    [userId, documentId, enabled],
+  );
+}
+
+/** Quick check used by the per-doc header toggle UI. */
+export async function isDocumentEnabled(
+  userId: number,
+  documentId: string,
+): Promise<boolean> {
+  const r = await pool.query(
+    `SELECT enabled FROM suivitess_auto_import_config
+      WHERE user_id = $1 AND document_id = $2`,
+    [userId, documentId],
+  );
+  return r.rows[0]?.enabled === true;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -328,14 +338,13 @@ export async function countPendingForUser(userId: number): Promise<number> {
   return r.rows[0]?.n ?? 0;
 }
 
-/** Duplicate guard — used by the scheduler before inserting a fresh
- *  proposal. Returns true if a row for the same (user, doc, source)
- *  already exists in any status (pending/accepted/rejected). Prevents
- *  re-analysing a source that the user already saw, even if the
- *  underlying `transcript_imports` dedup somehow missed it. */
-export async function inboxProposalAlreadyExists(
+/** User-level dedup guard — the cron uses this instead of the
+ *  per-doc variant because in the cross-doc model the source isn't
+ *  scoped to a target document upfront (the AI decides). Returns
+ *  true if any row for the same (user, source) exists in any
+ *  status (pending/accepted/rejected). */
+export async function inboxProposalAlreadyExistsForUser(
   userId: number,
-  documentId: string,
   sourceKind: string,
   sourceId: string,
 ): Promise<boolean> {
@@ -343,11 +352,10 @@ export async function inboxProposalAlreadyExists(
     `SELECT 1
        FROM suivitess_inbox_proposals
       WHERE user_id = $1
-        AND document_id = $2
-        AND source_kind = $3
-        AND source_id = $4
+        AND source_kind = $2
+        AND source_id = $3
       LIMIT 1`,
-    [userId, documentId, sourceKind, sourceId],
+    [userId, sourceKind, sourceId],
   );
   return r.rowCount! > 0;
 }

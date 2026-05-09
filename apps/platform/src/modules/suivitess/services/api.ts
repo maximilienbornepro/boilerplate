@@ -1117,11 +1117,15 @@ export async function deleteSubjectMark(markId: string): Promise<void> {
 
 export type AutoImportSource = 'fathom' | 'otter' | 'outlook' | 'gmail' | 'slack';
 
-export interface AutoImportConfig {
-  enabled: boolean;
-  enabledSources: AutoImportSource[];
-  lastRunAt?: string | null;
-  lastError?: string | null;
+/** User-level settings for auto-import : master kill-switch + which
+ *  source integrations the cron is allowed to fetch from. The set
+ *  of TARGET documents is decided per-doc via the opt-in toggle. */
+export interface UserAutoImportSettings {
+  masterDisabled: boolean;
+  sources: AutoImportSource[];
+  lastRunAt: string | null;
+  lastError: string | null;
+  consecutiveErrors: number;
 }
 
 export type InboxStatus = 'pending' | 'accepted' | 'rejected' | 'all';
@@ -1142,38 +1146,40 @@ export interface InboxProposal {
   reviewedAt: string | null;
 }
 
-// Master kill-switch
-export async function getAutoImportMaster(): Promise<{ enabled: boolean }> {
-  const r = await fetch(`${API_BASE}/auto-import/master`, { credentials: 'include' });
+// User-level settings (master + sources)
+export async function getAutoImportSettings(): Promise<UserAutoImportSettings> {
+  const r = await fetch(`${API_BASE}/auto-import/settings`, { credentials: 'include' });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
-export async function setAutoImportMaster(enabled: boolean): Promise<{ enabled: boolean }> {
-  const r = await fetch(`${API_BASE}/auto-import/master`, {
+export async function setAutoImportSettings(
+  patch: { masterDisabled?: boolean; sources?: AutoImportSource[] },
+): Promise<UserAutoImportSettings> {
+  const r = await fetch(`${API_BASE}/auto-import/settings`, {
     method: 'PUT',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify(patch),
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
 
-// Per-document config
-export async function getAutoImportConfig(documentId: string): Promise<AutoImportConfig> {
-  const r = await fetch(`${API_BASE}/documents/${documentId}/auto-import-config`, { credentials: 'include' });
+// Per-document opt-in (boolean — does this suivitess accept auto-routed content?)
+export async function getDocumentAutoImportEnabled(documentId: string): Promise<{ enabled: boolean }> {
+  const r = await fetch(`${API_BASE}/documents/${documentId}/auto-import-enabled`, { credentials: 'include' });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
-export async function setAutoImportConfig(
+export async function setDocumentAutoImportEnabled(
   documentId: string,
-  patch: { enabled?: boolean; enabledSources?: AutoImportSource[] },
-): Promise<AutoImportConfig> {
-  const r = await fetch(`${API_BASE}/documents/${documentId}/auto-import-config`, {
+  enabled: boolean,
+): Promise<{ enabled: boolean }> {
+  const r = await fetch(`${API_BASE}/documents/${documentId}/auto-import-enabled`, {
     method: 'PUT',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
+    body: JSON.stringify({ enabled }),
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
