@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
 import * as api from '../../services/api';
 import type { InboxProposal } from '../../services/api';
+import { countInboxProposalStats, formatStatsLine } from './inboxStats';
 import styles from './InboxDetail.module.css';
 
 interface FinalProposalShape {
@@ -46,6 +47,8 @@ export function InboxDetail({ row, onClose, onAccept, onReject, onValidate }: Pr
   }, [tab, row.id, source]);
 
   const proposals = (row.proposals ?? []) as FinalProposalShape[];
+  const stats = countInboxProposalStats(row.proposals);
+  const statsLine = formatStatsLine(stats);
 
   return (
     <Modal title={row.sourceTitle ?? row.sourceId} onClose={onClose} size="xl">
@@ -61,6 +64,7 @@ export function InboxDetail({ row, onClose, onAccept, onReject, onValidate }: Pr
              row.status === 'accepted' ? 'Accepté' : 'Refusé'}
           </span>
         </div>
+        {statsLine && <div className={styles.statsLine}>{statsLine}</div>}
 
         <div className={styles.tabs}>
           <button className={`${styles.tab} ${tab === 'source' ? styles.tabActive : ''}`} onClick={() => setTab('source')}>

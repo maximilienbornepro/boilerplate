@@ -15,6 +15,7 @@ import * as api from '../../services/api';
 import type { InboxProposal, InboxStatus, AutoImportSource } from '../../services/api';
 import { InboxDetail } from './InboxDetail';
 import { BulkTranscriptionImportModal } from '../BulkTranscriptionImportModal/BulkTranscriptionImportModal';
+import { countInboxProposalStats, formatStatsLine } from './inboxStats';
 import styles from './InboxPage.module.css';
 
 const SOURCE_LABELS: Record<AutoImportSource, string> = {
@@ -161,6 +162,11 @@ export function InboxPage({ onNavigate }: InboxPageProps) {
                     {' · '}analysé le {formatDate(row.createdAt)}
                     {row.reviewedAt && ` · revu le ${formatDate(row.reviewedAt)}`}
                   </div>
+                  {(() => {
+                    const stats = countInboxProposalStats(row.proposals);
+                    const line = formatStatsLine(stats);
+                    return line ? <div className={styles.itemStats}>{line}</div> : null;
+                  })()}
                 </div>
                 <div className={styles.itemActions}>
                   {row.status === 'pending' && (
@@ -200,9 +206,23 @@ export function InboxPage({ onNavigate }: InboxPageProps) {
           inboxProposalId={openValidate.id}
           inboxProposals={openValidate.proposals as never}
           inboxDocumentId={openValidate.documentId}
-          onClose={() => setOpenValidate(null)}
+          onClose={async () => {
+            // INBOX SEMANTICS — closing the modal counts as "I have
+            // reviewed this row, get it out of pending". This handles
+            // the per-row immediate-add path (where the user adds
+            // each subject one-by-one then closes) and the bulk
+            // Importer path. We always flip to accepted ; the user
+            // can still hit "Reconsidérer" from the rejected/accepted
+            // tab if they got it wrong.
+            try { await api.acceptInboxProposal(openValidate.id); }
+            catch { /* swallow — the user can re-validate via the UI */ }
+            setOpenValidate(null);
+            void load();
+          }}
           onDone={async () => {
-            await api.acceptInboxProposal(openValidate.id);
+            // Bulk Importer path : same final state.
+            try { await api.acceptInboxProposal(openValidate.id); }
+            catch { /* swallow */ }
             setOpenValidate(null);
             void load();
           }}
