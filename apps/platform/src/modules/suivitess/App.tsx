@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Routes, Route, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Layout, ModuleHeader, ToastContainer } from '@boilerplate/shared/components';
+import { Layout, ModuleHeader, ToastContainer, Badge } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import './index.css';
 import { ReviewWizard } from './components/ReviewWizard/ReviewWizard';
@@ -201,15 +201,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
         >
           📥 Inbox
           {inboxPending > 0 && (
-            <span style={{
-              marginLeft: 6,
-              padding: '0 6px',
-              borderRadius: 10,
-              fontSize: 11,
-              fontWeight: 600,
-              background: '#dc2626',
-              color: 'white',
-            }}>{inboxPending}</span>
+            <span style={{ marginLeft: 6 }}><Badge type="error">{String(inboxPending)}</Badge></span>
           )}
         </button>
         <div ref={actionsRef} className="suivitess-exports">

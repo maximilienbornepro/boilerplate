@@ -4,7 +4,7 @@
 //   3. Prompt + sortie — link to /ai-logs/<id>
 
 import { useEffect, useState } from 'react';
-import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
+import { Modal, Button, LoadingSpinner, Card, Badge, Tabs } from '@boilerplate/shared/components';
 import * as api from '../../services/api';
 import type { InboxProposal } from '../../services/api';
 import { countInboxProposalStats, formatStatsLine } from './inboxStats';
@@ -59,24 +59,23 @@ export function InboxDetail({ row, onClose, onAccept, onReject, onValidate }: Pr
           <span>{proposals.length} sujet{proposals.length > 1 ? 's' : ''}</span>
           <span>·</span>
           <span>analysé le {new Date(row.createdAt).toLocaleString('fr-FR')}</span>
-          <span className={`${styles.status} ${styles[row.status]}`}>
-            {row.status === 'pending' ? 'En attente' :
-             row.status === 'accepted' ? 'Accepté' : 'Refusé'}
+          <span className={styles.statusSlot}>
+            {row.status === 'pending'  && <Badge type="info">En attente</Badge>}
+            {row.status === 'accepted' && <Badge type="success">Accepté</Badge>}
+            {row.status === 'rejected' && <Badge type="error">Refusé</Badge>}
           </span>
         </div>
         {statsLine && <div className={styles.statsLine}>{statsLine}</div>}
 
-        <div className={styles.tabs}>
-          <button className={`${styles.tab} ${tab === 'source' ? styles.tabActive : ''}`} onClick={() => setTab('source')}>
-            Contenu source
-          </button>
-          <button className={`${styles.tab} ${tab === 'decisions' ? styles.tabActive : ''}`} onClick={() => setTab('decisions')}>
-            Décisions IA
-          </button>
-          <button className={`${styles.tab} ${tab === 'prompt' ? styles.tabActive : ''}`} onClick={() => setTab('prompt')}>
-            Prompt + sortie
-          </button>
-        </div>
+        <Tabs
+          value={tab}
+          onChange={(v) => setTab(v as 'source' | 'decisions' | 'prompt')}
+          tabs={[
+            { value: 'source',    label: 'Contenu source' },
+            { value: 'decisions', label: 'Décisions IA' },
+            { value: 'prompt',    label: 'Prompt + sortie' },
+          ]}
+        />
 
         <div className={styles.tabBody}>
           {tab === 'source' && (
@@ -88,12 +87,12 @@ export function InboxDetail({ row, onClose, onAccept, onReject, onValidate }: Pr
           )}
 
           {tab === 'decisions' && (
-            <ul className={styles.decisionList}>
+            <div className={styles.decisionList}>
               {proposals.length === 0 && (
-                <li className={styles.empty}>Aucune décision (l'IA n'a rien extrait).</li>
+                <div className={styles.empty}>Aucune décision (l'IA n'a rien extrait).</div>
               )}
               {proposals.map((p, i) => (
-                <li key={i} className={styles.decisionCard}>
+                <Card key={i} variant="default" className={styles.decisionCard}>
                   <div className={styles.decisionHead}>
                     <strong>#{i + 1} — {p.title ?? '(sans titre)'}</strong>
                   </div>
@@ -122,9 +121,9 @@ export function InboxDetail({ row, onClose, onAccept, onReject, onValidate }: Pr
                       </ul>
                     </details>
                   )}
-                </li>
+                </Card>
               ))}
-            </ul>
+            </div>
           )}
 
           {tab === 'prompt' && (

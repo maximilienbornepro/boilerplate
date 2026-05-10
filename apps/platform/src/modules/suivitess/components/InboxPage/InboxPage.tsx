@@ -10,7 +10,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Layout, ModuleHeader, LoadingSpinner, Button } from '@boilerplate/shared/components';
+import { Layout, ModuleHeader, LoadingSpinner, Button, Card, Badge, Tabs } from '@boilerplate/shared/components';
 import * as api from '../../services/api';
 import type { InboxProposal, InboxStatus, AutoImportSource } from '../../services/api';
 import { InboxDetail } from './InboxDetail';
@@ -103,20 +103,16 @@ export function InboxPage({ onNavigate }: InboxPageProps) {
       />
 
       <div className={styles.page}>
-        <div className={styles.tabs}>
-          {(['pending', 'accepted', 'rejected', 'all'] as InboxStatus[]).map(t => (
-            <button
-              key={t}
-              className={`${styles.tab} ${tab === t ? styles.tabActive : ''}`}
-              onClick={() => setTab(t)}
-            >
-              {t === 'pending' ? `En attente · ${counts.pending}` :
-               t === 'accepted' ? `Acceptées · ${counts.accepted}` :
-               t === 'rejected' ? `Refusées · ${counts.rejected}` :
-               `Tout · ${counts.all}`}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          value={tab}
+          onChange={(v) => setTab(v as InboxStatus)}
+          tabs={[
+            { value: 'pending',  label: `En attente · ${counts.pending}` },
+            { value: 'accepted', label: `Acceptées · ${counts.accepted}` },
+            { value: 'rejected', label: `Refusées · ${counts.rejected}` },
+            { value: 'all',      label: `Tout · ${counts.all}` },
+          ]}
+        />
 
         <div className={styles.filters}>
           <select value={filterSource} onChange={e => setFilterSource(e.target.value as AutoImportSource | '')}>
@@ -145,49 +141,55 @@ export function InboxPage({ onNavigate }: InboxPageProps) {
             </p>
           </div>
         ) : (
-          <ul className={styles.list}>
-            {rows.map(row => (
-              <li key={row.id} className={`${styles.item} ${styles[`status_${row.status}`]}`}>
-                <div className={styles.itemBody} onClick={() => setSelected(row)}>
-                  <div className={styles.itemHead}>
-                    <span className={styles.statusBadge}>
-                      {row.status === 'pending' ? '⏳' :
-                       row.status === 'accepted' ? '✅' : '❌'}
-                    </span>
-                    <span className={styles.sourceTag}>{SOURCE_LABELS[row.sourceKind]}</span>
-                    <span className={styles.itemTitle}>{row.sourceTitle ?? row.sourceId}</span>
+          <div className={styles.list}>
+            {rows.map(row => {
+              const stats = countInboxProposalStats(row.proposals);
+              const line = formatStatsLine(stats);
+              const statusBadge =
+                row.status === 'pending' ? <Badge type="info">⏳ En attente</Badge> :
+                row.status === 'accepted' ? <Badge type="success">✓ Accepté</Badge> :
+                <Badge type="error">✗ Refusé</Badge>;
+              return (
+                <Card
+                  key={row.id}
+                  variant="interactive"
+                  className={styles.item}
+                  onClick={() => setSelected(row)}
+                >
+                  <div className={styles.itemBody}>
+                    <div className={styles.itemHead}>
+                      {statusBadge}
+                      <Badge type="accent">{SOURCE_LABELS[row.sourceKind]}</Badge>
+                      <span className={styles.itemTitle}>{row.sourceTitle ?? row.sourceId}</span>
+                    </div>
+                    <div className={styles.itemMeta}>
+                      Doc : <strong>{row.documentTitle ?? row.documentId}</strong> · {row.proposals.length} proposition{row.proposals.length > 1 ? 's' : ''}
+                      {' · '}analysé le {formatDate(row.createdAt)}
+                      {row.reviewedAt && ` · revu le ${formatDate(row.reviewedAt)}`}
+                    </div>
+                    {line && <div className={styles.itemStats}>{line}</div>}
                   </div>
-                  <div className={styles.itemMeta}>
-                    Doc : <strong>{row.documentTitle ?? row.documentId}</strong> · {row.proposals.length} proposition{row.proposals.length > 1 ? 's' : ''}
-                    {' · '}analysé le {formatDate(row.createdAt)}
-                    {row.reviewedAt && ` · revu le ${formatDate(row.reviewedAt)}`}
+                  <div className={styles.itemActions} onClick={(e) => e.stopPropagation()}>
+                    {row.status === 'pending' && (
+                      <>
+                        <Button variant="primary" onClick={() => setOpenValidate(row)}>Valider</Button>
+                        <Button variant="secondary" onClick={() => handleReject(row)}>Refuser</Button>
+                      </>
+                    )}
+                    {row.status === 'rejected' && (
+                      <Button variant="secondary" onClick={() => handleReconsider(row)}>Reconsidérer</Button>
+                    )}
+                    {row.status === 'accepted' && (
+                      <Button variant="secondary" onClick={() => navigate(`/suivitess/${row.documentId}`)}>
+                        Voir le doc
+                      </Button>
+                    )}
+                    <Button variant="secondary" onClick={() => setSelected(row)}>Détail</Button>
                   </div>
-                  {(() => {
-                    const stats = countInboxProposalStats(row.proposals);
-                    const line = formatStatsLine(stats);
-                    return line ? <div className={styles.itemStats}>{line}</div> : null;
-                  })()}
-                </div>
-                <div className={styles.itemActions}>
-                  {row.status === 'pending' && (
-                    <>
-                      <Button variant="primary" onClick={() => setOpenValidate(row)}>Valider</Button>
-                      <Button variant="secondary" onClick={() => handleReject(row)}>Refuser</Button>
-                    </>
-                  )}
-                  {row.status === 'rejected' && (
-                    <Button variant="secondary" onClick={() => handleReconsider(row)}>Reconsidérer</Button>
-                  )}
-                  {row.status === 'accepted' && (
-                    <Button variant="secondary" onClick={() => navigate(`/suivitess/${row.documentId}`)}>
-                      Voir le doc
-                    </Button>
-                  )}
-                  <Button variant="secondary" onClick={() => setSelected(row)}>Détail</Button>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </Card>
+              );
+            })}
+          </div>
         )}
       </div>
 

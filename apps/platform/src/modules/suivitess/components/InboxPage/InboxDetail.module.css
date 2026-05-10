@@ -1,3 +1,6 @@
+/* Layout shell only — visual primitives (tabs / cards / badges)
+   come from the shared design system (see COMPONENTS.md). */
+
 .body {
   display: flex;
   flex-direction: column;
@@ -13,15 +16,9 @@
   color: var(--text-muted);
   flex-wrap: wrap;
 }
-.status {
+.statusSlot {
   margin-left: auto;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-weight: 600;
 }
-.status.pending  { background: rgba(99, 102, 241, 0.12); color: var(--accent-primary, #60a5fa); }
-.status.accepted { background: rgba(22, 163, 74, 0.12); color: var(--success, #16a34a); }
-.status.rejected { background: rgba(127, 127, 127, 0.12); color: var(--text-muted); }
 
 .statsLine {
   font-size: 0.85rem;
@@ -31,27 +28,6 @@
   background: var(--accent-light, rgba(99, 102, 241, 0.07));
   border-radius: var(--radius-sm);
   border: 1px solid var(--accent-primary, #60a5fa);
-}
-
-.tabs {
-  display: flex;
-  gap: var(--spacing-xs);
-  border-bottom: 1px solid var(--border-color);
-}
-.tab {
-  padding: var(--spacing-xs) var(--spacing-md);
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-}
-.tab:hover { color: var(--text-primary); }
-.tabActive {
-  color: var(--accent-primary, #60a5fa);
-  border-bottom-color: var(--accent-primary, #60a5fa);
 }
 
 .tabBody {
@@ -73,9 +49,6 @@
 }
 
 .decisionList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
@@ -86,10 +59,6 @@
   font-style: italic;
 }
 .decisionCard {
-  padding: var(--spacing-md);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);

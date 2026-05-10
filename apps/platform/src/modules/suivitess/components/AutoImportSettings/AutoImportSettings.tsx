@@ -11,7 +11,7 @@
 // lands in.
 
 import { useEffect, useState } from 'react';
-import { Modal, Button, LoadingSpinner } from '@boilerplate/shared/components';
+import { Modal, Button, LoadingSpinner, Card } from '@boilerplate/shared/components';
 import * as api from '../../services/api';
 import type { Document } from '../../types';
 import type { AutoImportSource, UserAutoImportSettings } from '../../services/api';
@@ -191,7 +191,12 @@ export function AutoImportSettings({ documents, onClose }: Props) {
                 const optedIn = docOptIn[doc.id] === true;
                 const isSaving = savingDocId === doc.id;
                 return (
-                  <div key={doc.id} className={`${styles.docCard} ${optedIn ? styles.docCardActive : ''}`}>
+                  <Card
+                    key={doc.id}
+                    variant="compact"
+                    selected={optedIn}
+                    className={styles.docCard}
+                  >
                     <div className={styles.docHeader}>
                       <strong className={styles.docTitle}>{doc.title}</strong>
                       <label className={styles.smallSwitch}>
@@ -204,7 +209,7 @@ export function AutoImportSettings({ documents, onClose }: Props) {
                         <span className={styles.smallSwitchTrack} />
                       </label>
                     </div>
-                  </div>
+                  </Card>
                 );
               })}
             </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ModuleHeader, Card, Modal, FormField, ConfirmModal, Button, ToastContainer, LoadingSpinner, SharingModal, VisibilityPicker } from '@boilerplate/shared/components';
+import { ModuleHeader, Card, Modal, FormField, ConfirmModal, Button, ToastContainer, LoadingSpinner, SharingModal, VisibilityPicker, Badge } from '@boilerplate/shared/components';
 import type { ToastData, Visibility } from '@boilerplate/shared/components';
 import type { Document } from '../../types';
 import * as api from '../../services/api';
@@ -231,15 +231,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
           >
             Actions
             {inboxPending > 0 && (
-              <span style={{
-                marginLeft: 6,
-                padding: '0 6px',
-                borderRadius: 10,
-                fontSize: 11,
-                fontWeight: 600,
-                background: '#dc2626',
-                color: 'white',
-              }}>{inboxPending}</span>
+              <span style={{ marginLeft: 6 }}><Badge type="error">{String(inboxPending)}</Badge></span>
             )}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
               <polyline points="6 9 12 15 18 9" />
@@ -273,15 +265,7 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
               >
                 Boîte de réception
                 {inboxPending > 0 && (
-                  <span style={{
-                    marginLeft: 8,
-                    padding: '0 6px',
-                    borderRadius: 10,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    background: '#dc2626',
-                    color: 'white',
-                  }}>{inboxPending}</span>
+                  <span style={{ marginLeft: 8 }}><Badge type="error">{String(inboxPending)}</Badge></span>
                 )}
               </button>
             </div>

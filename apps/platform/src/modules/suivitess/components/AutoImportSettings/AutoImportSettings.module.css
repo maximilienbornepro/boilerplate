@@ -73,18 +73,6 @@
   font-style: italic;
 }
 
-.docCard {
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  transition: border-color 0.15s, background 0.15s;
-}
-.docCardActive {
-  border-color: var(--accent-primary, #60a5fa);
-  background: var(--accent-light, rgba(99, 102, 241, 0.05));
-}
-
 .docHeader {
   display: flex;
   align-items: flex-start;
