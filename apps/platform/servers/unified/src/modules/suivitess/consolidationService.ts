@@ -302,33 +302,35 @@ export async function consolidatePendingForUser(
 
   const propsCount = rowsPayload.reduce((acc, r) => acc + r.proposals.length, 0);
 
-  const inputJson = JSON.stringify({ rows: rowsPayload, reviews }, null, 2);
+  // 3) Chunk the rows so each LLM call fits comfortably in the 16k
+  //    output budget. The cap was hitting on 19 rows × ~115 props
+  //    (60k input tokens → 16k output truncated). We size each chunk
+  //    by total `proposals` count so dense rows don't make the output
+  //    overshoot. The trade-off : two rows about the same business
+  //    topic that land in different chunks won't be cross-merged ; in
+  //    practice this is rare and the alternative (silent truncation
+  //    returning [] consolidated) is strictly worse.
+  const MAX_PROPS_PER_CHUNK = 40;
+  const MAX_ROWS_PER_CHUNK = 8;
+  const chunks: typeof rowsPayload[] = [];
+  let current: typeof rowsPayload = [];
+  let currentProps = 0;
+  for (const r of rowsPayload) {
+    const rProps = r.proposals.length;
+    if (current.length > 0
+        && (currentProps + rProps > MAX_PROPS_PER_CHUNK
+            || current.length >= MAX_ROWS_PER_CHUNK)) {
+      chunks.push(current);
+      current = [];
+      currentProps = 0;
+    }
+    current.push(r);
+    currentProps += rProps;
+  }
+  if (current.length > 0) chunks.push(current);
 
-  // 3) Run the skill. We pass buildContext (cacheable system block).
-  //    maxTokens budget : 16 000 sits in the sweet spot — 2× the
-  //    original budget AND stays comfortably under the streaming
-  //    threshold so `messages.create` still works.
-  const run = await runSkill({
-    slug: 'suivitess-cross-source-consolidate',
-    userId,
-    userEmail: userEmail ?? null,
-    sourceKind: 'inbox-consolidation',
-    sourceTitle: `Inbox consolidation (${rows.length} rows, ${propsCount} props)`,
-    documentId: filter.documentId ?? null,
-    inputContent: inputJson,
-    buildContext: () => `## Contexte\n\n\`\`\`json\n${inputJson}\n\`\`\``,
-    maxTokens: 16000,
-  });
-
-  // 4) Parse + enforce safety rules.
-  const parsed = parseConsolidationOutput(run.outputText);
-  const looksTruncated =
-    parsed.length === 0
-    && typeof run.outputText === 'string'
-    && run.outputText.length > 2000
-    && !/\]\s*\}\s*```?\s*$/.test(run.outputText.trimEnd());
-  // Build the (rowId → proposals) index so the validator can look up
-  // the original subjectAction/targetSubjectId for each merged source.
+  // Build the (rowId → proposals) index ONCE — used by the safety
+  // enforcer across every chunk result.
   const rowIndex = new Map<string, Array<{ subjectAction: string; targetSubjectId: string | null }>>();
   for (const r of rowsPayload) {
     rowIndex.set(r.rowId, r.proposals.map(p => ({
@@ -336,7 +338,44 @@ export async function consolidatePendingForUser(
       targetSubjectId: p.targetSubjectId,
     })));
   }
-  const safe = enforceNeverFuseDifferentTargets(parsed, rowIndex);
+
+  // Run all chunks IN PARALLEL — they're independent (each gets the
+  // same reviews snapshot and is self-contained). Sequential runs
+  // pushed the total wall-clock past the nginx gateway timeout (504)
+  // on dense backlogs. Parallel = max(chunk_time) instead of sum.
+  const chunkResults = await Promise.all(chunks.map((chunkRows, ci) => {
+    const chunkProps = chunkRows.reduce((a, r) => a + r.proposals.length, 0);
+    const inputJson = JSON.stringify({ rows: chunkRows, reviews }, null, 2);
+    return runSkill({
+      slug: 'suivitess-cross-source-consolidate',
+      userId,
+      userEmail: userEmail ?? null,
+      sourceKind: 'inbox-consolidation',
+      sourceTitle: chunks.length === 1
+        ? `Inbox consolidation (${chunkRows.length} rows, ${chunkProps} props)`
+        : `Inbox consolidation chunk ${ci + 1}/${chunks.length} (${chunkRows.length} rows, ${chunkProps} props)`,
+      documentId: filter.documentId ?? null,
+      inputContent: inputJson,
+      buildContext: () => `## Contexte\n\n\`\`\`json\n${inputJson}\n\`\`\``,
+      maxTokens: 16000,
+    });
+  }));
+
+  let aggregateConsolidated: ConsolidatedSubject[] = [];
+  let anyTruncated = false;
+  let firstLogId: number | null = null;
+  for (const run of chunkResults) {
+    if (firstLogId === null) firstLogId = run.logId;
+    const parsed = parseConsolidationOutput(run.outputText);
+    const looksTruncated =
+      parsed.length === 0
+      && typeof run.outputText === 'string'
+      && run.outputText.length > 2000
+      && !/\]\s*\}\s*```?\s*$/.test(run.outputText.trimEnd());
+    if (looksTruncated) anyTruncated = true;
+    const safe = enforceNeverFuseDifferentTargets(parsed, rowIndex);
+    aggregateConsolidated = aggregateConsolidated.concat(safe);
+  }
 
   // Hydrate every `mergedFrom[].sourceId` + `sourceKind` from the
   // original inbox rows so the modal can disambiguate two chips that
@@ -345,7 +384,7 @@ export async function consolidatePendingForUser(
   for (const r of rows) {
     rowMeta.set(r.id, { sourceId: r.sourceId, sourceKind: r.sourceKind });
   }
-  for (const c of safe) {
+  for (const c of aggregateConsolidated) {
     for (const m of c.mergedFrom) {
       const meta = rowMeta.get(m.rowId);
       if (meta) {
@@ -356,11 +395,11 @@ export async function consolidatePendingForUser(
   }
 
   return {
-    logId: run.logId,
-    consolidated: safe,
+    logId: firstLogId,
+    consolidated: aggregateConsolidated,
     rowCount: rows.length,
     propsCount,
-    truncated: looksTruncated || undefined,
+    truncated: anyTruncated || undefined,
   };
 }
 
