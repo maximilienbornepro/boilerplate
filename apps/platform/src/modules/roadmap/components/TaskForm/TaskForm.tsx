@@ -141,7 +141,7 @@ export function TaskForm({ task, parentTasks: _parentTasks = [], planningId, onS
                   onChange={e => setSubjectSearch(e.target.value)}
                   onFocus={() => subjectResults.length > 0 && setShowSubjectDropdown(true)}
                 />
-                {subjectSearchLoading && <span className={styles.subjectSpinner}>⏳</span>}
+                {subjectSearchLoading && <span className={styles.subjectSpinner}>…</span>}
                 {showSubjectDropdown && subjectResults.length > 0 && (
                   <div className={styles.subjectDropdown}>
                     {subjectResults.map(r => (

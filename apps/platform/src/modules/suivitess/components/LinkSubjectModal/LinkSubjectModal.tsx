@@ -124,7 +124,7 @@ export function LinkSubjectModal({ subject, currentDocumentId, onClose, onChange
       <div className="link-subject-modal">
         <p className="link-subject-modal__intro">
           <strong>« {subject.title} »</strong> est suivi à un seul endroit aujourd'hui.
-          Lier le sujet à d'autres suivis le fait apparaître dans chacun, comme une carte avec un badge « 🔗 lié ». Toute modification se propage automatiquement à tous les emplacements.
+          Lier le sujet à d'autres suivis le fait apparaître dans chacun, comme une carte avec un badge « lié ». Toute modification se propage automatiquement à tous les emplacements.
         </p>
 
         {error && <div className="link-subject-modal__error">⚠ {error}</div>}
@@ -139,7 +139,6 @@ export function LinkSubjectModal({ subject, currentDocumentId, onClose, onChange
               {existingLinks.map(loc => (
                 <li key={loc.linkId ?? `canonical-${loc.sectionId}`}>
                   <span className="link-subject-modal__location-label">
-                    {loc.isCanonical ? '🏠 ' : '🔗 '}
                     <strong>{loc.documentTitle}</strong>
                     <span className="link-subject-modal__sep"> › </span>
                     {loc.sectionName}

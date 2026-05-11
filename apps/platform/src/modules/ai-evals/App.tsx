@@ -348,7 +348,7 @@ export default function AiEvalsApp({ onNavigate }: { onNavigate?: (path: string)
                 </div>
                 <div className={styles.detailActions}>
                   <Button variant="secondary" onClick={() => setAssistantOpen(true)}>
-                    🚀 Améliorer
+                    Améliorer
                   </Button>
                   <Button variant="primary" onClick={launchExperiment} disabled={detail.items.length === 0}>
                     ▶ Lancer une experiment
@@ -360,18 +360,18 @@ export default function AiEvalsApp({ onNavigate }: { onNavigate?: (path: string)
               <section className={styles.section}>
                 <header className={styles.sectionHeader}>
                   <div>
-                    <h3 className={styles.sectionTitle}>📋 Items du dataset ({detail.items.length})</h3>
+                    <h3 className={styles.sectionTitle}>Items du dataset ({detail.items.length})</h3>
                     <p className={styles.sectionSubtitle}>
-                      Ajout via /ai-logs (bouton « ➕ ajouter à un dataset »), via l'assistant /ai-improve-assistant (étape 5)
+                      Ajout via /ai-logs (bouton « Ajouter à un dataset »), via l'assistant /ai-improve-assistant (étape 5)
                       ou POST /datasets/:id/items. Clique sur une ligne pour voir l'input complet + l'output attendu + les notes.
                     </p>
                   </div>
                   <Button variant="secondary" onClick={reloadDetail} disabled={loadingDetail}>
-                    {loadingDetail ? '…' : '🔄 Rafraîchir'}
+                    {loadingDetail ? '…' : 'Rafraîchir'}
                   </Button>
                 </header>
                 {detail.items.length === 0 ? (
-                  <p className={styles.placeholderHint}>Aucun item encore. Depuis /ai-logs, ouvre un log pertinent puis clique « ➕ ajouter à un dataset » pour peupler ce dataset.</p>
+                  <p className={styles.placeholderHint}>Aucun item encore. Depuis /ai-logs, ouvre un log pertinent puis clique « Ajouter à un dataset » pour peupler ce dataset.</p>
                 ) : (
                   <table className={styles.table}>
                     <thead>
@@ -429,7 +429,7 @@ export default function AiEvalsApp({ onNavigate }: { onNavigate?: (path: string)
               <section className={styles.section}>
                 <header className={styles.sectionHeader}>
                   <div>
-                    <h3 className={styles.sectionTitle}>🧪 Experiments ({detail.experiments.length})</h3>
+                    <h3 className={styles.sectionTitle}>Experiments ({detail.experiments.length})</h3>
                     <p className={styles.sectionSubtitle}>
                       Chaque ligne = un run du skill sur tout le dataset. Une experiment qui tourne met à jour sa progression toutes les 2 s.
                     </p>
@@ -479,7 +479,7 @@ export default function AiEvalsApp({ onNavigate }: { onNavigate?: (path: string)
                   <header className={styles.sectionHeader}>
                     <div>
                       <h3 className={styles.sectionTitle}>
-                        🔬 Experiment #{selectedExpId}
+                        Experiment #{selectedExpId}
                         {expReport?.experiment.status === 'running' && ' (en cours…)'}
                       </h3>
                       {expReport?.baseline && (
@@ -601,14 +601,14 @@ function DatasetItemDetail({ item }: { item: DatasetItem }) {
 
       {/* Input content (full). */}
       <div>
-        <div style={labelStyle}>📥 Input complet</div>
+        <div style={labelStyle}>Input complet</div>
         <pre style={paneStyle}>{item.input_content || '(vide)'}</pre>
       </div>
 
       {/* Expected output (if any). */}
       <div>
         <div style={labelStyle}>
-          🎯 Output attendu {expectedPretty ? `(${expectedPretty.length.toLocaleString()} chars)` : ''}
+          Output attendu {expectedPretty ? `(${expectedPretty.length.toLocaleString()} chars)` : ''}
         </div>
         {expectedPretty ? (
           <pre style={paneStyle}>{expectedPretty}</pre>
@@ -622,7 +622,7 @@ function DatasetItemDetail({ item }: { item: DatasetItem }) {
       {/* Notes (if any). */}
       {item.expected_notes && (
         <div>
-          <div style={labelStyle}>📝 Notes</div>
+          <div style={labelStyle}>Notes</div>
           <div style={{ fontSize: 12, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
             {item.expected_notes}
           </div>
@@ -644,7 +644,7 @@ function ProgressCell({ experiment }: { experiment: Experiment }) {
     return <span style={{ fontSize: 11, color: 'var(--error)' }}>✕ {done}/{total} — {experiment.error ?? 'erreur'}</span>;
   }
   if (experiment.status === 'pending') {
-    return <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>⏳ en attente de démarrage</span>;
+    return <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>en attente de démarrage…</span>;
   }
 
   // running

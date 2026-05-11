@@ -231,6 +231,13 @@ export async function initDb(): Promise<void> {
     await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_inbox_user_status ON suivitess_inbox_proposals(user_id, status, created_at DESC)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_inbox_document ON suivitess_inbox_proposals(document_id, created_at DESC)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_inbox_source ON suivitess_inbox_proposals(source_kind, source_id)');
+    // Atomic dedup : the row-level dedup function (inboxProposalAlreadyExistsForUser)
+    // is racy if two scheduler ticks fire in parallel — both pass the
+    // SELECT, both run the AI, both INSERT. This unique index makes
+    // the second INSERT a no-op (we use ON CONFLICT DO NOTHING in
+    // insertInboxProposal), regardless of status. Reconsider/accept/reject
+    // mutate the row in place, never re-insert.
+    await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS uniq_inbox_user_source ON suivitess_inbox_proposals(user_id, source_kind, source_id)');
     // Per-user settings : master kill-switch + which providers the
     // hourly cron is allowed to pull from. The set of TARGET docs
     // is decided per-doc via `suivitess_auto_import_config.enabled`
@@ -246,6 +253,23 @@ export async function initDb(): Promise<void> {
     await pool.query('ALTER TABLE suivitess_user_settings ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMPTZ');
     await pool.query('ALTER TABLE suivitess_user_settings ADD COLUMN IF NOT EXISTS last_error TEXT');
     await pool.query('ALTER TABLE suivitess_user_settings ADD COLUMN IF NOT EXISTS consecutive_errors INTEGER NOT NULL DEFAULT 0');
+    // Reversible consolidation runs : every cross-source consolidation
+    // apply records the inverse operations needed to roll back the
+    // changes (created subjects/sections/reviews to delete, updated
+    // subjects' previous fields to restore, inbox row statuses to flip
+    // back). The user has up to ~30 s in the toast to hit "Annuler" but
+    // the row stays around indefinitely for an optional history panel.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS suivitess_consolidation_runs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        ai_log_id INTEGER REFERENCES ai_analysis_logs(id) ON DELETE SET NULL,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        reverted_at TIMESTAMPTZ NULL,
+        undo_data JSONB NOT NULL
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_consolidation_runs_user_applied ON suivitess_consolidation_runs (user_id, applied_at DESC)');
   } catch (err) {
     console.warn('[SuiVitess] auto-import migration failed:', (err as Error).message);
   }

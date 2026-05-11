@@ -792,6 +792,76 @@ Statut : ${subject.status}`;
     res.json({ title: finalTitle, situation: finalSituation, logId: runRes.logId });
   }));
 
+  // Clean up + synthesize a subject's situation with the AI.
+  // The skill replaces the entire `situation` field with a sanitized
+  // version (legacy date headers dropped, duplicates removed, closed
+  // points wrapped in `~~…~~`, verbose passages condensed, and a
+  // `Prochaines étapes :` block appended). Authenticated tier — billed
+  // as a 'reformulation' since it's the same shape of LLM call.
+  router.post('/subjects/:subjectId/synthesize-situation', asyncHandler(async (req, res) => {
+    const subject = await db.getSubject(req.params.subjectId);
+    if (!subject) { res.status(404).json({ error: 'Sujet non trouvé' }); return; }
+
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'reformulation'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
+    const inputPayload = {
+      subjectTitle: subject.title,
+      currentSituation: subject.situation || '',
+    };
+    const inputSummary = JSON.stringify(inputPayload, null, 2);
+
+    const { runSkill } = await import('../aiSkills/runSkill.js');
+    const runRes = await runSkill({
+      slug: 'suivitess-synthesize-situation',
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      buildPrompt: (skill) => `${skill}\n\n---\n\n# Sujet à synthétiser\n\n${inputSummary}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
+      inputContent: inputSummary,
+      sourceKind: 'subject',
+      sourceTitle: subject.title,
+      documentId: null,
+      maxTokens: 4096,
+    });
+
+    let result: { situation?: string } = {};
+    try {
+      let json = runRes.outputText.trim();
+      if (json.startsWith('```json')) json = json.slice(7);
+      if (json.startsWith('```')) json = json.slice(3);
+      if (json.endsWith('```')) json = json.slice(0, -3);
+      result = JSON.parse(json.trim());
+    } catch {
+      const match = runRes.outputText.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { result = JSON.parse(match[0]); } catch { /* fall through to default */ }
+      }
+    }
+
+    // Defensive : if the model returned nothing usable, leave the
+    // existing situation untouched and surface a soft error to the
+    // frontend. We don't want to wipe a user's situation on a bad LLM
+    // round-trip.
+    if (typeof result.situation !== 'string' || result.situation.trim().length === 0) {
+      res.status(502).json({ error: 'Réponse IA invalide — situation inchangée', logId: runRes.logId });
+      return;
+    }
+
+    const newSituation = result.situation;
+    await db.updateSubjectFields(
+      subject.id,
+      ['situation = $1'],
+      [newSituation],
+    );
+
+    if (runRes.logId != null) {
+      const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+      await attachProposalsToLog(runRes.logId, [{ title: subject.title, situation: newSituation }]);
+    }
+    res.json({ situation: newSituation, logId: runRes.logId });
+  }));
+
   // Generate an email summary for one or all subjects
   router.post('/email-summary', asyncHandler(async (req, res) => {
     const { documentId, subjectId, template } = req.body as {
@@ -4076,6 +4146,21 @@ ${filteredContent.slice(0, 30000)}`,
       } catch { /* ignore — best effort */ }
     }
 
+    // Fire-and-forget post-update synthesis. Every subject we wrote
+    // to in the UPDATE branch above gets its situation cleaned by the
+    // `suivitess-synthesize-situation` skill : legacy date headers
+    // dropped, duplicates collapsed, closed points struck through,
+    // `Prochaines étapes :` refreshed. Runs in background, never
+    // blocks this response.
+    if (subjectsUpdated.length > 0) {
+      const { scheduleSynthForSubjects } = await import('./synthesizeAfterUpdateService.js');
+      scheduleSynthForSubjects(
+        subjectsUpdated.map(s => s.id),
+        userId,
+        req.user!.email ?? null,
+      );
+    }
+
     res.json({
       reviewsCreated,
       sectionsCreated,
@@ -4256,6 +4341,98 @@ ${filteredContent.slice(0, 30000)}`,
     const row = await setInboxProposalStatus(id, userId, 'accepted');
     if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
     res.json(row);
+  }));
+
+  // POST /inbox/consolidate-pending — single LLM call that takes all
+  // currently-visible pending proposals (across multiple inbox rows),
+  // returns a deduplicated theme-merged view. The output is held in
+  // client memory ; the user accepts via /inbox/consolidate-pending/apply.
+  // Body : { sourceKind?, documentId? } — mirrors the active inbox filters.
+  router.post('/inbox/consolidate-pending', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { sourceKind, documentId } = (req.body || {}) as {
+      sourceKind?: string;
+      documentId?: string;
+    };
+    const SAFE_SOURCES = new Set(['fathom', 'otter', 'outlook', 'gmail', 'slack']);
+    const cleanedSource = (typeof sourceKind === 'string' && SAFE_SOURCES.has(sourceKind))
+      ? (sourceKind as 'fathom' | 'otter' | 'outlook' | 'gmail' | 'slack')
+      : undefined;
+    const cleanedDoc = typeof documentId === 'string' && documentId.length > 0
+      ? documentId : undefined;
+
+    const { consolidatePendingForUser } = await import('./consolidationService.js');
+    const result = await consolidatePendingForUser(
+      userId,
+      req.user!.email ?? null,
+      req.user!.isAdmin,
+      { sourceKind: cleanedSource, documentId: cleanedDoc },
+    );
+    res.json(result);
+  }));
+
+  // POST /inbox/consolidate-pending/apply — accept N consolidated
+  // subjects. Builds the apply-routing payload for each and flips
+  // every contributing inbox row to `accepted`. Returns a `runId`
+  // that the client can pass to /inbox/consolidations/:id/revert to
+  // undo the apply (subjects/sections/reviews deleted, updated
+  // subjects' previous fields restored, inbox rows flipped back).
+  router.post('/inbox/consolidate-pending/apply', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { items, logId } = (req.body || {}) as {
+      logId?: number | null;
+      items?: unknown;
+    };
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Aucun sujet à appliquer' });
+    }
+    const { applyConsolidatedSubjects } = await import('./consolidationService.js');
+    type ConsolidatedSubject = Parameters<typeof applyConsolidatedSubjects>[1][number];
+    const cleanedLogId = typeof logId === 'number' && Number.isFinite(logId) ? logId : null;
+    const result = await applyConsolidatedSubjects(
+      userId,
+      items as ConsolidatedSubject[],
+      cleanedLogId,
+    );
+    res.json(result);
+  }));
+
+  // POST /inbox/consolidations/:id/revert — undo a previous apply.
+  // Best-effort : each step (restore subjects, delete created subjects /
+  // sections / reviews, restore inbox rows) is independent. A run can
+  // only be reverted once — a second call surfaces an explicit error.
+  router.post('/inbox/consolidations/:id/revert', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    if (typeof id !== 'string' || id.length === 0) {
+      return res.status(400).json({ error: 'Identifiant manquant' });
+    }
+    try {
+      const { revertConsolidationRun } = await import('./consolidationService.js');
+      const result = await revertConsolidationRun(userId, id);
+      res.json(result);
+    } catch (err) {
+      const msg = (err as Error).message || 'Erreur lors de l\'annulation';
+      // Both "not found" and "already reverted" surface here — the
+      // client only needs the message, the status stays 400 (= user
+      // can't fix it by retrying, no need for 500).
+      res.status(400).json({ error: msg });
+    }
+  }));
+
+  // GET /inbox/consolidations?limit=10 — recent runs for the current
+  // user. Returns summary counts derived from `undo_data` (so an
+  // optional history panel can render them without re-reading the
+  // full JSONB). Wired up now so the frontend has the contract ready ;
+  // no UI consumer yet.
+  router.get('/inbox/consolidations', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const limitRaw = req.query.limit;
+    const limit = typeof limitRaw === 'string' ? parseInt(limitRaw, 10) : 10;
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : 10;
+    const { listConsolidationRuns } = await import('./consolidationService.js');
+    const runs = await listConsolidationRuns(userId, safeLimit);
+    res.json(runs);
   }));
 
   // GET /inbox/:id/source-content — raw text the cron analysed

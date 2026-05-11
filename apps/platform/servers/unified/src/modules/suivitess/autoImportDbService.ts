@@ -218,7 +218,15 @@ export async function isDocumentEnabled(
 // Inbox CRUD
 // ────────────────────────────────────────────────────────────────────
 
-/** Insert a fresh proposal coming out of the cron analysis. */
+/** Insert a fresh proposal coming out of the cron analysis.
+ *
+ *  Atomic dedup via the `uniq_inbox_user_source` unique index : if
+ *  another tick (or a previous insert) already created a row for
+ *  this `(user, source_kind, source_id)`, we silently skip the
+ *  insert and return `null`. The caller's pre-check
+ *  (`inboxProposalAlreadyExistsForUser`) is still the fast path —
+ *  this is the safety net for the race where two ticks pass the
+ *  SELECT before either commits. */
 export async function insertInboxProposal(input: {
   userId: number;
   documentId: string;
@@ -228,12 +236,13 @@ export async function insertInboxProposal(input: {
   sourceDate: string | null;
   proposals: unknown[];
   aiLogId: number | null;
-}): Promise<InboxProposal> {
+}): Promise<InboxProposal | null> {
   const r = await pool.query(
     `INSERT INTO suivitess_inbox_proposals
        (user_id, document_id, source_kind, source_id, source_title,
         source_date, proposals, ai_log_id, status)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+     ON CONFLICT (user_id, source_kind, source_id) DO NOTHING
      RETURNING *`,
     [
       input.userId, input.documentId, input.sourceKind, input.sourceId,
@@ -241,7 +250,7 @@ export async function insertInboxProposal(input: {
       input.aiLogId,
     ],
   );
-  return mapInboxRow(r.rows[0]);
+  return r.rows[0] ? mapInboxRow(r.rows[0]) : null;
 }
 
 /** List inbox proposals for a user. Optional filters mirror the UI
@@ -282,12 +291,18 @@ export async function listInboxProposals(opts: {
   }
 
   const limit = Math.min(opts.limit ?? 1000, 5000);
+  // Order by the SOURCE date (actual meeting / mail date) so the most
+  // recent calls/emails surface on top — that matches the user's
+  // mental model. `created_at` (when the cron analysed it) is a poor
+  // proxy : a backfill run can put older content above newer one.
+  // NULLS LAST so legacy rows without a source_date sink to the
+  // bottom, then a stable tiebreak on created_at.
   const r = await pool.query(
     `SELECT p.*, d.title AS document_title
        FROM suivitess_inbox_proposals p
        LEFT JOIN suivitess_documents d ON d.id = p.document_id
       WHERE ${where.join(' AND ')}
-      ORDER BY p.created_at DESC
+      ORDER BY p.source_date DESC NULLS LAST, p.created_at DESC
       LIMIT ${limit}`,
     params,
   );

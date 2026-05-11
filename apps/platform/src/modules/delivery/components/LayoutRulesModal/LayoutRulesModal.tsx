@@ -33,7 +33,7 @@ export function LayoutRulesModal({ onClose }: Props) {
   }, []);
 
   return (
-    <Modal title="🧩 Règles de placement — Delivery" onClose={onClose} size="xl">
+    <Modal title="Règles de placement — Delivery" onClose={onClose} size="xl">
       <div className={styles.content}>
         {loading ? (
           <div className={styles.loading}><LoadingSpinner message="Chargement des règles…" /></div>

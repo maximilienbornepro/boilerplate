@@ -755,7 +755,7 @@ function RoutingTile({
               ✎ Modifier
             </Button>
             <Button variant="secondary" onClick={onRegenerate} disabled={busy}>
-              {busy ? 'Régénération…' : '🔄 Régénérer'}
+              {busy ? 'Régénération…' : 'Régénérer'}
             </Button>
             {(tile.userEditedText !== null || tile.regenerateCount > 0) && (
               <Button variant="secondary" onClick={onRevert} disabled={busy}>

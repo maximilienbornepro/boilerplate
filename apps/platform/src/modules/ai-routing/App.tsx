@@ -271,9 +271,9 @@ export default function AiRoutingApp({ onNavigate }: { onNavigate?: (path: strin
                   <thead>
                     <tr>
                       <th className={styles.colIndex}>#</th>
-                      <th className={styles.colAi}>🤖 Proposition IA</th>
-                      <th className={styles.colUser}>👤 Ta décision</th>
-                      <th className={styles.colRag}>🧠 Décisions passées similaires (RAG)</th>
+                      <th className={styles.colAi}>Proposition IA</th>
+                      <th className={styles.colUser}>Ta décision</th>
+                      <th className={styles.colRag}>Décisions passées similaires (RAG)</th>
                     </tr>
                   </thead>
                   <tbody>

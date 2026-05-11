@@ -302,7 +302,7 @@ export function SanityCheckModal({ boardId, onClose, onApplied, onToast, mode = 
 
   return (
     <Modal
-      title={mode === 'deterministic' ? '🪄 Repositionnement (sans IA)' : '✨ Vérification IA du board'}
+      title={mode === 'deterministic' ? 'Repositionnement (sans IA)' : 'Vérification IA du board'}
       onClose={onClose}
       size="xl"
     >

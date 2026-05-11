@@ -76,6 +76,18 @@ export const SKILLS: readonly SkillDefinition[] = [
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/reformulate-subject.md'),
   },
   {
+    slug: 'suivitess-synthesize-situation',
+    name: 'SuiviTess — Synthétiser une situation',
+    description:
+      'Nettoie et synthétise la situation d\'un sujet : supprime les en-têtes de date legacy, déduplique les lignes, barre les points clos, condense les passages verbeux, et ajoute un bloc « Prochaines étapes ». Remplace intégralement la situation existante.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'POST /suivitess-api/subjects/:id/synthesize-situation',
+      trigger: 'Bouton « Synthétiser » sur un sujet',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/synthesize-situation.md'),
+  },
+  {
     slug: 'delivery-reorganize-board',
     name: 'Delivery — Réorganiser un board (LEGACY — plus appelé)',
     description:
@@ -229,6 +241,18 @@ export const SKILLS: readonly SkillDefinition[] = [
       trigger: "Bouton « 🤖 Proposer avec l'IA » dans l'éditeur de nom du wizard d'import bulk",
     },
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/suggest-name.md'),
+  },
+  {
+    slug: 'suivitess-cross-source-consolidate',
+    name: 'SuiviTess — Consolider l\'inbox multi-sources',
+    description:
+      'Skill transverse appelé à la demande depuis la boîte de réception. Prend N lignes inbox `pending` (chacune avec ses propositions pré-routées) et produit une vue dédupliquée et thématiquement fusionnée — un seul sujet consolidé par thème métier au lieu de 4 cartes redondantes. Conserve les routings d\'origine, ne re-route pas.',
+    usage: {
+      module: 'suivitess',
+      endpoint: 'POST /suivitess/api/inbox/consolidate-pending',
+      trigger: 'Bouton « Consolider » dans la barre de filtres de la page inbox',
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/cross-source-consolidate.md'),
   },
   {
     slug: 'suivitess-reconcile-multi-source',

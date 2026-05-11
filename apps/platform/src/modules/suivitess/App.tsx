@@ -199,7 +199,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
           onClick={() => navigate('/suivitess/inbox')}
           title="Boîte de réception"
         >
-          📥 Inbox
+          Boîte de réception
           {inboxPending > 0 && (
             <span style={{ marginLeft: 6 }}><Badge type="error">{String(inboxPending)}</Badge></span>
           )}

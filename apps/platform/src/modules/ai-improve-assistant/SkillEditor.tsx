@@ -110,9 +110,9 @@ export default function SkillEditor({
       <div className={styles.toolbar}>
         <div className={styles.modeTabs}>
           <button type="button" className={`${styles.tab} ${mode === 'edit' ? styles.tabActive : ''}`} onClick={() => setMode('edit')}>✎ Éditer</button>
-          <button type="button" className={`${styles.tab} ${mode === 'preview' ? styles.tabActive : ''}`} onClick={() => setMode('preview')}>👁 Aperçu</button>
+          <button type="button" className={`${styles.tab} ${mode === 'preview' ? styles.tabActive : ''}`} onClick={() => setMode('preview')}>Aperçu</button>
           {refContent != null && (
-            <button type="button" className={`${styles.tab} ${mode === 'diff' ? styles.tabActive : ''}`} onClick={() => setMode('diff')}>🔀 Diff vs {refLabel}</button>
+            <button type="button" className={`${styles.tab} ${mode === 'diff' ? styles.tabActive : ''}`} onClick={() => setMode('diff')}>Diff vs {refLabel}</button>
           )}
         </div>
         <div className={styles.spacer} />
@@ -467,7 +467,7 @@ function DiffView({ original, current, refLabel }: { original: string; current: 
             border: '1px solid var(--accent-primary)', borderRadius: 2, cursor: 'pointer',
           }}
         >
-          {compact ? '👁 Tout afficher' : '✂ Compact (hunks)'}
+          {compact ? 'Tout afficher' : 'Compact (hunks)'}
         </button>
       </div>
       {rendered.map((row, i) => {

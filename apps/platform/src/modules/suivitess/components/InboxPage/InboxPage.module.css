@@ -3,8 +3,7 @@
 
 .page {
   padding: var(--spacing-lg);
-  max-width: 1100px;
-  margin: 0 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
@@ -14,14 +13,36 @@
   display: flex;
   gap: var(--spacing-sm);
   flex-wrap: wrap;
+  align-items: center;
 }
-.filters select {
-  padding: 6px 10px;
+
+/* Refresh button : oversize the glyph so it reads as an icon, not as
+ * a stray character. */
+.refreshIcon {
+  display: inline-block;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* Inline status text shown next to the "Consolider" CTA — short feedback
+ * for "no merge found" / errors / post-apply summary. Auto-disappears
+ * after a few seconds (component-driven). */
+.consolidationToast {
   font-size: 0.85rem;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  color: var(--text-muted);
+  font-style: italic;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* Inline "Annuler" CTA shown inside the post-apply toast — visually
+ * lighter than the default Button so it does not compete with the
+ * primary "Consolider" action sitting just to its left. */
+.undoButton {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-style: normal;
 }
 
 .empty {
@@ -64,6 +85,15 @@
   font-weight: 500;
   color: var(--text-primary);
   font-size: 0.92rem;
+}
+.itemSourceId {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  user-select: all;
 }
 .itemMeta {
   font-size: 0.78rem;

@@ -709,7 +709,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                       onClick={() => { setShowBoardSwitcher(false); setShowAllBoards(v => !v); }}
                       title="Afficher les tâches de tous les boards de la période, chacun sur ses propres rows"
                     >
-                      📚 {showAllBoards ? '✓ Vue consolidée activée' : 'Vue consolidée (tous les boards)'}
+                      {showAllBoards ? '✓ Vue consolidée activée' : 'Vue consolidée (tous les boards)'}
                     </button>
                   </div>
                 )}
@@ -804,7 +804,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                     }}
                     title="Re-pull les tickets Jira existants pour récupérer les titres/statuts à jour"
                   >
-                    🔄 Rafraîchir depuis Jira
+                    Rafraîchir depuis Jira
                   </button>
                   <div className="delivery-actions-divider" />
 
@@ -834,7 +834,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                     }}
                     title="Repositionne les tickets existants via le layout engine, sans appel IA (gratuit, instantané)"
                   >
-                    🪄 Repositionner (sans IA)
+                    Repositionner (sans IA)
                   </button>
                   <button
                     type="button"
@@ -845,7 +845,7 @@ function BoardView({ board, onBack, onNavigate }: { board: Board; onBack: () => 
                     }}
                     title="Voir les règles de placement appliquées par le layout engine"
                   >
-                    🧩 Règles de placement
+                    Règles de placement
                   </button>
                   <div className="delivery-actions-divider" />
 
@@ -1175,7 +1175,7 @@ function SiblingBoardPanel({
   return (
     <div className="board-section delivery-sibling-panel">
       <div className="delivery-sibling-panel-header">
-        <span className="delivery-sibling-panel-name">📋 {board.name}</span>
+        <span className="delivery-sibling-panel-name">{board.name}</span>
         <span className="delivery-sibling-panel-badge">lecture seule</span>
         <button
           type="button"

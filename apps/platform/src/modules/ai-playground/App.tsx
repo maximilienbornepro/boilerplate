@@ -59,23 +59,23 @@ function formatCost(n: number): string {
 
 // Source tagging — shared with the recent-inputs picker.
 const SOURCE_KINDS: Array<{ value: string; label: string; icon: string }> = [
-  { value: '',          label: 'Toutes les sources', icon: '✦' },
-  { value: 'transcript', label: 'Transcription',     icon: '🎙' },
-  { value: 'slack',      label: 'Slack',             icon: '💬' },
-  { value: 'outlook',    label: 'Outlook',           icon: '✉' },
-  { value: 'gmail',      label: 'Gmail',             icon: '📧' },
-  { value: 'subject',    label: 'Sujet',             icon: '📌' },
-  { value: 'board',      label: 'Board delivery',    icon: '📊' },
+  { value: '',          label: 'Toutes les sources', icon: '' },
+  { value: 'transcript', label: 'Transcription',     icon: '' },
+  { value: 'slack',      label: 'Slack',             icon: '' },
+  { value: 'outlook',    label: 'Outlook',           icon: '' },
+  { value: 'gmail',      label: 'Gmail',             icon: '' },
+  { value: 'subject',    label: 'Sujet',             icon: '' },
+  { value: 'board',      label: 'Board delivery',    icon: '' },
 ];
 function kindBadge(kind: string | null): { icon: string; label: string; color: string } {
   const k = (kind ?? '').toLowerCase();
-  if (k === 'transcript' || k === 'fathom' || k === 'otter') return { icon: '🎙', label: 'transcription', color: 'var(--accent-primary)' };
-  if (k === 'slack')   return { icon: '💬', label: 'slack',   color: '#4a154b' };
-  if (k === 'outlook') return { icon: '✉',  label: 'outlook', color: '#0072c6' };
-  if (k === 'gmail')   return { icon: '📧', label: 'gmail',   color: '#ea4335' };
-  if (k === 'subject') return { icon: '📌', label: 'sujet',   color: '#6c757d' };
-  if (k === 'board')   return { icon: '📊', label: 'board',   color: '#17a2b8' };
-  return { icon: '✦', label: k || '—', color: 'var(--text-secondary)' };
+  if (k === 'transcript' || k === 'fathom' || k === 'otter') return { icon: '', label: 'transcription', color: 'var(--accent-primary)' };
+  if (k === 'slack')   return { icon: '', label: 'slack',   color: '#4a154b' };
+  if (k === 'outlook') return { icon: '', label: 'outlook', color: '#0072c6' };
+  if (k === 'gmail')   return { icon: '', label: 'gmail',   color: '#ea4335' };
+  if (k === 'subject') return { icon: '', label: 'sujet',   color: '#6c757d' };
+  if (k === 'board')   return { icon: '', label: 'board',   color: '#17a2b8' };
+  return { icon: '', label: k || '—', color: 'var(--text-secondary)' };
 }
 
 export default function AiPlaygroundApp({ onNavigate }: { onNavigate?: (path: string) => void }) {
@@ -245,7 +245,7 @@ export default function AiPlaygroundApp({ onNavigate }: { onNavigate?: (path: st
           </div>
           <div className={styles.actions}>
             <Button variant="secondary" onClick={() => setAssistantOpen(true)}>
-              🚀 Améliorer
+              Améliorer
             </Button>
             <Button variant="primary" onClick={runAll} disabled={running || loadingSkill || !skillSlug}>
               {running ? 'Exécution…' : `▶ Run all (${variants.filter(v => v.content.trim()).length} × ${inputs.filter(i => i.content.trim()).length})`}
@@ -300,7 +300,7 @@ export default function AiPlaygroundApp({ onNavigate }: { onNavigate?: (path: st
                 onClick={() => setPickerOpen(v => !v)}
                 style={{ margin: 0 }}
               >
-                {pickerOpen ? '× fermer' : '📥 Depuis un log…'}
+                {pickerOpen ? '× fermer' : 'Depuis un log…'}
               </button>
             </div>
 
@@ -448,7 +448,7 @@ function RecentInputPicker({
               fontWeight: kindFilter === s.value ? 600 : 400,
             }}
           >
-            {s.icon} {s.label}
+            {s.label}
           </button>
         ))}
       </div>
@@ -489,7 +489,7 @@ function RecentInputPicker({
                         fontSize: 10,
                         fontWeight: 600,
                       }}>
-                        {badge.icon} {badge.label}
+                        {badge.label}
                       </span>
                       <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {r.source_title || '(sans titre)'}

@@ -1241,6 +1241,146 @@ export async function reconsiderInboxProposal(id: string): Promise<InboxProposal
   return r.json();
 }
 
+// ====================================================================
+// CROSS-SOURCE INBOX CONSOLIDATION
+// One LLM call across N pending rows → a theme-merged view the user
+// can validate from a single modal. The result is held in client
+// memory until the user accepts (no DB write between consolidate and
+// apply).
+// ====================================================================
+
+export interface ConsolidatedSubjectMergedFrom {
+  rowId: string;
+  proposalIndex: number;
+  sourceTitle: string;
+  /** External source id (Fathom call_id, outlook:YYYY-MM-DD, …) —
+   *  surfaced as a tooltip on the chip so two entries sharing the
+   *  same `sourceTitle` (= 2 props of the SAME inbox row) are not
+   *  visually identical. */
+  sourceId?: string;
+  sourceKind?: string;
+}
+
+export interface ConsolidatedSubject {
+  title: string;
+  subjectAction: 'new-subject' | 'update-existing-subject';
+  reviewId: string | null;
+  sectionId: string | null;
+  suggestedNewReviewTitle: string | null;
+  suggestedNewSectionName: string | null;
+  targetSubjectId: string | null;
+  situation: string;
+  rawQuotes: string[];
+  entities: string[];
+  mergedFrom: ConsolidatedSubjectMergedFrom[];
+  reasoning: string;
+}
+
+export interface ConsolidatePendingResponse {
+  logId: number | null;
+  consolidated: ConsolidatedSubject[];
+  rowCount: number;
+  propsCount: number;
+  /** When true, the model's JSON output was truncated (hit the
+   *  maxTokens ceiling) — `consolidated` is empty as a consequence.
+   *  The UI surfaces a specific message in that case. */
+  truncated?: boolean;
+}
+
+export interface ApplyConsolidatedResponse {
+  /** Id of the newly materialized inbox row that holds the
+   *  consolidated subjects as proposals — the user validates each
+   *  one through the regular per-row Valider flow. */
+  newInboxRowId: string | null;
+  /** Number of AnalyzedSubject entries placed in the new row. */
+  proposalsCount: number;
+  /** Number of contributing inbox rows flipped to `accepted`. */
+  rowsAccepted: number;
+  errors: Array<{ title: string; error: string }>;
+  /** Id of the persisted consolidation run. `null` when nothing was
+   *  applied. Pass it to `revertConsolidationRun` to undo the apply. */
+  runId: string | null;
+}
+
+export interface RevertConsolidationResponse {
+  /** True when the consolidated inbox row was actually deleted. */
+  inboxRowDeleted: boolean;
+  /** Count of contributing inbox rows whose status was restored. */
+  rowsRestored: number;
+  errors: Array<{ step: string; error: string }>;
+}
+
+export interface ConsolidationRunSummary {
+  id: string;
+  appliedAt: string;
+  revertedAt: string | null;
+  aiLogId: number | null;
+  summary: {
+    rowsAccepted: number;
+  };
+}
+
+export async function consolidatePendingInbox(filter: {
+  sourceKind?: AutoImportSource;
+  documentId?: string;
+}): Promise<ConsolidatePendingResponse> {
+  const r = await fetch(`${API_BASE}/inbox/consolidate-pending`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(filter),
+  });
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+export async function applyConsolidatedInbox(
+  logId: number | null,
+  items: ConsolidatedSubject[],
+): Promise<ApplyConsolidatedResponse> {
+  const r = await fetch(`${API_BASE}/inbox/consolidate-pending/apply`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ logId, items }),
+  });
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+/** Undo a previous consolidation apply. Throws on a missing run or a
+ *  double-revert ; the caller surfaces the message in a toast. */
+export async function revertConsolidationRun(
+  runId: string,
+): Promise<RevertConsolidationResponse> {
+  const r = await fetch(`${API_BASE}/inbox/consolidations/${encodeURIComponent(runId)}/revert`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+/** List recent consolidation runs for the current user. Wired up for
+ *  an optional history panel ; no UI consumer yet. */
+export async function listConsolidationRuns(
+  limit?: number,
+): Promise<ConsolidationRunSummary[]> {
+  const url = `${API_BASE}/inbox/consolidations${limit ? `?limit=${limit}` : ''}`;
+  const r = await fetch(url, { credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
 /** Reviews+sections+subjects snapshot for the bulk-modal pickers.
  *  Pure DB, no AI. Called by the modal in inbox mode (= when proposals
  *  are pre-loaded and we don't need to re-run analyze-and-route). */

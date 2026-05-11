@@ -22,6 +22,7 @@
 import * as db from './dbService.js';
 import * as autoDb from './autoImportDbService.js';
 import type { AutoImportSource, UserAutoImportSettings } from './autoImportDbService.js';
+import { applySubjectUpdates, recordSourceImported, type PureSubjectUpdate } from './applySubjectUpdatesService.js';
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const TICK_INTERVAL_MS = ONE_HOUR_MS;
@@ -157,8 +158,62 @@ async function processSource(
         skipped++;
         continue;
       }
+
+      // UX rule : updates of existing subjects need NO human validation.
+      // Apply them silently here, then queue the inbox row only with
+      // what's left for the user (new subjects / new sections / new
+      // reviews). If nothing remains, no inbox row is created — but we
+      // still tag the source as imported so we don't re-analyse it next
+      // tick.
+      const all = proposals.proposals as Array<{
+        title?: string;
+        targetSubjectId?: string | null;
+        subjectAction?: 'new-subject' | 'update-existing-subject';
+        updatedSituation?: string | null;
+        updatedStatus?: string | null;
+        updatedResponsibility?: string | null;
+        reviewId?: string | null;
+        targetReviewId?: string | null;
+      }>;
+      const auto: PureSubjectUpdate[] = [];
+      const manual: typeof all = [];
+      for (const p of all) {
+        if (p.subjectAction === 'update-existing-subject' && p.targetSubjectId) {
+          auto.push({
+            title: p.title ?? '(untitled)',
+            targetSubjectId: p.targetSubjectId,
+            updatedSituation: p.updatedSituation ?? null,
+            updatedStatus: p.updatedStatus ?? null,
+            updatedResponsibility: p.updatedResponsibility ?? null,
+          });
+        } else {
+          manual.push(p);
+        }
+      }
+
+      let autoTouchedReviewIds = new Set<string>();
+      if (auto.length > 0) {
+        const r = await applySubjectUpdates(userId, auto);
+        autoTouchedReviewIds = r.touchedReviewIds;
+        if (r.errors.length > 0) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[SuiVitess auto-import] ${r.errors.length} subject-update(s) failed for ${source}:${item.id}`,
+            r.errors,
+          );
+        }
+      }
+
+      if (manual.length === 0) {
+        // Pure-update item — no inbox row, just bookkeep so it never
+        // re-appears next tick.
+        await recordSourceImported(autoTouchedReviewIds, source, item.id, item.title);
+        analysed++;
+        continue;
+      }
+
       const docCounts = new Map<string, number>();
-      for (const p of proposals.proposals as Array<{ reviewId?: string | null; targetReviewId?: string | null }>) {
+      for (const p of manual) {
         const r = p.reviewId ?? p.targetReviewId ?? null;
         if (r) docCounts.set(r, (docCounts.get(r) ?? 0) + 1);
       }
@@ -171,9 +226,15 @@ async function processSource(
         sourceId: item.id,
         sourceTitle: item.title,
         sourceDate: item.date ?? null,
-        proposals: proposals.proposals,
+        proposals: manual,
         aiLogId: proposals.rootLogId,
       });
+      // Also tag every doc that received a silent update so dedup is
+      // strict on the next tick (the inbox row alone covers the
+      // primary doc, but updates may have hit other reviews).
+      if (autoTouchedReviewIds.size > 0) {
+        await recordSourceImported(autoTouchedReviewIds, source, item.id, item.title);
+      }
       analysed++;
     } catch (err) {
       // eslint-disable-next-line no-console

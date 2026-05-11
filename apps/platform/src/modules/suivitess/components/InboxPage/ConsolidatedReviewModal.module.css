@@ -1,0 +1,129 @@
+/* Consolidation modal — visual primitives come from the shared design
+   system (Modal, Card, Button, Badge). This module just lays out the
+   per-card content and tightens the typography so the merged-sources
+   line stays readable. */
+
+.titleMuted {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.errorBanner {
+  background: var(--bg-error, rgba(239, 68, 68, 0.1));
+  color: var(--text-error, #ef4444);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  font-size: 0.85rem;
+}
+
+.noFusionBanner,
+.fusionBanner,
+.materializeBanner {
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.noFusionBanner,
+.materializeBanner {
+  background: rgba(96, 165, 250, 0.12);
+  color: var(--text-primary);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+}
+.fusionBanner {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--text-primary);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.titleBlock {
+  flex: 1;
+  min-width: 0;
+}
+
+.subjectTitle {
+  margin: 0 0 4px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.reasoning {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.cardActions {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.targetLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.situation {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.sourcesLabel {
+  margin-right: var(--spacing-xs);
+}
+
+.sourceLink {
+  color: inherit;
+  text-decoration: none;
+}
+.sourceLink:hover {
+  text-decoration: underline;
+}
+
+/* Compact muted suffix that carries proposalIndex (+ truncated sourceId)
+ * after the source title — disambiguates chips that share the same
+ * sourceTitle (= multiple proposals from the same inbox row). */
+.sourceMeta {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}

@@ -23,7 +23,7 @@ import {
   deleteAdaptation,
   countAdaptationsByCV,
 } from './adaptationDbService.js';
-import { generatePDF, getFullPreviewHTML, generateFilename } from './pdfService.js';
+import { generatePDF, getFullPreviewHTML, generateFilename, variantToOptions, type CVVariant } from './pdfService.js';
 import { autofillForm } from './autofillService.js';
 
 // Configure multer for file uploads (memory storage)
@@ -588,22 +588,24 @@ export function createMonCvRoutes(): Router {
   // ============ CV Preview & PDF Generation ============
 
   // POST /full-preview - Get complete HTML preview of CV
+  // body : { cvData, variant?: 'simple' | 'complete' } — the variant
+  // toggles whether the per-experience "Projets" sub-block is rendered.
   router.post('/full-preview', asyncHandler(async (req, res) => {
-    const { cvData } = req.body;
+    const { cvData, variant } = req.body as { cvData?: unknown; variant?: CVVariant };
 
     if (!cvData) {
       res.status(400).json({ error: 'CV data is required' });
       return;
     }
 
-    const html = getFullPreviewHTML(cvData);
+    const html = getFullPreviewHTML(cvData as CVData, variantToOptions(variant));
     res.setHeader('Content-Type', 'text/html');
     res.send(html);
   }));
 
   // POST /preview-pdf - Get inline PDF preview
   router.post('/preview-pdf', asyncHandler(async (req, res) => {
-    const { cvData } = req.body;
+    const { cvData, variant } = req.body as { cvData?: unknown; variant?: CVVariant };
 
     if (!cvData) {
       res.status(400).json({ error: 'CV data is required' });
@@ -611,8 +613,8 @@ export function createMonCvRoutes(): Router {
     }
 
     try {
-      const pdf = await generatePDF(cvData);
-      const filename = generateFilename(cvData);
+      const pdf = await generatePDF(cvData as CVData, {}, variantToOptions(variant));
+      const filename = generateFilename(cvData as CVData);
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
@@ -625,7 +627,7 @@ export function createMonCvRoutes(): Router {
 
   // POST /generate-pdf - Generate and download PDF
   router.post('/generate-pdf', asyncHandler(async (req, res) => {
-    const { cvData } = req.body;
+    const { cvData, variant } = req.body as { cvData?: unknown; variant?: CVVariant };
 
     if (!cvData) {
       res.status(400).json({ error: 'CV data is required' });
@@ -633,8 +635,8 @@ export function createMonCvRoutes(): Router {
     }
 
     try {
-      const pdf = await generatePDF(cvData);
-      const filename = generateFilename(cvData);
+      const pdf = await generatePDF(cvData as CVData, {}, variantToOptions(variant));
+      const filename = generateFilename(cvData as CVData);
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -853,15 +855,19 @@ export function createMonCvRoutes(): Router {
   }));
 
   // POST /adaptations/:id/pdf — generate and return PDF for a saved adaptation
+  // body : { variant?: 'simple' | 'complete' } — defaults to 'complete'
+  // (current behaviour). 'simple' hides the per-experience Projects.
   router.post('/adaptations/:id/pdf', asyncHandler(async (req, res) => {
     const userId = (req as any).user?.id;
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: 'Invalid adaptation id' });
+    const { variant } = (req.body || {}) as { variant?: CVVariant };
     const adaptation = await getAdaptation(id, userId);
     if (!adaptation) return res.status(404).json({ error: 'Adaptation not found' });
-    const pdfBuffer = await generatePDF(adaptation.adaptedCv);
+    const pdfBuffer = await generatePDF(adaptation.adaptedCv, {}, variantToOptions(variant));
+    const filename = variant === 'simple' ? 'CV_adapte_simple.pdf' : 'CV_adapte.pdf';
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="CV_adapte.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(pdfBuffer);
   }));
 

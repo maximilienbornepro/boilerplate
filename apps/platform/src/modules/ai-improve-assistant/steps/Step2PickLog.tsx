@@ -6,13 +6,13 @@ import { listRecentInputsForSkill, type RecentInput } from '../assistantApi';
 
 function sourceBadge(kind: string | null): { icon: string; label: string; color: string } {
   const k = (kind ?? '').toLowerCase();
-  if (k === 'transcript' || k === 'fathom' || k === 'otter') return { icon: '🎙', label: 'transcript', color: 'var(--accent-primary)' };
-  if (k === 'slack')   return { icon: '💬', label: 'slack',   color: '#4a154b' };
-  if (k === 'outlook') return { icon: '✉',  label: 'outlook', color: '#0072c6' };
-  if (k === 'gmail')   return { icon: '📧', label: 'gmail',   color: '#ea4335' };
-  if (k === 'subject') return { icon: '📌', label: 'subject', color: '#6c757d' };
-  if (k === 'board')   return { icon: '📊', label: 'board',   color: '#17a2b8' };
-  return { icon: '✦', label: k || '—', color: 'var(--text-secondary)' };
+  if (k === 'transcript' || k === 'fathom' || k === 'otter') return { icon: '', label: 'transcript', color: 'var(--accent-primary)' };
+  if (k === 'slack')   return { icon: '', label: 'slack',   color: '#4a154b' };
+  if (k === 'outlook') return { icon: '', label: 'outlook', color: '#0072c6' };
+  if (k === 'gmail')   return { icon: '', label: 'gmail',   color: '#ea4335' };
+  if (k === 'subject') return { icon: '', label: 'subject', color: '#6c757d' };
+  if (k === 'board')   return { icon: '', label: 'board',   color: '#17a2b8' };
+  return { icon: '', label: k || '—', color: 'var(--text-secondary)' };
 }
 
 export default function Step2PickLog({ onAdvance: _ }: StepProps) {
@@ -48,9 +48,9 @@ export default function Step2PickLog({ onAdvance: _ }: StepProps) {
   return (
     <div className={styles.actionBlock}>
       <p className={styles.statusLine} style={{ lineHeight: 1.5 }}>
-        Voici les <strong>{rows.length} derniers logs</strong> du skill. Chaque ligne = un appel IA réel qu'un utilisateur a déclenché. Le badge coloré indique d'où vient l'input (🎙 transcription, 💬 slack, ✉ email…).
+        Voici les <strong>{rows.length} derniers logs</strong> du skill. Chaque ligne = un appel IA réel qu'un utilisateur a déclenché. Le badge coloré indique d'où vient l'input (transcription, slack, email…).
         <br />
-        👉 Clique sur celui où la sortie de l'IA n'était <strong>pas bonne</strong> (titre/preview qui te semblent problématiques). C'est ce cas qui servira de cobaye pour améliorer le skill.
+        Clique sur celui où la sortie de l'IA n'était <strong>pas bonne</strong> (titre/preview qui te semblent problématiques). C'est ce cas qui servira de cobaye pour améliorer le skill.
       </p>
       <div style={{ maxHeight: 340, overflowY: 'auto' }}>
         <table className={styles.table}>
@@ -74,7 +74,7 @@ export default function Step2PickLog({ onAdvance: _ }: StepProps) {
                   </td>
                   <td>
                     <span className={styles.kindBadge} style={{ background: badge.color }}>
-                      {badge.icon} {badge.label}
+                      {badge.label}
                     </span>
                   </td>
                   <td>{r.source_title ?? '(sans titre)'}</td>

@@ -17,12 +17,12 @@ import type { Document } from '../../types';
 import type { AutoImportSource, UserAutoImportSettings } from '../../services/api';
 import styles from './AutoImportSettings.module.css';
 
-const SOURCES: Array<{ value: AutoImportSource; label: string; emoji: string }> = [
-  { value: 'fathom',  label: 'Fathom',  emoji: '📞' },
-  { value: 'otter',   label: 'Otter',   emoji: '🦦' },
-  { value: 'outlook', label: 'Outlook', emoji: '📨' },
-  { value: 'gmail',   label: 'Gmail',   emoji: '📧' },
-  { value: 'slack',   label: 'Slack',   emoji: '💬' },
+const SOURCES: Array<{ value: AutoImportSource; label: string }> = [
+  { value: 'fathom',  label: 'Fathom'  },
+  { value: 'otter',   label: 'Otter'   },
+  { value: 'outlook', label: 'Outlook' },
+  { value: 'gmail',   label: 'Gmail'   },
+  { value: 'slack',   label: 'Slack'   },
 ];
 
 interface Props {
@@ -169,7 +169,7 @@ export function AutoImportSettings({ documents, onClose }: Props) {
                     onChange={() => toggleSource(s.value)}
                     disabled={savingUser || !masterEnabled}
                   />
-                  <span>{s.emoji} {s.label}</span>
+                  <span>{s.label}</span>
                 </label>
               ))}
             </div>

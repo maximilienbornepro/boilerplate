@@ -363,6 +363,17 @@
   display: inline-block;
 }
 
+/* Inline marker shown before a line edited by the import IA.
+   Driven by the `[!]` prefix in storage (see parseSituationLine).
+   Uses --accent-primary so it picks up the user's theme. */
+.aiEditedMarker {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 4px;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
 .bulletLevel0 {
   color: var(--indigo-500);
 }

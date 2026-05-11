@@ -113,10 +113,24 @@ function generateSidebarHTML(cvData: CVData): string {
   `;
 }
 
+/** Render-time options threaded through the HTML generators. */
+export interface RenderOptions {
+  /** When true, hide the per-experience "Projets" sub-block. Mission
+   *  bullets and the experience header stay in. Side-projects and the
+   *  rest of the CV are unaffected. Default: false (full / "complete"
+   *  version). */
+  simple?: boolean;
+}
+
+export type CVVariant = 'simple' | 'complete';
+export function variantToOptions(variant: CVVariant | undefined): RenderOptions {
+  return { simple: variant === 'simple' };
+}
+
 /**
  * Generate experience HTML
  */
-function generateExperienceHTML(exp: Experience): string {
+function generateExperienceHTML(exp: Experience, opts: RenderOptions = {}): string {
   const logo = exp.logo
     ? `<img src="${exp.logo}" alt="${exp.company}" class="company-logo" />`
     : '';
@@ -126,8 +140,11 @@ function generateExperienceHTML(exp: Experience): string {
       ? `<ul class="missions">${exp.missions.map(m => `<li>${m}</li>`).join('')}</ul>`
       : '';
 
+  // Per-experience projects are intentionally suppressed in the "simple"
+  // variant — gives a shorter, recruiter-friendly version without
+  // losing missions / tech / dates.
   const projects =
-    exp.projects && exp.projects.length > 0
+    !opts.simple && exp.projects && exp.projects.length > 0
       ? `<div class="projects">
           <h4>Projets</h4>
           ${exp.projects
@@ -253,11 +270,11 @@ function generateAwardsHTML(awards: Award[]): string {
 /**
  * Generate main content HTML
  */
-function generateMainHTML(cvData: CVData): string {
+function generateMainHTML(cvData: CVData, opts: RenderOptions = {}): string {
   return `
     <main class="main-content">
       <h2 class="main-section-title">Expériences Professionnelles</h2>
-      ${(cvData.experiences || []).map(exp => generateExperienceHTML(exp)).join('')}
+      ${(cvData.experiences || []).map(exp => generateExperienceHTML(exp, opts)).join('')}
       ${generateFormationsHTML(cvData.formations || [])}
       ${generateSideProjectsHTML(cvData.sideProjects)}
       ${generateAwardsHTML(cvData.awards || [])}
@@ -285,10 +302,10 @@ function generateTopHeaderHTML(cvData: CVData): string {
   `;
 }
 
-export function generateCVHTML(cvData: CVData): string {
+export function generateCVHTML(cvData: CVData, opts: RenderOptions = {}): string {
   const topHeader = generateTopHeaderHTML(cvData);
   const sidebar = generateSidebarHTML(cvData);
-  const main = generateMainHTML(cvData);
+  const main = generateMainHTML(cvData, opts);
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -673,8 +690,8 @@ export function generateCVHTML(cvData: CVData): string {
 /**
  * Generate full preview HTML with all data displayed
  */
-export function getFullPreviewHTML(cvData: CVData): string {
-  return generateCVHTML(cvData);
+export function getFullPreviewHTML(cvData: CVData, opts: RenderOptions = {}): string {
+  return generateCVHTML(cvData, opts);
 }
 
 /**
@@ -682,12 +699,13 @@ export function getFullPreviewHTML(cvData: CVData): string {
  */
 export async function generatePDF(
   cvData: CVData,
-  config: Partial<PDFConfig> = {}
+  config: Partial<PDFConfig> = {},
+  opts: RenderOptions = {},
 ): Promise<Buffer> {
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
 
   // Generate HTML
-  const html = generateCVHTML(cvData);
+  const html = generateCVHTML(cvData, opts);
 
   // Detect Chrome executable path: env var > common Linux/Docker paths > bundled Puppeteer
   const chromePaths = [

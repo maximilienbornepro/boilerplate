@@ -54,7 +54,7 @@ export function InboxDetail({ row, onClose, onAccept, onReject, onValidate }: Pr
     <Modal title={row.sourceTitle ?? row.sourceId} onClose={onClose} size="xl">
       <div className={styles.body}>
         <div className={styles.metaRow}>
-          <span>📥 {row.documentTitle ?? row.documentId}</span>
+          <span>{row.documentTitle ?? row.documentId}</span>
           <span>·</span>
           <span>{proposals.length} sujet{proposals.length > 1 ? 's' : ''}</span>
           <span>·</span>
@@ -104,13 +104,13 @@ export function InboxDetail({ row, onClose, onAccept, onReject, onValidate }: Pr
                   <div className={styles.target}>
                     <span className={styles.targetLabel}>Cible :</span>
                     <span>
-                      {p.action === 'existing-review' ? '📁 Review existante' : '🆕 Nouvelle review'}
+                      {p.action === 'existing-review' ? 'Review existante' : 'Nouvelle review'}
                       {p.suggestedNewReviewTitle && ` « ${p.suggestedNewReviewTitle} »`}
                       {' → '}
-                      {p.sectionAction === 'existing-section' ? '📂 Section existante' : '🆕 Nouvelle section'}
+                      {p.sectionAction === 'existing-section' ? 'Section existante' : 'Nouvelle section'}
                       {p.suggestedNewSectionName && ` « ${p.suggestedNewSectionName} »`}
                       {' → '}
-                      {p.subjectAction === 'new-subject' ? '🆕 Nouveau sujet' : '✎ Mise à jour'}
+                      {p.subjectAction === 'new-subject' ? 'Nouveau sujet' : 'Mise à jour'}
                     </span>
                   </div>
                   {p.rawQuotes && p.rawQuotes.length > 0 && (

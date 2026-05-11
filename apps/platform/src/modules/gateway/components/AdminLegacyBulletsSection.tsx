@@ -74,11 +74,11 @@ export function AdminLegacyBulletsSection({ onToast }: Props) {
 
       <div style={{ display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap', marginBottom: 'var(--spacing-md)' }}>
         <Button variant="secondary" onClick={runPreview} disabled={loading || applying}>
-          {loading ? 'Analyse…' : '🔍 Prévisualiser'}
+          {loading ? 'Analyse…' : 'Prévisualiser'}
         </Button>
         {preview && preview.rowsToClean > 0 && (
           <Button variant="primary" onClick={() => setConfirmApply(true)} disabled={applying}>
-            ✂️ Appliquer sur {preview.rowsToClean} sujet{preview.rowsToClean > 1 ? 's' : ''}
+            Appliquer sur {preview.rowsToClean} sujet{preview.rowsToClean > 1 ? 's' : ''}
           </Button>
         )}
       </div>

@@ -334,7 +334,7 @@ export function JiraImportModal({ incrementId, boardId, onImported, onClose }: J
             className={`${styles.modeBtn} ${mode === 'url' ? styles.modeBtnActive : ''}`}
             onClick={() => { setMode('url'); setError(null); }}
           >
-            🔗 Par URL
+            Par URL
           </button>
         </div>
 
@@ -379,16 +379,16 @@ export function JiraImportModal({ incrementId, boardId, onImported, onClose }: J
                   <span className={styles.urlPreviewType}>{urlPreview.issueType}</span>
                   <span className={styles.urlPreviewStatus}>{urlPreview.status}</span>
                   <span className={styles.urlPreviewAuth} title={urlPreview.authMode === 'oauth' ? 'Récupéré via OAuth 2.0' : 'Récupéré via token Basic Auth'}>
-                    {urlPreview.authMode === 'oauth' ? '🔐 OAuth' : '🔑 Token'}
+                    {urlPreview.authMode === 'oauth' ? 'OAuth' : 'Token'}
                   </span>
                 </div>
                 <h4 className={styles.urlPreviewSummary}>{urlPreview.summary}</h4>
                 <div className={styles.urlPreviewMeta}>
-                  {urlPreview.assignee && <span>👤 {urlPreview.assignee}</span>}
-                  {urlPreview.storyPoints != null && <span>⚡ {urlPreview.storyPoints} SP</span>}
-                  {urlPreview.estimatedDays != null && <span>📆 {urlPreview.estimatedDays} j</span>}
-                  {urlPreview.fixVersion && <span>🎯 {urlPreview.fixVersion}</span>}
-                  {urlPreview.sprintName && <span>🏃 {urlPreview.sprintName}</span>}
+                  {urlPreview.assignee && <span>{urlPreview.assignee}</span>}
+                  {urlPreview.storyPoints != null && <span>{urlPreview.storyPoints} SP</span>}
+                  {urlPreview.estimatedDays != null && <span>{urlPreview.estimatedDays} j</span>}
+                  {urlPreview.fixVersion && <span>{urlPreview.fixVersion}</span>}
+                  {urlPreview.sprintName && <span>{urlPreview.sprintName}</span>}
                   {urlPreview.priority && <span>⚑ {urlPreview.priority}</span>}
                 </div>
               </div>

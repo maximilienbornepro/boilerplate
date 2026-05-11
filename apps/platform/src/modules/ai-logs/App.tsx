@@ -332,7 +332,7 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
                   background: 'var(--accent-primary)', color: '#000',
                   border: 'none', borderRadius: 2, cursor: 'pointer', fontWeight: 600,
                 }}
-              >🚀 Améliorer</button>
+              >Améliorer</button>
               <div className={styles.sidebarCount}>{logs.length}{hasMore ? '+' : ''}</div>
             </div>
           </div>
@@ -647,7 +647,7 @@ function LogDetailView({
           </div>
         </div>
         <div className={styles.detailActions}>
-          <Button variant="secondary" onClick={() => copy(url)}>📋 Copier le lien</Button>
+          <Button variant="secondary" onClick={() => copy(url)}>Copier le lien</Button>
           <AddToDatasetButton logId={detail.id} skillSlug={detail.skill_slug} />
         </div>
       </header>
@@ -674,7 +674,7 @@ function LogDetailView({
 
       {/* ── Input brut (editable for replay) ── */}
       <Section
-        title="📥 Input brut (envoyé au modèle)"
+        title="Input brut (envoyé au modèle)"
         subtitle="Tu peux modifier cet input puis cliquer sur « Rejouer » pour tester."
         toolbar={<Button variant="secondary" onClick={() => copy(detail.input_content)}>Copier</Button>}
       >
@@ -688,7 +688,7 @@ function LogDetailView({
 
       {/* ── Full prompt (skill + exec context) ── */}
       <Section
-        title="🧠 Prompt complet envoyé au modèle"
+        title="Prompt complet envoyé au modèle"
         subtitle={editPromptMode
           ? 'Mode override — le prompt ci-dessous sera envoyé TEL QUEL (bypass skill/template).'
           : 'Par défaut, le replay reconstruit le prompt à partir du skill courant + ton input. Active le mode override pour tout remplacer.'}
@@ -719,7 +719,7 @@ function LogDetailView({
 
       {/* ── AI output ── */}
       <Section
-        title="📤 Réponse brute du modèle"
+        title="Réponse brute du modèle"
         toolbar={<Button variant="secondary" onClick={() => copy(detail.ai_output_raw)}>Copier</Button>}
       >
         <pre className={styles.codeBlock}>{detail.ai_output_raw || '(vide)'}</pre>
@@ -727,7 +727,7 @@ function LogDetailView({
 
       {/* ── Parsed proposals ── */}
       <Section
-        title="📦 Propositions parsées"
+        title="Propositions parsées"
         toolbar={<Button variant="secondary" onClick={() => copy(JSON.stringify(detail.proposals_json, null, 2))}>Copier JSON</Button>}
       >
         <pre className={styles.codeBlock}>{JSON.stringify(detail.proposals_json, null, 2)}</pre>
@@ -735,7 +735,7 @@ function LogDetailView({
 
       {/* ── Scores (Phase 2) ── */}
       <Section
-        title="⭐ Scores"
+        title="Scores"
         subtitle="Scorers automatiques (heuristiques + llm-judge) + annotations humaines."
         toolbar={
           <Button variant="secondary" onClick={onRescoreAuto} disabled={rescoring}>
@@ -766,8 +766,8 @@ function LogDetailView({
             }}
           />
           <div style={{ display: 'flex', gap: 'var(--spacing-xs)' }}>
-            <Button variant="secondary" onClick={onThumbDown}>👎 Pas bon</Button>
-            <Button variant="primary" onClick={onThumbUp}>👍 Bon</Button>
+            <Button variant="secondary" onClick={onThumbDown}>Pas bon</Button>
+            <Button variant="primary" onClick={onThumbUp}>Bon</Button>
           </div>
         </div>
       </Section>
@@ -851,7 +851,7 @@ function AddToDatasetButton({ logId, skillSlug }: { logId: number; skillSlug: st
   };
 
   if (!open) {
-    return <Button variant="secondary" onClick={() => setOpen(true)}>➕ Ajouter à un dataset</Button>;
+    return <Button variant="secondary" onClick={() => setOpen(true)}>Ajouter à un dataset</Button>;
   }
 
   return (
@@ -903,9 +903,9 @@ function ScoresTable({
   }
 
   const kindIcon: Record<ScoreRow['scorer_kind'], string> = {
-    heuristic: '⚙',
-    'llm-judge': '🤖',
-    human: '🧑',
+    heuristic: '',
+    'llm-judge': '',
+    human: '',
   };
 
   return (
@@ -926,11 +926,11 @@ function ScoresTable({
             const n = parseFloat(s.score_value);
             const mine = s.scorer_kind === 'human' && s.annotator_user_id === currentUserId;
             const valueDisplay = s.scorer_kind === 'human' && (n === 1 || n === -1)
-              ? (n === 1 ? '👍' : '👎')
+              ? (n === 1 ? 'Bon' : 'Pas bon')
               : Number.isFinite(n) ? n.toFixed(2) : s.score_value;
             return (
               <tr key={s.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                <td style={{ padding: '6px 10px', color: 'var(--text-secondary)' }}>{kindIcon[s.scorer_kind]} {s.scorer_kind}</td>
+                <td style={{ padding: '6px 10px', color: 'var(--text-secondary)' }}>{s.scorer_kind}</td>
                 <td style={{ padding: '6px 10px', color: 'var(--text-primary)' }}>{s.score_name}</td>
                 <td style={{ padding: '6px 10px', textAlign: 'right', color: 'var(--accent-primary)', fontWeight: 600 }}>{valueDisplay}</td>
                 <td style={{ padding: '6px 10px', color: 'var(--text-secondary)', maxWidth: 400, wordBreak: 'break-word' }}>{s.rationale ?? '—'}</td>
