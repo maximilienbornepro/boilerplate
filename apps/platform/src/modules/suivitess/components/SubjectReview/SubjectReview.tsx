@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { StatusTag } from '@boilerplate/shared/components';
+import { StatusTag } from '@delivery-process/shared/components';
 import type { Subject } from '../../types';
 import { STATUS_OPTIONS, getStatusOption } from '../../types';
 import { updateSubject } from '../../services/api';
@@ -1014,9 +1014,6 @@ export function SubjectReview({
                     className={`${styles.contentLine} ${strikethrough ? styles.strikethroughDisplay : ''}`}
                     style={{ paddingLeft: `${level * 1.25}rem` }}
                   >
-                    {editedByAi && (
-                      <AiEditedMarker className={styles.aiEditedMarker} />
-                    )}
                     <span className={`${styles.bullet} ${styles[`bulletLevel${level}`]}`}>
                       {getBullet(level)}
                     </span>
@@ -1027,6 +1024,9 @@ export function SubjectReview({
                     )}
                     {responsible && (
                       <span className={styles.responsibilityBadge}>{responsible}</span>
+                    )}
+                    {editedByAi && (
+                      <AiEditedMarker className={styles.aiEditedMarker} />
                     )}
                   </div>
                 );
