@@ -363,13 +363,15 @@
   display: inline-block;
 }
 
-/* Inline marker shown before a line edited by the import IA.
-   Driven by the `[!]` prefix in storage (see parseSituationLine).
-   Uses --accent-primary so it picks up the user's theme. */
+/* Inline marker shown AFTER a line edited by the import IA.
+   Driven by the `[!]` suffix in storage (see parseSituationLine).
+   Placed at end-of-line (before the row's action buttons) so the
+   visual indentation hierarchy isn't shifted by the marker —
+   the eye expects content first, then a discreet status icon. */
 .aiEditedMarker {
   display: inline-flex;
   align-items: center;
-  margin-right: 4px;
+  margin-left: 6px;
   color: var(--accent-primary);
   flex-shrink: 0;
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { StatusTag } from '@boilerplate/shared/components';
+import { StatusTag } from '@delivery-process/shared/components';
 import type { Subject } from '../../types';
 import { STATUS_OPTIONS, getStatusOption } from '../../types';
 import { updateSubject } from '../../services/api';
@@ -836,9 +836,6 @@ export function SubjectReview({
                     className={`${styles.editorLine} ${strikethrough ? styles.strikethroughLine : ''}`}
                     style={{ paddingLeft: `${level * 1.25}rem` }}
                   >
-                    {editedByAi && (
-                      <AiEditedMarker className={styles.aiEditedMarker} />
-                    )}
                     <span className={`${styles.bullet} ${styles[`bulletLevel${level}`]}`}>
                       {getBullet(level)}
                     </span>
@@ -935,6 +932,9 @@ export function SubjectReview({
                       }}
                       data-placeholder="Nouvelle ligne... (ajouter @Nom pour assigner)"
                     />
+                    {editedByAi && (
+                      <AiEditedMarker className={styles.aiEditedMarker} />
+                    )}
                     <div className={styles.lineActions}>
                       {i > 0 && (
                         <button
