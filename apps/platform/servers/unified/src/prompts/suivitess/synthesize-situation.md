@@ -40,9 +40,14 @@ de ce qui est déjà écrit dans `currentSituation` (sauf pour le bloc
   disent la même chose avec des mots différents, fusionne-les en une
   ligne plus courte. Ne perds JAMAIS d'information factuelle (chiffres,
   dates, noms propres, statuts).
-- **Préserve les `[!]`** : si une ligne existante porte le marqueur
-  `[!]` (signal « éditée par l'import IA »), conserve-le tel quel sur
-  la ligne nettoyée. Ne RAJOUTE pas de `[!]` sur les lignes qui n'en
+- **Préserve les `[!]` en FIN de ligne** : si une ligne existante porte
+  le marqueur `[!]` (signal « éditée par l'import IA »), conserve-le
+  mais **toujours à la fin de la ligne, après le contenu** — JAMAIS en
+  début. Un `[!]` en tête de ligne décale visuellement l'indentation
+  hiérarchique et casse la lisibilité (l'œil s'attend à des espaces
+  d'indentation, pas à un marqueur). Si tu rencontres `[!] foo bar` en
+  début, transforme en `foo bar [!]` (en conservant l'indentation
+  d'origine devant). Ne RAJOUTE pas de `[!]` sur les lignes qui n'en
   avaient pas — ce marqueur est réservé aux écritures du pipeline
   d'import.
 - **Préserve la hiérarchie** : chaque niveau d'indentation = 2 espaces.

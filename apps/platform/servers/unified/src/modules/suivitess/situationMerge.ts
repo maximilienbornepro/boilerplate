@@ -39,14 +39,17 @@
 const ANY_DATE_HEADER_RE = /^[ \t]*[—–-]?[ \t]*Mise à jour (?:automatique en date du|du)\s+[\d/]+\s*:?\s*$/;
 
 /**
- * Strip the `[!]` marker, surrounding `~~…~~` wrappers, and any
- * leading whitespace, returning the comparable text content of a
- * line. Used by the dedup and the strikethrough-match logic.
+ * Strip the `[!]` marker (leading legacy OR trailing canonical),
+ * surrounding `~~…~~` wrappers, and any leading whitespace, returning
+ * the comparable text content of a line. Used by the dedup and the
+ * strikethrough-match logic.
  */
 function lineKey(line: string): string {
-  let s = line.replace(/^\s+/, '');
-  // Drop a leading `[!]` (with or without trailing space).
+  let s = line.replace(/^\s+/, '').replace(/\s+$/, '');
+  // Drop a leading `[!]` (legacy / defensive — old rows before May 2026).
   s = s.replace(/^\[!\]\s*/, '');
+  // Drop a trailing `[!]` (current canonical position — end of line).
+  s = s.replace(/\s*\[!\]$/, '');
   // Unwrap surrounding `~~…~~` if present (line-level strikethrough).
   if (s.startsWith('~~') && s.endsWith('~~') && s.length > 4) {
     s = s.slice(2, -2);
@@ -66,10 +69,15 @@ function indentOf(line: string): number {
 
 /** True if `line` is a strikethrough closure produced by the T3
  *  prompt (the `[!]` marker is optional in the regex — the merger
- *  must tolerate both forms even though the prompt always emits it). */
+ *  must tolerate both forms even though the prompt always emits it).
+ *  Accepts the marker at start (legacy) OR at end (current canonical
+ *  position). */
 function isStrikethroughLine(line: string): boolean {
-  const s = line.replace(/^\s+/, '').replace(/^\[!\]\s*/, '');
-  return /^~~.+~~\s*$/.test(s);
+  const s = line
+    .replace(/^\s+/, '').replace(/\s+$/, '')
+    .replace(/^\[!\]\s*/, '')   // legacy leading marker
+    .replace(/\s*\[!\]$/, '');  // current trailing marker
+  return /^~~.+~~$/.test(s);
 }
 
 /**

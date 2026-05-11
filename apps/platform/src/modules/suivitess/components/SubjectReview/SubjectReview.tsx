@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { StatusTag } from '@boilerplate/shared/components';
+import { StatusTag } from '@delivery-process/shared/components';
 import type { Subject } from '../../types';
 import { STATUS_OPTIONS, getStatusOption } from '../../types';
 import { updateSubject } from '../../services/api';
@@ -312,19 +312,17 @@ export function SubjectReview({
   // Rebuild a stored line from its parsed parts, preserving the
   // `[!]` AI-edited marker if any (Step 3 of the situation refactor :
   // the marker is data, not presentation, so it MUST round-trip
-  // through any edit).
+  // through any edit). The marker now lives at END of line so a
+  // leading `[!]` doesn't shift the visual indentation hierarchy.
   const rebuildLine = (level: number, text: string, strikethrough: boolean, editedByAi: boolean): string => {
     const indent = '  '.repeat(level);
-    const prefix = editedByAi ? '[!]' : '';
     const trimmed = text.trim();
     // Empty line : drop the marker too so the user can fully clear
     // the row (otherwise an `[!]` sticks around as a ghost).
     if (!trimmed) return indent;
     const wrapped = strikethrough ? '~~' + text + '~~' : text;
-    // On strikethrough lines we emit `[!]~~text~~` (no space) — same
-    // shape the T3 prompt uses, so the merger's matcher keeps working.
-    const sep = (editedByAi && strikethrough) ? '' : (editedByAi ? ' ' : '');
-    return indent + prefix + sep + wrapped;
+    const suffix = editedByAi ? ' [!]' : '';
+    return indent + wrapped + suffix;
   };
 
   // Toggle strikethrough (marks line as done) — manual user action.

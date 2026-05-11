@@ -45,24 +45,28 @@ clôtures de lignes existantes).
   Le merger côté serveur intègre tes lignes directement dans la situation —
   pas besoin d'horodatage.
 - **Reprends les lignes existantes intactes ; ne re-émets QUE les lignes que
-  tu ajoutes ou que tu barres, avec le préfixe `[!]`**.
+  tu ajoutes ou que tu barres, avec le suffixe `[!]` en fin de ligne**.
 - **Pour barrer une ligne existante**, re-écris-la complètement entre
-  `~~…~~` avec le préfixe `[!]` ; le merger remplacera la version existante
-  par celle-ci.
+  `~~…~~` avec le suffixe ` [!]` en fin ; le merger remplacera la version
+  existante par celle-ci.
 
 ## Marqueur `[!]`
 
-Toute ligne que tu produis (ajout OU strikethrough) DOIT commencer par
-`[!]` placé **après l'indentation** (les espaces de tête) et **avant** le
-texte ou la balise `~~`. Le marqueur signale à SuiviTess que la ligne a
-été éditée par l'import IA et déclenche un petit pictogramme d'avertissement
-dans le rendu.
+Toute ligne que tu produis (ajout OU strikethrough) DOIT se terminer par
+` [!]` placé **en fin de ligne, après le contenu** (et après la balise
+fermante `~~` pour une ligne barrée). Le marqueur signale à SuiviTess que
+la ligne a été éditée par l'import IA et déclenche un petit pictogramme
+d'avertissement dans le rendu.
 
-- Ligne ajoutée : `  [!] Bouygues : recette data en cours.`
-- Ligne barrée (clôture) : `  [!]~~Migration prévue mercredi.~~`
+**Pourquoi en fin et pas en tête** : un `[!]` au début de ligne décale
+visuellement l'indentation hiérarchique de 4 caractères (l'œil s'attend
+à des espaces d'indentation, pas à un marqueur). En queue, l'indentation
+reste lisible.
 
-Ne mets PAS d'espace entre `[!]` et `~~` sur les lignes barrées : c'est
-`[!]~~texte~~`, pas `[!] ~~texte~~`.
+- Ligne ajoutée : `  Bouygues : recette data en cours. [!]`
+- Ligne barrée (clôture) : `  ~~Migration prévue mercredi.~~ [!]`
+
+Respecte l'espace **avant** le `[!]` final (`texte [!]`, jamais `texte[!]`).
 
 ## Décider : ajouter vs barrer
 
@@ -72,8 +76,8 @@ Ne mets PAS d'espace entre `[!]` et `~~` sur les lignes barrées : c'est
 - **Barrer une ligne** : un `rawQuotes` indique qu'un point existant de
   `existingSituation` est désormais clos / fait / obsolète / résolu /
   livré / décidé. Recopie la ligne existante dans `appendText` en
-  conservant son indentation, en l'enveloppant `~~…~~`, et en préfixant
-  `[!]` (cf. exemple ci-dessous). Le merger fera le remplacement.
+  conservant son indentation, en l'enveloppant `~~…~~`, et en suffixant
+  ` [!]` en fin (cf. exemple ci-dessous). Le merger fera le remplacement.
 - Si une info met à jour une ligne sans la clôturer (ex : nouvelle deadline
   d'un point en cours), préfère **ajouter** une nouvelle ligne plutôt que
   de barrer l'ancienne — la lecture chronologique reste plus claire.
@@ -122,7 +126,7 @@ Input :
 Output :
 ```json
 {
-  "appendText": "  [!]~~Migration prévue mercredi.~~\n  [!] Migration validée mercredi.\n  [!] Downtime final **28 min** (sous les 30 annoncées)."
+  "appendText": "  ~~Migration prévue mercredi.~~ [!]\n  Migration validée mercredi. [!]\n  Downtime final **28 min** (sous les 30 annoncées). [!]"
 }
 ```
 
