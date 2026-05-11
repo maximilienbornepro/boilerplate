@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
-import { ModuleHeader, Card, Modal, FormField, ConfirmModal, Button, ToastContainer, LoadingSpinner, SharingModal, VisibilityPicker } from '@boilerplate/shared/components';
+import { useState, useEffect, useRef } from 'react';
+import { ModuleHeader, Card, Modal, FormField, ConfirmModal, Button, ToastContainer, LoadingSpinner, SharingModal, VisibilityPicker, Badge } from '@boilerplate/shared/components';
 import type { ToastData, Visibility } from '@boilerplate/shared/components';
 import type { Document } from '../../types';
 import * as api from '../../services/api';
 import { BulkTranscriptionImportModal } from '../BulkTranscriptionImportModal/BulkTranscriptionImportModal';
 import { consumeBulkImportReopenFlag } from '../BulkTranscriptionImportModal/InlineConnectorSetup';
+import { AutoImportSettings } from '../AutoImportSettings';
+import { useNavigate } from 'react-router-dom';
 import styles from './DocumentSelector.module.css';
 
 interface DocumentSelectorProps {
@@ -18,8 +20,42 @@ interface DeleteConfirmState {
 }
 
 export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: DocumentSelectorProps) {
+  const navigate = useNavigate();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAutoImport, setShowAutoImport] = useState(false);
+  const [inboxPending, setInboxPending] = useState(0);
+  const [showActions, setShowActions] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+
+  // Close the Actions dropdown on outside click — mirrors the
+  // per-document Actions menu's UX.
+  useEffect(() => {
+    if (!showActions) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+        setShowActions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showActions]);
+
+  // Inbox pending count (for the badge). Cheap COUNT(*) ; refreshed
+  // on focus and every 60s.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      void api.getInboxPendingCount()
+        .then(n => { if (!cancelled) setInboxPending(n); })
+        .catch(() => {});
+    };
+    refresh();
+    const t = setInterval(refresh, 60_000);
+    window.addEventListener('focus', refresh);
+    return () => { cancelled = true; clearInterval(t); window.removeEventListener('focus', refresh); };
+  }, []);
+
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
@@ -185,13 +221,56 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
   return (
     <>
       <ModuleHeader title="SuiviTess">
-        <button
-          className="module-header-btn"
-          onClick={() => setShowBulkImport(true)}
-          title="Importer les transcriptions et mails récents — l'IA propose la review de destination"
-        >
-          Importer & ranger
-        </button>
+        <div ref={actionsRef} className="suivitess-exports">
+          <button
+            type="button"
+            className="module-header-btn"
+            onClick={() => setShowActions(v => !v)}
+            aria-haspopup="menu"
+            aria-expanded={showActions}
+          >
+            Actions
+            {inboxPending > 0 && (
+              <span style={{ marginLeft: 6 }}><Badge type="error">{String(inboxPending)}</Badge></span>
+            )}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 6 }}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {showActions && (
+            <div className="suivitess-exports-menu" role="menu">
+              <div className="suivitess-exports-group-title">Importer</div>
+              <button
+                type="button"
+                className="suivitess-exports-item"
+                onClick={() => { setShowActions(false); setShowBulkImport(true); }}
+              >
+                Importer & ranger
+              </button>
+
+              <div className="suivitess-exports-divider" />
+
+              <div className="suivitess-exports-group-title">Import auto</div>
+              <button
+                type="button"
+                className="suivitess-exports-item"
+                onClick={() => { setShowActions(false); setShowAutoImport(true); }}
+              >
+                Réglages
+              </button>
+              <button
+                type="button"
+                className="suivitess-exports-item"
+                onClick={() => { setShowActions(false); navigate('/suivitess/inbox'); }}
+              >
+                Boîte de réception
+                {inboxPending > 0 && (
+                  <span style={{ marginLeft: 8 }}><Badge type="error">{String(inboxPending)}</Badge></span>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
         <button
           className="module-header-btn module-header-btn-primary"
           onClick={() => setShowCreateForm(true)}
@@ -401,6 +480,13 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
             }
             api.fetchDocuments().then(setDocuments).catch(() => {});
           }}
+        />
+      )}
+
+      {showAutoImport && (
+        <AutoImportSettings
+          documents={documents}
+          onClose={() => setShowAutoImport(false)}
         />
       )}
 

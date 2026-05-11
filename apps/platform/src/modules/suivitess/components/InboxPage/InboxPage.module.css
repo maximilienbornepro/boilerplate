@@ -1,0 +1,113 @@
+/* Layout shell only — visual primitives (tabs / cards / badges)
+   come from the shared design system (see COMPONENTS.md). */
+
+.page {
+  padding: var(--spacing-lg);
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.filters {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Refresh button : oversize the glyph so it reads as an icon, not as
+ * a stray character. */
+.refreshIcon {
+  display: inline-block;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* Inline status text shown next to the "Consolider" CTA — short feedback
+ * for "no merge found" / errors / post-apply summary. Auto-disappears
+ * after a few seconds (component-driven). */
+.consolidationToast {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* Inline "Annuler" CTA shown inside the post-apply toast — visually
+ * lighter than the default Button so it does not compete with the
+ * primary "Consolider" action sitting just to its left. */
+.undoButton {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-style: normal;
+}
+
+.empty {
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--text-muted);
+}
+.emptyHint {
+  font-size: 0.85rem;
+  margin-top: var(--spacing-sm);
+}
+
+/* Inbox row layout — wraps a shared Card. The Card brings the
+   border, hover, padding ; this just splits the body / actions
+   side-by-side. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+.item {
+  display: flex;
+  align-items: stretch;
+  gap: var(--spacing-md);
+}
+.itemBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.itemHead {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+.itemTitle {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+}
+.itemSourceId {
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  user-select: all;
+}
+.itemMeta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.itemStats {
+  font-size: 0.78rem;
+  color: var(--accent-primary, #60a5fa);
+  font-weight: 500;
+  margin-top: 2px;
+}
+.itemActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}

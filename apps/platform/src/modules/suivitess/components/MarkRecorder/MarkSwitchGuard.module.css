@@ -1,0 +1,85 @@
+/* Wrapper sits as `position: relative` so the absolute blocker
+ * stretches over the whole subject card. */
+.wrapper {
+  position: relative;
+}
+
+/* Full-card invisible-ish blocker that absorbs every click while a
+ * different subject is being marked. Visually it's a translucent
+ * scrim with a centered hint card so the user knows why the card is
+ * inert. */
+.blocker {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  cursor: pointer;
+  z-index: 10;
+  padding: var(--spacing-lg);
+  transition: background var(--transition-normal);
+}
+.blocker:hover { background: rgba(15, 23, 42, 0.7); }
+
+:root:not([data-theme="dark"]) .blocker {
+  background: rgba(255, 255, 255, 0.6);
+}
+:root:not([data-theme="dark"]) .blocker:hover {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.blockerCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  font-family: var(--font-family-mono, monospace);
+  text-align: center;
+  max-width: 32rem;
+}
+
+.blockerHead {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.blockerBody {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.blockerCta {
+  font-size: var(--font-size-xs);
+  color: var(--accent-primary);
+  letter-spacing: 0.02em;
+}
+
+/* Pulsing red dot — same visual language as MarkButton's active state. */
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--error, #dc2626);
+  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6);
+  animation: pulse 1.4s infinite;
+}
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(220, 38, 38, 0.6); }
+  70%  { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0);   }
+  100% { box-shadow: 0 0 0 0   rgba(220, 38, 38, 0);   }
+}

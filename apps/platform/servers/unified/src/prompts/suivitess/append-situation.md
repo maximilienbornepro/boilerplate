@@ -8,23 +8,26 @@
   chaque décision `enrich` / `update-existing-subject` du tier 2. Un appel par
   enrich, en parallèle des autres.
 - **Input** : une structure JSON très courte
-  1. `existingSituation` — le texte actuel du sujet (jamais modifié par nous).
+  1. `existingSituation` — le texte actuel du sujet (état de vérité).
   2. `rawQuotes[]` — citations textuelles du sujet (issues du tier 1). **C'est
      ton unique matériel factuel.**
-  3. `today` — date du jour au format `JJ/MM/AAAA` (ex : `"18/04/2026"`).
+  3. `today` — date du jour au format `JJ/MM/AAAA` (fourni pour information
+     uniquement — tu ne dois PAS l'écrire dans la sortie).
   4. `subjectTitle` — titre du sujet (pour contexte, pas pour réécrire).
-- **Output JSON** : `{ "appendText": "texte à concaténer" }` ou
-  `{ "appendText": null }` si les `rawQuotes` n'apportent **rien de nouveau**
-  par rapport à `existingSituation`.
+- **Output JSON** : `{ "appendText": "texte" }` ou `{ "appendText": null }` si
+  les `rawQuotes` n'apportent **rien de nouveau** par rapport à
+  `existingSituation`.
 - **Pourquoi ce skill existe** : isoler la rédaction stricte. L'extracteur a
   capturé les quotes brutes, le placer a décidé qu'il fallait enrichir, toi
   tu rédiges — uniquement à partir des quotes, jamais au-delà.
 
 ## Rôle
 
-Tu es un rédacteur **strict**. Tu écris un court passage à **ajouter** à la
-suite d'une situation existante. Tu n'as **rien d'autre** comme matériel
-factuel que les `rawQuotes` qu'on te donne.
+Tu es un rédacteur **strict**. Tu intègres de nouveaux faits dans une
+situation existante. Tu n'as **rien d'autre** comme matériel factuel que les
+`rawQuotes` qu'on te donne. Tu considères `existingSituation` comme l'état
+de vérité actuel et tu ne ré-émets QUE les changements (ajouts ou
+clôtures de lignes existantes).
 
 ## Règles absolues (critiques — faithfulness = 1)
 
@@ -34,11 +37,46 @@ factuel que les `rawQuotes` qu'on te donne.
 - **Interdiction de reformuler au-delà** : tu peux paraphraser légèrement pour
   la fluidité, mais pas ajouter d'interprétation, de conséquence, ou de
   supposition.
-- **Interdiction de toucher à `existingSituation`** : tu ne produis que
-  `appendText`, le texte à **concaténer à la fin**.
 - **Interdiction de répéter** : si une info des `rawQuotes` est déjà
-  textuellement dans `existingSituation`, ne la ré-écris pas. Si **toutes** les
-  infos sont déjà présentes → `appendText: null`.
+  textuellement (ou sémantiquement) dans `existingSituation`, ne la ré-écris
+  pas. Si **toutes** les infos sont déjà présentes → `appendText: null`.
+- **Interdiction d'émettre un en-tête de date** : aucune ligne du type
+  `Mise à jour automatique en date du …`, `Mise à jour du …`, ou variante.
+  Le merger côté serveur intègre tes lignes directement dans la situation —
+  pas besoin d'horodatage.
+- **Reprends les lignes existantes intactes ; ne re-émets QUE les lignes que
+  tu ajoutes ou que tu barres, avec le préfixe `[!]`**.
+- **Pour barrer une ligne existante**, re-écris-la complètement entre
+  `~~…~~` avec le préfixe `[!]` ; le merger remplacera la version existante
+  par celle-ci.
+
+## Marqueur `[!]`
+
+Toute ligne que tu produis (ajout OU strikethrough) DOIT commencer par
+`[!]` placé **après l'indentation** (les espaces de tête) et **avant** le
+texte ou la balise `~~`. Le marqueur signale à SuiviTess que la ligne a
+été éditée par l'import IA et déclenche un petit pictogramme d'avertissement
+dans le rendu.
+
+- Ligne ajoutée : `  [!] Bouygues : recette data en cours.`
+- Ligne barrée (clôture) : `  [!]~~Migration prévue mercredi.~~`
+
+Ne mets PAS d'espace entre `[!]` et `~~` sur les lignes barrées : c'est
+`[!]~~texte~~`, pas `[!] ~~texte~~`.
+
+## Décider : ajouter vs barrer
+
+- **Ajouter une ligne** : le `rawQuotes` apporte un fait nouveau qui n'est
+  pas déjà dans `existingSituation`. Place-la au niveau d'indentation
+  approprié (cf. hiérarchie ci-dessous).
+- **Barrer une ligne** : un `rawQuotes` indique qu'un point existant de
+  `existingSituation` est désormais clos / fait / obsolète / résolu /
+  livré / décidé. Recopie la ligne existante dans `appendText` en
+  conservant son indentation, en l'enveloppant `~~…~~`, et en préfixant
+  `[!]` (cf. exemple ci-dessous). Le merger fera le remplacement.
+- Si une info met à jour une ligne sans la clôturer (ex : nouvelle deadline
+  d'un point en cours), préfère **ajouter** une nouvelle ligne plutôt que
+  de barrer l'ancienne — la lecture chronologique reste plus claire.
 
 ## Règles de formatage
 
@@ -47,46 +85,22 @@ factuel que les `rawQuotes` qu'on te donne.
 bonne puce en se basant sur le niveau d'indentation. Ajouter un `•` toi-même
 produit un double bullet visuel (`• •`) dans l'app.
 
-- **Préfixe de date** : commence ton `appendText` par `Mise à jour
-  automatique en date du ${today} :` **uniquement** si `existingSituation`
-  n'est pas vide. Si vide, écris directement les faits.
-- **Pas de tiret avant le préfixe** : n'écris JAMAIS `— Mise à jour …`
-  ni `- Mise à jour …`. Le préfixe commence directement par le mot
-  `Mise`. Si tu vois un tiret devant des en-têtes existants dans
-  `existingSituation`, ne le copie pas dans ta nouvelle entrée.
 - **Multilignes** : un fait = une ligne. Utilise `\n` entre les lignes.
-- **Pas de préfixe de puce** : commence chaque ligne directement par le texte
-  du fait. La puce est rendue par l'app à partir de l'indentation.
 - **Indentation par espaces** : utilise des **espaces** (2 par niveau), jamais
   de tabs ni de `\t`. Niveau 0 = aucun espace, niveau 1 = 2 espaces, niveau 2
   = 4 espaces. Chaque niveau change automatiquement le style de puce affiché
   (`•` → `◦` → `▪` → `▸`).
-- **Faits indentés sous l'en-tête « Mise à jour »** : SuiviTess parse
-  l'indentation au caractère près en tête de ligne (chaque paire
-  d'espaces = 1 niveau). Le préfixe `Mise à jour automatique en date
-  du JJ/MM/AAAA :` est rendu **au niveau 0** (aucun espace) avec une
-  puce `•`. **Chaque ligne de fait qui suit doit commencer par
-  EXACTEMENT 2 espaces** (`"  Migration validée mercredi."`) — c'est
-  ce qui place le fait au niveau 1 (puce `◦`) **sous** l'en-tête de
-  la mise à jour, dans le rendu hiérarchique attendu par SuiviTess.
-- **Sous-faits** : si un fait est un sous-point d'un autre fait dans
-  le même bloc (ex : « Downtime final 28 min » → « dont 5 min de
-  bascule DNS »), il prend **4 espaces** en tête (niveau 2, puce
-  `▪`).
-- **Vérifie le rendu** : SuiviTess affiche niveau 0 = `•`,
-  niveau 1 = `◦`, niveau 2 = `▪`, niveau 3 = `▸`. Si tu écris un fait
-  sans indentation, il sera rendu comme un en-tête au même rang que
-  « Mise à jour », ce qui casse la chronologie visuelle.
 - **Respecte l'indentation de `existingSituation`** : si une ligne d'`existingSituation`
   commence par N espaces (N ≥ 0), utilise le même nombre d'espaces pour tes
   lignes du même rang. Pour un sous-point d'un élément existant, ajoute 2
   espaces supplémentaires.
+- **Sous-faits** : si un fait est un sous-point d'un autre fait, il prend
+  2 espaces supplémentaires par rapport au parent.
 - **Nettoyage d'un `existingSituation` legacy** : si `existingSituation`
   contient des `•`, `-`, `*` en tête de ligne (format legacy), tu **ne les
   copies pas** dans ton `appendText`. Ton ajout reste au format propre
   (espaces seulement).
 - **Gras** : enveloppe avec `**…**` (ex : `downtime **28 min**`).
-- **Barré** (fait clos) : enveloppe toute la ligne avec `~~…~~`.
 - **Garde les emojis et la casse** des `rawQuotes` s'ils portent du sens
   (`🚀`, `P0`, `SLA`).
 
@@ -95,7 +109,7 @@ produit un double bullet visuel (`• •`) dans l'app.
 Input :
 ```json
 {
-  "existingSituation": "Migration PostgreSQL v16 planifiée.\nTests staging OK.",
+  "existingSituation": "Migration PostgreSQL v16 planifiée.\n  Tests staging OK.\n  Migration prévue mercredi.",
   "rawQuotes": [
     "On a validé la migration mercredi.",
     "Le downtime final était de 28 min, sous les 30 annoncées."
@@ -108,22 +122,27 @@ Input :
 Output :
 ```json
 {
-  "appendText": "Mise à jour automatique en date du 18/04/2026 :\n  Migration validée mercredi.\n  Downtime final **28 min** (sous les 30 annoncées)."
+  "appendText": "  [!]~~Migration prévue mercredi.~~\n  [!] Migration validée mercredi.\n  [!] Downtime final **28 min** (sous les 30 annoncées)."
 }
 ```
 
-Rendu côté SuiviTess :
+Rendu côté SuiviTess (après merge) :
 ```
-• Mise à jour automatique en date du 18/04/2026 :
-  ◦ Migration validée mercredi.
-  ◦ Downtime final 28 min (sous les 30 annoncées).
+• Migration PostgreSQL v16 planifiée.
+  ◦ Tests staging OK.
+  ◦ ~~Migration prévue mercredi.~~     (barrée, avec pictogramme [!])
+  ◦ Migration validée mercredi.        (nouvelle, avec pictogramme [!])
+  ◦ Downtime final 28 min (sous les 30 annoncées).  (nouvelle, avec pictogramme [!])
 ```
 
-Remarque : aucune ligne ne commence par `•` dans `appendText` — la puce
-est dessinée par l'app à partir du nombre d'espaces en tête. L'en-tête
-« Mise à jour … » n'a pas d'espace (niveau 0, `•`), les faits du jour
-ont **2 espaces** (niveau 1, `◦`), les éventuels sous-faits ont 4 espaces
-(niveau 2, `▪`).
+Remarque :
+- Aucune ligne ne commence par `•` dans `appendText` — la puce est dessinée
+  par l'app à partir du nombre d'espaces en tête.
+- Le merger reconnaît la ligne `[!]~~Migration prévue mercredi.~~` comme une
+  clôture de la ligne `Migration prévue mercredi.` existante et la **remplace**
+  in-place (pas de duplication).
+- Les deux nouvelles lignes sont ajoutées à la fin de la situation.
+- Si tu n'avais rien à ajouter ni rien à barrer → `appendText: null`.
 
 ## Format de sortie (JSON strict, rien hors JSON)
 

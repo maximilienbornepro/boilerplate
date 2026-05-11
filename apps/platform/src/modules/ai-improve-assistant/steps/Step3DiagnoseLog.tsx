@@ -101,7 +101,7 @@ export default function Step3DiagnoseLog({ onAdvance: _ }: StepProps) {
           lineHeight: 1.5,
         }}>
           <div style={{ color: 'var(--text-secondary)', marginBottom: 6 }}>
-            🧩 <strong>Entités suspectes</strong> extraites du rationale du llm-judge. Clique une entité
+            <strong>Entités suspectes</strong> extraites du rationale du llm-judge. Clique une entité
             pour la chercher dans les deux volets ci-dessous. Format : <code>terme (n in input / n in output)</code>.
             Rouge = absent de l'input mais présent dans l'output → hallucination probable.
           </div>
@@ -141,13 +141,13 @@ export default function Step3DiagnoseLog({ onAdvance: _ }: StepProps) {
       {/* Side-by-side panes. */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-sm)' }}>
         <DiagnosePane
-          label={`📥 Input brut (${detail.input_content.length.toLocaleString()} chars)`}
+          label={`Input brut (${detail.input_content.length.toLocaleString()} chars)`}
           content={detail.input_content}
           searchTerm={searchIn}
           onSearchChange={setSearchIn}
         />
         <DiagnosePane
-          label={`📤 Sortie IA (${detail.ai_output_raw.length.toLocaleString()} chars)`}
+          label={`Sortie IA (${detail.ai_output_raw.length.toLocaleString()} chars)`}
           content={detail.ai_output_raw}
           searchTerm={searchOut}
           onSearchChange={setSearchOut}
@@ -155,7 +155,7 @@ export default function Step3DiagnoseLog({ onAdvance: _ }: StepProps) {
       </div>
 
       {/* Scores actuels. */}
-      <FormBlock label="⭐ Scores sur ce log">
+      <FormBlock label="Scores sur ce log">
         <ScoresSection scores={scores} rescoring={rescoring} onRerun={rerunScorers} rescoreMessage={rescoreMessage} />
       </FormBlock>
 
@@ -176,12 +176,12 @@ export default function Step3DiagnoseLog({ onAdvance: _ }: StepProps) {
           disabled={voting}
         />
         <div style={{ display: 'flex', gap: 'var(--spacing-xs)', marginTop: 8 }}>
-          <Button variant="secondary" onClick={() => submit(-1)} disabled={voting}>👎 Mauvaise sortie</Button>
-          <Button variant="primary"   onClick={() => submit(1)}  disabled={voting}>👍 Sortie correcte</Button>
+          <Button variant="secondary" onClick={() => submit(-1)} disabled={voting}>Mauvaise sortie</Button>
+          <Button variant="primary"   onClick={() => submit(1)}  disabled={voting}>Sortie correcte</Button>
         </div>
         {state.humanVote !== null && (
           <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginTop: 6 }}>
-            ✓ Diagnostic enregistré ({state.humanVote === 1 ? '👍 correct' : '👎 à améliorer'}). Ta note est stockée avec le log et visible dans /ai-logs — elle resservira plus tard pour mesurer si tes corrections marchent.
+            ✓ Diagnostic enregistré ({state.humanVote === 1 ? 'correct' : 'à améliorer'}). Ta note est stockée avec le log et visible dans /ai-logs — elle resservira plus tard pour mesurer si tes corrections marchent.
           </p>
         )}
       </div>
@@ -206,7 +206,7 @@ function DiagnosePane({ label, content, searchTerm, onSearchChange }: PaneProps)
         <input
           type="text"
           className={styles.input}
-          placeholder="🔍 chercher…"
+          placeholder="chercher…"
           value={searchTerm}
           onChange={e => onSearchChange(e.target.value)}
           style={{ flex: 1, fontSize: 11, padding: '2px 6px' }}
@@ -270,7 +270,7 @@ const SCORE_META: Record<string, ScoreMeta> = {
   'human:thumbs': {
     label: 'Ton vote humain',
     kindLabel: 'Humain',
-    help: 'Le 👍 / 👎 que tu as mis ci-dessous. 1 = correct, 0 = mauvais. Seul le dernier vote compte pour ce log.',
+    help: 'Le vote « Bon » / « Pas bon » que tu as mis ci-dessous. 1 = correct, 0 = mauvais. Seul le dernier vote compte pour ce log.',
   },
 };
 
@@ -369,7 +369,7 @@ function ScoresTable({ scores, rescoring, onRerun, rescoreMessage }: ScoresSecti
           de <code>0.00</code> (mauvais) à <code>1.00</code> (parfait). Trois sources possibles :
           <strong> Test logique</strong> (vérification programmatique — JSON valide, nb de propositions…),
           <strong> Juge IA</strong> (2ᵉ modèle qui relit et note la qualité),
-          <strong> Humain</strong> (ton vote 👍/👎). Passe la souris sur un critère pour voir précisément ce qu'il mesure.
+          <strong> Humain</strong> (ton vote « Bon » / « Pas bon »). Passe la souris sur un critère pour voir précisément ce qu'il mesure.
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {rescoreMessage && (
@@ -393,7 +393,7 @@ function ScoresTable({ scores, rescoring, onRerun, rescoreMessage }: ScoresSecti
             }}
             title="Ré-exécute tous les scorers automatiques sur ce log"
           >
-            {rescoring ? '🔄 En cours…' : '🔄 Re-run'}
+            {rescoring ? 'En cours…' : 'Re-run'}
           </button>
         </div>
       </div>

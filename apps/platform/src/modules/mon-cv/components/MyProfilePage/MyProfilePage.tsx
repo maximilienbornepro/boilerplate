@@ -347,7 +347,7 @@ export function MyProfilePage({ onNavigate, cvId }: MyProfilePageProps) {
           disabled={transforming !== null}
           title="Traduire ce CV en anglais (crée un nouveau CV)"
         >
-          {transforming === 'translate-en' ? '…' : '🇬🇧 EN'}
+          {transforming === 'translate-en' ? '…' : 'EN'}
         </button>
         <button
           className="module-header-btn"

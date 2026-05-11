@@ -7,7 +7,8 @@ import * as api from '../../services/api';
 import { EmailPreviewModal } from '../EmailPreviewModal/EmailPreviewModal';
 import { TicketCreateModal } from '../TicketCreateModal/TicketCreateModal';
 import { LinkSubjectModal } from '../LinkSubjectModal';
-import { MarkButton, useActiveSubjectMark } from '../MarkRecorder';
+import { MarkButton, MarkSwitchGuard, useActiveSubjectMark } from '../MarkRecorder';
+import { parseSituationLine } from './parseSituationLine';
 import styles from './SubjectReview.module.css';
 
 interface ExternalLink {
@@ -30,6 +31,40 @@ const SERVICE_LABELS: Record<string, string> = {
   notion: 'Notion',
   roadmap: 'Roadmap',
 };
+
+/**
+ * Small inline exclamation-circle icon rendered before any line that
+ * carries the `[!]` AI-edited marker (Step 3 of the situation
+ * refactor). 12×12, tinted with `--accent-primary`, surfaced with a
+ * tooltip via `title="Modifié par l'import"`.
+ */
+function AiEditedMarker({ className }: { className?: string }) {
+  return (
+    <span
+      className={className}
+      title="Modifié par l'import"
+      aria-label="Modifié par l'import"
+      data-testid="ai-edited-marker"
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+    </span>
+  );
+}
+
 
 interface Props {
   subject: Subject;
@@ -87,6 +122,7 @@ export function SubjectReview({
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [focusLineIndex, setFocusLineIndex] = useState<number | null>(null);
   const [reformulating, setReformulating] = useState(false);
+  const [synthesizing, setSynthesizing] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -129,6 +165,29 @@ export function SubjectReview({
     }
   };
 
+  // Synthesize : full rewrite of the situation via the
+  // `suivitess-synthesize-situation` skill. The server returns the
+  // new situation in full ; we drop it straight into local state
+  // (the same pattern as `Reformuler`).
+  const handleSynthesize = async () => {
+    setSynthesizing(true);
+    try {
+      const res = await fetch(`/suivitess-api/subjects/${subject.id}/synthesize-situation`, {
+        method: 'POST', credentials: 'include',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Erreur de synthèse');
+      }
+      const data = await res.json();
+      if (data.situation) setSituation(data.situation);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erreur de synthèse');
+    } finally {
+      setSynthesizing(false);
+    }
+  };
+
   // Track the currently focused/editing line to sync content before save
   const editingLineRef = useRef<number | null>(null);
 
@@ -144,23 +203,11 @@ export function SubjectReview({
 
   const BULLETS = ['•', '◦', '▪', '▸'];
 
-  // Parse line for indentation and strikethrough
-  const parseLine = (line: string): { level: number; text: string; strikethrough: boolean } => {
-    const match = line.match(/^(\s*)(.*)/);
-    if (!match) return { level: 0, text: line, strikethrough: false };
-    const spaces = match[1].length;
-    const level = Math.floor(spaces / 2);
-    let text = match[2];
-    let strikethrough = false;
-
-    // Parse strikethrough (line level)
-    if (text.startsWith('~~') && text.endsWith('~~') && text.length > 4) {
-      strikethrough = true;
-      text = text.slice(2, -2);
-    }
-
-    return { level: Math.min(level, BULLETS.length - 1), text, strikethrough };
-  };
+  // Aliases the centralised pure parser so the rest of this file
+  // can keep the short call site. See `./parseSituationLine.ts` for
+  // the full contract (including the `[!]` AI-edited marker and the
+  // `~~…~~` strikethrough handling).
+  const parseLine = parseSituationLine;
 
   // Convert **text** to <strong>text</strong> for display. The input
   // comes from the DB (user-typed OR AI-generated from emails/Slack)
@@ -262,18 +309,34 @@ export function SubjectReview({
     setResponsibility(subject.responsibility || '');
   }, [subject.id]); // Re-initialize when subject changes (by ID)
 
-  // Toggle strikethrough (marks line as done)
+  // Rebuild a stored line from its parsed parts, preserving the
+  // `[!]` AI-edited marker if any (Step 3 of the situation refactor :
+  // the marker is data, not presentation, so it MUST round-trip
+  // through any edit).
+  const rebuildLine = (level: number, text: string, strikethrough: boolean, editedByAi: boolean): string => {
+    const indent = '  '.repeat(level);
+    const prefix = editedByAi ? '[!]' : '';
+    const trimmed = text.trim();
+    // Empty line : drop the marker too so the user can fully clear
+    // the row (otherwise an `[!]` sticks around as a ghost).
+    if (!trimmed) return indent;
+    const wrapped = strikethrough ? '~~' + text + '~~' : text;
+    // On strikethrough lines we emit `[!]~~text~~` (no space) — same
+    // shape the T3 prompt uses, so the merger's matcher keeps working.
+    const sep = (editedByAi && strikethrough) ? '' : (editedByAi ? ' ' : '');
+    return indent + prefix + sep + wrapped;
+  };
+
+  // Toggle strikethrough (marks line as done) — manual user action.
+  // Per spec (Step 3) : manual ⌘⇧S does NOT add a `[!]` marker —
+  // only AI-driven changes carry it. We preserve an existing marker
+  // if the line was already AI-edited, but never add one.
   const toggleStrikethrough = (lineIndex: number) => {
     setSituation(prev => {
       const lines = prev.split('\n');
-      const { level, text, strikethrough } = parseLine(lines[lineIndex]);
-      const indent = '  '.repeat(level);
-
-      // Don't apply strikethrough to empty lines
+      const { level, text, strikethrough, editedByAi } = parseLine(lines[lineIndex]);
       if (!text.trim()) return prev;
-
-      const newText = strikethrough ? text : '~~' + text + '~~';
-      lines[lineIndex] = indent + newText;
+      lines[lineIndex] = rebuildLine(level, text, !strikethrough, editedByAi);
       return lines.join('\n');
     });
   };
@@ -346,14 +409,13 @@ export function SubjectReview({
     const lineIdx = editingLineRef.current;
     const originalLine = lines[lineIdx] || '';
 
-    const match = originalLine.match(/^(\s*)(.*)/);
-    const spaces = match ? match[1].length : 0;
-    const level = Math.floor(spaces / 2);
-    let lineText = match ? match[2] : originalLine;
-    let strikethrough = false;
-    if (lineText.startsWith('~~') && lineText.endsWith('~~') && lineText.length > 4) {
-      strikethrough = true;
-    }
+    // Use the central parser so `[!]` and `~~…~~` are extracted
+    // consistently with the rest of the component (Step 3 — marker
+    // round-trip).
+    const parsed = parseLine(originalLine);
+    const level = parsed.level;
+    const strikethrough = parsed.strikethrough;
+    const editedByAi = parsed.editedByAi;
 
     const temp = document.createElement('div');
     temp.innerHTML = currentInput.innerHTML;
@@ -381,9 +443,7 @@ export function SubjectReview({
     let val = processBold(temp).replace(/\*\*\*\*/g, '').replace(/\s+/g, ' ').trim();
     if (val.trim() === '' || val === '\u00A0') val = '';
 
-    const indent = '  '.repeat(level);
-    const newText = (strikethrough && val.trim()) ? '~~' + val + '~~' : val;
-    lines[lineIdx] = indent + newText;
+    lines[lineIdx] = rebuildLine(level, val, strikethrough, editedByAi);
 
     return lines.join('\n');
   }, [situation]);
@@ -538,7 +598,11 @@ export function SubjectReview({
     }
   };
 
-  return (
+  // 🎙️ Live-mark guard : if the user is currently marking a DIFFERENT
+  // subject, block edits on this card and prompt them to switch the
+  // mic over (or keep it where it is). Disabled in compact mode (the
+  // bulk-import preview where marks don't apply).
+  const cardInner = (
     <div
       ref={containerRef}
       className={`${styles.container} ${compact ? styles.compact : ''}`}
@@ -612,7 +676,7 @@ export function SubjectReview({
                   }}
                   title={`Sujet d'origine : ${subject.linkedFromDocumentTitle} › ${subject.linkedFromSectionName}. Toute modification est partagée.`}
                 >
-                  🔗 lié depuis {subject.linkedFromDocumentTitle}
+                  lié depuis {subject.linkedFromDocumentTitle}
                 </span>
               )}
             </h2>
@@ -663,6 +727,29 @@ export function SubjectReview({
             {reformulating ? '...' : (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+            )}
+          </button>
+
+          {/* Synthétiser : full clean-up + synthesis pass on the
+              situation via the `suivitess-synthesize-situation`
+              skill. Drops legacy date headers, dedupes lines,
+              strikes-through closed points, and appends a
+              `Prochaines étapes :` block. */}
+          <button
+            className={styles.actionBtn}
+            onClick={handleSynthesize}
+            disabled={synthesizing}
+            data-tooltip="Nettoyer et synthétiser la situation avec l'IA"
+            data-testid="synthesize-btn"
+          >
+            {synthesizing ? (
+              <span className={styles.miniSpinner} aria-hidden="true" />
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18" />
+                <path d="M6 12h12" />
+                <path d="M10 18h4" />
               </svg>
             )}
           </button>
@@ -744,13 +831,16 @@ export function SubjectReview({
                 Tab = indenter | ⇧Tab = désindenter | Enter = nouvelle ligne | ⌘B = gras | ⌘⇧S = fait | Coller = multi-lignes
               </div>
               {situation.split('\n').map((line, i, allLines) => {
-                const { level, text, strikethrough } = parseLine(line);
+                const { level, text, strikethrough, editedByAi } = parseLine(line);
                 return (
                   <div
                     key={i}
                     className={`${styles.editorLine} ${strikethrough ? styles.strikethroughLine : ''}`}
                     style={{ paddingLeft: `${level * 1.25}rem` }}
                   >
+                    {editedByAi && (
+                      <AiEditedMarker className={styles.aiEditedMarker} />
+                    )}
                     <span className={`${styles.bullet} ${styles[`bulletLevel${level}`]}`}>
                       {getBullet(level)}
                     </span>
@@ -767,11 +857,9 @@ export function SubjectReview({
                         const div = e.currentTarget;
                         let val = htmlToText(div.innerHTML);
                         if (val.trim() === '' || val === '\u00A0') val = '';
-                        const indent = '  '.repeat(level);
-                        const newText = (strikethrough && val.trim()) ? '~~' + val + '~~' : val;
                         setSituation(prev => {
                           const lines = prev.split('\n');
-                          lines[i] = indent + newText;
+                          lines[i] = rebuildLine(level, val, strikethrough, editedByAi);
                           return lines.join('\n');
                         });
                       }}
@@ -787,12 +875,12 @@ export function SubjectReview({
                           const div = e.currentTarget;
                           const currentVal = htmlToText(div.innerHTML);
 
-                          const firstLine = currentVal + (currentVal ? ' ' : '') + pastedLines[0].trim();
+                          const firstLineText = currentVal + (currentVal ? ' ' : '') + pastedLines[0].trim();
                           const newLines = pastedLines.slice(1).map(l => currentIndent + l.trim());
 
                           setSituation(prev => {
                             const lines = prev.split('\n');
-                            lines[i] = currentIndent + firstLine;
+                            lines[i] = rebuildLine(level, firstLineText, strikethrough, editedByAi);
                             lines.splice(i + 1, 0, ...newLines);
                             return lines.join('\n');
                           });
@@ -807,9 +895,7 @@ export function SubjectReview({
                           document.execCommand('bold', false);
                           setTimeout(() => {
                             const val = htmlToText(div.innerHTML);
-                            const indent = '  '.repeat(level);
-                            const newText = (strikethrough && val.trim()) ? '~~' + val + '~~' : val;
-                            lines[i] = indent + newText;
+                            lines[i] = rebuildLine(level, val, strikethrough, editedByAi);
                             setSituation(lines.join('\n'));
                           }, 0);
                         } else if (e.key === 's' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
@@ -818,10 +904,10 @@ export function SubjectReview({
                         } else if (e.key === 'Enter') {
                           e.preventDefault();
                           const val = htmlToText(div.innerHTML);
-                          const currentIndent = '  '.repeat(level);
-                          const currentText = (strikethrough && val.trim()) ? '~~' + val + '~~' : val;
-                          lines[i] = currentIndent + currentText;
+                          lines[i] = rebuildLine(level, val, strikethrough, editedByAi);
                           const indent = '  '.repeat(level);
+                          // New blank line \u2014 never carries the `[!]`
+                          // marker (manual user creation).
                           lines.splice(i + 1, 0, indent);
                           setSituation(lines.join('\n'));
                           setFocusLineIndex(i + 1);
@@ -830,14 +916,12 @@ export function SubjectReview({
                           const val = htmlToText(div.innerHTML);
                           if (e.shiftKey) {
                             if (level > 0) {
-                              const newText = strikethrough ? '~~' + val + '~~' : val;
-                              lines[i] = '  '.repeat(level - 1) + newText;
+                              lines[i] = rebuildLine(level - 1, val, strikethrough, editedByAi);
                               setSituation(lines.join('\n'));
                             }
                           } else {
                             if (level < 3) {
-                              const newText = strikethrough ? '~~' + val + '~~' : val;
-                              lines[i] = '  '.repeat(level + 1) + newText;
+                              lines[i] = rebuildLine(level + 1, val, strikethrough, editedByAi);
                               setSituation(lines.join('\n'));
                             }
                           }
@@ -923,7 +1007,7 @@ export function SubjectReview({
               onClick={() => { setEditingContent(true); onFocus?.(); }}
             >
               {situation.split('\n').map((line, i) => {
-                const { level, text, strikethrough } = parseLine(line);
+                const { level, text, strikethrough, editedByAi } = parseLine(line);
                 if (!text.trim()) return <div key={i} className={styles.emptyLine} />;
                 const { cleanText, responsible } = parseResponsibility(text);
                 return (
@@ -932,6 +1016,9 @@ export function SubjectReview({
                     className={`${styles.contentLine} ${strikethrough ? styles.strikethroughDisplay : ''}`}
                     style={{ paddingLeft: `${level * 1.25}rem` }}
                   >
+                    {editedByAi && (
+                      <AiEditedMarker className={styles.aiEditedMarker} />
+                    )}
                     <span className={`${styles.bullet} ${styles[`bulletLevel${level}`]}`}>
                       {getBullet(level)}
                     </span>
@@ -1014,6 +1101,20 @@ export function SubjectReview({
           </button>
         </div>
       )}
+    </div>
+  );
+
+  return (
+    <>
+      {compact ? cardInner : (
+        <MarkSwitchGuard
+          controller={markController}
+          subjectId={subject.id}
+          subjectTitle={subject.title}
+        >
+          {cardInner}
+        </MarkSwitchGuard>
+      )}
       {showEmailPreview && (
         <EmailPreviewModal
           documentId={documentId}
@@ -1042,6 +1143,6 @@ export function SubjectReview({
           onChange={() => onSaved?.(subject)}
         />
       )}
-    </div>
+    </>
   );
 }

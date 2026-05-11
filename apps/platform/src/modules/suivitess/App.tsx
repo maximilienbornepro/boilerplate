@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Routes, Route, useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Layout, ModuleHeader, ToastContainer } from '@boilerplate/shared/components';
+import { Layout, ModuleHeader, ToastContainer, Badge } from '@boilerplate/shared/components';
 import type { ToastData } from '@boilerplate/shared/components';
 import './index.css';
 import { ReviewWizard } from './components/ReviewWizard/ReviewWizard';
@@ -12,6 +12,8 @@ import { BulkTranscriptionImportModal } from './components/BulkTranscriptionImpo
 import { consumeBulkImportReopenFlag } from './components/BulkTranscriptionImportModal/InlineConnectorSetup';
 import { EmailPreviewModal } from './components/EmailPreviewModal/EmailPreviewModal';
 import { SubjectAnalysisModal } from './components/SubjectAnalysisModal/SubjectAnalysisModal';
+import { InboxPage } from './components/InboxPage/InboxPage';
+import * as api from './services/api';
 
 function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void }) {
   const { docId } = useParams<{ docId: string }>();
@@ -28,6 +30,7 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [inboxPending, setInboxPending] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedAI, setSelectedAI] = useState('');
   const [connectedAIs, setConnectedAIs] = useState<Array<{ id: string; label: string }>>([]);
@@ -48,6 +51,21 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
   const AI_LABELS: Record<string, string> = {
     anthropic: 'Claude', openai: 'OpenAI', mistral: 'Mistral', scaleway: 'Scaleway',
   };
+
+  // Inbox pending count for the header badge — refreshed on focus +
+  // every 60s. Cheap COUNT(*) query, no observable cost.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      void api.getInboxPendingCount()
+        .then(n => { if (!cancelled) setInboxPending(n); })
+        .catch(() => {});
+    };
+    refresh();
+    const interval = setInterval(refresh, 60_000);
+    window.addEventListener('focus', refresh);
+    return () => { cancelled = true; clearInterval(interval); window.removeEventListener('focus', refresh); };
+  }, []);
 
   // Load connected AI providers
   useEffect(() => {
@@ -176,6 +194,16 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
         >
           Historique
         </button>
+        <button
+          className="module-header-btn"
+          onClick={() => navigate('/suivitess/inbox')}
+          title="Boîte de réception"
+        >
+          Boîte de réception
+          {inboxPending > 0 && (
+            <span style={{ marginLeft: 6 }}><Badge type="error">{String(inboxPending)}</Badge></span>
+          )}
+        </button>
         <div ref={actionsRef} className="suivitess-exports">
           <button
             type="button"
@@ -227,6 +255,8 @@ function DocumentReview({ onNavigate }: { onNavigate?: (path: string) => void })
                   Tableau
                 </button>
               )}
+
+              <div className="suivitess-exports-divider" />
 
               <div className="suivitess-exports-divider" />
 
@@ -385,6 +415,7 @@ function DocumentList({ onNavigate }: { onNavigate?: (path: string) => void }) {
 export default function App({ onNavigate }: { onNavigate?: (path: string) => void }) {
   return (
     <Routes>
+      <Route path="/inbox" element={<InboxPage onNavigate={onNavigate} />} />
       <Route path="/:docId" element={<DocumentReview onNavigate={onNavigate} />} />
       <Route path="/" element={<DocumentList onNavigate={onNavigate} />} />
     </Routes>

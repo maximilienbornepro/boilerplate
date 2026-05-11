@@ -297,12 +297,17 @@ export async function modifyCV(cvData: CVData, modificationRequest: string): Pro
 
 // ============ CV Preview & PDF ============
 
-export async function getFullPreviewHTML(cvData: CVData): Promise<string> {
+/** Variant of the CV to render. `complete` (default) keeps the full
+ *  detail ; `simple` hides the per-experience projects sub-block —
+ *  recruiter-friendly shorter version. */
+export type CVVariant = 'simple' | 'complete';
+
+export async function getFullPreviewHTML(cvData: CVData, variant: CVVariant = 'complete'): Promise<string> {
   const response = await fetch(`${API_BASE}/full-preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ cvData }),
+    body: JSON.stringify({ cvData, variant }),
   });
   if (!response.ok) {
     const data = await response.json();
@@ -404,10 +409,16 @@ export async function deleteAdaptation(id: number): Promise<void> {
   }
 }
 
-export async function downloadAdaptationPDF(id: number, filename?: string): Promise<void> {
+export async function downloadAdaptationPDF(
+  id: number,
+  filename?: string,
+  variant: CVVariant = 'complete',
+): Promise<void> {
   const response = await fetch(`${API_BASE}/adaptations/${id}/pdf`, {
     method: 'POST',
     credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ variant }),
   });
   if (!response.ok) {
     const data = await response.json();

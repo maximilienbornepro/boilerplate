@@ -73,7 +73,7 @@ export const STEPS: StepDef[] = [
     shortLabel: 'Diag',
     why:
       'Avant de changer le prompt, il faut comprendre POURQUOI l\'IA s\'est trompée. ' +
-      'On lit l\'input, la sortie, les scores automatiques — et on met un 👍 ou 👎 avec une note courte qui explique ce qui cloche. ' +
+      'On lit l\'input, la sortie, les scores automatiques — et on vote « Bon » ou « Pas bon » avec une note courte qui explique ce qui cloche. ' +
       'Cette note sert de boussole pour toute la suite : elle dit ce qu\'on essaie de corriger.',
     Component: Step3,
     isComplete: s => s.humanVote !== null,
@@ -127,7 +127,7 @@ export const STEPS: StepDef[] = [
     shortLabel: 'Winner',
     why:
       'Parmi les variantes testées, il faut en retenir UNE. ' +
-      'Celle avec le meilleur score moyen est suggérée avec un 🏆, mais rien ne t\'empêche d\'en préférer une autre (par exemple plus rapide ou moins chère en tokens). ' +
+      'Celle avec le meilleur score moyen est suggérée avec un ★, mais rien ne t\'empêche d\'en préférer une autre (par exemple plus rapide ou moins chère en tokens). ' +
       'C\'est ton jugement — l\'assistant te donne juste les chiffres pour décider.',
     Component: Step8,
     isComplete: s => s.winnerVariantIndex !== null,
@@ -192,7 +192,7 @@ function AssistantShell({ onClose }: { onClose: () => void }) {
   const canAdvance = def.isComplete(state) || state.completedSteps.includes(current);
 
   return (
-    <Modal title="🚀 Assistant d'amélioration de skill" onClose={onClose} size="xl">
+    <Modal title="Assistant d'amélioration de skill" onClose={onClose} size="xl">
       <div className={styles.root}>
         <Stepper current={current} completed={isCompleted} onJump={handleJumpTo} />
 

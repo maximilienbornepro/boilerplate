@@ -7,11 +7,16 @@
 - **Où il est utilisé** : pipeline modulaire, appelé après un extracteur quand
   l'utilisateur est sur la page listing SuiviTess et veut dispatcher une source
   vers **plusieurs** reviews de son portefeuille.
-- **Input** : deux structures JSON
-  1. `subjects[]` — issus du tier 1, chacun avec `index`, `title`, `rawQuotes`,
+- **Input** : trois structures JSON
+  1. `source` — `{ kind, title }`. Le `kind` est `"fathom" | "otter" |
+     "outlook" | "gmail" | "slack" | "multi-source"`. Le `title` est le
+     nom du call / mail / digest tel que la source l'a fourni. **Lis-le
+     toujours en premier** : voir « Indices dans le titre de la source »
+     plus bas — il porte souvent un signal de routing très fort.
+  2. `subjects[]` — issus du tier 1, chacun avec `index`, `title`, `rawQuotes`,
      `participants`, `entities`, `statusHint`, `responsibilityHint`. Peut
      aussi contenir `mappedToExistingSubjectId` (uuid) — voir Étape 1bis.
-  2. `reviews[]` — l'**intégralité** du portefeuille de reviews actives de
+  3. `reviews[]` — l'**intégralité** du portefeuille de reviews actives de
      l'utilisateur, classés par review : `[{ id, title, description,
      sections: [{ id, name, subjectsTruncated?, subjects: [{ id, title,
      situationExcerpt, status, responsibility }] }] }]`. Le payload contient
@@ -61,6 +66,52 @@ sont un SIGNAL FORT.** Règle :
 Si aucune section d'exemples n'est présente, ignore cette règle — c'est
 que l'utilisateur n'a pas encore validé assez d'imports pour que
 l'apprentissage soit significatif.
+
+## 🎯 Indices dans le titre de la source
+
+Le champ `source.title` est passé en haut du contexte. Il contient
+fréquemment des mots-clés qui désignent **directement** la review cible
+ou son cycle de réunion. Tu DOIS l'analyser avant la procédure de
+matching ci-dessous et t'en servir comme **biais a priori**.
+
+Patterns courants à reconnaître (générique, pas spécifique à une
+organisation) :
+
+- **Nom de partenaire / client** : « *Hebdo SFR* », « *Copil ORANGE* »,
+  « *Sync Amazon* » → cible la review qui porte ce partenaire.
+- **Nom de produit / projet** : « *Daily Smart TV* », « *Refinement
+  Web* », « *Standup Mobile* » → cible la review du produit.
+- **Cycle / cadence** : « *Hebdo …* », « *Daily …* », « *Weekly …* »,
+  « *Refinement …* », « *Sprint review* », « *Standup* », « *PI Planning* »
+  → si une review tient ce cycle (titre ou description qui mentionne
+  l'agenda), tous les sujets de la source vont par défaut dedans.
+- **Date dans le titre** (« *17/04* », « *2026-W18* ») : ignore-la pour
+  le routing, elle n'est qu'un timestamp ; concentre-toi sur les autres
+  mots du titre.
+- **Titres génériques** (« *Impromptu Microsoft Teams Meeting* »,
+  « *Untitled* », « *Réunion sans titre* », `outlook:YYYY-MM-DD`,
+  `gmail:thread:...`) : **ne portent aucun signal**, ignore-les et
+  raisonne sur le contenu (`subjects[]`, `rawQuotes`).
+
+Comment l'intégrer concrètement :
+
+1. Lis `source.title` AVANT la procédure obligatoire.
+2. Si tu y identifies un nom de partenaire / produit / cycle qui
+   matche le `title` ou la `description` d'une review existante, tu
+   pars avec **cette review comme cible probable** pour TOUS les
+   sujets, et la procédure de matching ne sert plus qu'à confirmer
+   ou écarter.
+3. **Mentionne-le dans `reason`** quand tu t'en sers — ex. *« titre de
+   la source 'Hebdo SFR Mardi 14/04' → cible review Copil SFR »*.
+4. **Le titre source ne suffit jamais à lui seul** : si une review
+   différente émerge clairement des `rawQuotes`, des entités ou des
+   participants, les `rawQuotes` priment. Le titre est un biais, pas
+   une preuve.
+
+Quand le titre est générique ou vide, ce signal disparaît — replie-toi
+sur la procédure standard.
+
+---
 
 ## ⚠️ RÈGLE ABSOLUE — Priorité existant > création
 

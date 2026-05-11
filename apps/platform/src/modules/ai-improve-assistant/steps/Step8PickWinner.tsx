@@ -46,7 +46,7 @@ export default function Step8PickWinner({ onAdvance: _ }: StepProps) {
       <p className={styles.statusLine} style={{ lineHeight: 1.5 }}>
         Le tableau ci-dessous résume chaque variante du playground en un chiffre : la moyenne de tous les scores sur toutes les cellules.
         <br />
-        Le 🏆 pointe la variante avec la meilleure moyenne — mais ce n'est qu'une suggestion. Tu peux préférer :
+        Le ★ pointe la variante avec la meilleure moyenne — mais ce n'est qu'une suggestion. Tu peux préférer :
         <br />
         • une variante <strong>légèrement moins bonne mais plus rapide</strong> (coût ↓)
         <br />
@@ -71,7 +71,7 @@ export default function Step8PickWinner({ onAdvance: _ }: StepProps) {
             const isSelected = state.winnerVariantIndex === v.index;
             return (
               <tr key={v.index} className={isSelected ? styles.selected : ''}>
-                <td>{isBest ? '🏆' : ''}</td>
+                <td>{isBest ? '★' : ''}</td>
                 <td>
                   <strong>{v.label}</strong> <code style={{ fontSize: 11, color: 'var(--text-secondary)' }}>v {v.shortHash}</code>
                 </td>

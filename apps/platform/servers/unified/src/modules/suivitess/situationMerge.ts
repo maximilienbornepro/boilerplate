@@ -1,26 +1,33 @@
 /**
- * Smart-merge helpers for `subject.situation` updates triggered by
- * the suivitess import pipeline (T3 append). Centralised here so the
- * commit path (`/transcription/apply-routing`) and any future caller
- * apply the SAME rules :
+ * Smart-merge helper for `subject.situation` updates triggered by
+ * the suivitess import pipeline (T3 append). Centralised here so
+ * every caller (apply-routing route, scheduler, cli cleanup) follows
+ * the SAME rules :
  *
- *  1. Strip a leading "— " (or "- ", "– ") on any "Mise à jour …"
- *     header line — both in the existing situation (legacy data
- *     hygiene) and in the incoming appendText (safety net against
- *     the LLM copying that style from the existing content).
+ *  1. The legacy `Mise à jour automatique en date du …` header is
+ *     never emitted by the new T3 prompt. If for any reason such a
+ *     line slips through `appendText`, we silently drop it (defense
+ *     in depth).
  *
- *  2. If the existing situation already carries a date header for
- *     `today`, the incoming appendText's own header is dropped and
- *     its facts are appended UNDER the existing block. Net effect :
- *     N successive imports on the same day produce ONE header and
- *     N batches of facts, instead of N duplicate headers stacking
- *     up next to each other.
+ *  2. `appendText` is parsed line-by-line :
+ *     - Lines NOT wrapped in `~~…~~` are NET-NEW facts. They are
+ *       appended at the end of `currentSituation` if (and only if)
+ *       the same text (ignoring `[!]`, leading whitespace, and
+ *       `~~…~~` wrappers) doesn't already appear in
+ *       `currentSituation`. No duplicates.
+ *     - Lines wrapped in `~~…~~` are CLOSURES. The merger finds
+ *       the matching live line in `currentSituation` (same
+ *       indentation level, same text content modulo `[!]` and `~~`)
+ *       and REPLACES it with the new strikethrough version. If no
+ *       match is found, the line is appended at the end.
  *
- *  3. Otherwise, the appendText is appended after a blank line.
+ *  3. Existing legacy `Mise à jour automatique en date du …` lines
+ *     in `currentSituation` are LEFT in place — we don't rewrite
+ *     history. They are simply ignored by the dedup/match logic.
  *
- * The `today` argument is passed in (not computed here) so callers
- * use the same `DD/MM/YYYY` format as the skill prompt
- * (`suivitess-append-situation` → `today` field).
+ * The `_today` argument is kept on the signature for backward
+ * compatibility with all the existing callers (route, scheduler,
+ * apply service) — they still pass it but it is a no-op now.
  */
 
 /** Detects header lines that match either prompt phrasing :
@@ -28,66 +35,109 @@
  *  - `Mise à jour automatique en date du DD/MM/YYYY :`  (current)
  *  - `Mise à jour du DD/MM[/YYYY] :`                    (legacy)
  *
- * Trailing colon is optional ; trailing whitespace is tolerated.
- * Used in `m` mode against a single line of the situation. */
-const ANY_DATE_HEADER_RE = /^Mise à jour (?:automatique en date du|du)\s+[\d/]+\s*:?\s*$/;
+ * Trailing colon is optional ; trailing whitespace is tolerated. */
+const ANY_DATE_HEADER_RE = /^[ \t]*[—–-]?[ \t]*Mise à jour (?:automatique en date du|du)\s+[\d/]+\s*:?\s*$/;
 
-/** Same shape as ANY_DATE_HEADER_RE but parameterised on a specific
- *  date — built per-call because `today` is a runtime value. */
-function todayHeaderRe(today: string): RegExp {
-  // Escape forward slashes for the regex literal embedding.
-  const escaped = today.replace(/\//g, '\\/');
-  return new RegExp(
-    `^Mise à jour (?:automatique en date du|du)\\s+${escaped}(?:\\s*:)?\\s*$`,
-    'm',
-  );
-}
-
-/** Strip a leading dash (em-dash, en-dash, or hyphen) before "Mise à
- *  jour" headers in `s`. Multiline aware — hits every header in the
- *  text. Any other line content is left untouched. */
-function stripLeadingDashOnHeaders(s: string): string {
-  return s.replace(/^[ \t]*[—–-][ \t]+(Mise à jour)/gm, '$1');
+/**
+ * Strip the `[!]` marker, surrounding `~~…~~` wrappers, and any
+ * leading whitespace, returning the comparable text content of a
+ * line. Used by the dedup and the strikethrough-match logic.
+ */
+function lineKey(line: string): string {
+  let s = line.replace(/^\s+/, '');
+  // Drop a leading `[!]` (with or without trailing space).
+  s = s.replace(/^\[!\]\s*/, '');
+  // Unwrap surrounding `~~…~~` if present (line-level strikethrough).
+  if (s.startsWith('~~') && s.endsWith('~~') && s.length > 4) {
+    s = s.slice(2, -2);
+  }
+  return s.trim();
 }
 
 /**
- * Merge an `appendText` from T3 into the live `currentSituation`,
- * preserving the same-day-single-header invariant.
+ * Count leading spaces of a line — used to compare indentation
+ * levels when matching a strikethrough closure to an existing
+ * live line.
+ */
+function indentOf(line: string): number {
+  const m = line.match(/^(\s*)/);
+  return m ? m[1].length : 0;
+}
+
+/** True if `line` is a strikethrough closure produced by the T3
+ *  prompt (the `[!]` marker is optional in the regex — the merger
+ *  must tolerate both forms even though the prompt always emits it). */
+function isStrikethroughLine(line: string): boolean {
+  const s = line.replace(/^\s+/, '').replace(/^\[!\]\s*/, '');
+  return /^~~.+~~\s*$/.test(s);
+}
+
+/**
+ * Merge an `appendText` from T3 into the live `currentSituation`.
  *
  * @param currentSituation - what the DB currently holds for the subject
- * @param appendText       - the T3 skill output (header + facts, or just facts)
- * @param today            - DD/MM/YYYY format used by the prompt's `today` field
+ * @param appendText       - the T3 skill output (a list of lines, each
+ *                           optionally prefixed by `[!]` and optionally
+ *                           wrapped in `~~…~~`)
+ * @param _today           - kept for backward compat (unused — see file
+ *                           header)
  * @returns the new situation to persist
  */
 export function mergeSituationAppend(
   currentSituation: string,
   appendText: string,
-  today: string,
+  _today?: string,
 ): string {
-  const cleanCurrent = stripLeadingDashOnHeaders(currentSituation);
-  const cleanAppend = stripLeadingDashOnHeaders(appendText);
+  if (!appendText || !appendText.trim()) return currentSituation;
 
-  if (!cleanAppend.trim()) return cleanCurrent;
+  const currentLines = currentSituation.split('\n');
+  const appendLines = appendText.split('\n');
 
-  if (todayHeaderRe(today).test(cleanCurrent)) {
-    // A header already exists for today. Drop ANY header line from
-    // the incoming append (today's or a stale snapshot's) and take
-    // only the facts that follow.
-    const lines = cleanAppend.split('\n');
-    const headerIdx = lines.findIndex(l => ANY_DATE_HEADER_RE.test(l));
-    const factsOnly = headerIdx >= 0
-      ? lines.slice(headerIdx + 1).join('\n').replace(/^\n+/, '')
-      : cleanAppend;
-    if (!factsOnly.trim()) return cleanCurrent;
-    return cleanCurrent.replace(/\s+$/, '') + '\n' + factsOnly;
+  for (const raw of appendLines) {
+    // Defense in depth — silently drop any legacy date header the
+    // model might accidentally emit despite the new prompt rules.
+    if (ANY_DATE_HEADER_RE.test(raw)) continue;
+
+    // Blank line in appendText is meaningless for a merge — skip.
+    if (!raw.trim()) continue;
+
+    if (isStrikethroughLine(raw)) {
+      // CLOSURE — find the matching live line in currentLines and
+      // replace it. Match on (same indentation level, same text
+      // content modulo `[!]` and `~~`). The text inside `~~…~~` of
+      // the incoming line is the ORIGINAL line content the model is
+      // closing.
+      const target = lineKey(raw);
+      const incomingIndent = indentOf(raw);
+      const matchIdx = currentLines.findIndex(l => {
+        return lineKey(l) === target
+          && indentOf(l) === incomingIndent
+          && !ANY_DATE_HEADER_RE.test(l);
+      });
+      if (matchIdx >= 0) {
+        currentLines[matchIdx] = raw;
+      } else {
+        currentLines.push(raw);
+      }
+      continue;
+    }
+
+    // NET-NEW line — append at the end iff no existing line has
+    // the same comparable text content. We don't enforce same
+    // indentation for dedup — same text at a different level still
+    // counts as a duplicate (the model picked one rank, we trust it).
+    const key = lineKey(raw);
+    const already = currentLines.some(l => lineKey(l) === key && !ANY_DATE_HEADER_RE.test(l));
+    if (already) continue;
+    currentLines.push(raw);
   }
 
-  if (!cleanCurrent.trim()) return cleanAppend;
-  return cleanCurrent.replace(/\s+$/, '') + '\n\n' + cleanAppend;
+  return currentLines.join('\n');
 }
 
-/** Thin wrapper for the apply-routing path. Centralises the date
- *  format so callers don't redefine it inline. */
+/** Thin wrapper preserved for legacy callers. Still produces the
+ *  DD/MM/YYYY format used by the prompt's `today` field — but the
+ *  merger no longer relies on it. */
 export function todayFrFr(): string {
   return new Date().toLocaleDateString('fr-FR', {
     day: '2-digit', month: '2-digit', year: 'numeric',

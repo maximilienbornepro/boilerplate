@@ -792,6 +792,76 @@ Statut : ${subject.status}`;
     res.json({ title: finalTitle, situation: finalSituation, logId: runRes.logId });
   }));
 
+  // Clean up + synthesize a subject's situation with the AI.
+  // The skill replaces the entire `situation` field with a sanitized
+  // version (legacy date headers dropped, duplicates removed, closed
+  // points wrapped in `~~…~~`, verbose passages condensed, and a
+  // `Prochaines étapes :` block appended). Authenticated tier — billed
+  // as a 'reformulation' since it's the same shape of LLM call.
+  router.post('/subjects/:subjectId/synthesize-situation', asyncHandler(async (req, res) => {
+    const subject = await db.getSubject(req.params.subjectId);
+    if (!subject) { res.status(404).json({ error: 'Sujet non trouvé' }); return; }
+
+    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
+    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'reformulation'); }
+    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
+
+    const inputPayload = {
+      subjectTitle: subject.title,
+      currentSituation: subject.situation || '',
+    };
+    const inputSummary = JSON.stringify(inputPayload, null, 2);
+
+    const { runSkill } = await import('../aiSkills/runSkill.js');
+    const runRes = await runSkill({
+      slug: 'suivitess-synthesize-situation',
+      userId: req.user!.id,
+      userEmail: req.user!.email,
+      buildPrompt: (skill) => `${skill}\n\n---\n\n# Sujet à synthétiser\n\n${inputSummary}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
+      inputContent: inputSummary,
+      sourceKind: 'subject',
+      sourceTitle: subject.title,
+      documentId: null,
+      maxTokens: 4096,
+    });
+
+    let result: { situation?: string } = {};
+    try {
+      let json = runRes.outputText.trim();
+      if (json.startsWith('```json')) json = json.slice(7);
+      if (json.startsWith('```')) json = json.slice(3);
+      if (json.endsWith('```')) json = json.slice(0, -3);
+      result = JSON.parse(json.trim());
+    } catch {
+      const match = runRes.outputText.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { result = JSON.parse(match[0]); } catch { /* fall through to default */ }
+      }
+    }
+
+    // Defensive : if the model returned nothing usable, leave the
+    // existing situation untouched and surface a soft error to the
+    // frontend. We don't want to wipe a user's situation on a bad LLM
+    // round-trip.
+    if (typeof result.situation !== 'string' || result.situation.trim().length === 0) {
+      res.status(502).json({ error: 'Réponse IA invalide — situation inchangée', logId: runRes.logId });
+      return;
+    }
+
+    const newSituation = result.situation;
+    await db.updateSubjectFields(
+      subject.id,
+      ['situation = $1'],
+      [newSituation],
+    );
+
+    if (runRes.logId != null) {
+      const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
+      await attachProposalsToLog(runRes.logId, [{ title: subject.title, situation: newSituation }]);
+    }
+    res.json({ situation: newSituation, logId: runRes.logId });
+  }));
+
   // Generate an email summary for one or all subjects
   router.post('/email-summary', asyncHandler(async (req, res) => {
     const { documentId, subjectId, template } = req.body as {
@@ -4076,6 +4146,21 @@ ${filteredContent.slice(0, 30000)}`,
       } catch { /* ignore — best effort */ }
     }
 
+    // Fire-and-forget post-update synthesis. Every subject we wrote
+    // to in the UPDATE branch above gets its situation cleaned by the
+    // `suivitess-synthesize-situation` skill : legacy date headers
+    // dropped, duplicates collapsed, closed points struck through,
+    // `Prochaines étapes :` refreshed. Runs in background, never
+    // blocks this response.
+    if (subjectsUpdated.length > 0) {
+      const { scheduleSynthForSubjects } = await import('./synthesizeAfterUpdateService.js');
+      scheduleSynthForSubjects(
+        subjectsUpdated.map(s => s.id),
+        userId,
+        req.user!.email ?? null,
+      );
+    }
+
     res.json({
       reviewsCreated,
       sectionsCreated,
@@ -4083,6 +4168,335 @@ ${filteredContent.slice(0, 30000)}`,
       subjectsUpdated,
       errors,
     });
+  }));
+
+  // ====================================================================
+  // AUTO-IMPORT — config + inbox (per-user × per-document)
+  //
+  // Strictly additive : nothing here changes the existing import flow.
+  // The cron analyses sources and DROPS proposals into the inbox ; the
+  // user reviews them via the same BulkTranscriptionImportModal.
+  // ====================================================================
+
+  // GET /auto-import/settings — user-level config (master toggle +
+  // which sources to fetch + run telemetry).
+  router.get('/auto-import/settings', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { getUserSettings } = await import('./autoImportDbService.js');
+    const s = await getUserSettings(userId);
+    res.json(s);
+  }));
+
+  // PUT /auto-import/settings — body { masterDisabled?, sources? }.
+  // Sources is the user-level set of providers the cron is allowed
+  // to pull from. The set of TARGET docs lives on each suivitess
+  // (per-doc opt-in).
+  router.put('/auto-import/settings', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { masterDisabled, sources } = (req.body || {}) as {
+      masterDisabled?: boolean;
+      sources?: string[];
+    };
+    const SAFE_SOURCES = new Set(['fathom', 'otter', 'outlook', 'gmail', 'slack']);
+    const cleanSources = Array.isArray(sources)
+      ? sources.filter(s => SAFE_SOURCES.has(s)) as Array<'fathom'|'otter'|'outlook'|'gmail'|'slack'>
+      : undefined;
+    const { upsertUserSettings } = await import('./autoImportDbService.js');
+    const s = await upsertUserSettings(userId, {
+      masterDisabled: typeof masterDisabled === 'boolean' ? masterDisabled : undefined,
+      sources: cleanSources,
+    });
+    res.json(s);
+  }));
+
+  // POST /auto-import/run-now — manually triggers ONE scheduler
+  // tick. Useful to validate the setup without waiting for the
+  // hourly cron, or to force a sync after enabling new sources.
+  router.post('/auto-import/run-now', asyncHandler(async (_req, res) => {
+    const { tick } = await import('./autoImportScheduler.js');
+    const stats = await tick();
+    res.json(stats);
+  }));
+
+  // ── Per-doc opt-in ────────────────────────────────────────────────
+  // GET /documents/:docId/auto-import-enabled — boolean.
+  router.get('/documents/:docId/auto-import-enabled', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { docId } = req.params;
+    const { isDocumentEnabled } = await import('./autoImportDbService.js');
+    const enabled = await isDocumentEnabled(userId, docId);
+    res.json({ enabled });
+  }));
+
+  // PUT /documents/:docId/auto-import-enabled body { enabled }.
+  router.put('/documents/:docId/auto-import-enabled', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { docId } = req.params;
+    const { enabled } = (req.body || {}) as { enabled?: boolean };
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled (boolean) requis' });
+    }
+    const { setDocumentEnabled } = await import('./autoImportDbService.js');
+    await setDocumentEnabled(userId, docId, enabled);
+    res.json({ enabled });
+  }));
+
+  // GET /inbox?status=&source=&document=&from=&to= — list inbox rows.
+  router.get('/inbox', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const status = (req.query.status as string | undefined) ?? 'pending';
+    const sourceKind = (req.query.source as string | undefined) ?? undefined;
+    const documentId = (req.query.document as string | undefined) ?? undefined;
+    const fromIso = (req.query.from as string | undefined) ?? undefined;
+    const toIso = (req.query.to as string | undefined) ?? undefined;
+    const { listInboxProposals } = await import('./autoImportDbService.js');
+    const SAFE_SOURCES = ['fathom','otter','outlook','gmail','slack'] as const;
+    const rows = await listInboxProposals({
+      userId,
+      status: (['pending','accepted','rejected','all'] as const).includes(status as any)
+        ? (status as 'pending' | 'accepted' | 'rejected' | 'all')
+        : 'pending',
+      sourceKind: SAFE_SOURCES.includes(sourceKind as any)
+        ? (sourceKind as 'fathom' | 'otter' | 'outlook' | 'gmail' | 'slack')
+        : undefined,
+      documentId,
+      fromDate: fromIso ? new Date(fromIso) : undefined,
+      toDate: toIso ? new Date(toIso) : undefined,
+    });
+    res.json(rows);
+  }));
+
+  // GET /inbox/count — pending count for the nav badge.
+  router.get('/inbox/count', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { countPendingForUser } = await import('./autoImportDbService.js');
+    const n = await countPendingForUser(userId);
+    res.json({ pending: n });
+  }));
+
+  // GET /inbox/available-reviews — reviews+sections+subjects snapshot
+  // for the bulk-modal pickers (no AI ; cheap DB read). Declared
+  // BEFORE the `/inbox/:id` catch-all so Express doesn't try to
+  // parse "available-reviews" as a UUID.
+  router.get('/inbox/available-reviews', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const isAdmin = req.user!.isAdmin;
+    const { buildReviewsSnapshotForAI } = await import('./reviewSnapshotBuilder.js');
+    const reviews = await buildReviewsSnapshotForAI({ userId, isAdmin, db });
+    const payload = reviews.map(r => ({
+      id: r.id,
+      title: r.title,
+      sections: r.sections.map(s => ({
+        id: s.id,
+        name: s.name,
+        subjects: s.subjects.map(sub => ({
+          id: sub.id,
+          title: sub.title,
+          status: sub.status,
+          situation: sub.situationExcerpt || null,
+        })),
+      })),
+    }));
+    res.json(payload);
+  }));
+
+  // GET /inbox/:id — single proposal (raw FinalReviewProposal[]).
+  router.get('/inbox/:id', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { getInboxProposal } = await import('./autoImportDbService.js');
+    const row = await getInboxProposal(id, userId);
+    if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
+    res.json(row);
+  }));
+
+  // POST /inbox/:id/reject — flip a row to rejected. Idempotent.
+  router.post('/inbox/:id/reject', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { setInboxProposalStatus } = await import('./autoImportDbService.js');
+    const row = await setInboxProposalStatus(id, userId, 'rejected');
+    if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
+    res.json(row);
+  }));
+
+  // POST /inbox/:id/reconsider — move back to pending (un-reject).
+  router.post('/inbox/:id/reconsider', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { setInboxProposalStatus } = await import('./autoImportDbService.js');
+    const row = await setInboxProposalStatus(id, userId, 'pending');
+    if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
+    res.json(row);
+  }));
+
+  // POST /inbox/:id/accept — only marks the row as accepted ; the
+  // actual apply-routing is performed by the existing
+  // /transcription/apply-routing endpoint (called from the bulk
+  // modal). This route is the post-apply confirmation.
+  router.post('/inbox/:id/accept', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { setInboxProposalStatus } = await import('./autoImportDbService.js');
+    const row = await setInboxProposalStatus(id, userId, 'accepted');
+    if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
+    res.json(row);
+  }));
+
+  // POST /inbox/consolidate-pending — single LLM call that takes all
+  // currently-visible pending proposals (across multiple inbox rows),
+  // returns a deduplicated theme-merged view. The output is held in
+  // client memory ; the user accepts via /inbox/consolidate-pending/apply.
+  // Body : { sourceKind?, documentId? } — mirrors the active inbox filters.
+  router.post('/inbox/consolidate-pending', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { sourceKind, documentId } = (req.body || {}) as {
+      sourceKind?: string;
+      documentId?: string;
+    };
+    const SAFE_SOURCES = new Set(['fathom', 'otter', 'outlook', 'gmail', 'slack']);
+    const cleanedSource = (typeof sourceKind === 'string' && SAFE_SOURCES.has(sourceKind))
+      ? (sourceKind as 'fathom' | 'otter' | 'outlook' | 'gmail' | 'slack')
+      : undefined;
+    const cleanedDoc = typeof documentId === 'string' && documentId.length > 0
+      ? documentId : undefined;
+
+    const { consolidatePendingForUser } = await import('./consolidationService.js');
+    const result = await consolidatePendingForUser(
+      userId,
+      req.user!.email ?? null,
+      req.user!.isAdmin,
+      { sourceKind: cleanedSource, documentId: cleanedDoc },
+    );
+    res.json(result);
+  }));
+
+  // POST /inbox/consolidate-pending/apply — accept N consolidated
+  // subjects. Builds the apply-routing payload for each and flips
+  // every contributing inbox row to `accepted`. Returns a `runId`
+  // that the client can pass to /inbox/consolidations/:id/revert to
+  // undo the apply (subjects/sections/reviews deleted, updated
+  // subjects' previous fields restored, inbox rows flipped back).
+  router.post('/inbox/consolidate-pending/apply', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { items, logId } = (req.body || {}) as {
+      logId?: number | null;
+      items?: unknown;
+    };
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Aucun sujet à appliquer' });
+    }
+    const { applyConsolidatedSubjects } = await import('./consolidationService.js');
+    type ConsolidatedSubject = Parameters<typeof applyConsolidatedSubjects>[1][number];
+    const cleanedLogId = typeof logId === 'number' && Number.isFinite(logId) ? logId : null;
+    const result = await applyConsolidatedSubjects(
+      userId,
+      items as ConsolidatedSubject[],
+      cleanedLogId,
+    );
+    res.json(result);
+  }));
+
+  // POST /inbox/consolidations/:id/revert — undo a previous apply.
+  // Best-effort : each step (restore subjects, delete created subjects /
+  // sections / reviews, restore inbox rows) is independent. A run can
+  // only be reverted once — a second call surfaces an explicit error.
+  router.post('/inbox/consolidations/:id/revert', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    if (typeof id !== 'string' || id.length === 0) {
+      return res.status(400).json({ error: 'Identifiant manquant' });
+    }
+    try {
+      const { revertConsolidationRun } = await import('./consolidationService.js');
+      const result = await revertConsolidationRun(userId, id);
+      res.json(result);
+    } catch (err) {
+      const msg = (err as Error).message || 'Erreur lors de l\'annulation';
+      // Both "not found" and "already reverted" surface here — the
+      // client only needs the message, the status stays 400 (= user
+      // can't fix it by retrying, no need for 500).
+      res.status(400).json({ error: msg });
+    }
+  }));
+
+  // GET /inbox/consolidations?limit=10 — recent runs for the current
+  // user. Returns summary counts derived from `undo_data` (so an
+  // optional history panel can render them without re-reading the
+  // full JSONB). Wired up now so the frontend has the contract ready ;
+  // no UI consumer yet.
+  router.get('/inbox/consolidations', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const limitRaw = req.query.limit;
+    const limit = typeof limitRaw === 'string' ? parseInt(limitRaw, 10) : 10;
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? limit : 10;
+    const { listConsolidationRuns } = await import('./consolidationService.js');
+    const runs = await listConsolidationRuns(userId, safeLimit);
+    res.json(runs);
+  }));
+
+  // GET /inbox/:id/source-content — raw text the cron analysed
+  // (transcript / mail body / slack messages). Powers the detail
+  // view's "Contenu source" tab. Re-fetched on demand to avoid
+  // bloating the inbox table — providers stay the source of truth.
+  router.get('/inbox/:id/source-content', asyncHandler(async (req, res) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { getInboxProposal } = await import('./autoImportDbService.js');
+    const row = await getInboxProposal(id, userId);
+    if (!row) return res.status(404).json({ error: 'Proposition non trouvée' });
+
+    let content = '';
+    try {
+      if (row.sourceKind === 'fathom') {
+        const { getFathomTranscript } = await import('./fathomService.js');
+        const entries = await getFathomTranscript(userId, row.sourceId);
+        content = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+      } else if (row.sourceKind === 'otter') {
+        const { getOtterTranscript } = await import('./otterService.js');
+        const entries = await getOtterTranscript(userId, row.sourceId);
+        content = entries.map(e => `[${e.speaker}]: ${e.text}`).join('\n');
+      } else if (row.sourceKind === 'outlook') {
+        if (row.sourceId.startsWith('outlook:')) {
+          const dateFilter = row.sourceId.replace('outlook:', '');
+          const { getOutlookMessages } = await import('./outlookCollectorService.js');
+          const msgs = await getOutlookMessages(userId, { dateFilter });
+          const filtered = msgs.filter(m => m.date.slice(0, 10) === dateFilter);
+          content = filtered
+            .map(m => `=== Mail de ${m.sender} ===\nObjet: ${m.subject}\n\n${m.body || m.preview}\n`)
+            .join('\n');
+        } else {
+          const { getOutlookEmailBody } = await import('./emailService.js');
+          content = await getOutlookEmailBody(userId, row.sourceId);
+        }
+      } else if (row.sourceKind === 'gmail') {
+        const { getGmailEmailBody } = await import('./emailService.js');
+        content = await getGmailEmailBody(userId, row.sourceId);
+      } else if (row.sourceKind === 'slack') {
+        const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+        const cfg = await getSlackConfig(userId);
+        if (cfg) {
+          const parts = row.sourceId.split(':');
+          const channelId = parts[1] || parts[0];
+          const dateFilter = parts[2];
+          const messages = await getSlackMessages(cfg.id, { days: cfg.daysToFetch, channelId });
+          const filtered = dateFilter
+            ? messages.filter(m => {
+                const d = new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10);
+                return d === dateFilter;
+              })
+            : messages;
+          content = filtered
+            .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+            .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
+            .join('\n');
+        }
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[SuiVitess inbox source-content] fetch failed:', (err as Error).message);
+    }
+    res.json({ content, sourceKind: row.sourceKind, sourceTitle: row.sourceTitle });
   }));
 
   return router;

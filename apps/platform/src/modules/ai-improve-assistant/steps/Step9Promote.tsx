@@ -68,7 +68,7 @@ export default function Step9Promote({ onAdvance: _ }: StepProps) {
 
       {!savedHash ? (
         <Button variant="primary" onClick={save} disabled={saving || draft.trim().length === 0}>
-          {saving ? 'Sauvegarde…' : '💾 Sauvegarder comme nouvelle version'}
+          {saving ? 'Sauvegarde…' : 'Sauvegarder comme nouvelle version'}
         </Button>
       ) : (
         <div style={{ padding: 'var(--spacing-xs) var(--spacing-sm)', background: 'rgba(76,175,80,0.08)', borderLeft: '3px solid var(--success, #4caf50)', borderRadius: '0 var(--radius-sm) var(--radius-sm) 0', fontSize: 'var(--font-size-sm)', lineHeight: 1.5 }}>

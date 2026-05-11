@@ -1,0 +1,119 @@
+/* Layout shell only — visual primitives (tabs / cards / badges)
+   come from the shared design system (see COMPONENTS.md). */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  font-family: var(--font-sans);
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.statusSlot {
+  margin-left: auto;
+}
+
+.statsLine {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--accent-primary, #60a5fa);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--accent-light, rgba(99, 102, 241, 0.07));
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-primary, #60a5fa);
+}
+
+.tabBody {
+  min-height: 300px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.sourcePre {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-primary);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.decisionList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+.empty {
+  padding: var(--spacing-md);
+  color: var(--text-muted);
+  font-style: italic;
+}
+.decisionCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+.decisionHead { font-size: 0.92rem; }
+.reasoning {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-style: italic;
+}
+.reasoningLabel { font-weight: 600; font-style: normal; color: var(--accent-primary, #60a5fa); }
+.target {
+  font-size: 0.82rem;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.targetLabel { font-weight: 600; color: var(--text-muted); }
+.quotes {
+  margin-top: var(--spacing-xs);
+  font-size: 0.78rem;
+}
+.quotes summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  user-select: none;
+}
+.quotes ul {
+  margin: var(--spacing-xs) 0 0;
+  padding-left: var(--spacing-md);
+  color: var(--text-secondary);
+}
+.quotes li { line-height: 1.5; }
+
+.promptTab {
+  padding: var(--spacing-md);
+}
+.aiLogLink {
+  display: inline-block;
+  padding: 8px 14px;
+  margin-top: var(--spacing-sm);
+  background: var(--accent-primary, #60a5fa);
+  color: white;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.footer {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: flex-end;
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+}

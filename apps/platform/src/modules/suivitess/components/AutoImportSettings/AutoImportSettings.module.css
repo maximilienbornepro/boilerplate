@@ -1,0 +1,191 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  font-family: var(--font-sans);
+}
+
+.masterSection {
+  padding: var(--spacing-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+.masterRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+.masterText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.masterText strong {
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+.masterHint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.masterStatus {
+  margin-top: var(--spacing-sm);
+  font-size: 0.82rem;
+}
+.statusOn { color: var(--success, #16a34a); font-weight: 600; }
+.statusOff { color: var(--text-muted); font-style: italic; }
+.lastRun { color: var(--text-muted); margin-left: 4px; }
+.lastError { color: var(--error, #dc2626); margin-left: 4px; }
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: var(--spacing-sm) 0;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+.sectionHint {
+  margin: 0 0 var(--spacing-sm);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.docList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: var(--spacing-xs);
+}
+.emptyDocs {
+  padding: var(--spacing-md);
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.docHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+.docTitleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.docTitle {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+.docMeta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.docError {
+  font-size: 0.75rem;
+  color: var(--error, #dc2626);
+}
+
+.sourcesRow {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px dashed var(--border-color);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+.sourcesLabel {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.sourceChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.82rem;
+  background: var(--bg-secondary, var(--bg-primary));
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.sourceChip input {
+  margin: 0;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
+}
+.footerHint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  flex: 1;
+}
+
+/* Switches */
+.bigSwitch, .smallSwitch {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.bigSwitch { width: 52px; height: 28px; }
+.smallSwitch { width: 40px; height: 22px; }
+
+.bigSwitch input, .smallSwitch input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.bigSwitchTrack, .smallSwitchTrack {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--text-muted);
+  border-radius: 999px;
+  transition: background 0.15s;
+  position: relative;
+}
+.bigSwitchTrack::after, .smallSwitchTrack::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+.bigSwitchTrack::after { width: 24px; height: 24px; }
+.smallSwitchTrack::after { width: 18px; height: 18px; }
+
+.bigSwitch input:checked + .bigSwitchTrack,
+.smallSwitch input:checked + .smallSwitchTrack {
+  background: var(--success, #16a34a);
+}
+.bigSwitch input:checked + .bigSwitchTrack::after { transform: translateX(24px); }
+.smallSwitch input:checked + .smallSwitchTrack::after { transform: translateX(18px); }

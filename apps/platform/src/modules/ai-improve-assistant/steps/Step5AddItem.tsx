@@ -88,7 +88,7 @@ export default function Step5AddItem({ onAdvance: _ }: StepProps) {
           {hasAtLeastOne && <> Tu peux avancer à l'étape 6, ou en ajouter d'autres ci-dessous.</>}
         </span>
         <Button variant="secondary" onClick={refreshCount} disabled={refreshing}>
-          {refreshing ? '…' : '🔄 Rafraîchir'}
+          {refreshing ? '…' : 'Rafraîchir'}
         </Button>
         <a
           href={`/ai-evals/${state.datasetId}`}
@@ -122,7 +122,7 @@ export default function Step5AddItem({ onAdvance: _ }: StepProps) {
             disabled={adding}
           />
           <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.5 }}>
-            👁 <strong>À quoi ça sert ?</strong> Un 2ᵉ IA (le « juge ») peut comparer cet output attendu aux futures sorties du skill et leur mettre une note de fidélité 0–1. Laisse vide si tu veux juste les scorers automatiques.
+            <strong>À quoi ça sert ?</strong> Un 2ᵉ IA (le « juge ») peut comparer cet output attendu aux futures sorties du skill et leur mettre une note de fidélité 0–1. Laisse vide si tu veux juste les scorers automatiques.
           </p>
         </FormBlock>
 

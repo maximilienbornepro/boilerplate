@@ -18,6 +18,8 @@
     "db:stop": "docker-compose down",
     "db:reset": "docker-compose down -v && docker-compose up -d",
     "audit:components": "tsx scripts/audit-components.ts",
+    "inbox:process-pending-updates": "tsx scripts/process-pending-inbox-updates.ts",
+    "suivitess:synthesize-all": "tsx scripts/synthesize-all-situations.ts",
     "prepare": "git config core.hooksPath .githooks || true",
     "test": "vitest run",
     "test:watch": "vitest",

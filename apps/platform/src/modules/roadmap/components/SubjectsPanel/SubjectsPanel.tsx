@@ -283,7 +283,7 @@ export function SubjectsPanel({
         {!editingSubjectId && (
           <div className="sp-search-section" ref={searchRef}>
             <div className="sp-search-wrapper">
-              <span className="sp-search-icon">🔍</span>
+              <span className="sp-search-icon">⌕</span>
               <input
                 className="sp-search-input"
                 type="text"
@@ -292,7 +292,7 @@ export function SubjectsPanel({
                 onChange={e => setSearchQuery(e.target.value)}
                 onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
               />
-              {searchLoading && <span className="sp-search-spinner">⏳</span>}
+              {searchLoading && <span className="sp-search-spinner">…</span>}
             </div>
             {showDropdown && searchResults.length > 0 && (
               <div className="sp-dropdown">
@@ -367,7 +367,7 @@ export function SubjectsPanel({
                     <div className="sp-subject-situation">{truncateSituation(subject.situation)}</div>
                   )}
                   {subject.responsibility && (
-                    <div className="sp-subject-responsibility">👤 {subject.responsibility}</div>
+                    <div className="sp-subject-responsibility">{subject.responsibility}</div>
                   )}
                   <div className="sp-subject-actions">
                     <button className="sp-btn sp-btn-primary" onClick={() => setEditingSubjectId(subject.id)}>

@@ -215,7 +215,7 @@ export default function PromptLogsApp({ onNavigate }: { onNavigate?: (path: stri
               <style>{`@keyframes promptLogsLive { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
             </h1>
             <Button variant="secondary" onClick={loadProjects} disabled={loadingProjects}>
-              {loadingProjects ? '…' : '🔄'}
+              {loadingProjects ? '…' : '↻'}
             </Button>
           </div>
 
@@ -312,7 +312,7 @@ function EmptyState() {
     }]
   }
 }`}</pre>
-      <p>Redémarre Claude Code, envoie un prompt, reviens ici et clique 🔄.</p>
+      <p>Redémarre Claude Code, envoie un prompt, reviens ici et clique « ↻ ».</p>
       <p style={{ fontSize: 11, opacity: 0.7 }}>
         Doc complète : <code>apps/platform/servers/unified/src/modules/promptLogs/HOOK.md</code>
       </p>
@@ -360,7 +360,7 @@ function ProjectView({ cwd, stats, sessions, selectedSessionId, onSelectSession,
       {/* Sessions list */}
       <section>
         <h3 style={{ margin: '0 0 var(--spacing-xs)', fontSize: 'var(--font-size-md)', color: 'var(--accent-primary)' }}>
-          💬 Sessions ({sessions.length})
+          Sessions ({sessions.length})
         </h3>
         {sessions.length === 0 ? (
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>Aucune session pour ce projet.</p>
@@ -410,7 +410,7 @@ function ProjectView({ cwd, stats, sessions, selectedSessionId, onSelectSession,
       {selectedSessionId && (
         <section>
           <h3 style={{ margin: '0 0 var(--spacing-xs)', fontSize: 'var(--font-size-md)', color: 'var(--accent-primary)' }}>
-            📜 Timeline — session {selectedSessionId.slice(0, 12)} ({events.length} événement{events.length > 1 ? 's' : ''})
+            Timeline — session {selectedSessionId.slice(0, 12)} ({events.length} événement{events.length > 1 ? 's' : ''})
           </h3>
           <ol style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
             {events.map(e => <EventCard key={e.id} event={e} />)}
@@ -440,10 +440,7 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
 }
 
 function EventCard({ event }: { event: EventRow }) {
-  const kindIcon = event.event_kind === 'user_prompt' ? '👤'
-    : event.event_kind === 'stop' ? '🛑'
-    : event.event_kind === 'tool_use' ? '🔧'
-    : '•';
+  const kindIcon = '•';
   return (
     <li style={{
       padding: 'var(--spacing-xs) var(--spacing-sm)',

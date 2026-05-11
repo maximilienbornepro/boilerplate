@@ -4,6 +4,7 @@ import { createRoutes } from './routes.js';
 import { initSlackCollector } from './slackCollectorService.js';
 import { initOutlookCollector } from './outlookCollectorService.js';
 import { initRoutingMemory } from './routingMemoryService.js';
+import { startAutoImportScheduler } from './autoImportScheduler.js';
 
 export async function initSuivitess() {
   await initDb();
@@ -18,6 +19,13 @@ export async function initSuivitess() {
   // silently disables but the rest of the module keeps working.
   try { await initRoutingMemory(); } catch (err) {
     console.warn('[SuiVitess] Routing memory init (non-blocking):', (err as Error).message);
+  }
+  // Hourly auto-import scheduler — strictly opt-in : a user must
+  // create a per-doc config + leave the master kill-switch off for
+  // anything to happen. Boot order is harmless because the scheduler
+  // ticks 60s after start, well after every dependency is up.
+  try { startAutoImportScheduler(); } catch (err) {
+    console.warn('[SuiVitess] Auto-import scheduler init (non-blocking):', (err as Error).message);
   }
   console.log('[SuiVitess] Module initialized');
 }

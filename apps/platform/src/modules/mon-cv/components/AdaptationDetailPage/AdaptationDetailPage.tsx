@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
 import { ModuleHeader, LoadingSpinner } from '@boilerplate/shared/components';
 import type { CVAdaptation, CVData, Project, AtsScore, AtsRecommendationItem, AdaptationQuestion } from '../../types';
 import { getAdaptation, updateAdaptation, downloadAdaptationPDF, getFullPreviewHTML, getAtsRecommendations, transformAdaptation, saveAdaptationQuestions, generateQuestionAnswer } from '../../services/api';
+import type { CVVariant } from '../../services/api';
 import './AdaptationDetailPage.css';
 
 interface AdaptationDetailPageProps {
@@ -106,6 +107,10 @@ export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: Adapt
   const [saving, setSaving] = useState(false);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  // CV variant for the preview + PDF buttons. 'simple' hides the
+  // per-experience projects sub-block (recruiter-friendly shorter
+  // version) ; 'complete' is the default (current behaviour).
+  const [variant, setVariant] = useState<CVVariant>('complete');
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
 
@@ -382,8 +387,9 @@ export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: Adapt
   const handleDownloadPDF = async () => {
     setDownloadingPDF(true);
     try {
-      const filename = `${name || 'CV_adapte'}.pdf`;
-      await downloadAdaptationPDF(adaptationId, filename);
+      const suffix = variant === 'simple' ? '_simple' : '';
+      const filename = `${name || 'CV_adapte'}${suffix}.pdf`;
+      await downloadAdaptationPDF(adaptationId, filename, variant);
     } catch (err: any) {
       setError(err.message || 'Erreur lors du téléchargement PDF');
     } finally {
@@ -396,7 +402,7 @@ export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: Adapt
     setError('');
     try {
       const cv = buildEditedCV();
-      const html = await getFullPreviewHTML(cv);
+      const html = await getFullPreviewHTML(cv, variant);
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -503,12 +509,55 @@ export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: Adapt
         title="Détail de l'adaptation"
         onBack={onBack}
       >
+        {/* Variant picker — drives the Aperçu + PDF buttons just below.
+            "Simple" hides per-experience projects (still keeps missions
+            + tech + side-projects intact) ; "Complète" = current full
+            rendering. Default = Complète. */}
+        <div
+          role="group"
+          aria-label="Version du CV"
+          style={{ display: 'inline-flex', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border-color)', marginRight: 4 }}
+        >
+          <button
+            type="button"
+            className="module-header-btn"
+            onClick={() => setVariant('simple')}
+            disabled={loadingPreview || downloadingPDF}
+            aria-pressed={variant === 'simple'}
+            style={{
+              borderRadius: 0,
+              border: 'none',
+              background: variant === 'simple' ? 'var(--bg-tertiary)' : 'transparent',
+              fontWeight: variant === 'simple' ? 600 : 400,
+            }}
+            title="CV simple : sans la liste des projets par expérience"
+          >
+            Simple
+          </button>
+          <button
+            type="button"
+            className="module-header-btn"
+            onClick={() => setVariant('complete')}
+            disabled={loadingPreview || downloadingPDF}
+            aria-pressed={variant === 'complete'}
+            style={{
+              borderRadius: 0,
+              border: 'none',
+              borderLeft: '1px solid var(--border-color)',
+              background: variant === 'complete' ? 'var(--bg-tertiary)' : 'transparent',
+              fontWeight: variant === 'complete' ? 600 : 400,
+            }}
+            title="CV complet : avec les projets détaillés par expérience"
+          >
+            Complète
+          </button>
+        </div>
         <button
           className="module-header-btn"
           onClick={handlePreviewHTML}
           disabled={loadingPreview || downloadingPDF}
         >
-          {loadingPreview ? '...' : '👁 Aperçu'}
+          {loadingPreview ? '...' : 'Aperçu'}
         </button>
         <button
           className="module-header-btn"
@@ -530,7 +579,7 @@ export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: Adapt
           disabled={transforming !== null || downloadingPDF}
           title="Traduire cette adaptation en anglais (crée un nouveau CV)"
         >
-          {transforming === 'translate-en' ? '…' : '🇬🇧 EN'}
+          {transforming === 'translate-en' ? '…' : 'EN'}
         </button>
         <button
           className="module-header-btn"
@@ -689,7 +738,7 @@ export function AdaptationDetailPage({ adaptationId, onBack, onNavigate }: Adapt
                     disabled={isGenerating || !q.question.trim() || generatingQid !== null}
                     title={hasAnswer ? 'Régénérer une nouvelle réponse' : 'Générer une réponse à partir du CV adapté'}
                   >
-                    {isGenerating ? '…' : hasAnswer ? '🔄 Régénérer' : '✨ Générer la réponse'}
+                    {isGenerating ? '…' : hasAnswer ? 'Régénérer' : 'Générer la réponse'}
                   </button>
                   <button
                     className="module-header-btn"
