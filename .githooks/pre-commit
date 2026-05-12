@@ -13,6 +13,34 @@
 
 set -e
 
+# ────────────────────────────────────────────────────────────────────
+# Guard #1 — Wrong shared package import.
+#
+# Several agent-driven backports from a sibling repo `delivery-process`
+# have repeatedly copied `@delivery-process/shared/components` into
+# this codebase (where the correct package name is
+# `@boilerplate/shared/components`). The bug breaks Vite resolution
+# on every suivitess subject render. We reject the commit outright if
+# any staged source file still carries the wrong path.
+# ────────────────────────────────────────────────────────────────────
+
+FORBIDDEN_PATH='@delivery-process/'
+OFFENDING=$(git diff --cached --name-only --diff-filter=ACMR \
+            -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.css' '*.md' 2>/dev/null \
+            | xargs -I {} grep -l "$FORBIDDEN_PATH" {} 2>/dev/null || true)
+if [ -n "$OFFENDING" ]; then
+  echo "✗ pre-commit: forbidden import path '$FORBIDDEN_PATH' detected in staged files:"
+  for f in $OFFENDING; do
+    echo "  • $f"
+    grep -n "$FORBIDDEN_PATH" "$f" | sed 's/^/      /'
+  done
+  echo
+  echo "  This codebase uses '@boilerplate/' — replace and re-stage."
+  echo "  (Most common cause: a backport from delivery-process that"
+  echo "   copied the source path verbatim without renaming.)"
+  exit 1
+fi
+
 # Only run when files impacting the audit have been staged. Staying narrow
 # keeps the hook fast and unobtrusive during unrelated commits.
 CHANGED=$(git diff --cached --name-only --diff-filter=ACMR)
