@@ -255,6 +255,18 @@ export const SKILLS: readonly SkillDefinition[] = [
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/cross-source-consolidate.md'),
   },
   {
+    slug: 'suivitess-detect-cross-doc-duplicates',
+    name: 'SuiviTess — Détecter les doublons cross-documents',
+    description:
+      "Skill transverse appelé à la demande depuis la liste suivitess. Prend tous les sujets visibles par l'utilisateur (déjà aplatis avec leur document/section d'origine) et produit des groupes de 2 à 5 sujets issus de documents DISTINCTS qui convergent vers le même thème métier. L'utilisateur choisit un parent canonique par groupe et le backend matérialise les liens via `suivitess_subject_cross_links`. Ne regroupe jamais des sujets du même document.",
+    usage: {
+      module: 'suivitess',
+      endpoint: 'POST /suivitess-api/detect-cross-doc-duplicates',
+      trigger: "Bouton « Détecter les doublons » du menu Actions de la liste suivitess",
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/detect-cross-doc-duplicates.md'),
+  },
+  {
     slug: 'suivitess-reconcile-multi-source',
     name: 'SuiviTess — Pipeline/T1.5 : réconcilier plusieurs sources',
     description:

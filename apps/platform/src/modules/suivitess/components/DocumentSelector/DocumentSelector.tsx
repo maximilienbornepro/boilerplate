@@ -6,6 +6,9 @@ import * as api from '../../services/api';
 import { BulkTranscriptionImportModal } from '../BulkTranscriptionImportModal/BulkTranscriptionImportModal';
 import { consumeBulkImportReopenFlag } from '../BulkTranscriptionImportModal/InlineConnectorSetup';
 import { AutoImportSettings } from '../AutoImportSettings';
+import { DetectDuplicatesProgressModal } from '../DetectDuplicatesModal/DetectDuplicatesProgressModal';
+import { DetectDuplicatesReviewModal } from '../DetectDuplicatesModal/DetectDuplicatesReviewModal';
+import type { DetectDuplicatesResponse } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 import styles from './DocumentSelector.module.css';
 
@@ -73,6 +76,13 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
   const [deleting, setDeleting] = useState(false);
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [sharingDoc, setSharingDoc] = useState<Document | null>(null);
+  // Cross-doc duplicate detection state. `detecting` drives the
+  // progress modal ; `detectResult` drives the review modal. The
+  // `undoRunId` toast affordance is rendered inline below the page
+  // header and offers an "Annuler" button for 30s after the apply.
+  const [detecting, setDetecting] = useState(false);
+  const [detectResult, setDetectResult] = useState<DetectDuplicatesResponse | null>(null);
+  const [detectUndo, setDetectUndo] = useState<{ runId: string; message: string } | null>(null);
 
   const addToast = (toast: Omit<ToastData, 'id'>) => {
     setToasts(prev => [...prev, { ...toast, id: Date.now().toString() }]);
@@ -158,6 +168,41 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
       addToast({ type: 'error', message: err.message || 'Erreur lors de la modification' });
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const handleDetectDuplicates = async () => {
+    setDetecting(true);
+    try {
+      const r = await api.detectCrossDocDuplicates();
+      if (r.groups.length === 0) {
+        addToast({
+          type: r.truncated ? 'error' : 'info',
+          message: r.truncated
+            ? 'La sortie IA a été tronquée. Réessaie avec moins de sujets.'
+            : 'Aucun groupe de doublons détecté.',
+        });
+        return;
+      }
+      setDetectResult(r);
+    } catch (err) {
+      addToast({ type: 'error', message: `Erreur : ${(err as Error).message}` });
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const handleDetectUndo = async () => {
+    if (!detectUndo) return;
+    try {
+      const r = await api.revertCrossDocDuplicates(detectUndo.runId);
+      addToast({
+        type: 'success',
+        message: `${r.linksRemoved} lien${r.linksRemoved > 1 ? 's' : ''} supprimé${r.linksRemoved > 1 ? 's' : ''} — détection annulée`,
+      });
+      setDetectUndo(null);
+    } catch (err) {
+      addToast({ type: 'error', message: `Erreur : ${(err as Error).message}` });
     }
   };
 
@@ -267,6 +312,18 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
                 {inboxPending > 0 && (
                   <span style={{ marginLeft: 8 }}><Badge type="error">{String(inboxPending)}</Badge></span>
                 )}
+              </button>
+
+              <div className="suivitess-exports-divider" />
+
+              <div className="suivitess-exports-group-title">Maintenance</div>
+              <button
+                type="button"
+                className="suivitess-exports-item"
+                onClick={() => { setShowActions(false); void handleDetectDuplicates(); }}
+                disabled={detecting}
+              >
+                Détecter les doublons
               </button>
             </div>
           )}
@@ -491,6 +548,78 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
       )}
 
       <ToastContainer toasts={toasts} onDismiss={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
+
+      {detecting && (
+        <DetectDuplicatesProgressModal
+          subtitle={documents.length > 0 ? `${documents.length} review${documents.length > 1 ? 's' : ''} dans le portefeuille` : undefined}
+        />
+      )}
+
+      {detectResult && (
+        <DetectDuplicatesReviewModal
+          result={detectResult}
+          onClose={() => setDetectResult(null)}
+          onDone={(summary) => {
+            setDetectResult(null);
+            if (summary.runId) {
+              setDetectUndo({
+                runId: summary.runId,
+                message: `${summary.groupsApplied} groupe(s) liés · ${summary.linksCreated} liens créés`,
+              });
+              // Hide the undo affordance after 30s.
+              setTimeout(() => {
+                setDetectUndo(curr => (curr && curr.runId === summary.runId ? null : curr));
+              }, 30000);
+            } else {
+              addToast({ type: 'info', message: 'Aucun lien créé.' });
+            }
+          }}
+        />
+      )}
+
+      {detectUndo && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            bottom: 'var(--spacing-lg, 24px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--spacing-md, 16px)',
+            padding: '12px 18px',
+            background: 'var(--bg-primary)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 'var(--radius-md, 8px)',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.18)',
+            color: 'var(--text-primary)',
+            fontSize: '0.92rem',
+          }}
+        >
+          <span>{detectUndo.message}</span>
+          <Button variant="secondary" onClick={() => void handleDetectUndo()}>
+            Annuler
+          </Button>
+          <button
+            type="button"
+            onClick={() => setDetectUndo(null)}
+            aria-label="Fermer"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              fontSize: '1.1rem',
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
     </>
   );
 }

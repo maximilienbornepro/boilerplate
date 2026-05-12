@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SKILLS, getSkill } from '../../aiSkills/registry.js';
 
 describe('aiSkills.registry', () => {
-  it('exposes the 23 expected slugs (legacy + modular pipelines + multi-source reconciliation + cross-source consolidation + name suggester + synthesize-situation + mon-cv tile flow + transformations + Q&A)', () => {
+  it('exposes the 24 expected slugs (legacy + modular pipelines + multi-source reconciliation + cross-source consolidation + cross-doc duplicate detection + name suggester + synthesize-situation + mon-cv tile flow + transformations + Q&A)', () => {
     const slugs = SKILLS.map(s => s.slug).sort();
     expect(slugs).toEqual([
       'delivery-assess-tickets',
@@ -17,6 +17,7 @@ describe('aiSkills.registry', () => {
       'suivitess-append-situation',
       'suivitess-compose-situation',
       'suivitess-cross-source-consolidate',
+      'suivitess-detect-cross-doc-duplicates',
       'suivitess-extract-outlook',
       'suivitess-extract-slack',
       'suivitess-extract-transcript',

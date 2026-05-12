@@ -1389,3 +1389,98 @@ export async function fetchAvailableReviewsForRouting(): Promise<AvailableReview
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
+
+// ====================================================================
+// Cross-document duplicate detection — surfaces groups of 2..5 subjects
+// from DISTINCT documents that converge to the same theme. The user
+// picks a parent canonical subject per group and the backend links the
+// duplicates via `suivitess_subject_cross_links`.
+// ====================================================================
+
+export interface DuplicateGroupApi {
+  subjectIds: string[];
+  confidence: 'high' | 'medium';
+  reasoning: string;
+}
+
+export interface DuplicateSubjectApi {
+  id: string;
+  title: string;
+  status: string;
+  responsibility: string | null;
+  situationExcerpt: string;
+  documentId: string;
+  documentTitle: string;
+  sectionId: string;
+  sectionName: string;
+  updatedAt: string;
+}
+
+export interface DetectDuplicatesResponse {
+  logId: number | null;
+  groups: DuplicateGroupApi[];
+  /** Subjects indexed by id for O(1) lookup in the modal. */
+  subjects: Record<string, DuplicateSubjectApi>;
+  subjectCount: number;
+  /** True when the LLM output looked truncated (max_tokens). The UI
+   *  surfaces a specific error in that case. */
+  truncated?: boolean;
+}
+
+export interface ApplyDuplicatesResponse {
+  groupsApplied: number;
+  linksCreated: number;
+  runId: string | null;
+  errors: Array<{ subjectId: string; error: string }>;
+}
+
+export interface RevertDuplicatesResponse {
+  linksRemoved: number;
+}
+
+export async function detectCrossDocDuplicates(): Promise<DetectDuplicatesResponse> {
+  const r = await fetch(`${API_BASE}/detect-cross-doc-duplicates`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+export async function applyCrossDocDuplicates(
+  logId: number | null,
+  acceptedGroups: Array<{ parentId: string; duplicateIds: string[] }>,
+): Promise<ApplyDuplicatesResponse> {
+  const r = await fetch(`${API_BASE}/detect-cross-doc-duplicates/apply`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ logId, acceptedGroups }),
+  });
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+export async function revertCrossDocDuplicates(
+  runId: string,
+): Promise<RevertDuplicatesResponse> {
+  const r = await fetch(`${API_BASE}/detect-cross-doc-duplicates/revert`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ runId }),
+  });
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${r.status}`);
+  }
+  return r.json();
+}

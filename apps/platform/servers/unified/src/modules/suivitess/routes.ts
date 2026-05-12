@@ -4499,5 +4499,68 @@ ${filteredContent.slice(0, 30000)}`,
     res.json({ content, sourceKind: row.sourceKind, sourceTitle: row.sourceTitle });
   }));
 
+  // ==================== CROSS-DOC DUPLICATE DETECTION ====================
+  //
+  // POST /detect-cross-doc-duplicates — fan out the user's entire visible
+  // subject portfolio to the detection skill. Returns groups of 2..5
+  // subjects from DISTINCT documents that converge to the same theme,
+  // plus a `subjects` map indexed by id (so the frontend modal can render
+  // titles / status / breadcrumb without a second round-trip).
+  router.post('/detect-cross-doc-duplicates', asyncHandler(async (req, res) => {
+    const { detectCrossDocDuplicatesForUser } = await import('./duplicateDetectionService.js');
+    const result = await detectCrossDocDuplicatesForUser(
+      req.user!.id,
+      req.user!.email ?? null,
+      req.user!.isAdmin,
+    );
+    res.json(result);
+  }));
+
+  // POST /detect-cross-doc-duplicates/apply — body :
+  //   { logId, acceptedGroups: [{ parentId, duplicateIds }] }
+  // For each group, creates one cross-link per duplicate pointing at the
+  // chosen parent's canonical id. Records the batch in a run row so the
+  // user can hit "Annuler" in the toast.
+  router.post('/detect-cross-doc-duplicates/apply', asyncHandler(async (req, res) => {
+    const { logId, acceptedGroups } = (req.body || {}) as {
+      logId?: number | null;
+      acceptedGroups?: unknown;
+    };
+    if (!Array.isArray(acceptedGroups) || acceptedGroups.length === 0) {
+      return res.status(400).json({ error: 'Aucun groupe à appliquer' });
+    }
+    const cleanedLogId = typeof logId === 'number' && Number.isFinite(logId) ? logId : null;
+    const cleanedGroups = (acceptedGroups as Array<Record<string, unknown>>)
+      .map(g => ({
+        parentId: typeof g.parentId === 'string' ? g.parentId : '',
+        duplicateIds: Array.isArray(g.duplicateIds)
+          ? (g.duplicateIds as unknown[]).filter((x): x is string => typeof x === 'string')
+          : [],
+      }))
+      .filter(g => g.parentId.length > 0 && g.duplicateIds.length > 0);
+    if (cleanedGroups.length === 0) {
+      return res.status(400).json({ error: 'Aucun groupe valide' });
+    }
+    const { applyDuplicateLinks } = await import('./duplicateDetectionService.js');
+    const result = await applyDuplicateLinks(req.user!.id, cleanedGroups, cleanedLogId);
+    res.json(result);
+  }));
+
+  // POST /detect-cross-doc-duplicates/revert — body : { runId }.
+  // Deletes every cross-link the apply created, stamps `reverted_at`.
+  router.post('/detect-cross-doc-duplicates/revert', asyncHandler(async (req, res) => {
+    const { runId } = (req.body || {}) as { runId?: unknown };
+    if (typeof runId !== 'string' || runId.length === 0) {
+      return res.status(400).json({ error: 'Identifiant de détection manquant' });
+    }
+    try {
+      const { revertDuplicateRun } = await import('./duplicateDetectionService.js');
+      const result = await revertDuplicateRun(req.user!.id, runId);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message || 'Erreur lors de l\'annulation' });
+    }
+  }));
+
   return router;
 }

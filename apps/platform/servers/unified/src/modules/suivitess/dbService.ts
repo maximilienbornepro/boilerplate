@@ -297,6 +297,26 @@ export async function initDb(): Promise<void> {
     console.warn('[SuiVitess] subject marks migration failed:', (err as Error).message);
   }
 
+  // Cross-document duplicate-detection runs. Each row captures the
+  // groups the user accepted in the "Détecter les doublons" flow so
+  // the apply can be undone end-to-end from the toast affordance.
+  // See migration 32_suivitess_duplicate_detection_runs.sql.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS suivitess_duplicate_detection_runs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        ai_log_id INTEGER REFERENCES ai_analysis_logs(id) ON DELETE SET NULL,
+        applied_groups JSONB NOT NULL,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        reverted_at TIMESTAMPTZ NULL
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_suivitess_dup_runs_user ON suivitess_duplicate_detection_runs(user_id, applied_at DESC)');
+  } catch (err) {
+    console.warn('[SuiVitess] duplicate detection migration failed:', (err as Error).message);
+  }
+
   console.log('[SuiVitess] Module initialized');
 }
 
