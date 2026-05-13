@@ -2238,6 +2238,22 @@ ${filteredContent.slice(0, 30000)}`,
     });
   }));
 
+  // List ALL conversations visible to the connected Slack user :
+  // public/private channels, 1-to-1 DMs, group DMs. Used by the
+  // SuiviTess settings picker so the user can opt-in to DM tracking
+  // the same way they opt-in to a channel. Privacy : DMs are NEVER
+  // auto-collected — the user must add them to slack_configs.channels
+  // through the picker first.
+  router.get('/slack/list-conversations', asyncHandler(async (req, res) => {
+    const { listSlackConversations } = await import('./slackCollectorService.js');
+    try {
+      const conversations = await listSlackConversations(req.user!.id);
+      res.json({ conversations });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  }));
+
   // Force an immediate sync.
   router.post('/slack/sync-now', asyncHandler(async (req, res) => {
     const { syncNow } = await import('./slackCollectorService.js');

@@ -224,6 +224,25 @@ async function processSource(
       }
       const primaryDocId = [...docCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
         ?? subscribedDocIds[0];
+
+      // Day-based digests (slack / outlook) carry a trailing
+      // `:<count>` fingerprint so a digest that grew during the day
+      // gets a fresh source_id. Drop the previous pending sibling
+      // (same channel + same date, smaller count) so the inbox
+      // shows ONE row per (channel, date), not a stack of stale
+      // snapshots. accepted/rejected siblings are preserved.
+      const lastColon = item.id.lastIndexOf(':');
+      const tail = lastColon >= 0 ? item.id.slice(lastColon + 1) : '';
+      const isCountSuffixed = /^[0-9]+$/.test(tail);
+      if (isCountSuffixed && (source === 'slack' || source === 'outlook')) {
+        await autoDb.deleteStalerPendingDigests({
+          userId,
+          sourceKind: source,
+          bucketPrefix: item.id.slice(0, lastColon + 1),
+          currentSourceId: item.id,
+        });
+      }
+
       await autoDb.insertInboxProposal({
         userId,
         documentId: primaryDocId,
@@ -309,7 +328,12 @@ async function fetchSourceContent(
   }
   if (source === 'outlook') {
     if (id.startsWith('outlook:')) {
-      const dateFilter = id.replace('outlook:', '');
+      // id format : `outlook:<date>[:<count>]`. The trailing `:count`
+      // is the count-based fingerprint added so a digest grown after
+      // its first emission gets a fresh source_id ; we strip it here
+      // since the per-day content fetch only needs the date.
+      const parts = id.split(':');
+      const dateFilter = parts[1] ?? '';
       const { getOutlookMessages } = await import('./outlookCollectorService.js');
       const msgs = await getOutlookMessages(
         userId,

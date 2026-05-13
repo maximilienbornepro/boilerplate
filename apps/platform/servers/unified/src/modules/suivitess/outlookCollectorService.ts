@@ -209,7 +209,10 @@ export function groupOutlookMessagesByDay(
       .join('\n');
 
     items.push({
-      id: `outlook:${dateStr}`,
+      // Count suffix — see the long comment in groupSlackMessagesByDay
+      // for the rationale. Same bug shape : a digest written at 09:00
+      // with 1 mail freezes the inbox key, afternoon mails are lost.
+      id: `outlook:${dateStr}:${msgs.length}`,
       provider: 'outlook',
       title: `Outlook — ${dateLabel} (${msgs.length} mail${msgs.length > 1 ? 's' : ''})`,
       date: dateStr + 'T12:00:00.000Z',

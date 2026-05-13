@@ -1478,6 +1478,21 @@ function SlackConfigEditor({
   const [editingToken, setEditingToken] = useState(false);
   const [tokenDraft, setTokenDraft] = useState({ workspaceUrl: '', xoxcToken: '', xoxdCookie: '' });
   const [savingToken, setSavingToken] = useState(false);
+  // Conversation picker — pulls the full list of channels + DMs +
+  // group MPs the connected Slack user has access to so the user
+  // can opt-in via a click instead of pasting raw channel IDs.
+  type SlackConvo = {
+    id: string;
+    kind: 'channel' | 'private_channel' | 'im' | 'mpim';
+    label: string;
+    lastActivityTs: number | null;
+    isArchived: boolean;
+  };
+  const [convoPickerOpen, setConvoPickerOpen] = useState(false);
+  const [convoPickerLoading, setConvoPickerLoading] = useState(false);
+  const [convoPickerError, setConvoPickerError] = useState<string | null>(null);
+  const [availableConvos, setAvailableConvos] = useState<SlackConvo[] | null>(null);
+  const [convoFilter, setConvoFilter] = useState('');
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -1548,6 +1563,32 @@ function SlackConfigEditor({
 
   const removeChannel = (id: string) => {
     setDraftChannels(draftChannels.filter(c => c.id !== id));
+  };
+
+  const openConvoPicker = async () => {
+    setConvoPickerOpen(true);
+    if (availableConvos !== null) return;   // already loaded once this session
+    setConvoPickerLoading(true);
+    setConvoPickerError(null);
+    try {
+      const res = await fetch('/suivitess-api/slack/list-conversations', { credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setAvailableConvos((data.conversations || []) as SlackConvo[]);
+    } catch (err) {
+      setConvoPickerError((err as Error).message);
+    } finally {
+      setConvoPickerLoading(false);
+    }
+  };
+
+  const addConvoFromPicker = (convo: SlackConvo) => {
+    if (draftChannels.some(c => c.id === convo.id)) return;   // already tracked
+    const decoratedName = convo.kind === 'im' ? `💬 ${convo.label}`
+      : convo.kind === 'mpim' ? `👥 ${convo.label}`
+      : convo.kind === 'private_channel' ? `🔒 ${convo.label}`
+      : `#${convo.label}`;
+    setDraftChannels([...draftChannels, { id: convo.id, name: decoratedName }]);
   };
 
   const renameChannel = (id: string, patch: Partial<SlackChan>) => {
@@ -1742,6 +1783,119 @@ function SlackConfigEditor({
         <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
           Récupère les {daysToFetch} derniers jours · Sync automatique toutes les heures
         </p>
+
+        {/* ── Conversation picker (channels + DMs + group MPs) ── */}
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {!convoPickerOpen ? (
+            <button
+              className="connector-btn"
+              onClick={openConvoPicker}
+              type="button"
+              style={{ alignSelf: 'flex-start' }}
+            >
+              💬 Parcourir mes conversations Slack
+            </button>
+          ) : (
+            <div style={{ padding: 'var(--spacing-sm)', background: 'var(--bg-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+                <strong style={{ color: 'var(--text-primary)' }}>Mes conversations Slack</strong>
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {convoPickerLoading ? '— chargement…'
+                   : availableConvos ? `— ${availableConvos.length} trouvées`
+                   : ''}
+                </span>
+                <span style={{ flex: 1 }} />
+                <button className="connector-btn" onClick={() => setConvoPickerOpen(false)} type="button" style={{ padding: '2px 8px' }}>
+                  Fermer
+                </button>
+              </div>
+
+              {convoPickerError && (
+                <div style={{ padding: 'var(--spacing-sm)', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--error)', borderRadius: 'var(--radius-sm)', color: 'var(--error)', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+                  ⚠ {convoPickerError}
+                </div>
+              )}
+
+              {availableConvos && (
+                <>
+                  <input
+                    type="text"
+                    value={convoFilter}
+                    onChange={e => setConvoFilter(e.target.value)}
+                    placeholder="Filtrer par nom…"
+                    style={{ padding: '4px 8px', fontFamily: 'var(--font-mono)', fontSize: '12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)' }}
+                  />
+
+                  {(['channel', 'private_channel', 'im', 'mpim'] as const).map(kind => {
+                    const sectionTitle =
+                      kind === 'channel'         ? `Canaux publics (#)` :
+                      kind === 'private_channel' ? `Canaux privés (🔒)` :
+                      kind === 'im'              ? `Messages privés 1-à-1 (💬)` :
+                                                   `Groupes privés / MP (👥)`;
+                    const filterLower = convoFilter.trim().toLowerCase();
+                    const items = availableConvos
+                      .filter(c => c.kind === kind)
+                      .filter(c => !filterLower || c.label.toLowerCase().includes(filterLower) || c.id.toLowerCase().includes(filterLower));
+                    if (items.length === 0) return null;
+
+                    return (
+                      <div key={kind} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 }}>
+                          {sectionTitle} <span style={{ opacity: 0.6 }}>· {items.length}</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)' }}>
+                          {items.map(c => {
+                            const tracked = draftChannels.some(dc => dc.id === c.id);
+                            const lastDate = c.lastActivityTs
+                              ? new Date(c.lastActivityTs * 1000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+                              : '—';
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => addConvoFromPicker(c)}
+                                disabled={tracked}
+                                title={tracked ? 'Déjà dans ta liste' : `Ajouter ${c.id}`}
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: '1fr auto auto',
+                                  gap: 8,
+                                  padding: '4px 8px',
+                                  background: tracked ? 'var(--bg-tertiary)' : 'transparent',
+                                  border: 'none',
+                                  borderBottom: '1px solid var(--border-color)',
+                                  fontFamily: 'var(--font-mono)',
+                                  fontSize: '12px',
+                                  color: tracked ? 'var(--text-muted)' : 'var(--text-primary)',
+                                  textAlign: 'left',
+                                  cursor: tracked ? 'not-allowed' : 'pointer',
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {c.label}
+                                </span>
+                                <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{lastDate}</span>
+                                <span style={{ color: tracked ? 'var(--text-muted)' : 'var(--success)', fontSize: 11 }}>
+                                  {tracked ? '✓ suivi' : '+ ajouter'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
+                    ℹ️ Aucun message privé n'est collecté tant que tu ne l'as pas ajouté ici. Le token Slack ne voit que les conversations auxquelles tu participes.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         {channelsDirty && (
           <button className="connector-btn connector-btn-primary" onClick={saveChannels} type="button" style={{ alignSelf: 'flex-start', marginTop: 4 }}>
             Enregistrer les conversations

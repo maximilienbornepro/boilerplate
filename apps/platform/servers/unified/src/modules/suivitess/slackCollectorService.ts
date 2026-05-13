@@ -379,6 +379,139 @@ export async function testSlackAuth(
   }
 }
 
+// ============ Conversation picker (channels + DMs + group DMs) ============
+
+export interface SlackConversation {
+  id: string;
+  /** 'channel' = public, 'private_channel' = private channel,
+   *  'im' = 1-to-1 DM, 'mpim' = multi-party DM (group MP). */
+  kind: 'channel' | 'private_channel' | 'im' | 'mpim';
+  /** Human-readable label. For channels it's the channel name ; for
+   *  IM it's the other user's display name ; for MPM it's the
+   *  comma-joined member names. */
+  label: string;
+  /** Unix epoch (seconds) of the last activity Slack knows about.
+   *  Used to surface stale-but-still-open DMs at the bottom of the
+   *  picker without burning a per-conversation `conversations.history`
+   *  call. */
+  lastActivityTs: number | null;
+  isArchived: boolean;
+}
+
+/** List every conversation the connected Slack user can see :
+ *  public channels they're in, private channels, 1-to-1 DMs, group
+ *  DMs (mpim). Used by the SuiviTess settings picker so the user
+ *  can opt-in to tracking a DM the same way they opt-in to a
+ *  channel.
+ *
+ *  We never auto-collect DMs the user hasn't explicitly chosen —
+ *  privacy is opt-in by design.
+ *
+ *  Implementation : single `users.conversations` call with all four
+ *  types ; member names for `im`/`mpim` are resolved via
+ *  `resolveUserName` (cached). We do NOT fetch the last message
+ *  body — `updated` (last activity ts) is enough to sort the picker
+ *  and we keep the N+1 cost away.
+ */
+export async function listSlackConversations(
+  userId: number,
+): Promise<SlackConversation[]> {
+  const cfg = await getSlackConfig(userId);
+  if (!cfg || !cfg.isActive) {
+    throw new Error('Aucune configuration Slack active');
+  }
+
+  type ApiChannel = {
+    id: string;
+    name?: string;
+    is_im?: boolean;
+    is_mpim?: boolean;
+    is_private?: boolean;
+    is_channel?: boolean;
+    is_archived?: boolean;
+    user?: string;            // for is_im
+    members?: string[];       // sometimes present for is_mpim
+    updated?: number;         // ms epoch on some responses, sec on others
+  };
+
+  const all: ApiChannel[] = [];
+  let cursor: string | undefined;
+  let page = 0;
+  const MAX_PAGES = 10;       // 10 × 200 = 2000 conversations max
+
+  while (page < MAX_PAGES) {
+    page++;
+    const params: Record<string, string> = {
+      types: 'public_channel,private_channel,im,mpim',
+      exclude_archived: 'true',
+      limit: '200',
+    };
+    if (cursor) params.cursor = cursor;
+
+    const data = await slackApiFetch(
+      cfg.workspaceUrl, 'users.conversations', params,
+      cfg.xoxcToken, cfg.xoxdCookie,
+    ) as {
+      channels?: ApiChannel[];
+      response_metadata?: { next_cursor?: string };
+    };
+
+    if (data.channels) all.push(...data.channels);
+    cursor = data.response_metadata?.next_cursor;
+    if (!cursor) break;
+  }
+
+  const out: SlackConversation[] = [];
+  for (const c of all) {
+    let kind: SlackConversation['kind'];
+    let label: string;
+
+    if (c.is_im && c.user) {
+      kind = 'im';
+      label = await resolveUserName(cfg.workspaceUrl, c.user, cfg.xoxcToken, cfg.xoxdCookie);
+    } else if (c.is_mpim) {
+      kind = 'mpim';
+      // For mpim Slack sometimes returns `members`, sometimes only
+      // the name ("mpdm-alice--bob--carl-1"). Prefer real names
+      // when we have member IDs ; fall back to the raw name.
+      if (c.members && c.members.length) {
+        const names = await Promise.all(
+          c.members.slice(0, 8).map(uid =>
+            resolveUserName(cfg.workspaceUrl, uid, cfg.xoxcToken, cfg.xoxdCookie),
+          ),
+        );
+        label = names.join(', ');
+      } else {
+        label = c.name || c.id;
+      }
+    } else if (c.is_private) {
+      kind = 'private_channel';
+      label = c.name || c.id;
+    } else {
+      kind = 'channel';
+      label = c.name || c.id;
+    }
+
+    out.push({
+      id: c.id,
+      kind,
+      label,
+      lastActivityTs: typeof c.updated === 'number'
+        ? (c.updated > 1e12 ? Math.floor(c.updated / 1000) : c.updated)
+        : null,
+      isArchived: !!c.is_archived,
+    });
+  }
+
+  // Sort by recent activity, then by label. Archived conversations
+  // are filtered out at the API layer (exclude_archived=true) but
+  // we keep the field on the type in case a caller wants to surface
+  // them later.
+  out.sort((a, b) => (b.lastActivityTs ?? 0) - (a.lastActivityTs ?? 0)
+                  || a.label.localeCompare(b.label));
+  return out;
+}
+
 // ============ Messages ============
 
 export async function getSlackMessages(
@@ -591,7 +724,16 @@ export function groupSlackMessagesByDay(
       .map(m => `[${m.senderName || '?'}] ${m.text.slice(0, 80)}`)
       .join('\n');
     items.push({
-      id: `slack:${channelId}:${dateStr}`,
+      // The trailing `:${msgs.length}` is a count-based fingerprint.
+      // Without it, a digest created in the morning with 1 message
+      // freezes the inbox key forever — any afternoon message lands
+      // in slack_messages but never re-triggers T1 because the
+      // dedup check (`inboxProposalAlreadyExistsForUser`) matches on
+      // source_id exact. With the count baked in, an extra message
+      // mints a fresh source_id → fresh T1 run. The stale pending
+      // digest with the smaller count is dropped just before INSERT
+      // by `deleteStalerPendingDigests` so the inbox stays clean.
+      id: `slack:${channelId}:${dateStr}:${msgs.length}`,
       provider: 'slack',
       title: `#${channelName} — Messages du ${dateLabel} (${msgs.length} messages)`,
       date: dateStr + 'T12:00:00.000Z',

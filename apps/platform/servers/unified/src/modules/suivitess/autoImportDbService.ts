@@ -253,6 +253,48 @@ export async function insertInboxProposal(input: {
   return r.rows[0] ? mapInboxRow(r.rows[0]) : null;
 }
 
+/** Drop any `pending` inbox proposal for the same (channel, date)
+ *  bucket as `currentSourceId`. Used by day-based digests (slack /
+ *  outlook) where the source_id format is
+ *  `<kind>:<channel>:<date>:<count>` or `<kind>:<date>:<count>` —
+ *  the trailing count gives us a natural way to detect "an earlier
+ *  digest of the same bucket that got superseded by a longer one".
+ *
+ *  We also match the LEGACY form `<...>:<date>` (without the trailing
+ *  count) so a deploy of this fix auto-cleans pre-existing stale rows
+ *  the moment a fresh tick re-emits the bucket.
+ *
+ *  `pending` only — accepted/rejected rows are historical evidence
+ *  the user already acted on, we never silently rewrite them. */
+export async function deleteStalerPendingDigests(input: {
+  userId: number;
+  sourceKind: AutoImportSource;
+  /** Everything in the source_id BEFORE the trailing count, including
+   *  the separator colon — e.g. `slack:C8TF1EZ6X:2026-05-12:`. */
+  bucketPrefix: string;
+  currentSourceId: string;
+}): Promise<number> {
+  if (!input.bucketPrefix.endsWith(':')) {
+    throw new Error(
+      `deleteStalerPendingDigests: bucketPrefix must end with ':' (got "${input.bucketPrefix}")`,
+    );
+  }
+  // Legacy form = prefix without the trailing colon
+  // (e.g. `slack:C8TF1EZ6X:2026-05-12` instead of the new
+  //  `slack:C8TF1EZ6X:2026-05-12:27`).
+  const legacyId = input.bucketPrefix.slice(0, -1);
+  const r = await pool.query(
+    `DELETE FROM suivitess_inbox_proposals
+      WHERE user_id     = $1
+        AND source_kind = $2
+        AND status      = 'pending'
+        AND (source_id LIKE $3 || '%' OR source_id = $5)
+        AND source_id <> $4`,
+    [input.userId, input.sourceKind, input.bucketPrefix, input.currentSourceId, legacyId],
+  );
+  return r.rowCount ?? 0;
+}
+
 /** List inbox proposals for a user. Optional filters mirror the UI
  *  tab + filters surface (status / source / document / date range). */
 export async function listInboxProposals(opts: {
