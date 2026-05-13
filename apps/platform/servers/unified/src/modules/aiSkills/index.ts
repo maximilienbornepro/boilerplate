@@ -51,7 +51,6 @@ export async function initAiSkills(): Promise<void> {
     appliesToSkills: [
       'suivitess-route-source-to-review',
       'suivitess-import-source-into-document',
-      'suivitess-reformulate-subject',
     ],
   }));
 

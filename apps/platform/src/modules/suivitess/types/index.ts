@@ -30,6 +30,11 @@ export interface Subject {
    *  "remove this link" action — distinct from "delete the canonical
    *  subject", which would propagate to every linked place. */
   linkId?: string | null;
+  /** Number of OTHER sections where this canonical subject is
+   *  currently surfaced through a cross-link. > 0 → the chain icon
+   *  on the card header switches to its "active" state and shows
+   *  this counter. */
+  crossLinkCount?: number;
 }
 
 export interface Section {

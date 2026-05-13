@@ -64,18 +64,6 @@ export const SKILLS: readonly SkillDefinition[] = [
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/legacy/import-source-into-document.md'),
   },
   {
-    slug: 'suivitess-reformulate-subject',
-    name: 'SuiviTess — Reformuler un sujet',
-    description:
-      'Reformule le titre et la situation d\'un sujet pour plus de clarté, sans rien supprimer ni changer le sens.',
-    usage: {
-      module: 'suivitess',
-      endpoint: 'POST /suivitess/api/subjects/:id/reformulate',
-      trigger: 'Bouton « Reformuler avec l\'IA » sur un sujet',
-    },
-    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/reformulate-subject.md'),
-  },
-  {
     slug: 'suivitess-synthesize-situation',
     name: 'SuiviTess — Synthétiser une situation',
     description:
@@ -253,6 +241,18 @@ export const SKILLS: readonly SkillDefinition[] = [
       trigger: 'Bouton « Consolider » dans la barre de filtres de la page inbox',
     },
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/cross-source-consolidate.md'),
+  },
+  {
+    slug: 'suivitess-detect-cross-doc-duplicates',
+    name: 'SuiviTess — Détecter les doublons cross-documents',
+    description:
+      "Skill transverse appelé à la demande depuis la liste suivitess. Prend tous les sujets visibles par l'utilisateur (déjà aplatis avec leur document/section d'origine) et produit des groupes de 2 à 5 sujets issus de documents DISTINCTS qui convergent vers le même thème métier. L'utilisateur choisit un parent canonique par groupe et le backend matérialise les liens via `suivitess_subject_cross_links`. Ne regroupe jamais des sujets du même document.",
+    usage: {
+      module: 'suivitess',
+      endpoint: 'POST /suivitess-api/detect-cross-doc-duplicates',
+      trigger: "Bouton « Détecter les doublons » du menu Actions de la liste suivitess",
+    },
+    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/detect-cross-doc-duplicates.md'),
   },
   {
     slug: 'suivitess-reconcile-multi-source',

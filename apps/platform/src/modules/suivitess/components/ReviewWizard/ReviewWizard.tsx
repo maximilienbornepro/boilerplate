@@ -339,6 +339,56 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
     setTimeout(tryScroll, 100);
   }, [scrollToSectionId, sections]);
 
+  // Scroll to a specific subject when the URL carries a `#<subjectUUID>`
+  // hash. Used by the cross-doc duplicate-detection modal which opens
+  // each candidate subject in a new tab via /suivitess/{docId}#{subjectId}.
+  // The handler also expands the parent section + the subject itself if
+  // they were collapsed when the user arrived. Retries a few times to
+  // outlast the initial render.
+  useEffect(() => {
+    if (sections.length === 0) return;
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    if (!hash) return;
+    // Map the UUID to its section so we can force-expand the section.
+    let parentSectionId: string | null = null;
+    for (const sec of sections) {
+      if (sec.subjects.some(s => s.id === hash)) {
+        parentSectionId = sec.id;
+        break;
+      }
+    }
+    if (!parentSectionId) return;
+    // Expand both the section AND the subject so the user lands on a
+    // visible card instead of a collapsed header. Toggling the Set
+    // identity forces a re-render the scroll loop will observe.
+    setCollapsedSectionIds(prev => {
+      if (!prev.has(parentSectionId!)) return prev;
+      const next = new Set(prev);
+      next.delete(parentSectionId!);
+      return next;
+    });
+    setCollapsedSubjectIds(prev => {
+      if (!prev.has(hash)) return prev;
+      const next = new Set(prev);
+      next.delete(hash);
+      return next;
+    });
+    let attempts = 0;
+    const tryScroll = () => {
+      const el = document.querySelector(`[data-subject-uuid="${hash}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        (el as HTMLElement).style.transition = 'background-color 0.6s';
+        (el as HTMLElement).style.backgroundColor = 'rgba(96, 165, 250, 0.18)';
+        setTimeout(() => { (el as HTMLElement).style.backgroundColor = ''; }, 1800);
+        return;
+      }
+      attempts++;
+      if (attempts < 12) setTimeout(tryScroll, 200);
+    };
+    setTimeout(tryScroll, 150);
+  }, [sections]);
+
   const addToast = (toast: Omit<ToastData, 'id'>) => {
     const id = Date.now().toString();
     setToasts(prev => [...prev, { ...toast, id }]);
@@ -929,6 +979,7 @@ export function ReviewWizard({ docId, onBack, onCopyReady, onExportJsonReady, on
                     <div
                       key={subject.id}
                       data-subject-id={`subject-${sIdx}-${subIdx}`}
+                      data-subject-uuid={subject.id}
                       className={`${styles.subjectItem} ${isSubjectCollapsed ? styles.subjectItemCollapsed : ''}`}
                       draggable={isSubjectCollapsed}
                       onDragStart={isSubjectCollapsed ? (e) => {

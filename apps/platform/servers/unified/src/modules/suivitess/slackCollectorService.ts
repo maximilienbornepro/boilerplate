@@ -205,7 +205,12 @@ export async function fetchChannelHistory(
            ON CONFLICT (channel_id, message_ts) DO UPDATE SET
              text = EXCLUDED.text,
              sender_name = EXCLUDED.sender_name,
-             has_files = EXCLUDED.has_files`,
+             has_files = EXCLUDED.has_files,
+             -- Promote a previously-standalone message into a thread
+             -- parent the moment Slack starts returning thread_ts on
+             -- it. Without this the parent row stays thread_ts=null
+             -- forever after the first reply lands.
+             thread_ts = COALESCE(EXCLUDED.thread_ts, slack_messages.thread_ts)`,
           [
             cfg.id, channelId, channelName, msg.ts,
             msg.user || null, senderName,
@@ -589,4 +594,63 @@ export function groupSlackMessagesByDay(
     });
   }
   return items.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * Format Slack messages as a chronological transcript the AI can read,
+ * with thread replies indented under their parent. Without this, the
+ * older flat formatter (`[user]: text`) interleaved replies into the
+ * main flow, making sub-discussions look like disjoint non-sequiturs.
+ *
+ * Output shape, e.g. :
+ *   [Alice]: bug en prod sur Orange
+ *     ↪ [Bob]: je regarde
+ *     ↪ [Alice]: merci, voilà le log…
+ *   [Carl]: meeting demain ok pour tout le monde ?
+ *     ↪ [Dora]: 👍
+ *
+ * Replies whose parent is missing from the input set (parent older than
+ * the fetch window) are hoisted to top-level so we never lose data.
+ *
+ * Exported so every transcript-builder callsite (single channel/day,
+ * source-content preview, auto-import scheduler, bulk-import flow…)
+ * shares the same thread-aware formatting.
+ */
+export function formatSlackMessagesForAI(
+  messages: Array<{
+    messageTs: string;
+    threadTs: string | null;
+    senderName: string | null;
+    text: string;
+  }>,
+): string {
+  const tsSet = new Set(messages.map(m => m.messageTs));
+  const topLevel: typeof messages = [];
+  const repliesByParent = new Map<string, typeof messages>();
+
+  for (const m of messages) {
+    const isReply = m.threadTs && m.threadTs !== m.messageTs;
+    if (isReply && tsSet.has(m.threadTs!)) {
+      const arr = repliesByParent.get(m.threadTs!) ?? [];
+      arr.push(m);
+      repliesByParent.set(m.threadTs!, arr);
+    } else {
+      // Top-level message OR orphan reply (parent outside fetch window).
+      topLevel.push(m);
+    }
+  }
+
+  topLevel.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs));
+  const lines: string[] = [];
+  for (const m of topLevel) {
+    lines.push(`[${m.senderName || 'Inconnu'}]: ${m.text}`);
+    const replies = repliesByParent.get(m.messageTs);
+    if (replies && replies.length > 0) {
+      replies.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs));
+      for (const r of replies) {
+        lines.push(`  ↪ [${r.senderName || 'Inconnu'}]: ${r.text}`);
+      }
+    }
+  }
+  return lines.join('\n');
 }

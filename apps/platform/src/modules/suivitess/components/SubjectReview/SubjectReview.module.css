@@ -115,6 +115,35 @@
   cursor: wait;
 }
 
+/* Active state for the link/chain button when the subject is
+ * surfaced via cross-links in N other sections. Picks up the primary
+ * accent so the user spots at a glance that the subject is shared. */
+.actionBtnActive {
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.10);
+}
+.actionBtnActive:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.18);
+}
+
+/* Tiny pill counter anchored to the action button. */
+.actionBtnBadge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: var(--accent-on-primary, #fff);
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .subjectCollapseBtn {
   display: inline-flex;
   align-items: center;
