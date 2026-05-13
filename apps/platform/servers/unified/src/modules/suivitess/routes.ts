@@ -2140,12 +2140,23 @@ ${filteredContent.slice(0, 30000)}`,
       res.json({ configured: false });
       return;
     }
+    // Defensive dedup on read : legacy DB rows can contain the same
+    // channel.id twice (PATCH /slack/channels added dedup later) which
+    // crashes React's reconciliation with "two children with the same
+    // key". Keep first occurrence per id.
+    const seen = new Set<string>();
+    const channels = (config.channels || []).filter(c => {
+      const id = String(c.id || '').trim();
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
     res.json({
       configured: true,
       workspaceUrl: config.workspaceUrl,
       xoxcToken: config.xoxcToken,
       xoxdCookie: config.xoxdCookie,
-      channels: config.channels,
+      channels,
       daysToFetch: config.daysToFetch,
       syncIntervalMinutes: config.syncIntervalMinutes,
       isActive: config.isActive,

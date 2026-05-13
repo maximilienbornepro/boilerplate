@@ -1733,12 +1733,24 @@ function SlackConfigEditor({
       </div>
 
       {/* ── Channels ── */}
+      {/* Defensive : legacy data may contain the same channel id twice
+          (older versions of `add` didn't dedupe). The backend GET now
+          dedupes on read, but we also dedupe here so a stale page
+          doesn't crash React with "two children with the same key". */}
+      {(() => {
+        const seen = new Set<string>();
+        const uniqueChannels = draftChannels.filter(c => {
+          if (!c.id || seen.has(c.id)) return false;
+          seen.add(c.id);
+          return true;
+        });
+        return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xs)' }}>
         <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
-          Conversations surveillées ({draftChannels.length}) :
+          Conversations surveillées ({uniqueChannels.length}) :
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {draftChannels.map(ch => (
+          {uniqueChannels.map(ch => (
             <div key={ch.id} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 6, alignItems: 'center', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
               <input
                 type="text"
@@ -1902,6 +1914,8 @@ function SlackConfigEditor({
           </button>
         )}
       </div>
+        );
+      })()}
 
       {/* ── Actions ── */}
       <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
