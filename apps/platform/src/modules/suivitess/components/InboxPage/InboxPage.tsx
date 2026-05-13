@@ -410,22 +410,21 @@ export function InboxPage({ onNavigate }: InboxPageProps) {
           inboxProposalId={openValidate.row.id}
           inboxProposals={openValidate.manualProposals as never}
           inboxDocumentId={openValidate.row.documentId}
-          onClose={async () => {
-            // INBOX SEMANTICS — closing the modal counts as "I have
-            // reviewed this row, get it out of pending". This handles
-            // the per-row immediate-add path (where the user adds
-            // each subject one-by-one then closes) and the bulk
-            // Importer path. We always flip to accepted ; the user
-            // can still hit "Reconsidérer" from the rejected/accepted
-            // tab if they got it wrong.
-            const id = openValidate.row.id;
-            try { await api.acceptInboxProposal(id); }
-            catch { /* swallow — the user can re-validate via the UI */ }
+          onClose={() => {
+            // INBOX SEMANTICS — closing the modal WITHOUT going through
+            // the full validation flow must leave the row in pending,
+            // so the user can re-open it later and finish the work
+            // they started. Only `onDone` (the explicit "tout est créé"
+            // signal from the modal) flips the row to accepted.
+            // We still `load()` to pick up any partial inline-adds
+            // that already happened during the session.
             setOpenValidate(null);
             void load();
           }}
           onDone={async () => {
-            // Bulk Importer path : same final state.
+            // Full validation flow completed (every requested element
+            // was created) → flip the row to accepted so it leaves
+            // pending. This is the only path that does so.
             const id = openValidate.row.id;
             try { await api.acceptInboxProposal(id); }
             catch { /* swallow */ }
