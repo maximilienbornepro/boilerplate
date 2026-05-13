@@ -465,15 +465,21 @@ export async function syncNow(userId: number): Promise<{ total: number }> {
 }
 
 function scheduleSync(): void {
-  // Run every 15 minutes — each config has its own interval check
+  // Wake every 2 minutes ; per-config gating below decides whether to
+  // actually pull. Setting the floor at 2 min (instead of 5) leaves a
+  // safety margin so a config with `syncIntervalMinutes = 5` always
+  // pulls at most ~6 min after the last sync, never 9–10 min.
   setInterval(async () => {
     try {
       const configs = await getActiveConfigs();
       for (const cfg of configs) {
-        // Check if enough time has passed since last sync
+        // Check if enough time has passed since last sync. Default
+        // floor is now 5 min (was 60) so fresh Slack messages reach
+        // the cross-doc pipeline within ~5 min of being posted.
+        const effectiveIntervalMinutes = Math.min(cfg.syncIntervalMinutes, 5);
         if (cfg.lastSyncAt) {
           const elapsed = Date.now() - new Date(cfg.lastSyncAt).getTime();
-          if (elapsed < cfg.syncIntervalMinutes * 60 * 1000) continue;
+          if (elapsed < effectiveIntervalMinutes * 60 * 1000) continue;
         }
         console.log(`[Slack Collector] Auto-sync for user ${cfg.userId}...`);
         try {
@@ -486,7 +492,7 @@ function scheduleSync(): void {
     } catch (err) {
       console.error('[Slack Collector] Scheduler error:', (err as Error).message);
     }
-  }, 15 * 60 * 1000); // check every 15 minutes
+  }, 2 * 60 * 1000); // wake every 2 minutes
 }
 
 // ============ Mappers ============

@@ -24,9 +24,14 @@ import * as autoDb from './autoImportDbService.js';
 import type { AutoImportSource, UserAutoImportSettings } from './autoImportDbService.js';
 import { applySubjectUpdates, recordSourceImported, type PureSubjectUpdate } from './applySubjectUpdatesService.js';
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
-const TICK_INTERVAL_MS = ONE_HOUR_MS;
-const MIN_RUN_INTERVAL_MS = 50 * 60 * 1000;
+// Tick every 5 minutes so users see fresh Fathom / Outlook / Gmail /
+// Slack content analysed quickly. The per-user min-interval below
+// stays just under the tick so a tick that ran on time can't re-fire
+// on the same user, but a tick that drifted by a few seconds still
+// processes them.
+const FIVE_MIN_MS = 5 * 60 * 1000;
+const TICK_INTERVAL_MS = FIVE_MIN_MS;
+const MIN_RUN_INTERVAL_MS = 4 * 60 * 1000;
 
 let started = false;
 
