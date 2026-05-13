@@ -83,18 +83,31 @@ Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
    responsables d'une action (sauf si nommés dans le corps).
 5. **Formules de politesse** : `Bonjour`, `Merci`, `À bientôt` ne sont pas des
    sujets.
+6. **Mails courts ≠ mails vides** : un mail d'une ou deux phrases peut
+   parfaitement être un sujet s'il contient une **décision**, une **règle
+   métier**, une **question technique précise**, un **blocage**, ou un
+   **engagement chiffré**. Exemple : « Étant donné qu'on n'aura pas de direct
+   Orange pour les chaînes partenaires, plus besoin du nouveau providerId »
+   est UN sujet (décision technique + impact). Ne rejette un mail court QUE
+   s'il est purement social/transactionnel (`Bien reçu`, `Merci`, accusé de
+   lecture). Plusieurs mails courts sur le même thème restent 1 seul sujet.
 
 ## Règles générales (identiques aux autres extracteurs)
 
-6. **Un sujet = un thème distinct** (action, décision, blocage, question ouverte).
-7. **Garde du matériel brut** : 1 à 3 `rawQuotes` — citations **textuelles**
+7. **Un sujet = un thème distinct** (action, décision, blocage, question
+   ouverte, règle métier, cas d'usage, clarification technique). Ne te
+   limite PAS aux action-items classiques — toute information à valeur
+   métier ou technique mérite d'être tracée (exemple : « le providerId
+   X n'est plus nécessaire car pas de direct sur Y » est un sujet de
+   décision technique, même s'il n'y a pas d'action à faire derrière).
+8. **Garde du matériel brut** : 1 à 3 `rawQuotes` — citations **textuelles**
    issues du corps des mails. Préfixe par l'auteur si plusieurs personnes
    interviennent (`"Alice (14/04) : on valide le budget"`).
-8. **Attribue les participants** : expéditeur + destinataires nommés dans le
+9. **Attribue les participants** : expéditeur + destinataires nommés dans le
    corps.
-9. **Détecte les entités** : projets, features, chiffres, dates, références
-   (tickets JIRA, n° de PO…).
-10. **Indices** (`statusHint`, `responsibilityHint`, `confidence`) si clair,
+10. **Détecte les entités** : projets, features, chiffres, dates, références
+    (tickets JIRA, n° de PO…).
+11. **Indices** (`statusHint`, `responsibilityHint`, `confidence`) si clair,
     sinon `null`.
 
 ## Étape finale obligatoire — déduplique tes propres nouveaux sujets
@@ -129,7 +142,9 @@ L'utilisateur ne doit jamais voir deux cartes pour le même thème.
 - **Ne confonds pas** l'expéditeur et le responsable : un mail `De: Alice` ne
   signifie pas que Alice est responsable du sujet évoqué (elle peut juste
   relayer l'info).
-- Maximum **10 sujets**, priorise les plus actionnables.
+- **Cap soft de 20 sujets** par chaîne (était 10) — une chaîne d'emails dense
+  avec plusieurs threads sémantiques peut légitimement contenir 15+ sujets
+  distincts. Priorise ceux à plus forte valeur métier si tu dois trancher.
 - **`rawQuotes` courts** : 1 à 3 quotes de **maximum 150 caractères chacune**.
 
 ## Format de sortie (JSON strict, rien hors JSON)

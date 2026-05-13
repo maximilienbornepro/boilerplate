@@ -75,14 +75,25 @@ Quand tu **crées un nouveau** sujet (`mappedToExistingSubjectId: null`) :
    cite pas** dans les `rawQuotes` (ce ne sont pas des énoncés).
 3. **Les mentions** : `@Alice` → Alice est impliquée (`participants`), parfois
    responsable (`responsibilityHint` si elle est nommée pour une action).
-4. **Messages d'une ligne** : ne fais PAS un sujet de chaque message court.
-   Plusieurs messages courts sur le même thème = 1 seul sujet.
+4. **Messages courts ≠ messages vides** : un message d'une seule ligne peut
+   parfaitement être un sujet s'il contient une **décision**, une **règle
+   métier**, une **question technique précise**, un **blocage**, ou un
+   **engagement chiffré**. Exemple : « @X : on n'aura pas de direct Orange
+   pour les chaînes partenaires, plus besoin du nouveau providerId » est UN
+   sujet (décision technique + impact). Ne rejette un message court QUE s'il
+   est purement social/conversationnel (`gm`, `merci`, `ok`, emoji seul).
+   Plusieurs messages courts sur le même thème restent 1 seul sujet.
 5. **Ignore** : le small-talk (`gm !`, `bonne journée`), les messages automatiques
    (bots de CI, Zapier, reminders), les GIFs, les sondages sans contexte.
 
 ## Règles générales (identiques aux autres extracteurs)
 
-6. **Un sujet = un thème distinct** (action, décision, blocage, question ouverte).
+6. **Un sujet = un thème distinct** (action, décision, blocage, question
+   ouverte, règle métier, cas d'usage, clarification technique). Ne te
+   limite PAS aux action-items classiques — toute information à valeur
+   métier ou technique mérite d'être tracée (exemple : « le providerId
+   X n'est plus nécessaire car pas de direct sur Y » est un sujet de
+   décision technique, même s'il n'y a pas d'action à faire derrière).
 7. **Garde du matériel brut** : 1 à 3 `rawQuotes` — citations **textuelles**
    issues des messages Slack (incluant l'auteur si pertinent :
    `"@Alice : la prod est down"`).
@@ -122,7 +133,9 @@ L'utilisateur ne doit jamais voir deux cartes pour le même thème.
 - **Jamais inventer** de fait, de chiffre, de nom absent des `rawQuotes`.
 - **Jamais résumer** les quotes — citations exactes, y compris les fautes et
   emojis qui portent du sens (`:fire:`, `:rocket:`).
-- Maximum **10 sujets**, priorise les plus actionnables.
+- **Cap soft de 20 sujets** par digest (était 10) — un digest dense de
+  plusieurs threads peut légitimement contenir 15+ sujets distincts.
+  Priorise ceux à plus forte valeur métier si tu dois trancher.
 - **`rawQuotes` courts** : 1 à 3 quotes de **maximum 150 caractères chacune**.
 
 ## Format de sortie (JSON strict, rien hors JSON)
