@@ -151,26 +151,104 @@
   // 7-day Outlook scrape on the prod tab.
   const pushOtherBtn = $('push-other-btn');
   const pushTargetSelect = $('push-target');
+
+  /** Resolve the dropdown's current value into a real backend URL.
+   *  Returns null if the user cancels the custom prompt or picks an
+   *  invalid URL — caller surfaces a message via `progressText`. */
+  function resolvePushTarget() {
+    if (!pushTargetSelect) return null;
+    let target = pushTargetSelect.value;
+    if (target === '__current__') target = serverUrl;
+    if (target === '__custom__') {
+      target = window.prompt(
+        'URL du backend cible (ex : https://francetv.vitess.tech)',
+        'https://',
+      ) || '';
+      target = target.trim();
+      if (!target) return null;
+    }
+    try { new URL(target); } catch {
+      progressText.textContent = `⚠ URL cible invalide : ${target}`;
+      return null;
+    }
+    return target;
+  }
+
+  /** Shared push pipeline used by BOTH the "📤 Pousser" button AND the
+   *  auto-trigger that runs at the end of every sync. Filters to
+   *  rows with bodies, chunks into batches of 25, ships each via
+   *  `pushToBackend`, drives the progress bar + status text. */
+  async function pushReadyEmailsTo(target) {
+    const targetDomain = (() => { try { return new URL(target).host; } catch { return target; } })();
+    // Only ship rows that actually have a body — pushing rows with
+    // status 'failed' / 'empty' is harmless but pollutes the target
+    // with empty messages. Keep it tight by default.
+    const ready = emails.filter(e => e.body && e.body.trim().length > 0);
+    if (ready.length === 0) {
+      progressText.textContent = '⚠ Aucun mail avec corps disponible — relance la sync d\'abord.';
+      return { totalPushed: 0, errors: [], skipped: 0 };
+    }
+
+    if (pushOtherBtn) pushOtherBtn.disabled = true;
+    if (pushTargetSelect) pushTargetSelect.disabled = true;
+    const restoreUI = () => {
+      if (pushOtherBtn) pushOtherBtn.disabled = false;
+      if (pushTargetSelect) pushTargetSelect.disabled = false;
+    };
+
+    // Chunk into batches of 25 to keep individual POST payloads
+    // under a reasonable size (~5 MB worst case with 20k-char
+    // bodies). Failures on one chunk don't roll back the previous
+    // chunks — backend already dedup-by-message-id on the upsert.
+    const BATCH_SIZE = 25;
+    const chunks = [];
+    for (let i = 0; i < ready.length; i += BATCH_SIZE) {
+      chunks.push(ready.slice(i, i + BATCH_SIZE));
+    }
+    let totalPushed = 0;
+    const errors = [];
+    progressFill.style.width = '0%';
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      progressText.textContent = `📤 Push vers ${targetDomain} — batch ${i + 1}/${chunks.length} (${chunk.length} mail(s))…`;
+      try {
+        const lean = chunk.map(e => ({
+          id: e.id,
+          subject: e.subject,
+          sender: e.sender,
+          date: e.date,
+          preview: e.preview,
+          threadCount: e.threadCount,
+          body: e.body,
+          bodyChars: e.bodyChars || (e.body?.length || 0),
+          syncedAt: e.syncedAt || new Date().toISOString(),
+        }));
+        await pushToBackend(lean, target);
+        totalPushed += chunk.length;
+      } catch (err) {
+        errors.push(`batch ${i + 1}: ${err.message}`);
+        // eslint-disable-next-line no-console
+        console.warn('[SuiviTess sync] cross-domain push batch failed:', err);
+      }
+      progressFill.style.width = `${Math.round(((i + 1) / chunks.length) * 100)}%`;
+    }
+
+    if (errors.length === 0) {
+      progressText.textContent = `✓ ${totalPushed} mail(s) poussés vers ${targetDomain}.`;
+      barSub.textContent = `Push réussi vers ${targetDomain} · ${totalPushed} mail(s) · ${new Date().toLocaleTimeString()}`;
+    } else {
+      progressText.textContent = `⚠ Push partiel : ${totalPushed}/${ready.length} mail(s) poussés. ${errors.length} échec(s) de batch — voir la console.`;
+      barSub.textContent = `Push partiel vers ${targetDomain}`;
+    }
+    restoreUI();
+    return { totalPushed, errors, skipped: emails.length - ready.length };
+  }
+
   if (pushOtherBtn && pushTargetSelect) {
     pushOtherBtn.addEventListener('click', async () => {
-      let target = pushTargetSelect.value;
-      if (target === '__current__') target = serverUrl;
-      if (target === '__custom__') {
-        target = window.prompt(
-          'URL du backend cible (ex : https://francetv.vitess.tech)',
-          'https://',
-        ) || '';
-        target = target.trim();
-        if (!target) return;
-      }
-      try { new URL(target); } catch {
-        progressText.textContent = `⚠ URL cible invalide : ${target}`;
-        return;
-      }
+      const target = resolvePushTarget();
+      if (!target) return;
       const targetDomain = (() => { try { return new URL(target).host; } catch { return target; } })();
-      // Only ship rows that actually have a body — pushing rows with
-      // status 'failed' / 'empty' is harmless but pollutes the target
-      // with empty messages. Keep it tight by default.
       const ready = emails.filter(e => e.body && e.body.trim().length > 0);
       if (ready.length === 0) {
         progressText.textContent = '⚠ Aucun mail avec corps disponible — relance la sync d\'abord.';
@@ -184,56 +262,7 @@
         `Tu dois être connecté(e) à ${targetDomain} dans un autre onglet (auth cookie requis).`,
       );
       if (!confirmed) return;
-
-      pushOtherBtn.disabled = true;
-      pushTargetSelect.disabled = true;
-      const restoreUI = () => { pushOtherBtn.disabled = false; pushTargetSelect.disabled = false; };
-
-      // Chunk into batches of 25 to keep individual POST payloads
-      // under a reasonable size (~5 MB worst case with 20k-char
-      // bodies). Failures on one chunk don't roll back the previous
-      // chunks — backend already dedup-by-message-id on the upsert.
-      const BATCH_SIZE = 25;
-      const chunks = [];
-      for (let i = 0; i < ready.length; i += BATCH_SIZE) {
-        chunks.push(ready.slice(i, i + BATCH_SIZE));
-      }
-      let totalPushed = 0;
-      const errors = [];
-      progressFill.style.width = '0%';
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        progressText.textContent = `📤 Push vers ${targetDomain} — batch ${i + 1}/${chunks.length} (${chunk.length} mail(s))…`;
-        try {
-          const lean = chunk.map(e => ({
-            id: e.id,
-            subject: e.subject,
-            sender: e.sender,
-            date: e.date,
-            preview: e.preview,
-            threadCount: e.threadCount,
-            body: e.body,
-            bodyChars: e.bodyChars || (e.body?.length || 0),
-            syncedAt: e.syncedAt || new Date().toISOString(),
-          }));
-          await pushToBackend(lean, target);
-          totalPushed += chunk.length;
-        } catch (err) {
-          errors.push(`batch ${i + 1}: ${err.message}`);
-          // eslint-disable-next-line no-console
-          console.warn('[SuiviTess sync] cross-domain push batch failed:', err);
-        }
-        progressFill.style.width = `${Math.round(((i + 1) / chunks.length) * 100)}%`;
-      }
-
-      if (errors.length === 0) {
-        progressText.textContent = `✓ ${totalPushed} mail(s) poussés vers ${targetDomain}.`;
-        barSub.textContent = `Push réussi vers ${targetDomain} · ${totalPushed} mail(s) · ${new Date().toLocaleTimeString()}`;
-      } else {
-        progressText.textContent = `⚠ Push partiel : ${totalPushed}/${ready.length} mail(s) poussés. ${errors.length} échec(s) de batch — voir la console.`;
-        barSub.textContent = `Push partiel vers ${targetDomain}`;
-      }
-      restoreUI();
+      await pushReadyEmailsTo(target);
     });
   }
 
@@ -847,6 +876,15 @@
     if (refreshBtn) refreshBtn.disabled = true;
     try {
       await runSync();
+      // Auto-push at the end of every sync — runs the same pipeline
+      // as the "📤 Pousser" button (resolve target → filter → chunk
+      // → POST each batch) but skips the confirm dialog. The user
+      // controls the target via the dropdown ; "__custom__" is
+      // skipped since it requires a prompt() we can't auto-answer.
+      if (pushTargetSelect && pushTargetSelect.value !== '__custom__') {
+        const target = resolvePushTarget();
+        if (target) await pushReadyEmailsTo(target);
+      }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[SuiviTess sync] runSync threw', err);
