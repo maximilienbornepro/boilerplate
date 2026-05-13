@@ -162,8 +162,10 @@ describe('dropSameDocGroups', () => {
     expect(out).toHaveLength(20);
   });
 
-  it('keeps mixed-doc groups even when some subjects share a document', () => {
-    // s1 + s2 share docA, but s3 lives in docB → group spans 2 docs.
+  it('dedupes within a mixed-doc group : at most 1 subject per documentId', () => {
+    // s1 + s2 share docA, s3 lives in docB. The group spans 2 docs, but
+    // s2 is a same-doc duplicate of s1 → server-side dedup drops s2 and
+    // keeps the FIRST seen subject per doc (s1, then s3).
     const docs = new Map([
       ['s1', 'docA'],
       ['s2', 'docA'],
@@ -171,5 +173,37 @@ describe('dropSameDocGroups', () => {
     ]);
     const out = dropSameDocGroups([makeGroup({ subjectIds: ['s1', 's2', 's3'] })], docs);
     expect(out).toHaveLength(1);
+    expect(out[0].subjectIds).toEqual(['s1', 's3']);
+  });
+
+  it('drops the group when post-dedup < 2 subjects survive', () => {
+    // All 3 subjects in docA → dedup leaves only s1 → group has 1
+    // subject → dropped.
+    const docs = new Map([
+      ['s1', 'docA'],
+      ['s2', 'docA'],
+      ['s3', 'docA'],
+    ]);
+    const out = dropSameDocGroups([makeGroup({ subjectIds: ['s1', 's2', 's3'] })], docs);
+    expect(out).toEqual([]);
+  });
+
+  it('preserves the first-seen order across all docs in a group', () => {
+    // Two subjects per doc, three docs → dedup keeps the first seen
+    // per doc (s1, s3, s5) in input order.
+    const docs = new Map([
+      ['s1', 'docA'],
+      ['s2', 'docA'],
+      ['s3', 'docB'],
+      ['s4', 'docB'],
+      ['s5', 'docC'],
+      ['s6', 'docC'],
+    ]);
+    const out = dropSameDocGroups(
+      [makeGroup({ subjectIds: ['s1', 's2', 's3', 's4', 's5', 's6'] })],
+      docs,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].subjectIds).toEqual(['s1', 's3', 's5']);
   });
 });

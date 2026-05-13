@@ -55,6 +55,30 @@
   line-height: 1.4;
 }
 
+/* Amber warning block for intra-doc duplicates the AI flagged but
+ * that aren't actionable via the cross-doc link operation. */
+.intraDocWarning {
+  background: rgba(251, 191, 36, 0.10);
+  border: 1px solid rgba(251, 191, 36, 0.40);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.intraDocList {
+  margin: 4px 0 0;
+  padding-left: 1.1rem;
+}
+.intraDocList li {
+  margin-top: 2px;
+}
+.intraDocTitles {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .subjectsRow {
   display: flex;
   gap: var(--spacing-sm);

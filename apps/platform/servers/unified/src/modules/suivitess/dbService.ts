@@ -41,6 +41,12 @@ interface Subject {
    *  frontend remove the link without touching the canonical
    *  subject (DELETE /subject-links/:linkId). */
   linkId?: string | null;
+  /** Count of outgoing cross-links for this canonical subject — i.e.
+   *  the number of OTHER sections (across all suivitess docs) where
+   *  the same canonical row is surfaced via
+   *  `suivitess_subject_cross_links`. Drives the "active link" badge
+   *  + counter on the chain icon in the subject card header. */
+  crossLinkCount?: number;
 }
 
 interface SectionWithSubjects extends Section {
@@ -136,6 +142,39 @@ export async function initDb(): Promise<void> {
   // (excluded from future AI ticket-analysis suggestions)
   try {
     await pool.query('ALTER TABLE suivitess_subjects ADD COLUMN IF NOT EXISTS no_action_needed BOOLEAN DEFAULT FALSE');
+    // Migration 33 — hide-and-link mode. When a duplicate is merged
+    // into a canonical parent, we hide it from the document view by
+    // setting this pointer ; the parent surfaces in its place via
+    // `suivitess_subject_cross_links`. NULL = not merged (default).
+    await pool.query(
+      'ALTER TABLE suivitess_subjects ADD COLUMN IF NOT EXISTS merged_into_subject_id UUID REFERENCES suivitess_subjects(id) ON DELETE SET NULL',
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_suivitess_subjects_merged_into
+         ON suivitess_subjects(merged_into_subject_id)
+         WHERE merged_into_subject_id IS NOT NULL`,
+    );
+    // Backfill : for every active (non-reverted) duplicate detection
+    // run that pre-dates this column, set the merged_into pointer on
+    // each recorded duplicate. Idempotent — only updates rows that
+    // are still NULL. Best-effort, swallowed on failure (the column
+    // may not exist on a stripped DB).
+    try {
+      await pool.query(
+        `UPDATE suivitess_subjects sj
+            SET merged_into_subject_id = src.parent_id
+           FROM (
+             SELECT (dup->>'duplicateId')::uuid AS dup_id,
+                    (g->>'parentId')::uuid     AS parent_id
+               FROM suivitess_duplicate_detection_runs r,
+                    jsonb_array_elements(r.applied_groups) g,
+                    jsonb_array_elements(g->'duplicates') dup
+              WHERE r.reverted_at IS NULL
+           ) src
+          WHERE sj.id = src.dup_id
+            AND sj.merged_into_subject_id IS NULL`,
+      );
+    } catch { /* runs table may not exist yet — first boot */ }
   } catch { /* already done */ }
 
   // Backfill resource_sharing entries for existing documents
@@ -436,12 +475,41 @@ export async function getDocumentWithSections(docId: string): Promise<DocumentWi
   const sections: SectionWithSubjects[] = [];
 
   for (const section of sectionsResult.rows) {
-    // Native subjects (whose canonical home is this section).
-    const nativeRes = await pool.query(
-      'SELECT * FROM suivitess_subjects WHERE section_id = $1 ORDER BY position',
-      [section.id]
-    );
-    const nativeSubjects: Subject[] = nativeRes.rows.map((r: Subject) => ({ ...r, linkedFromSectionId: null }));
+    // Native subjects (whose canonical home is this section). Skip
+    // subjects that have been MERGED into a canonical parent via the
+    // duplicate-detection feature — they stay in DB for revert but
+    // disappear from the document view (the parent surfaces in their
+    // place via `suivitess_subject_cross_links`).
+    // Enrich each native subject with `cross_link_count` so the UI can
+    // turn the chain icon "active" + show a counter when this subject
+    // is surfaced in N other sections. Best-effort LEFT JOIN — if the
+    // link table is missing on a legacy DB the count falls back to 0.
+    let nativeRes;
+    try {
+      nativeRes = await pool.query(
+        `SELECT s.*,
+                COALESCE(c.cnt, 0)::int AS cross_link_count
+           FROM suivitess_subjects s
+           LEFT JOIN (
+             SELECT origin_subject_id, COUNT(*) AS cnt
+               FROM suivitess_subject_cross_links
+              GROUP BY origin_subject_id
+           ) c ON c.origin_subject_id = s.id
+          WHERE s.section_id = $1 AND s.merged_into_subject_id IS NULL
+          ORDER BY s.position`,
+        [section.id],
+      );
+    } catch {
+      nativeRes = await pool.query(
+        'SELECT * FROM suivitess_subjects WHERE section_id = $1 AND merged_into_subject_id IS NULL ORDER BY position',
+        [section.id],
+      );
+    }
+    const nativeSubjects: Subject[] = nativeRes.rows.map((r: Subject & { cross_link_count?: number }) => ({
+      ...r,
+      linkedFromSectionId: null,
+      crossLinkCount: r.cross_link_count ?? 0,
+    }));
 
     // Subjects pulled in by a cross-link. We surface the canonical
     // subject row but tag it with the origin section + document so
@@ -458,11 +526,17 @@ export async function getDocumentWithSections(docId: string): Promise<DocumentWi
           origin_sec.id     AS origin_section_id,
           origin_sec.name   AS origin_section_name,
           origin_doc.id     AS origin_document_id,
-          origin_doc.title  AS origin_document_title
+          origin_doc.title  AS origin_document_title,
+          COALESCE(cnt.c, 0)::int AS cross_link_count
         FROM suivitess_subject_cross_links link
         JOIN suivitess_subjects   sub        ON sub.id = link.origin_subject_id
         JOIN suivitess_sections   origin_sec ON origin_sec.id = sub.section_id
         JOIN suivitess_documents  origin_doc ON origin_doc.id = origin_sec.document_id
+        LEFT JOIN (
+          SELECT origin_subject_id, COUNT(*) AS c
+            FROM suivitess_subject_cross_links
+           GROUP BY origin_subject_id
+        ) cnt ON cnt.origin_subject_id = sub.id
         WHERE link.target_section_id = $1
         ORDER BY link.position, link.created_at
       `, [section.id]);
@@ -473,6 +547,7 @@ export async function getDocumentWithSections(docId: string): Promise<DocumentWi
         origin_section_name: string;
         origin_document_id: string;
         origin_document_title: string;
+        cross_link_count?: number;
       }) => ({
         ...r,
         // Keep the canonical id so PATCH /subjects/:id edits the
@@ -485,6 +560,7 @@ export async function getDocumentWithSections(docId: string): Promise<DocumentWi
         linkedFromSectionName: r.origin_section_name,
         linkedFromDocumentId: r.origin_document_id,
         linkedFromDocumentTitle: r.origin_document_title,
+        crossLinkCount: r.cross_link_count ?? 0,
       }));
     } catch (err) {
       console.warn('[SuiVitess] linked subjects fetch failed:', (err as Error).message);

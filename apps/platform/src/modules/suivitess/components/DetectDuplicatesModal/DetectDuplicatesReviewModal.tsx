@@ -157,6 +157,34 @@ export function DetectDuplicatesReviewModal({
                       <span className={styles.reasoning}>{group.reasoning}</span>
                     </div>
 
+                    {/* Intra-doc duplicates surfaced by the AI but
+                        dropped from the link operation : the cross-doc
+                        link doesn't help when both copies live in the
+                        same review. Surface them here so the user can
+                        clean them up manually. */}
+                    {group.droppedSameDoc && group.droppedSameDoc.length > 0 && (
+                      <div className={styles.intraDocWarning}>
+                        <strong>⚠ Doublons intra-doc à supprimer manuellement :</strong>
+                        <ul className={styles.intraDocList}>
+                          {group.droppedSameDoc.map(d => {
+                            const docTitle =
+                              result.subjects[d.subjectIds[0]]?.documentTitle ?? d.documentId;
+                            const titles = d.subjectIds
+                              .map(id => result.subjects[id]?.title)
+                              .filter(Boolean) as string[];
+                            return (
+                              <li key={d.documentId}>
+                                <strong>{docTitle}</strong> · {d.subjectIds.length} autre{d.subjectIds.length > 1 ? 's' : ''} sujet{d.subjectIds.length > 1 ? 's' : ''} identique{d.subjectIds.length > 1 ? 's' : ''}
+                                {titles.length > 0 && (
+                                  <span className={styles.intraDocTitles}> ({titles.join(', ').slice(0, 80)})</span>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+
                     <div className={styles.subjectsRow}>
                       {visibleIds.map(sid => {
                         const s = result.subjects[sid];

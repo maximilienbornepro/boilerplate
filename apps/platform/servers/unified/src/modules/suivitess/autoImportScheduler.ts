@@ -325,7 +325,7 @@ async function fetchSourceContent(
     return getGmailEmailBody(userId, id);
   }
   if (source === 'slack') {
-    const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+    const { getSlackConfig, getSlackMessages, formatSlackMessagesForAI } = await import('./slackCollectorService.js');
     const cfg = await getSlackConfig(userId);
     if (!cfg) return '';
     const parts = id.split(':');
@@ -338,10 +338,7 @@ async function fetchSourceContent(
           return d === dateFilter;
         })
       : messages;
-    return filtered
-      .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
-      .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
-      .join('\n');
+    return formatSlackMessagesForAI(filtered);
   }
   return '';
 }

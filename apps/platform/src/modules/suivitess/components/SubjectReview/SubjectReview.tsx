@@ -121,7 +121,6 @@ export function SubjectReview({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [focusLineIndex, setFocusLineIndex] = useState<number | null>(null);
-  const [reformulating, setReformulating] = useState(false);
   const [synthesizing, setSynthesizing] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [showTicketModal, setShowTicketModal] = useState(false);
@@ -148,27 +147,12 @@ export function SubjectReview({
     } catch { /* ignore */ }
   };
 
-  const handleReformulate = async () => {
-    setReformulating(true);
-    try {
-      const res = await fetch(`/suivitess-api/subjects/${subject.id}/reformulate`, {
-        method: 'POST', credentials: 'include',
-      });
-      if (!res.ok) throw new Error((await res.json()).error);
-      const data = await res.json();
-      if (data.title) setTitle(data.title);
-      if (data.situation) setSituation(data.situation);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erreur de reformulation');
-    } finally {
-      setReformulating(false);
-    }
-  };
-
   // Synthesize : full rewrite of the situation via the
   // `suivitess-synthesize-situation` skill. The server returns the
-  // new situation in full ; we drop it straight into local state
-  // (the same pattern as `Reformuler`).
+  // new situation in full ; we drop it straight into local state.
+  // This used to coexist with a separate "Reformuler" action — they
+  // covered the same need so Reformuler was retired and Synthétiser
+  // is now the single AI-rewrite entry-point.
   const handleSynthesize = async () => {
     setSynthesizing(true);
     try {
@@ -716,19 +700,6 @@ export function SubjectReview({
           <MarkButton controller={markController} subjectId={subject.id} />
 
 
-          <button
-            className={styles.actionBtn}
-            onClick={handleReformulate}
-            disabled={reformulating}
-            data-tooltip="Reformuler avec l'IA"
-          >
-            {reformulating ? '...' : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-              </svg>
-            )}
-          </button>
-
           {/* Synthétiser : full clean-up + synthesis pass on the
               situation via the `suivitess-synthesize-situation`
               skill. Drops legacy date headers, dedupes lines,
@@ -777,17 +748,31 @@ export function SubjectReview({
           {/* 🔗 Cross-document link manager. Lets the user surface this
               subject in another suivitess (or remove existing links).
               Editing the subject anywhere always hits the canonical
-              row, so changes propagate to every linked location. */}
-          <button
-            className={styles.actionBtn}
-            onClick={() => setShowLinkModal(true)}
-            data-tooltip="Lier vers un autre suivitess"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-            </svg>
-          </button>
+              row, so changes propagate to every linked location.
+              When `crossLinkCount > 0` the icon switches to its active
+              state and shows a counter badge so the user can spot at
+              a glance that the subject is shared elsewhere. */}
+          {(() => {
+            const linkCount = subject.crossLinkCount ?? 0;
+            const isLinked = linkCount > 0;
+            return (
+              <button
+                className={`${styles.actionBtn} ${isLinked ? styles.actionBtnActive : ''}`}
+                onClick={() => setShowLinkModal(true)}
+                data-tooltip={
+                  isLinked
+                    ? `Sujet lié dans ${linkCount} autre${linkCount > 1 ? 's' : ''} section${linkCount > 1 ? 's' : ''} — clique pour gérer`
+                    : 'Lier vers un autre suivitess'
+                }
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+                {isLinked && <span className={styles.actionBtnBadge}>{linkCount}</span>}
+              </button>
+            );
+          })()}
 
           {onDelete && (
             <button

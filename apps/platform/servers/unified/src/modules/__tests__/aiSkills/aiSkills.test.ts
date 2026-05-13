@@ -25,7 +25,6 @@ describe('aiSkills.registry', () => {
       'suivitess-place-in-document',
       'suivitess-place-in-reviews',
       'suivitess-reconcile-multi-source',
-      'suivitess-reformulate-subject',
       'suivitess-route-source-to-review',
       'suivitess-suggest-name',
       'suivitess-synthesize-situation',

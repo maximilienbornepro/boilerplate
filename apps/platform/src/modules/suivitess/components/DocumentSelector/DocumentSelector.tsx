@@ -175,6 +175,22 @@ export function DocumentSelector({ onSelect, onNavigate: _onNavigate }: Document
     setDetecting(true);
     try {
       const r = await api.detectCrossDocDuplicates();
+      // Distinguish three failure modes from a clean empty result :
+      //   - LLM transport error (Anthropic 529, network) → red toast
+      //     with the underlying message so the user knows to retry.
+      //   - Truncated output (max_tokens) → red toast, "réessaie".
+      //   - Empty groups despite a clean run → info toast, "aucun
+      //     doublon".
+      if (r.error) {
+        const isOverloaded = /529|overloaded/i.test(r.error);
+        addToast({
+          type: 'error',
+          message: isOverloaded
+            ? 'L\'IA Anthropic est saturée pour le moment (HTTP 529). Réessaie dans 1-2 minutes.'
+            : `Erreur IA : ${r.error.slice(0, 200)}`,
+        });
+        return;
+      }
       if (r.groups.length === 0) {
         addToast({
           type: r.truncated ? 'error' : 'info',

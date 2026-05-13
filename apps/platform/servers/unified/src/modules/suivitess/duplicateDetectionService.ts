@@ -21,6 +21,16 @@ export interface DuplicateGroup {
   subjectIds: string[];
   confidence: 'high' | 'medium';
   reasoning: string;
+  /** Subjects the AI flagged as part of this group but that we
+   *  silently dropped because they share a `documentId` with another
+   *  subject already in `subjectIds`. The frontend surfaces them as a
+   *  warning : « ⚠ N autres sujets identiques dans <doc> à supprimer
+   *  manuellement ». Empty / absent when the group had no intra-doc
+   *  duplicates. */
+  droppedSameDoc?: Array<{
+    documentId: string;
+    subjectIds: string[];
+  }>;
 }
 
 /** Subject payload shipped to the frontend modal alongside the groups.
@@ -48,6 +58,11 @@ export interface DetectionResult {
    *  distinct error message so the user understands why no groups
    *  came back despite a long wait. */
   truncated?: boolean;
+  /** Anthropic / transport error surfaced by `runSkill` — non-null
+   *  means the LLM never produced output (HTTP 529 overloaded, network
+   *  failure, etc.). The frontend distinguishes this from a clean
+   *  "0 duplicates" result. */
+  error?: string | null;
 }
 
 export interface AppliedLink {
@@ -126,30 +141,67 @@ export function parseDuplicateDetectionOutput(raw: string): DuplicateGroup[] {
 // we defend the contract server-side. Pure function, easy to test.
 // ────────────────────────────────────────────────────────────────────
 
-/** Drop any group whose subjects all live in the same document. The
- *  prompt forbids this but we never trust the model on safety. Returns
- *  a filtered copy. */
+/** Defends the cross-document invariant the prompt promises. Two
+ *  guarantees enforced server-side on the model's output :
+ *
+ *    1. NO two subjects in the same group may share a `documentId`.
+ *       If the model returns a group with multiple subjects from the
+ *       same doc (it happens), we dedupe by keeping the FIRST seen
+ *       subject per doc and dropping the rest. Order matters because
+ *       the model usually puts the "leader" subject first.
+ *    2. NO group with `< 2` surviving subjects after dedup → dropped.
+ *    3. NO unknown / hallucinated subject id → group dropped.
+ *
+ *  Pure function, easy to test. */
 export function dropSameDocGroups(
   groups: DuplicateGroup[],
   subjectDocMap: Map<string, string>,
 ): DuplicateGroup[] {
   const out: DuplicateGroup[] = [];
   for (const g of groups) {
-    const docs = new Set<string>();
+    // First, drop groups with any unknown subjectId — the model
+    // hallucinated something we can't link to a real subject.
     let allKnown = true;
     for (const sid of g.subjectIds) {
-      const doc = subjectDocMap.get(sid);
-      if (!doc) { allKnown = false; break; }
-      docs.add(doc);
+      if (!subjectDocMap.has(sid)) { allKnown = false; break; }
     }
-    // Drop groups where any subjectId is unknown (hallucinated id) OR
-    // every known subject sits in the same document.
     if (!allKnown) continue;
-    if (docs.size < 2) continue;
-    // Cap subjectIds at 5 if the model overshot the soft cap.
+
+    // Then dedupe by document: keep only the FIRST subject we see
+    // from each documentId, drop subsequent same-doc entries. The
+    // dropped ones are accumulated in `droppedByDoc` so the modal can
+    // surface them as an "à supprimer manuellement" warning — they
+    // are intra-doc duplicates that the link operation doesn't fix.
+    const seenDocs = new Set<string>();
+    const dedupedIds: string[] = [];
+    const droppedByDoc = new Map<string, string[]>();
+    for (const sid of g.subjectIds) {
+      const doc = subjectDocMap.get(sid)!;
+      if (seenDocs.has(doc)) {
+        const arr = droppedByDoc.get(doc) ?? [];
+        arr.push(sid);
+        droppedByDoc.set(doc, arr);
+        continue;
+      }
+      seenDocs.add(doc);
+      dedupedIds.push(sid);
+    }
+
+    // After dedup we need at least 2 distinct subjects across 2+ docs.
+    if (dedupedIds.length < 2) continue;
+
+    const droppedSameDoc = droppedByDoc.size > 0
+      ? Array.from(droppedByDoc.entries()).map(([documentId, subjectIds]) => ({
+          documentId,
+          subjectIds,
+        }))
+      : undefined;
+
     out.push({
       ...g,
-      subjectIds: g.subjectIds.slice(0, 5),
+      // Cap subjectIds at 5 if the model overshot the soft cap.
+      subjectIds: dedupedIds.slice(0, 5),
+      droppedSameDoc,
     });
   }
   // Hard cap on the number of groups returned (20 per prompt rule).
@@ -289,6 +341,7 @@ export async function detectCrossDocDuplicatesForUser(
     subjects: subjectMap,
     subjectCount: capped.length,
     truncated: looksTruncated || undefined,
+    error: run.error,
   };
 }
 
@@ -334,6 +387,22 @@ export async function applyDuplicateLinks(
       result.errors.push({ subjectId: parentId, error: 'Accès refusé au sujet parent' });
       continue;
     }
+    // Anti-cycle guard : refuse to use a subject that is itself already
+    // merged into another parent (would create a chain c10cd79f →
+    // 8e27d2d4 → c10cd79f) or that has duplicates merged INTO it
+    // (would orphan those duplicates). The user must revert the
+    // existing merge first via the previous run's undo.
+    const parentRow = await db.pool.query<{ merged_into_subject_id: string | null }>(
+      'SELECT merged_into_subject_id FROM suivitess_subjects WHERE id = $1',
+      [parentId],
+    );
+    if (parentRow.rows[0]?.merged_into_subject_id) {
+      result.errors.push({
+        subjectId: parentId,
+        error: 'Ce sujet est déjà fusionné dans un autre — annule le merge précédent avant de le re-utiliser comme parent',
+      });
+      continue;
+    }
 
     const groupLinks: AppliedLink[] = [];
     for (const dupId of duplicateIds) {
@@ -349,6 +418,22 @@ export async function applyDuplicateLinks(
           result.errors.push({ subjectId: dupId, error: 'Accès refusé au sujet doublon' });
           continue;
         }
+        // Anti-cycle guard #2 : if this duplicate is itself a parent
+        // of another active merge (= other subjects have
+        // merged_into_subject_id pointing at it), merging it into our
+        // parent would orphan its dependents. Block until the user
+        // unwinds them.
+        const childrenOfDup = await db.pool.query<{ id: string }>(
+          'SELECT id FROM suivitess_subjects WHERE merged_into_subject_id = $1 LIMIT 1',
+          [dupId],
+        );
+        if ((childrenOfDup.rowCount ?? 0) > 0) {
+          result.errors.push({
+            subjectId: dupId,
+            error: 'Ce sujet est déjà parent d\'autres fusions — annule celles-ci d\'abord',
+          });
+          continue;
+        }
         // Create the cross-link : the duplicate's CANONICAL section gets
         // a link back to the parent's canonical id. So the parent now
         // appears in the duplicate's section as a "lié depuis" card.
@@ -356,6 +441,22 @@ export async function applyDuplicateLinks(
         if (!link) {
           result.errors.push({ subjectId: dupId, error: 'Lien non créé (même section que le parent)' });
           continue;
+        }
+        // Hide-and-link : mark the duplicate as "merged into parent"
+        // so it disappears from the document view. The row stays in
+        // DB ; revert restores it. Idempotent — a second pass on the
+        // same duplicate just re-writes the same pointer.
+        try {
+          await db.pool.query(
+            'UPDATE suivitess_subjects SET merged_into_subject_id = $1 WHERE id = $2',
+            [parentId, dupId],
+          );
+        } catch (err) {
+          // Don't fail the apply on a failed UPDATE — the link still
+          // works, the user just sees both cards side-by-side. Log
+          // for visibility.
+          // eslint-disable-next-line no-console
+          console.warn(`[duplicate-detection] failed to hide subject ${dupId}:`, (err as Error).message);
         }
         groupLinks.push({ parentId, duplicateId: dupId, linkId: link.id });
         result.linksCreated++;
@@ -408,6 +509,9 @@ export async function revertDuplicateRun(
   }
   const groups = r.rows[0].applied_groups ?? [];
   let linksRemoved = 0;
+  // Collect every duplicate id so we can clear their hide flag in
+  // one shot at the end of the revert.
+  const duplicateIds: string[] = [];
   for (const g of groups) {
     for (const link of g.duplicates ?? []) {
       try {
@@ -417,6 +521,29 @@ export async function revertDuplicateRun(
         console.warn('[duplicate-detection] failed to remove link:',
           link.linkId, (err as Error).message);
       }
+      if (link.duplicateId) duplicateIds.push(link.duplicateId);
+    }
+  }
+  // Un-hide the previously merged duplicates so they reappear in
+  // their canonical section. We scope the WHERE to the recorded
+  // parent ids so we never clear a flag set by a different run that
+  // happens to point at the same subject (defense-in-depth).
+  if (duplicateIds.length > 0) {
+    try {
+      const parentIds = Array.from(new Set(groups.map(g => g.parentId)));
+      await db.pool.query(
+        `UPDATE suivitess_subjects
+            SET merged_into_subject_id = NULL
+          WHERE id = ANY($1::uuid[])
+            AND merged_into_subject_id = ANY($2::uuid[])`,
+        [duplicateIds, parentIds],
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[duplicate-detection] failed to clear merged_into flags:',
+        (err as Error).message,
+      );
     }
   }
   await db.pool.query(

@@ -1401,6 +1401,13 @@ export interface DuplicateGroupApi {
   subjectIds: string[];
   confidence: 'high' | 'medium';
   reasoning: string;
+  /** Intra-doc duplicates surfaced by the AI but not actionable via
+   *  the link operation. The modal renders them as a warning so the
+   *  user can clean them up manually. Indexed by documentId. */
+  droppedSameDoc?: Array<{
+    documentId: string;
+    subjectIds: string[];
+  }>;
 }
 
 export interface DuplicateSubjectApi {
@@ -1425,6 +1432,10 @@ export interface DetectDuplicatesResponse {
   /** True when the LLM output looked truncated (max_tokens). The UI
    *  surfaces a specific error in that case. */
   truncated?: boolean;
+  /** Non-null when the LLM call itself failed (Anthropic 529 overloaded,
+   *  network timeout, etc.). The UI surfaces this distinctly from a
+   *  clean "no duplicates" result so the user knows to retry. */
+  error?: string | null;
 }
 
 export interface ApplyDuplicatesResponse {

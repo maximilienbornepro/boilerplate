@@ -64,18 +64,6 @@ export const SKILLS: readonly SkillDefinition[] = [
     defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/legacy/import-source-into-document.md'),
   },
   {
-    slug: 'suivitess-reformulate-subject',
-    name: 'SuiviTess — Reformuler un sujet',
-    description:
-      'Reformule le titre et la situation d\'un sujet pour plus de clarté, sans rien supprimer ni changer le sens.',
-    usage: {
-      module: 'suivitess',
-      endpoint: 'POST /suivitess/api/subjects/:id/reformulate',
-      trigger: 'Bouton « Reformuler avec l\'IA » sur un sujet',
-    },
-    defaultFilePath: resolve(PROMPTS_DIR, 'suivitess/reformulate-subject.md'),
-  },
-  {
     slug: 'suivitess-synthesize-situation',
     name: 'SuiviTess — Synthétiser une situation',
     description:

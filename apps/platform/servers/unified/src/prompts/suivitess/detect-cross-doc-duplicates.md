@@ -48,11 +48,17 @@
 
 ## Règles strictes — à respecter sans exception
 
-1. **Cross-document obligatoire.** Un groupe ne peut JAMAIS contenir deux
-   sujets ayant le même `documentId`. Chaque groupe doit couvrir au moins
-   2 `documentId` distincts. Sinon, ne le sors pas — le but du skill est
-   de surfacer la duplication entre reviews, pas à l'intérieur d'une review
-   où l'utilisateur a sciemment créé plusieurs entrées.
+1. **Cross-document obligatoire — au plus 1 sujet par documentId par
+   groupe.** Un groupe ne peut JAMAIS contenir deux sujets ayant le
+   **même `documentId`**. Si tu vois deux sujets quasi-identiques dans
+   la même review, **n'en garde qu'un seul** dans ton groupe — celui
+   qui te semble le plus représentatif (titre le plus synthétique,
+   situation la plus à jour). L'autre est ignoré, pas inclus, pas
+   mentionné. Chaque groupe doit donc couvrir au moins 2 `documentId`
+   **distincts** et chaque `documentId` n'apparaît qu'**une seule fois**
+   par groupe. Le but du skill est de surfacer la duplication entre
+   reviews, pas à l'intérieur d'une review où l'utilisateur a sciemment
+   créé plusieurs entrées.
 
 2. **Critères de regroupement** :
    - ≥ 2 entités/mots-clés significatifs partagés entre les titres ou les
@@ -100,6 +106,7 @@
 
 - [ ] Chaque groupe a `subjectIds.length >= 2`.
 - [ ] Chaque groupe couvre au moins 2 `documentId` distincts.
+- [ ] **Chaque `documentId` apparaît au plus 1 fois par groupe.**
 - [ ] Aucun `confidence: "low"`.
 - [ ] ≤ 20 groupes, ≤ 5 `subjectIds` chacun.
 - [ ] Sortie strictement JSON.

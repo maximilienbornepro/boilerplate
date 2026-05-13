@@ -744,54 +744,6 @@ export function createRoutes(): Router {
     res.json(updated);
   }));
 
-  // Reformulate a subject's situation using AI
-  router.post('/subjects/:subjectId/reformulate', asyncHandler(async (req, res) => {
-    const subject = await db.getSubject(req.params.subjectId);
-    if (!subject) { res.status(404).json({ error: 'Sujet non trouvé' }); return; }
-
-    const { deductCredits, InsufficientCreditsError } = await import('../connectors/creditService.js');
-    try { await deductCredits(req.user!.id, req.user!.isAdmin, 'suivitess', 'reformulation'); }
-    catch (e) { if (e instanceof InsufficientCreditsError) { res.status(402).json({ error: 'INSUFFICIENT_CREDITS', message: 'Crédits insuffisants', required: e.required, available: e.available }); return; } throw e; }
-
-    const inputSummary = `Titre : ${subject.title}
-État de la situation : ${subject.situation || '(vide)'}
-Responsable : ${subject.responsibility || 'Non assigné'}
-Statut : ${subject.status}`;
-
-    const { runSkill } = await import('../aiSkills/runSkill.js');
-    const runRes = await runSkill({
-      slug: 'suivitess-reformulate-subject',
-      userId: req.user!.id,
-      userEmail: req.user!.email,
-      buildPrompt: (skill) => `${skill}\n\n---\n\n# Sujet à reformuler\n\n${inputSummary}\n\nApplique les règles ci-dessus et réponds uniquement en JSON.`,
-      inputContent: inputSummary,
-      sourceKind: 'subject',
-      sourceTitle: subject.title,
-      documentId: null,
-      maxTokens: 2000,
-    });
-
-    let result: { title?: string; situation?: string } = {};
-    try {
-      let json = runRes.outputText.trim();
-      if (json.startsWith('```json')) json = json.slice(7);
-      if (json.startsWith('```')) json = json.slice(3);
-      if (json.endsWith('```')) json = json.slice(0, -3);
-      result = JSON.parse(json.trim());
-    } catch {
-      const match = runRes.outputText.match(/\{[\s\S]*\}/);
-      if (match) result = JSON.parse(match[0]);
-    }
-
-    const finalTitle = result.title || subject.title;
-    const finalSituation = result.situation || subject.situation;
-    if (runRes.logId != null) {
-      const { attachProposalsToLog } = await import('../aiSkills/analysisLogsService.js');
-      await attachProposalsToLog(runRes.logId, [{ title: finalTitle, situation: finalSituation }]);
-    }
-    res.json({ title: finalTitle, situation: finalSituation, logId: runRes.logId });
-  }));
-
   // Clean up + synthesize a subject's situation with the AI.
   // The skill replaces the entire `situation` field with a sanitized
   // version (legacy date headers dropped, duplicates removed, closed
@@ -1140,10 +1092,12 @@ Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En fran
       return;
     }
 
-    // Build maps for comparison
+    // Build maps for comparison. Defensive : older snapshots may have
+    // serialised an empty section as `{ subjects: null }` instead of
+    // `[]`, which crashed this route with "not iterable".
     const snapshotSubjects = new Map<string, { subject: { id: string; title: string; situation: string | null; status: string; responsibility: string | null }; sectionName: string }>();
     for (const section of snapshotData.sections) {
-      for (const subject of section.subjects) {
+      for (const subject of section.subjects ?? []) {
         snapshotSubjects.set(subject.id, { subject, sectionName: section.name });
       }
     }
@@ -1158,7 +1112,7 @@ Retourne UNIQUEMENT le corps de l'email (pas d'objet, pas de signature). En fran
     }> = [];
 
     for (const section of currentDoc.sections) {
-      for (const subject of section.subjects) {
+      for (const subject of section.subjects ?? []) {
         currentSubjects.set(subject.id, true);
         const snap = snapshotSubjects.get(subject.id);
 
@@ -2867,7 +2821,7 @@ ${filteredContent.slice(0, 30000)}`,
       } else if (source === 'slack') {
         // The id is "slack:channelId:YYYY-MM-DD" (digest format).
         // Build a transcript from all messages of that channel on that day.
-        const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+        const { getSlackConfig, getSlackMessages, formatSlackMessagesForAI } = await import('./slackCollectorService.js');
         const slackConfig = await getSlackConfig(userId);
         if (!slackConfig) {
           res.status(400).json({ error: 'Slack non configuré. Utilisez l\'extension Chrome pour connecter Slack.' });
@@ -2887,10 +2841,7 @@ ${filteredContent.slice(0, 30000)}`,
               return d === dateFilter;
             })
           : messages;
-        transcript = filtered
-          .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
-          .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
-          .join('\n');
+        transcript = formatSlackMessagesForAI(filtered);
       } else {
         res.status(400).json({ error: `Source non supportée : ${source}` });
         return;
@@ -3069,7 +3020,7 @@ ${filteredContent.slice(0, 30000)}`,
           const { getGmailEmailBody } = await import('./emailService.js');
           transcript = await getGmailEmailBody(userId, id);
         } else if (source === 'slack') {
-          const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+          const { getSlackConfig, getSlackMessages, formatSlackMessagesForAI } = await import('./slackCollectorService.js');
           const slackConfig = await getSlackConfig(userId);
           if (!slackConfig) { failJob(job.id, 'Slack non configuré'); return; }
           const parts = id.split(':');
@@ -3080,10 +3031,7 @@ ${filteredContent.slice(0, 30000)}`,
             const d = new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10);
             return d === dateFilter;
           }) : messages;
-          transcript = filtered
-            .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
-            .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
-            .join('\n');
+          transcript = formatSlackMessagesForAI(filtered);
         } else {
           failJob(job.id, `Source non supportée : ${source}`);
           return;
@@ -3197,7 +3145,7 @@ ${filteredContent.slice(0, 30000)}`,
             const { getGmailEmailBody } = await import('./emailService.js');
             raw = await getGmailEmailBody(userId, id);
           } else if (source === 'slack') {
-            const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+            const { getSlackConfig, getSlackMessages, formatSlackMessagesForAI } = await import('./slackCollectorService.js');
             const slackConfig = await getSlackConfig(userId);
             if (!slackConfig) throw new Error('Slack non configuré');
             const parts = id.split(':');
@@ -3209,7 +3157,7 @@ ${filteredContent.slice(0, 30000)}`,
               return d === dateFilter;
             }) : messages;
             const sorted = filtered.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs));
-            raw = sorted.map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`).join('\n');
+            raw = formatSlackMessagesForAI(sorted);
             if (sorted[0]?.messageTs) ts = new Date(parseFloat(sorted[0].messageTs) * 1000).toISOString();
           } else {
             throw new Error(`Source non supportée : ${source}`);
@@ -3330,7 +3278,7 @@ ${filteredContent.slice(0, 30000)}`,
         const { getGmailEmailBody } = await import('./emailService.js');
         transcript = await getGmailEmailBody(userId, id);
       } else if (source === 'slack') {
-        const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+        const { getSlackConfig, getSlackMessages, formatSlackMessagesForAI } = await import('./slackCollectorService.js');
         const slackConfig = await getSlackConfig(userId);
         if (!slackConfig) { res.status(400).json({ error: 'Slack non configuré.' }); return; }
         const parts = id.split(':');
@@ -3340,9 +3288,7 @@ ${filteredContent.slice(0, 30000)}`,
         const filtered = dateFilter
           ? messages.filter(m => new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10) === dateFilter)
           : messages;
-        transcript = filtered
-          .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
-          .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`).join('\n');
+        transcript = formatSlackMessagesForAI(filtered);
       } else {
         res.status(400).json({ error: `Source non supportée : ${source}` }); return;
       }
@@ -3564,7 +3510,7 @@ ${filteredContent.slice(0, 30000)}`,
               const { getGmailEmailBody } = await import('./emailService.js');
               raw = await getGmailEmailBody(userId, src.id);
             } else if (src.source === 'slack') {
-              const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+              const { getSlackConfig, getSlackMessages, formatSlackMessagesForAI } = await import('./slackCollectorService.js');
               const slackConfig = await getSlackConfig(userId);
               if (slackConfig) {
                 const parts = src.id.split(':');
@@ -3575,7 +3521,7 @@ ${filteredContent.slice(0, 30000)}`,
                   ? messages.filter(m => new Date(parseFloat(m.messageTs) * 1000).toISOString().slice(0, 10) === dateFilter)
                   : messages;
                 const sorted = filtered.sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs));
-                raw = sorted.map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`).join('\n');
+                raw = formatSlackMessagesForAI(sorted);
                 if (sorted[0]?.messageTs) ts = new Date(parseFloat(sorted[0].messageTs) * 1000).toISOString();
               }
             }
@@ -4473,7 +4419,7 @@ ${filteredContent.slice(0, 30000)}`,
         const { getGmailEmailBody } = await import('./emailService.js');
         content = await getGmailEmailBody(userId, row.sourceId);
       } else if (row.sourceKind === 'slack') {
-        const { getSlackConfig, getSlackMessages } = await import('./slackCollectorService.js');
+        const { getSlackConfig, getSlackMessages, formatSlackMessagesForAI } = await import('./slackCollectorService.js');
         const cfg = await getSlackConfig(userId);
         if (cfg) {
           const parts = row.sourceId.split(':');
@@ -4486,10 +4432,7 @@ ${filteredContent.slice(0, 30000)}`,
                 return d === dateFilter;
               })
             : messages;
-          content = filtered
-            .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
-            .map(m => `[${m.senderName || 'Inconnu'}]: ${m.text}`)
-            .join('\n');
+          content = formatSlackMessagesForAI(filtered);
         }
       }
     } catch (err) {
