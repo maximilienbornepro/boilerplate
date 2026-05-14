@@ -4251,25 +4251,40 @@ ${filteredContent.slice(0, 30000)}`,
   // for the bulk-modal pickers (no AI ; cheap DB read). Declared
   // BEFORE the `/inbox/:id` catch-all so Express doesn't try to
   // parse "available-reviews" as a UUID.
+  //
+  // IMPORTANT : we DO NOT reuse `buildReviewsSnapshotForAI` here.
+  // That helper caps the snapshot at ~120 subjects total (8/review
+  // floor) to keep the AI prompt under budget — fine for routing
+  // decisions, terrible for a picker that must surface every
+  // existing subject so the user can attach a transcript to ANY of
+  // them. We pull the full set straight from the DB instead.
   router.get('/inbox/available-reviews', asyncHandler(async (req, res) => {
     const userId = req.user!.id;
     const isAdmin = req.user!.isAdmin;
-    const { buildReviewsSnapshotForAI } = await import('./reviewSnapshotBuilder.js');
-    const reviews = await buildReviewsSnapshotForAI({ userId, isAdmin, db });
-    const payload = reviews.map(r => ({
-      id: r.id,
-      title: r.title,
-      sections: r.sections.map(s => ({
-        id: s.id,
-        name: s.name,
-        subjects: s.subjects.map(sub => ({
-          id: sub.id,
-          title: sub.title,
-          status: sub.status,
-          situation: sub.situationExcerpt || null,
-        })),
-      })),
-    }));
+    const docs = await db.getAllDocuments(userId, isAdmin);
+    const payload = [];
+    for (const d of docs) {
+      try {
+        const doc = await db.getDocumentWithSections(d.id);
+        if (!doc) continue;
+        payload.push({
+          id: doc.id,
+          title: doc.title,
+          sections: (doc.sections || []).map(s => ({
+            id: s.id,
+            name: s.name,
+            subjects: (s.subjects || []).map(sub => ({
+              id: sub.id,
+              title: sub.title,
+              status: sub.status ?? null,
+              situation: (sub.situation || '').slice(0, 200) || null,
+            })),
+          })),
+        });
+      } catch (err) {
+        console.warn(`[inbox/available-reviews] skipping ${d.id}:`, (err as Error).message);
+      }
+    }
     res.json(payload);
   }));
 
