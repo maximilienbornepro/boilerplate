@@ -160,6 +160,27 @@ async function processSource(
         subscribedDocIds,
       });
       if (proposals.proposals.length === 0) {
+        // Empty-result cache : persist a `no_subjects` marker so the
+        // next tick's dedup check skips this source_id without firing
+        // T1 again. Without this, a Slack DM that's all social chat
+        // ("gm", "ok") gets re-extracted every 5 min forever — the
+        // single biggest waste we observed in prod ($3-5/day).
+        //
+        // The count-based fingerprint already handles the "digest
+        // grew" case : when new messages arrive on the same (channel,
+        // date), the source_id changes and a fresh T1 fires
+        // legitimately, bypassing this cache.
+        await autoDb.insertInboxProposal({
+          userId,
+          documentId: subscribedDocIds[0],     // placeholder doc — UI filters these out
+          sourceKind: source,
+          sourceId: item.id,
+          sourceTitle: item.title,
+          sourceDate: item.date ?? null,
+          proposals: [],
+          aiLogId: proposals.rootLogId,
+          status: 'no_subjects',
+        });
         skipped++;
         continue;
       }

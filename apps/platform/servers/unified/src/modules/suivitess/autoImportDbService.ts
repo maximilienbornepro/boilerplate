@@ -14,7 +14,7 @@ import { pool } from './dbService.js';
 
 export type AutoImportSource = 'fathom' | 'otter' | 'outlook' | 'gmail' | 'slack';
 
-export type InboxProposalStatus = 'pending' | 'accepted' | 'rejected';
+export type InboxProposalStatus = 'pending' | 'accepted' | 'rejected' | 'no_subjects';
 
 export interface InboxProposal {
   id: string;
@@ -236,18 +236,23 @@ export async function insertInboxProposal(input: {
   sourceDate: string | null;
   proposals: unknown[];
   aiLogId: number | null;
+  /** Defaults to 'pending'. Set to 'no_subjects' to persist a "T1
+   *  returned []" marker so the dedup check skips this source_id on
+   *  every subsequent tick — the empty-result cache pattern.
+   *  These markers are filtered out of the inbox UI by default. */
+  status?: InboxProposalStatus;
 }): Promise<InboxProposal | null> {
   const r = await pool.query(
     `INSERT INTO suivitess_inbox_proposals
        (user_id, document_id, source_kind, source_id, source_title,
         source_date, proposals, ai_log_id, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (user_id, source_kind, source_id) DO NOTHING
      RETURNING *`,
     [
       input.userId, input.documentId, input.sourceKind, input.sourceId,
       input.sourceTitle, input.sourceDate, JSON.stringify(input.proposals),
-      input.aiLogId,
+      input.aiLogId, input.status ?? 'pending',
     ],
   );
   return r.rows[0] ? mapInboxRow(r.rows[0]) : null;
@@ -283,11 +288,15 @@ export async function deleteStalerPendingDigests(input: {
   // (e.g. `slack:C8TF1EZ6X:2026-05-12` instead of the new
   //  `slack:C8TF1EZ6X:2026-05-12:27`).
   const legacyId = input.bucketPrefix.slice(0, -1);
+  // Also clean up `no_subjects` cache markers from older counts of
+  // the same bucket. They served their purpose (preventing re-T1 on
+  // the older smaller digest) but are now stale and shouldn't keep
+  // gating the bucket once the larger digest exists.
   const r = await pool.query(
     `DELETE FROM suivitess_inbox_proposals
       WHERE user_id     = $1
         AND source_kind = $2
-        AND status      = 'pending'
+        AND status      IN ('pending', 'no_subjects')
         AND (source_id LIKE $3 || '%' OR source_id = $5)
         AND source_id <> $4`,
     [input.userId, input.sourceKind, input.bucketPrefix, input.currentSourceId, legacyId],
@@ -314,6 +323,11 @@ export async function listInboxProposals(opts: {
   if (opts.status && opts.status !== 'all') {
     where.push(`p.status = $${i++}`);
     params.push(opts.status);
+  } else if (!opts.status) {
+    // Hide empty-result cache markers by default — they're internal
+    // dedup state, not real proposals. Callers can still opt in by
+    // passing status='no_subjects' explicitly or status='all'.
+    where.push(`p.status <> 'no_subjects'`);
   }
   if (opts.sourceKind) {
     where.push(`p.source_kind = $${i++}`);
