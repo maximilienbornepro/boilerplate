@@ -263,10 +263,11 @@
 
     // Try to start from the top so we always begin with the freshest
     // mails — a leftover mid-list scroll position would otherwise cap
-    // what we see.
+    // what we see. 600ms wait gives virtuoso enough time to render
+    // the top of the inbox even on slower machines.
     if (container) {
       container.scrollTop = 0;
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 600));
     }
 
     // First pass at top
@@ -281,9 +282,20 @@
       return result;
     }
 
-    const SCROLL_STEP = 800;
-    const MAX_SCROLLS = 250;          // ~250 × 400ms = up to 100s on a busy mailbox
+    // SCROLL_STEP reduced from 800 → 500 to GUARANTEE viewport overlap
+    // between two consecutive scrolls. Virtuoso's typical Outlook viewport
+    // is ~800-1000px ; a 500px step means every row appears in AT LEAST
+    // two extraction passes, so a single missed render frame doesn't lose
+    // the row. Larger step was making unread mails near the page-fold
+    // disappear when virtuoso was slow to render.
+    const SCROLL_STEP = 500;
+    const MAX_SCROLLS = 400;          // ~400 × 600ms = up to 240s on a busy mailbox
     const STALE_TOLERANCE = 40;       // virtuoso can be slow to lazy-load; give it 40 idle passes
+    // SCROLL_WAIT_MS bumped from 400 → 600 to give virtuoso more time
+    // to mount the newly-scrolled-into rows before we read them. On a
+    // slow machine the previous 400ms occasionally caught virtuoso
+    // mid-render and rows came up empty / with stale convids.
+    const SCROLL_WAIT_MS = 600;
     let consecutiveStale = 0;
     let lastScrollTop = container.scrollTop;
     let lastScrollHeight = container.scrollHeight;
@@ -291,7 +303,7 @@
 
     for (let i = 0; i < MAX_SCROLLS; i++) {
       container.scrollTop += SCROLL_STEP;
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, SCROLL_WAIT_MS));
 
       const beforeSize = accumulated.size;
       const visible = extractVisibleEmails();
@@ -335,15 +347,31 @@
     }
 
     // Reverse pass — virtuoso has likely unmounted the top rows by
-    // now ; scroll back to the top and re-extract so they re-render.
-    container.scrollTop = 0;
-    await new Promise(r => setTimeout(r, 400));
-    for (const e of extractVisibleEmails()) {
-      if (isWithinLastWeek(e.date)) {
-        if (!accumulated.has(e.id)) accumulated.set(e.id, e);
-      } else if (!accumulated.has(e.id)) {
-        skippedOld.push(e);
+    // now ; scroll back through the list in steps so EVERY scroll
+    // position gets re-extracted, not only the very top. Previously
+    // we just jumped to scrollTop=0 which only recovered rows near
+    // the top of the inbox ; rows around mid-list (between two
+    // forward viewports) could still slip through if virtuoso had
+    // rendered them only briefly during the forward sweep.
+    const totalHeight = container.scrollHeight;
+    const REVERSE_STEPS = Math.ceil(totalHeight / SCROLL_STEP);
+    const reverseRecovered = [];
+    for (let step = REVERSE_STEPS; step >= 0; step--) {
+      container.scrollTop = step * SCROLL_STEP;
+      await new Promise(r => setTimeout(r, SCROLL_WAIT_MS));
+      for (const e of extractVisibleEmails()) {
+        if (isWithinLastWeek(e.date)) {
+          if (!accumulated.has(e.id)) {
+            accumulated.set(e.id, e);
+            reverseRecovered.push(e);
+          }
+        } else if (!accumulated.has(e.id)) {
+          skippedOld.push(e);
+        }
       }
+    }
+    if (reverseRecovered.length > 0) {
+      console.log(`%c[Outlook scrape] reverse pass recovered ${reverseRecovered.length} additional mail(s) — virtuoso had dropped them mid-sweep`, 'color:#10b981; font-weight:bold');
     }
 
     const result = Array.from(accumulated.values());
