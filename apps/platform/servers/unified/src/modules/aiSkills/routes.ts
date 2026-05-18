@@ -192,13 +192,21 @@ export function createRoutes(): Router {
   //   ?skill=<slug>       — restrict to one skill
   //   ?flagged=true        — only logs with a thumbs-down (human.thumbs < 0)
   //   ?errored=true        — only logs whose run ended with an error
+  //   ?rootOnly=true       — only entry-point prompts (parent_log_id IS NULL),
+  //                          hides the cascading T2/T3 children
+  //   ?q=<text>            — free-text search on input_content / source_title / error
   router.get('/logs/list', asyncHandler(async (req, res) => {
     const limit = Math.min(parseInt(String(req.query.limit ?? '50')) || 50, 200);
     const offset = Math.max(parseInt(String(req.query.offset ?? '0')) || 0, 0);
     const skillSlug = req.query.skill ? String(req.query.skill) : undefined;
     const flagged = req.query.flagged === 'true';
     const errored = req.query.errored === 'true';
-    const rows = await listAnalysisLogs({ limit, offset, skillSlug, flagged, errored });
+    const rootOnly = req.query.rootOnly === 'true';
+    const query = req.query.q ? String(req.query.q).trim().slice(0, 200) : undefined;
+    const rows = await listAnalysisLogs({
+      limit, offset, skillSlug, flagged, errored, rootOnly,
+      query: query || undefined,
+    });
     res.json(rows);
   }));
 

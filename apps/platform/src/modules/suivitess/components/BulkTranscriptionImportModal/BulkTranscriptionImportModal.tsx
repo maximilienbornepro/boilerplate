@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { Modal, Button, LoadingSpinner, StatusTag, Badge, TileProgress, ReviewStatsLine } from '@boilerplate/shared/components';
 import { InlineConnectorSetup } from './InlineConnectorSetup';
 import { SkillButton } from '../SkillButton/SkillButton';
@@ -697,14 +698,18 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
         };
       });
 
-      // Merge freshly-created reviews + sections into the local
-      // `availableReviews` snapshot so subsequent rows targeting the
-      // same review/section see them as already-existing. Without
-      // this, the AI's "+ Créer X" decision card stayed visible on
-      // row N+1 even after row N's import had created X — the
-      // backend dedup-by-name still routed correctly, but the UI was
-      // confusing.
-      if (res.reviewsCreated.length > 0 || res.sectionsCreated.length > 0) {
+      // Merge freshly-created reviews + sections + subjects into the
+      // local `availableReviews` snapshot so subsequent rows targeting
+      // the same (review, section) see them as already-existing.
+      // Without merging SUBJECTS too, a row N+1 trying to attach to a
+      // subject that row N just created via "Ajouter" wouldn't see it
+      // in the "select existing subject" dropdown — even though the
+      // subject is already in the DB.
+      if (
+        res.reviewsCreated.length > 0
+        || res.sectionsCreated.length > 0
+        || res.subjectsCreated.length > 0
+      ) {
         setAvailableReviews(prev => {
           const next = [...prev];
           // Add freshly-created reviews (no sections yet — they're added below).
@@ -723,6 +728,28 @@ export function BulkTranscriptionImportModal({ onClose, onDone, scopedDocumentId
               ...review,
               sections: [...review.sections, { id: sec.id, name: sec.name, subjects: [] }],
             };
+          }
+          // Append newly-created subjects to their section so the
+          // "Ou ajouter comme état de situation à un sujet existant"
+          // dropdown surfaces them on subsequent rows.
+          for (const sub of res.subjectsCreated) {
+            const ri = next.findIndex(r => r.id === sub.reviewId);
+            if (ri === -1) continue;
+            const review = next[ri];
+            const si = review.sections.findIndex(s => s.id === sub.sectionId);
+            if (si === -1) continue;
+            const section = review.sections[si];
+            if (section.subjects.some(x => x.id === sub.id)) continue;
+            const updatedSection = {
+              ...section,
+              subjects: [
+                ...section.subjects,
+                { id: sub.id, title: sub.title, status: null, situation: null },
+              ],
+            };
+            const updatedSections = [...review.sections];
+            updatedSections[si] = updatedSection;
+            next[ri] = { ...review, sections: updatedSections };
           }
           return next;
         });
@@ -2082,44 +2109,100 @@ function CustomDropdown({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  // We portal the menu to `document.body` (with `position: fixed`)
+  // so it escapes the modal's `overflow: auto` clipping — without
+  // this, opening a dropdown near the modal edges produced a
+  // truncated list with no way to scroll into the hidden options.
+  // `portalStyle` captures the trigger's viewport rect + the
+  // computed flip/cap so the portaled menu lines up under (or
+  // above) the trigger and never overflows the viewport.
+  const [portalStyle, setPortalStyle] = useState<CSSProperties | null>(null);
+  const ref = useRef<HTMLDivElement | HTMLSpanElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const computePortalStyle = useCallback(() => {
+    const trigger = ref.current?.querySelector('button') as HTMLElement | null;
+    if (!trigger) return null;
+    const rect = trigger.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const PADDING = 16;
+    const spaceBelow = vh - rect.bottom - PADDING;
+    const spaceAbove = rect.top - PADDING;
+    const openAbove = spaceBelow < 280 && spaceAbove > spaceBelow;
+    const maxHeight = Math.min(500, Math.max(160, openAbove ? spaceAbove : spaceBelow));
+    // Width : default to the trigger's width, clamped to a sane
+    // minimum so single-option lists don't render as 40px-wide pills.
+    const width = Math.max(260, rect.width);
+    // Horizontal clamp : keep the menu fully on-screen.
+    const left = Math.min(Math.max(8, rect.left), vw - width - 8);
+    const style: CSSProperties = {
+      position: 'fixed',
+      left,
+      // Explicit auto-overrides : the base `.suivitess-exports-menu`
+      // class ships with `top: calc(100% + 4px); right: 0;` for the
+      // legacy absolute-positioned use. With our portal those CSS
+      // values resolve against the viewport (since position:fixed)
+      // and push the menu off-screen. Nuke them via inline auto.
+      top: 'auto',
+      right: 'auto',
+      bottom: 'auto',
+      width,
+      maxHeight,
+      overflowY: 'auto',
+      overscrollBehavior: 'contain',
+      zIndex: 1000,
+    };
+    if (openAbove) {
+      style.bottom = vh - rect.top + 4;
+    } else {
+      style.top = rect.bottom + 4;
+    }
+    return style;
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setPortalStyle(null);
+      return;
+    }
+    setPortalStyle(computePortalStyle());
+    // Re-measure on viewport resize so the menu doesn't end up
+    // mispositioned mid-interaction (rare, but cheap to handle).
+    const onResize = () => setPortalStyle(computePortalStyle());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [open, computePortalStyle]);
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    // Helper : is the event target inside the trigger OR the portaled menu ?
+    const isInsideDropdown = (target: Node | null): boolean => {
+      if (!target) return false;
+      if (ref.current && ref.current.contains(target)) return true;
+      if (menuRef.current && menuRef.current.contains(target)) return true;
+      return false;
     };
-    // Close the dropdown on scroll — BUT ignore scrolls that happen
-    // inside our own menu (so the internal option list remains
-    // scrollable). We use `Node.contains(target)` which returns true
-    // when the node is the target itself, so scrolling the menu's
-    // own overflow container is correctly treated as "inside".
+
+    const handler = (e: MouseEvent) => {
+      if (!isInsideDropdown(e.target as Node)) setOpen(false);
+    };
+    // Close the dropdown when the user scrolls OUTSIDE of it (e.g.
+    // scrolls the modal body itself). Scrolls happening inside the
+    // menu are ignored so the option list remains scrollable.
     const scrollHandler = (e: Event) => {
-      const target = e.target as Node | null;
-      const menu = ref.current?.querySelector('[role="menu"]');
-      if (menu && target && (menu === target || menu.contains(target))) return;
-      // Also ignore events fired on Document itself during menu
-      // scroll (some browsers bubble a document-level scroll while
-      // the actual scrolling happens on the menu container).
-      if (target === document || target instanceof Document) return;
+      if (isInsideDropdown(e.target as Node)) return;
+      if (e.target === document || e.target instanceof Document) return;
       setOpen(false);
     };
-    // Prevent wheel-over-menu from bubbling up to the modal container
-    // and making the whole modal scroll (which would then trigger our
-    // close handler). The menu already has `overflowY: auto` +
-    // `overscrollBehavior: contain` so its own scroll is preserved.
+    // Prevent wheel-over-menu from bubbling up to ancestor scroll
+    // containers. The portaled menu has its own overflow:auto + a
+    // capped maxHeight, so the option list scrolls itself.
     const wheelHandler = (e: WheelEvent) => {
-      const menu = ref.current?.querySelector('[role="menu"]') as HTMLElement | null;
-      if (!menu) return;
+      if (!menuRef.current) return;
       const target = e.target as Node | null;
-      if (!target || !(menu === target || menu.contains(target))) return;
-      // We're inside the menu — stop the wheel event from reaching
-      // ancestor scroll containers. The menu will scroll itself.
-      const atTop = menu.scrollTop === 0 && e.deltaY < 0;
-      const atBottom = menu.scrollTop + menu.clientHeight >= menu.scrollHeight && e.deltaY > 0;
-      if (!atTop && !atBottom) {
-        e.stopPropagation();
-      }
+      if (!target || !menuRef.current.contains(target)) return;
+      e.stopPropagation();
     };
     document.addEventListener('mousedown', handler);
     document.addEventListener('scroll', scrollHandler, true);
@@ -2159,11 +2242,16 @@ function CustomDropdown({
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
-      {open && (
+      {open && portalStyle && createPortal(
         <div
+          ref={menuRef}
           className="suivitess-exports-menu"
           role="menu"
-          style={{ width: '100%', maxHeight: 360, overflowY: 'auto', overscrollBehavior: 'contain' }}
+          // `style` overrides the absolute positioning of the base
+          // class with the computed fixed/portal coordinates. Notably
+          // we drop the `position: absolute / top / right` defaults
+          // by re-setting `position: fixed` explicitly here.
+          style={portalStyle}
         >
           {options.map(opt => {
             if (opt.value === '__sep__') {
@@ -2197,7 +2285,8 @@ function CustomDropdown({
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

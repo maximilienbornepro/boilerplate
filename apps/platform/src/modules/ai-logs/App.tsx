@@ -99,6 +99,19 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
   const [filterSkill, setFilterSkill] = useState<string>('');
   const [filterFlagged, setFilterFlagged] = useState(false);
   const [filterErrored, setFilterErrored] = useState(false);
+  // `rootOnly` hides the cascading T2/T3 children produced by a single
+  // pipeline run — when on, you only see the entry-point prompt per
+  // source, which is what `/ai-logs` users usually want when scanning
+  // for "what was the initial input fed to the AI ?".
+  const [filterRootOnly, setFilterRootOnly] = useState(false);
+  // Free-text search across input_content + source_title + error.
+  // Debounced via `searchDebounced` below to avoid hammering the API.
+  const [searchInput, setSearchInput] = useState('');
+  const [searchDebounced, setSearchDebounced] = useState('');
+  useEffect(() => {
+    const handle = setTimeout(() => setSearchDebounced(searchInput.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
   // Registry of skill metadata (slug → human name) loaded once on mount.
   // Used to render the skill's readable name in the log list + detail.
   const [skillsMeta, setSkillsMeta] = useState<Record<string, { name: string; description: string }>>({});
@@ -137,10 +150,12 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
     if (filterSkill) params.set('skill', filterSkill);
     if (filterFlagged) params.set('flagged', 'true');
     if (filterErrored) params.set('errored', 'true');
+    if (filterRootOnly) params.set('rootOnly', 'true');
+    if (searchDebounced) params.set('q', searchDebounced);
     const res = await fetch(`/ai-skills/api/logs/list?${params.toString()}`, { credentials: 'include' });
     if (!res.ok) throw new Error('Chargement impossible');
     return res.json();
-  }, [filterSkill, filterFlagged, filterErrored]);
+  }, [filterSkill, filterFlagged, filterErrored, filterRootOnly, searchDebounced]);
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
@@ -354,8 +369,8 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
             </div>
           )}
 
-          {/* Status filters — toggle flagged-only / errored-only narrow
-              views. Applied server-side via ?flagged=true / ?errored=true
+          {/* Status filters — toggle flagged-only / errored-only / root-only
+              + free-text search narrow views. All applied server-side
               so pagination stays consistent. */}
           <div className={styles.filterRow}>
             <button
@@ -374,6 +389,45 @@ export default function AiLogsApp({ onNavigate }: { onNavigate?: (path: string) 
             >
               × Erreurs
             </button>
+            <button
+              className={`${styles.filterPill} ${filterRootOnly ? styles.filterPillActive : ''}`}
+              onClick={() => setFilterRootOnly(v => !v)}
+              title="N'afficher que les prompts initiaux (parent_log_id IS NULL) — masque les appels T2/T3 enfants déclenchés en cascade par un pipeline"
+              style={filterRootOnly ? { borderColor: '#6366f1', color: '#6366f1' } : undefined}
+            >
+              ⤴ Prompt initial
+            </button>
+          </div>
+
+          {/* Free-text search across input_content / source_title / error.
+              300ms debounce so we don't fire on every keystroke. */}
+          <div className={styles.filterRow}>
+            <input
+              type="search"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              placeholder="🔍 Rechercher dans le prompt, le titre, l'erreur…"
+              aria-label="Rechercher dans les logs"
+              style={{
+                flex: 1,
+                padding: '6px 10px',
+                background: 'var(--bg-secondary)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-sm)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--font-size-sm)',
+              }}
+            />
+            {searchInput && (
+              <button
+                className={styles.filterPill}
+                onClick={() => setSearchInput('')}
+                title="Effacer la recherche"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
 
@@ -676,7 +730,35 @@ function LogDetailView({
       <Section
         title="Input brut (envoyé au modèle)"
         subtitle="Tu peux modifier cet input puis cliquer sur « Rejouer » pour tester."
-        toolbar={<Button variant="secondary" onClick={() => copy(detail.input_content)}>Copier</Button>}
+        toolbar={
+          <>
+            <Button variant="secondary" onClick={() => copy(detail.input_content)}>
+              Copier
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const payload = buildLangGraphStudioInput(
+                  detail.skill_slug,
+                  detail.source_kind,
+                  detail.source_title,
+                  detail.id,
+                  detail.user_id,
+                  detail.input_content,
+                );
+                // Only the `state` object is copied — `graphName` is for the toast.
+                copy(JSON.stringify(payload.state, null, 2));
+                addToast({
+                  type: 'success',
+                  message: `Copié pour le graphe « ${payload.graphName} » — colle dans Studio → View Raw → Submit.`,
+                });
+              }}
+              title="Reshape l'input pour le coller direct dans LangGraph Studio en mode View Raw"
+            >
+              🎯 Pour LangGraph Studio
+            </Button>
+          </>
+        }
       >
         <textarea
           className={styles.codeTextarea}
@@ -965,4 +1047,76 @@ function MetaRow({ label, value, mono, error }: { label: string; value: string; 
       <span className={`${styles.metaValue} ${mono ? styles.metaMono : ''} ${error ? styles.metaError : ''}`}>{value}</span>
     </div>
   );
+}
+
+// ============================================================
+// LangGraph Studio integration — reshape a log's input_content into
+// the TypedDict shape the local `langgraph-demo` server expects in
+// its View Raw panel.
+//
+// The mapping rules :
+//   - `suivitess-extract-*`            → transcription graph state
+//   - `suivitess-place-in-reviews`     → transcription graph state (T2 entry)
+//   - `suivitess-place-in-document`    → transcription graph state (T2 entry)
+//   - `suivitess-detect-cross-doc-duplicates` → duplicate_detection state
+//   - everything else                  → transcription graph state (fallback)
+//
+// When `input_content` is a JSON envelope (place-*, consolidate), we
+// keep it as the `source_raw` string — Studio's mock LLM ignores the
+// content anyway, so it's enough for showcasing the graph topology.
+// ============================================================
+interface LangGraphStudioPayload {
+  graphName: 'transcription' | 'duplicate_detection';
+  /** Clean JSON to copy into Studio's View Raw panel — `graphName` not
+   *  included (Studio's TypedDict would reject the extra field). */
+  state: Record<string, unknown>;
+}
+
+function buildLangGraphStudioInput(
+  skillSlug: string,
+  sourceKind: string | null,
+  sourceTitle: string | null,
+  logId: number,
+  userId: number | null,
+  inputContent: string,
+): LangGraphStudioPayload & { __graph: string } {
+  const inferSourceKind = (): string => {
+    if (sourceKind) return sourceKind;
+    if (skillSlug.includes('extract-slack')) return 'slack';
+    if (skillSlug.includes('extract-outlook')) return 'outlook';
+    if (skillSlug.includes('extract-transcript')) return 'transcript';
+    return 'transcript';
+  };
+
+  if (skillSlug.includes('detect-cross-doc-duplicates')) {
+    let subjectsSnapshot: unknown[] = [];
+    try {
+      const parsed = JSON.parse(inputContent);
+      if (parsed && typeof parsed === 'object' && Array.isArray((parsed as { subjects?: unknown[] }).subjects)) {
+        subjectsSnapshot = (parsed as { subjects: unknown[] }).subjects;
+      }
+    } catch { /* keep empty — Studio will fall back on the mocked snapshot inside the graph */ }
+    return {
+      __graph: 'duplicate_detection',
+      graphName: 'duplicate_detection',
+      state: {
+        user_id: userId ?? 1,
+        is_admin: false,
+        subjects_snapshot: subjectsSnapshot,
+      },
+    };
+  }
+
+  return {
+    __graph: 'transcription',
+    graphName: 'transcription',
+    state: {
+      source_kind: inferSourceKind(),
+      source_id: `log-${logId}`,
+      source_title: sourceTitle ?? `(log #${logId})`,
+      source_raw: inputContent,
+      user_id: userId ?? 1,
+      subscribed_doc_ids: ['daily-tv'],
+    },
+  };
 }

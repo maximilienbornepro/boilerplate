@@ -194,6 +194,15 @@ export async function listAnalysisLogs(options: {
   flagged?: boolean;
   /** Return only logs that ended with an error. */
   errored?: boolean;
+  /** Return only root-of-chain logs (`parent_log_id IS NULL`) — the
+   *  initial prompts that triggered cascading T2 / T3 child calls.
+   *  Hugely reduces noise when debugging a pipeline run because you
+   *  only see the entry-point per source, not the dozens of writer
+   *  calls fan-out from there. */
+  rootOnly?: boolean;
+  /** Free-text search across `input_content`, `source_title`, and
+   *  `error`. Case-insensitive ILIKE — keep queries short. */
+  query?: string;
 } = {}): Promise<AnalysisLogListItem[]> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const offset = Math.max(options.offset ?? 0, 0);
@@ -202,6 +211,13 @@ export async function listAnalysisLogs(options: {
   if (options.skillSlug) { values.push(options.skillSlug); filters.push(`l.skill_slug = $${values.length}`); }
   if (options.userId) { values.push(options.userId); filters.push(`l.user_id = $${values.length}`); }
   if (options.errored) { filters.push(`l.error IS NOT NULL`); }
+  if (options.rootOnly) { filters.push(`l.parent_log_id IS NULL`); }
+  if (options.query) {
+    values.push(`%${options.query}%`);
+    filters.push(
+      `(l.input_content ILIKE $${values.length} OR l.source_title ILIKE $${values.length} OR l.error ILIKE $${values.length})`,
+    );
+  }
   // `flagged` / `disagree_count` come from a correlated subquery on
   // the scores table: each proposition the user disagrees with adds
   // one thumbs-down row (score_name='human.thumbs', value<0). We
