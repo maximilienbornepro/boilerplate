@@ -2413,6 +2413,44 @@ ${filteredContent.slice(0, 30000)}`,
     });
   }));
 
+  // POST /extension/error — Chrome extension reports a failure
+  // (chunk push failed after 3 retries, scrape crash, …). Insert
+  // a row into `extension_error_logs` for admin debugging. Best-
+  // effort : never crashes, never blocks the calling flow.
+  router.post('/extension/error', asyncHandler(async (req, res) => {
+    const body = req.body as {
+      type?: string;
+      message?: string;
+      context?: unknown;
+      plugin_version?: string;
+      user_agent?: string;
+    };
+    const userId = req.user!.id;
+    try {
+      await db.pool.query(
+        `INSERT INTO extension_error_logs
+           (user_id, type, message, context, plugin_version, user_agent)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          userId,
+          String(body.type || 'unknown').slice(0, 64),
+          String(body.message || '').slice(0, 5000),
+          body.context ? JSON.stringify(body.context) : null,
+          String(body.plugin_version || '').slice(0, 32),
+          String(body.user_agent || '').slice(0, 255),
+        ],
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      // Even when the insert fails we don't want the extension to
+      // bubble the error to the user — log it server-side and
+      // return 200 so the extension's fire-and-forget call exits
+      // gracefully.
+      console.error('[SuiVitess /extension/error] insert failed:', (err as Error).message);
+      res.json({ ok: false, error: 'logged-server-side' });
+    }
+  }));
+
   router.post('/outlook/sync', asyncHandler(async (req, res) => {
     const { emails } = req.body as { emails?: Array<{
       id: string; subject: string; sender: string; date: string;

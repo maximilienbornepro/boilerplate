@@ -351,6 +351,46 @@
     throw lastErr || new Error('Push failed');
   }
 
+  /** Fire-and-forget : ship a failure event to the boilerplate
+   *  `/extension/error` endpoint so admins can investigate via the
+   *  admin dashboard instead of having to ask the user for their
+   *  Chrome devtools console. Best-effort — never throws, never
+   *  blocks the calling flow. */
+  async function logExtensionError({ type, message, context }) {
+    try {
+      const token = await getAuthTokenFor(serverUrl);
+      if (!token) return;
+      const target = serverUrl.replace(/\/+$/, '');
+      const tryPaths = ['/suivitess-api/extension/error', '/suivitess/api/extension/error'];
+      for (const path of tryPaths) {
+        try {
+          const res = await fetch(`${target}${path}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              type: type || 'unknown',
+              message: String(message || '').slice(0, 1000),
+              context: context || null,
+              plugin_version: (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || null,
+              user_agent: navigator.userAgent.slice(0, 200),
+            }),
+          });
+          if (res.ok || res.status === 404) {
+            // 404 means the endpoint isn't deployed yet — try the next path.
+            if (res.ok) return;
+          } else {
+            return; // non-404 non-ok → endpoint exists but rejected, stop trying
+          }
+        } catch { /* try next path */ }
+      }
+    } catch {
+      // Never let the logger crash the calling flow.
+    }
+  }
+
   // ── Listeners for live progress from outlook content script ───────────
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.action === 'bodiesProgress') {
@@ -820,44 +860,118 @@
       } catch { /* ignore */ }
     }
 
-    // 3) Push everything (with bodies when we got them) to the backend
+    // 3) Push everything (with bodies when we got them) to the backend.
+    //
+    // CHUNKED + retry strategy : a single batch failure used to flip
+    // EVERY mail (potentially 100+) to "failed" because the whole
+    // payload was sent in one fetch. Now we slice into 25-mail
+    // chunks ; each chunk gets 3 retries with exponential backoff on
+    // transient "Failed to fetch" / 5xx ; only the mails inside a
+    // permanently-failed chunk are flipped to failed. The rest stays
+    // OK so the user doesn't lose 95 mails because the 96th's chunk
+    // timed out.
     progressText.textContent = `Push vers ${serverDomain}…`;
     progressFill.style.width = '92%';
-    try {
-      const payload = emails.map(e => ({
-        id: e.id,
-        subject: e.subject || '(sans objet)',
-        sender: e.sender || 'Inconnu',
-        date: e.date || '',
-        preview: e.preview || '',
-        body: e.body || null,
-        threadCount: e.threadCount || 1,
-      }));
-      const result = await pushToBackend(payload);
-      progressFill.style.width = '100%';
-      const skipped = result.skipped || 0;
-      const errs = Array.isArray(result.errors) ? result.errors : [];
-      const errIds = new Set(errs.map(x => x.messageId));
-      for (const e of emails) {
-        if (errIds.has(e.id)) {
-          e.status = 'failed';
-          const found = errs.find(x => x.messageId === e.id);
-          e.error = found?.reason || 'INSERT failed';
-        } else if (e.status === 'ok') {
-          e.syncedAt = new Date().toISOString();
+    const BATCH_SIZE = 25;
+    const payload = emails.map(e => ({
+      id: e.id,
+      subject: e.subject || '(sans objet)',
+      sender: e.sender || 'Inconnu',
+      date: e.date || '',
+      preview: e.preview || '',
+      body: e.body || null,
+      threadCount: e.threadCount || 1,
+    }));
+    const chunks = [];
+    for (let i = 0; i < payload.length; i += BATCH_SIZE) {
+      chunks.push(payload.slice(i, i + BATCH_SIZE));
+    }
+    let totalStored = 0;
+    let totalSkipped = 0;
+    const allBackendErrors = [];
+    const fatalChunkErrors = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const pct = 92 + Math.round((i / chunks.length) * 7);
+      progressFill.style.width = `${pct}%`;
+      progressText.textContent = `Push vers ${serverDomain} — batch ${i + 1}/${chunks.length} (${chunk.length} mail(s))…`;
+      let attempt = 0;
+      let chunkResult = null;
+      let lastErr = null;
+      while (attempt < 3 && !chunkResult) {
+        attempt++;
+        try {
+          chunkResult = await pushToBackend(chunk);
+        } catch (err) {
+          lastErr = err;
+          // Only retry on transient errors — "Failed to fetch" (network
+          // blip), TypeError, or 5xx. Permanent errors (401, 404, 400)
+          // are useless to retry.
+          const msg = err?.message || String(err);
+          const transient = /Failed to fetch|NetworkError|timeout|50\d/i.test(msg);
+          if (!transient || attempt >= 3) break;
+          const wait = (2 ** attempt) * 500 + Math.random() * 300; // 0.5-1.3s, 1-2.6s
+          // eslint-disable-next-line no-console
+          console.warn(`[SuiviTess sync] chunk ${i + 1} attempt ${attempt} failed (${msg}) — retrying in ${wait}ms`);
+          await new Promise(r => setTimeout(r, wait));
         }
       }
-      progressText.textContent = `✓ ${result.stored} mail(s) synchronisé(s)${skipped ? ` · ${skipped} ignoré(s)` : ''} sur ${serverDomain}`;
-      const withBody = emails.filter(e => e.bodyChars > 20).length;
-      barSub.textContent = `Sync OK — ${result.stored}/${emails.length} stockés · ${withBody} avec corps complet`;
-    } catch (err) {
-      progressText.textContent = `⚠ Push échoué : ${err.message}`;
-      for (const e of emails) {
-        if (e.status === 'ok') {
-          e.status = 'failed';
-          e.error = err.message;
+      if (chunkResult) {
+        totalStored += chunkResult.stored || 0;
+        totalSkipped += chunkResult.skipped || 0;
+        if (Array.isArray(chunkResult.errors)) {
+          allBackendErrors.push(...chunkResult.errors);
         }
+      } else {
+        // Permanent chunk failure — record so we can flip ONLY these
+        // mails to failed, and ship the error to the backend log.
+        fatalChunkErrors.push({
+          chunkIndex: i,
+          messageIds: chunk.map(m => m.id),
+          error: lastErr?.message || 'unknown',
+        });
+        // eslint-disable-next-line no-console
+        console.error(`[SuiviTess sync] chunk ${i + 1} permanently failed after 3 attempts:`, lastErr);
+        // Fire-and-forget : log to the boilerplate DB so the user can
+        // see this in the admin dashboard later — failing silently
+        // here was making "all my last mails are in error" inscrutable.
+        void logExtensionError({
+          type: 'push_chunk_failed',
+          message: lastErr?.message || 'unknown',
+          context: {
+            chunkIndex: i,
+            chunkSize: chunk.length,
+            messageIds: chunk.map(m => m.id),
+            domain: serverDomain,
+          },
+        });
       }
+    }
+
+    // Apply the results back to the in-memory list.
+    progressFill.style.width = '100%';
+    const errIds = new Set(allBackendErrors.map(x => x.messageId));
+    const fatalIds = new Set(fatalChunkErrors.flatMap(c => c.messageIds));
+    for (const e of emails) {
+      if (errIds.has(e.id)) {
+        e.status = 'failed';
+        const found = allBackendErrors.find(x => x.messageId === e.id);
+        e.error = found?.reason || 'INSERT failed';
+      } else if (fatalIds.has(e.id)) {
+        e.status = 'failed';
+        const found = fatalChunkErrors.find(c => c.messageIds.includes(e.id));
+        e.error = `Push échoué (3 tentatives) : ${found?.error || 'unknown'}`;
+      } else if (e.status === 'ok') {
+        e.syncedAt = new Date().toISOString();
+      }
+    }
+    const withBody = emails.filter(e => e.bodyChars > 20).length;
+    if (fatalChunkErrors.length === 0) {
+      progressText.textContent = `✓ ${totalStored} mail(s) synchronisé(s)${totalSkipped ? ` · ${totalSkipped} ignoré(s)` : ''} sur ${serverDomain}`;
+      barSub.textContent = `Sync OK — ${totalStored}/${emails.length} stockés · ${withBody} avec corps complet`;
+    } else {
+      progressText.textContent = `⚠ Sync partielle : ${totalStored}/${emails.length} stockés · ${fatalIds.size} échec(s) après retries`;
+      barSub.textContent = `Sync partielle — ${fatalChunkErrors.length} batch(s) en erreur, voir la console`;
     }
     renderTable();
     updateStats();

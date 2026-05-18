@@ -132,6 +132,34 @@ export async function initDb(): Promise<void> {
     client.release();
   }
 
+  // ---- Chrome extension error log ----------------------------------
+  // Logs unhandled / chunk-permanently-failed errors from the
+  // suivitess-importer extension so admins can debug from the
+  // boilerplate UI instead of asking the user for their devtools
+  // console. Best-effort — failures during init are swallowed so a
+  // bad migration doesn't take down the whole module.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS extension_error_logs (
+        id              SERIAL PRIMARY KEY,
+        user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        type            VARCHAR(64),
+        message         TEXT,
+        context         JSONB,
+        plugin_version  VARCHAR(32),
+        user_agent      VARCHAR(255),
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_extension_error_logs_user_created
+         ON extension_error_logs(user_id, created_at DESC)`,
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[SuiVitess] extension_error_logs init failed:', (err as Error).message);
+  }
+
   // Migration: add owner_id (rétro-compat: nullable, backfill to admin)
   try {
     await pool.query('ALTER TABLE suivitess_documents ADD COLUMN IF NOT EXISTS owner_id INTEGER');
